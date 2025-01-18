@@ -76,7 +76,7 @@ These devices are the PCIe bus devices that are used to connect to the system.
 
 The memory region for the boot trampoline and the Device Tree Blob (DTB) is a dedicated 64KiB segment starting at $00000000. This memory serves two primary purposes:
 
-1. **Boot Trampoline Code**: The boot trampoline code initializes essential CPU components, including CPU registers and the stack pointer. After initialization, it transfers control to the firmware's entry point. In the future, this code will be removed, and the CPU emulation will directly handle the initialization of registers and the stack pointer. This change is crucial for multi-core support, as executing the same trampoline code on all cores is undesirable.
+1. **Boot Trampoline Code**: The boot trampoline code initializes essential CPU components, including CPU registers and the stack pointer. After initialization, it transfers control to the firmware's entry point. In the future, this code will be removed, and the CPU emulation will directly handle the initialization of registers and the stack pointer.
 
 2. **Device Tree Blob (DTB)**: The DTB provides a structured description of the system's hardware configuration to the operating system. It is passed to the operating system by the firmware and includes details such as CPU cores, memory, and device mappings.
 
