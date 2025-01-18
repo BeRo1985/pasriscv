@@ -47,7 +47,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
 
 ## Usage
 
-See `riscvemu` PasVulkan project for an emulator that uses this library.
+See [pasriscvemu](https://github.com/BeRo1985/pasriscvemu) PasVulkan project for an emulator frontend that uses this library.
 
 ## Documentation
 
