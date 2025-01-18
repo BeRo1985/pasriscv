@@ -53,6 +53,10 @@ See `riscvemu` PasVulkan project for an emulator that uses this library.
 
 See the `docs` directory for more information.
 
+## Related connected repositories
+
+- [PasRISCV Third-Party Software Repository](https://github.com/BeRo1985/pasriscv_software) - This repository contains third-party software, including test cases, guest Linux system build scripts, and other related assets, for the PasRISCV Emulator — a RV64GC RISC-V emulator developed in Object Pascal. Needed for the test suite and other related assets.
+
 ## License
 
 This project is released under zlib license.
