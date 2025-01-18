@@ -44,6 +44,8 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - I2C bus (disabled for now, due to IRQ issues, will be either fixed, removed, or replaced with virtio-i2c later)
     - HID devices
       - Keyboard
+- GDB remote debugging support (partially implemented)
+  - Own GDB server implementation
 
 ## Usage
 
