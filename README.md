@@ -26,6 +26,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
 - Only RV64 ISA support
   - This simplifies the architecture by focusing purely on RV64 ISA, which is considered more future-oriented than 32-bit architectures. These are increasingly less relevant for modern computing needs, especially as even embedded systems continue transitioning to 64-bit architectures. Therefore, no RV32 ISA support is provided.
   - There are currently no plans to support RV128 ISA, as its practical relevance has yet to emerge. Furthermore, the RV128 ISA is not fully specified, making it unsuitable for implementation at this stage. It remains a theoretical concept for now.
+    - To grasp the sheer scale of a 128-bit memory space, consider that it would require a memory size larger than all the atoms in the solar system. For practical purposes, such a vast address space is far beyond any foreseeable need, making RV128 largely a theoretical concept for now. 
 - Emulated peripherals
   - ACLINT
   - PLIC
