@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-01-18-11-08-0000                       *
+ *                        Version 2025-01-19-01-38-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -10843,6 +10843,7 @@ begin
 end;
 
 function TPasRISCV9PFileSystemWindows.P9OpenFlagsToWin32OpenFlags(const aFlags:TPasRISCVUInt32):DWORD;
+const FILE_FLAG_OPEN_REPARSE_POINT=$200000;
 var Access:DWORD;
     CreationDisposition:DWORD;
     FlagsAndAttributes:DWORD;
@@ -10888,7 +10889,10 @@ begin
  if (aFlags and P9_O_NONBLOCK)<>0 then begin
   FlagsAndAttributes:=FlagsAndAttributes or FILE_FLAG_OVERLAPPED;
  end;
- if ((aFlags and P9_O_DSYNC)<>0) or ((aFlags and P9_O_SYNC)<>0) then begin
+ if (aFlags and P9_O_DSYNC)<>0 then begin
+  FlagsAndAttributes:=FlagsAndAttributes or FILE_FLAG_WRITE_THROUGH;
+ end;
+ if (aFlags and P9_O_SYNC)<>0 then begin
   FlagsAndAttributes:=FlagsAndAttributes or FILE_FLAG_WRITE_THROUGH;
  end;
  if (aFlags and P9_O_DIRECT)<>0 then begin
@@ -11423,6 +11427,10 @@ begin
 
 end;
 
+{$if not declared(SetFilePointerEx)}
+function SetFilePointerEx(hFile:HANDLE;liDistanceToMove:TPasMPUInt64;lpNewFilePointer:PPasMPUInt64;dwMoveMethod:DWORD):BOOL; {$ifdef cpu386}stdcall;{$endif} external 'kernel32.dll' name 'SetFilePointerEx';
+{$ifend}
+
 function TPasRISCV9PFileSystemWindows.Read(const aFile:TPasRISCV9PFileSystem.TFSFile;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVInt64):TPasRISCVInt64;
 var BytesRead:DWORD;
     Overlapped:TOverlapped;
@@ -11743,12 +11751,16 @@ begin
 
 end;
 
+{$if not declared(CreateHardLinkA)}
+function CreateHardLinkA(lpFileName,lpExistingFileName:LPCSTR;lpSecurityAttributes:LPSECURITY_ATTRIBUTES):BOOL; {$ifdef cpu386}stdcall;{$endif} external 'kernel32.dll' name 'CreateHardLinkA';
+{$ifend}
+
 function TPasRISCV9PFileSystemWindows.Link(const aDestFile,aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString):TPasRISCVInt32;
-var NewPath:WideString;
+var NewPath:RawByteString;
     Success:BOOL;
 begin
  NewPath:=ComposePath(aDestFile.fPath,aName);
- Success:=CreateHardLinkW(PWideChar(WideString(NewPath)),PWideChar(WideString(aFile.fPath)),nil);
+ Success:=CreateHardLinkA(PAnsiChar(NewPath),PAnsiChar(aFile.fPath),nil);
  if Success then begin
   result:=0;
  end else begin
@@ -11756,7 +11768,12 @@ begin
  end;
 end;
 
+{$if not declared(CreateSymbolicLinkA)}
+function CreateSymbolicLinkA(lpSymlinkFileName,lpTargetFileName:LPCSTR;dwFlags:DWORD):BOOL; {$ifdef cpu386}stdcall;{$endif} external 'kernel32.dll' name 'CreateSymbolicLinkA';
+{$ifend}
+
 function TPasRISCV9PFileSystemWindows.Symlink(const aQID:TPasRISCV9PFileSystem.PFSQID;const aFile:TPasRISCV9PFileSystem.TFSFile;const aName,aTarget:TPasRISCVRawByteString;const aGID:TPasRISCVUInt32):TPasRISCVInt32;
+const SYMBOLIC_LINK_FLAG_DIRECTORY=$1;
 var NewPath:TPasRISCVRawByteString;
     Success:BOOL;
     Handle:THandle;
@@ -11828,7 +11845,7 @@ begin
 end;
 
 function TPasRISCV9PFileSystemWindows.ReadLink(const aBuffer:Pointer;const aSize:TPasRISCVInt64;const aFile:TPasRISCV9PFileSystem.TFSFile):TPasRISCVInt64;
-var TargetName:String;
+var TargetName:{$ifdef fpc}UnicodeString{$else}String{$endif};
     UTF8Target:TPasRISCVUTF8String;
 begin
  if FileGetSymLinkTarget(aFile.fPath,TargetName) then begin
