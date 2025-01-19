@@ -22,6 +22,10 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Zbb/Zcb/Zbs/Zba (Bit Manipulations)
   - Zacas (Atomic Compare-And-Swap)
 - Multi-core SMP support
+- SV39, SV48, and SV57 page table support
+- Only RV64 ISA support
+  - This simplifies the architecture by focusing purely on RV64 ISA, which is considered more future-oriented than 32-bit architectures. These are increasingly less relevant for modern computing needs, especially as even embedded systems continue transitioning to 64-bit architectures. Therefore, no RV32 ISA support is provided.
+  - There are currently no plans to support RV128 ISA, as its practical relevance has yet to emerge. Furthermore, the RV128 ISA is not fully specified, making it unsuitable for implementation at this stage. It remains a theoretical concept for now.
 - Emulated peripherals
   - ACLINT
   - PLIC
