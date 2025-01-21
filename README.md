@@ -68,7 +68,7 @@ See the `docs` directory for more information.
 
 ## Support
 
-Creating is my passion, and with your support, I can keep it alive. Support my work and help me continue innovating. Every contribution makes a difference: [Donate](https://donate.rosseaux.com/) Thank you!
+Creating is my passion, and with your support, I can keep it alive. Support my work and help me continue innovating. Every contribution makes a difference: [You can donate and support me here.](https://donate.rosseaux.com/) Thank you!
 
 ## License
 
