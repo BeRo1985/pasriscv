@@ -66,6 +66,10 @@ See the `docs` directory for more information.
 - [PasVulkan](https://github.com/BeRo1985/pasvulkan) - PasVulkan game engine and Vulkan API bindings for Object Pascal.
 - [pasriscemu](https://github.com/BeRo1985/pasriscvemu) - PasRISCV Emulator frontend using PasVulkan.
 
+## Support
+
+Creating is my passion, and with your support, I can keep it alive. Support my work and help me continue innovating. Every contribution makes a difference: [Donate](https://donate.rosseaux.com/) Thank you!
+
 ## License
 
 This project is released under zlib license.
