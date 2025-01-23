@@ -18633,13 +18633,13 @@ begin
 
  FillChar(fConfigSpace[0],8,#0);
 
- fMachine.fRandomGeneratorLock.Acquire;
- try
-  fMachine.fRandomGenerator.GetRandomBytes(fConfigSpace[0],6);
-  fConfigSpace[0]:=(fConfigSpace[0] and $fe) or $02;
- finally
-  fMachine.fRandomGeneratorLock.Release;
- end;
+ // Initial MAC adresss
+ fConfigSpace[0]:=$02;
+ fConfigSpace[1]:=$00;
+ fConfigSpace[2]:=$00;
+ fConfigSpace[3]:=$00;
+ fConfigSpace[4]:=$00;
+ fConfigSpace[5]:=$01;
 
  fConfigSpaceSize:=8; // 6 + 2
 
@@ -18788,6 +18788,7 @@ end;
 
 procedure TPasRISCV.TVirtIONetDevice.SetEthernetDevice(const aEthernetDevice:TPasRISCVEthernetDevice);
 begin
+
  if fEthernetDevice<>aEthernetDevice then begin
 
   // Unassign old Ethernet device callbacks and wipe mac address in config space
@@ -18811,11 +18812,12 @@ begin
    fEthernetDevice.fOnWritePacket:=WritePacket;
    fEthernetDevice.fOnSetCarrier:=SetCarrier;
 
-   Move(fEthernetDevice.fMACAddress[0],fConfigSpace[0],6);
+   Move(fEthernetDevice.fMACAddress[0],fConfigSpace[0],SizeOf(TPasRISCVEthernetDevice.TMACAddress));
 
   end;
 
  end;
+
 end;
 
 { TPasRISCV.TVirtIORandomGeneratorDevice }
