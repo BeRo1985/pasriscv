@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-01-19-01-38-0000                       *
+ *                        Version 2025-01-23-05-35-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -24,7 +24,7 @@
  *    misrepresented as being the original software.                          *
  * 3. This notice may not be removed or altered from any source distribution. *
  *                                                                            *
- *****************************************************************************)       
+ *****************************************************************************)
  unit PasRISCV;
 {$ifdef fpc}
  {$mode delphi}
@@ -2576,6 +2576,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fStatus:TPasRISCVUInt32;
               fDeviceFeatures:TPasRISCVUInt64;
               fDriverFeatures:TPasRISCVUInt64;
+              fActiveFeatures:TPasRISCVUInt64;
               fDeviceFeaturesSelected:TPasRISCVUInt64;
               fDriverFeaturesSelected:TPasRISCVUInt64;
               fSelectedQueue:TPasRISCVUInt32;
@@ -4765,7 +4766,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      destructor Destroy; override;
                      procedure AfterConstruction; override;
                      procedure BeforeDestruction; override;
-                     procedure Shutdown; 
+                     procedure Shutdown;
                    end;
                    TClientThreadDynamicArray=array of TClientThread;
                    { TServerThread }
@@ -14806,6 +14807,7 @@ begin
                   //TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   0;
  fDriverFeatures:=0;
+ fActiveFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
  fDeviceFeaturesSelected:=0;
  fDriverFeaturesSelected:=0;
  fSelectedQueue:=0;
@@ -14853,6 +14855,7 @@ begin
  fDriverOK:=false;
  fStatus:=0;
  fSelectedQueue:=0;
+ fActiveFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
  fDeviceFeaturesSelected:=0;
  fDriverFeaturesSelected:=0;
  TPasMPInterlocked.Write(fIntStatus,0);
@@ -15212,7 +15215,7 @@ begin
 
  TPasMPMemoryBarrier.ReadWrite;
 
- if ((fDeviceFeatures and fDriverFeatures) and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0 then begin
+ if (fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0 then begin
   if Read16((Queue^.AvailableAddress+4)+(Queue^.Size shl 1),UsedIndex) then begin
    if Queue^.ShadowUsedIndex=UsedIndex then begin
     TPasMPInterlocked.Write(Queue^.UsedRingEvent,TPasMPBool32(true));
@@ -15263,7 +15266,7 @@ begin
 
  TPasMPMemoryBarrier.ReadWrite;
 
- UseEventIndex:=((fDeviceFeatures and fDriverFeatures) and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
+ UseEventIndex:=(fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
  if (UseEventIndex and TPasMPInterlocked.CompareExchange(Queue^.UsedRingEvent,TPasMPBool32(false),TPasMPBool32(true))) or
     ((not UseEventIndex) and ((Flags and VIRTQ_AVAIL_F_NO_INTERRUPT)=0)) then begin
   NotifyQueueUsed;
@@ -15348,7 +15351,7 @@ function TPasRISCV.TVirtIODevice.AdvanceShadowAvailableIndex(const aQueueIndex:T
 var Queue:PQueue;
 begin
  Queue:=@fQueues[aQueueIndex];
- if ((fDeviceFeatures and fDriverFeatures) and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0 then begin
+ if (fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0 then begin
   result:=Write16((Queue^.UsedAddress+4)+(Queue^.Size shl 3),Queue^.ShadowAvailableIndex+1);
  end else begin
   result:=true;
@@ -15538,30 +15541,48 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIODevice.SetStatus(const aStatus:TPasRISCVUInt32);
-var OldStatus,EnablingStatus:TPasRISCVUInt32;
+var NewStatus,OldStatus,EnablingStatus:TPasRISCVUInt32;
 begin
+
  if aStatus=0 then begin
+
+  fDriverOK:=false;
   fStatus:=0;
   fMachine.fPLICDevice.LowerIRQ(fIRQ);
   DeviceReset;
+
  end else begin
+
+  NewStatus:=aStatus;
+
   OldStatus:=fStatus;
-  EnablingStatus:=(fStatus xor aStatus) and aStatus;
-  if ((EnablingStatus and VIRTIO_STATUS_FEATURES_OK)<>0) and (fDriverFeatures<>fDeviceFeatures) then begin
-   // To ensure that the FEATURES_OK bit is really set, the driver reads the device status again.
-   // The device initialization can only succeed if the driver supports the device features.
-  end else begin
-   fStatus:=aStatus;
-   if (EnablingStatus and VIRTIO_STATUS_DRIVER_OK)<>0 then begin
-    if (OldStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)<>0 then begin
-     SetIRQ(VIRTIO_INT_STATUS_CONFIG_CHANGE);
-    end else begin
-     fDriverOK:=true;
-     DeviceDriverOK;
-    end;
+
+  EnablingStatus:=(OldStatus xor NewStatus) and NewStatus;
+
+  if (NewStatus and VIRTIO_STATUS_DRIVER_OK)=0 then begin
+   fDriverOK:=false;
+  end;
+
+  if (EnablingStatus and VIRTIO_STATUS_FEATURES_OK)<>0 then begin
+   fActiveFeatures:=fDeviceFeatures and fDriverFeatures;
+   if (fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1)=0 then begin
+    NewStatus:=NewStatus and not VIRTIO_STATUS_FEATURES_OK;
    end;
   end;
+
+  fStatus:=NewStatus and $ff;
+
+  if (OldStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)<>0 then begin
+   SetIRQ(VIRTIO_INT_STATUS_CONFIG_CHANGE);
+  end else begin
+   if (EnablingStatus and VIRTIO_STATUS_DRIVER_OK)<>0 then begin
+    fDriverOK:=true;
+    DeviceDriverOK;
+   end;
+  end;
+
  end;
+
 end;
 
 function TPasRISCV.TVirtIODevice.MMIORead(const aOffset:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -22388,7 +22409,7 @@ destructor TPasRISCV.TCPUCore.TExecutionThread.Destroy;
 begin
  if assigned(fCPUCore) then begin
   fCPUCore.fExecutionThread:=nil;
- end; 
+ end;
  inherited Destroy;
 end;
 
@@ -22809,7 +22830,7 @@ end;
 
 function TPasRISCV.TCPUCore.CheckPrivilege(const aCPUMode:TCPUCore.TMode;const aAccessType:TMMU.TAccessType):Boolean;
 begin
- if aAccessType=TMMU.TAccessType.Instruction then begin 
+ if aAccessType=TMMU.TAccessType.Instruction then begin
   // Disallow allow executing user pages in supervisor mode and vice versa, but not in the MXR case (TMMU.TAccessType.LoadInstruction)
   result:=false;
  end else if (aCPUMode<>TCPUCore.TMode.Supervisor) or ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and TCSR.TMask.TStatus.SUM)=0) then begin
@@ -24035,40 +24056,40 @@ function TPasRISCV.TCPUCore.ExecuteInstruction(const aInstruction:TPasRISCVUInt3
 // maintenance. The function is designed to be easily extensible to support additional instruction
 // extensions and customizations. Direct/indirect threaded code, or other advanced techniques, could
 // be used for improved performance, but would complicate the code and make it harder to maintain.
-// However once JIT compilation is implemented later, the interpreter will be used only for the 
-// initial warm-up phase and for handling edge cases as well as more complex instructions, while the 
+// However once JIT compilation is implemented later, the interpreter will be used only for the
+// initial warm-up phase and for handling edge cases as well as more complex instructions, while the
 // JIT-compiled code will be used for subsequent execution, providing a significant performance boost.
 //
 // Optimizations for Performance:
 //
 // - Jump Table Heuristics:
-//     The code attempts to improve performance by encouraging the compiler to generate jump tables 
+//     The code attempts to improve performance by encouraging the compiler to generate jump tables
 //     for the top-level case statement (TryToForceCaseJumpTableOnLevel1) by using several equivalent
 //     case values in a row, eg. "$00,$04,$08,$0c,$10,$14,.." instead only "$00" exploiting the fact
-//     that the RISC-V instruction encoding uses the lower two bits for to distinguish between 
-//     compressed 16-bit and normal 32-bit instructions. This can potentially speed up instruction 
-//     decoding by reducing linear branch evaluations. 
+//     that the RISC-V instruction encoding uses the lower two bits for to distinguish between
+//     compressed 16-bit and normal 32-bit instructions. This can potentially speed up instruction
+//     decoding by reducing linear branch evaluations.
 //     However, this optimization is compiler-dependent and might not always be effective, and
-//     enabling jump tables for deeper case levels (e.g. TryToForceCaseJumpTableOnCompressedLevel2) 
+//     enabling jump tables for deeper case levels (e.g. TryToForceCaseJumpTableOnCompressedLevel2)
 //     is currently disabled because it can have a negative impact on the performance at the moment.
 //
 // - Branch Prediction and Cache Locality:
-//     Case statements should be ordered such that the most frequent instructions are placed at the 
+//     Case statements should be ordered such that the most frequent instructions are placed at the
 //     beginning. This improves both branch prediction accuracy and cache locality:
 //       - Branch Prediction:
-//           Frequent instructions are more likely to be predicted correctly, reducing mispredictions 
+//           Frequent instructions are more likely to be predicted correctly, reducing mispredictions
 //           and improving instruction pipeline flow.
 //       - Cache Locality:
 //           Keeping frequently executed code in the cache minimizes data access latency and improves
 //           overall execution speed.
 //
 // - Early Exits:
-//     The function utilizes `exit;` statements whenever possible to terminate execution after handling 
-//     an instruction. This avoids unnecessary jumps to the function's end, improving code locality and 
+//     The function utilizes `exit;` statements whenever possible to terminate execution after handling
+//     an instruction. This avoids unnecessary jumps to the function's end, improving code locality and
 //     potentially reducing cache misses.
-// 
-// However, the effectiveness of these optimizations can vary depending on the specific CPU architecture, 
-// compiler version, and optimization settings used. The primary goal of these optimizations is to achieve 
+//
+// However, the effectiveness of these optimizations can vary depending on the specific CPU architecture,
+// compiler version, and optimization settings used. The primary goal of these optimizations is to achieve
 // a balance between performance and code maintainability.
 {$define TryToForceCaseJumpTableOnLevel1}
 {-$define TryToForceCaseJumpTableOnCompressedLevel2}
@@ -28816,7 +28837,7 @@ var Index:TPasRISCVSizeInt;
 begin
 
  if assigned(fDebugger) and assigned(fDebugger.fLock) then begin
-  
+
   // Close the socket
   if fSocket<>RNL_SOCKET_NULL then begin
    try
@@ -28842,7 +28863,7 @@ begin
   finally
    fDebugger.fLock.Release;
   end;
- 
+
   if assigned(fDebugger.fClientsInvertedSemaphore) then begin
    fDebugger.fClientsInvertedSemaphore.Release;
   end;
@@ -28991,7 +29012,7 @@ end;
 procedure TPasRISCV.TDebugger.TClientThread.ReplyString(const aString:TPasRISCVRawByteString);
 var Index:TPasRISCVSizeInt;
     Checksum:TPasRISCVUInt8;
-begin 
+begin
  Checksum:=0;
  for Index:=1 to length(aString) do begin
   Checksum:=Checksum+TPasRISCVUInt8(aString[Index]);
@@ -29364,7 +29385,7 @@ begin
 end;
 
 procedure TPasRISCV.TDebugger.TClientThread.ProcessSetThread(const aPacketString:TPasRISCVRawByteString);
-var ThreadID,Position,Size:TPasRISCVSizeInt; 
+var ThreadID,Position,Size:TPasRISCVSizeInt;
 begin
  if length(aPacketString)>=2 then begin
   Position:=2;
@@ -29443,11 +29464,11 @@ begin
   ReplyString(s);
  end else if QueryCommand='fThreadInfo' then begin
   s:='m';
-  for HARTIndex:=0 to fDebugger.fMachine.fCountCPUCores-1 do begin  
+  for HARTIndex:=0 to fDebugger.fMachine.fCountCPUCores-1 do begin
    s:=s+IntToStr(HARTIndex);
    if (HARTIndex+1)<fDebugger.fMachine.fCountCPUCores then begin
     s:=s+',';
-   end; 
+   end;
   end;
   ReplyString(s);
  end else if QueryCommand='sThreadInfo' then begin
@@ -29538,7 +29559,7 @@ begin
     HandlePacket(PacketString);
    finally
     PacketString:='';
-   end; 
+   end;
    ConsumeBytes(Index+3);
    result:=true;
    exit;
@@ -29553,7 +29574,7 @@ begin
  end;
 
  result:=false;
-end; 
+end;
 
 procedure TPasRISCV.TDebugger.TClientThread.Execute;
 var Conditions:TRNLSocketWaitConditions;
@@ -29615,9 +29636,9 @@ begin
      break;
     end;
    end;
-  end; 
+  end;
  end;
-end; 
+end;
 
 { TPasRISCV.TDebugger.TServerThread }
 
@@ -29873,7 +29894,7 @@ begin
    fLock.Release;
   end;
 
- end; 
+ end;
 
 end;
 
