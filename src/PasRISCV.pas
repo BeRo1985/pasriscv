@@ -1213,6 +1213,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
       public
        constructor Create; reintroduce;
        destructor Destroy; override;
+       procedure GenerateMACAddress;
        procedure Shutdown; virtual;
        procedure WritePacket(const aBuffer:Pointer;const aBufferSize:TPasRISCVSizeInt); virtual;
       public
@@ -11988,16 +11989,39 @@ end;
 
 constructor TPasRISCVEthernetDevice.Create;
 begin
+
  inherited Create;
- FillChar(fMACAddress,SizeOf(fMACAddress),#0);
+
+ fMACAddress[0]:=$02;
+ fMACAddress[1]:=$00;
+ fMACAddress[2]:=$00;
+ fMACAddress[3]:=$00;
+ fMACAddress[4]:=$00;
+ fMACAddress[5]:=$01;
+
  fOnCanWritePacket:=nil;
+
  fOnWritePacket:=nil;
+
  fOnSetCarrier:=nil;
+
 end;
 
 destructor TPasRISCVEthernetDevice.Destroy;
 begin
  inherited Destroy;
+end;
+
+procedure TPasRISCVEthernetDevice.GenerateMACAddress;
+var RandomGenerator:TRNLRandomGenerator;
+begin
+ RandomGenerator:=TRNLRandomGenerator.Create;
+ try
+  RandomGenerator.GetRandomBytes(fMACAddress,SizeOf(TMACAddress));
+  fMACAddress[0]:=(fMACAddress[0] and $fe) or $02;
+ finally
+  FreeAndNil(RandomGenerator);
+ end;
 end;
 
 procedure TPasRISCVEthernetDevice.Shutdown;
@@ -12110,13 +12134,6 @@ begin
  end;
 
  fpfcntl(fTunFD,F_SETFL,O_NONBLOCK);
-
- fMACAddress[0]:=$02;
- fMACAddress[1]:=$00;
- fMACAddress[2]:=$00;
- fMACAddress[3]:=$00;
- fMACAddress[4]:=$00;
- fMACAddress[5]:=$01;
 
  fThread:=TNetworkThread.Create(self);
 
@@ -18615,6 +18632,14 @@ begin
  fQueues[1].Asynchronous:=false;
 
  FillChar(fConfigSpace[0],8,#0);
+
+ fMachine.fRandomGeneratorLock.Acquire;
+ try
+  fMachine.fRandomGenerator.GetRandomBytes(fConfigSpace[0],6);
+  fConfigSpace[0]:=(fConfigSpace[0] and $fe) or $02;
+ finally
+  fMachine.fRandomGeneratorLock.Release;
+ end;
 
  fConfigSpaceSize:=8; // 6 + 2
 
