@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-01-31-15-38-0000                       *
+ *                        Version 2025-01-31-15-54-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -2342,7 +2342,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fIOSize:TPasRISCVUInt64;
               fMemAddr:TPasRISCVUInt64;
               fMemSize:TPasRISCVUInt64;
-              fMemUsed:TPasRISCVUInt64;
               fBusID:TPasRISCVUInt8;
               fHostBridgeDevice:TPCIHostBridgeDevice;
              public
@@ -3966,6 +3965,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               destructor Destroy; override;
+              function GetAutoMemoryAddress(const aAddress,aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure AddBusDevice(const aBusDevice:TBusDevice);
               procedure RemoveBusDevice(const aBusDevice:TBusDevice);
               function FindBusDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
@@ -13651,9 +13651,8 @@ begin
  AlignSize:=RoundUpToPowerOfTwo64(Max(aBARSize,$1000));
  result:=fBus.fMemAddr;
  repeat
-  TemporaryAddress:=RoundUp64(fBus.fMemAddr+fBus.fMemUsed,$1000);
+  TemporaryAddress:=fBus.fMachine.fBus.GetAutoMemoryAddress(result,AlignSize);
   if result=TemporaryAddress then begin
-   fBus.fMemUsed:=TemporaryAddress-fBus.fMemAddr;
    break;
   end else begin
    result:=TemporaryAddress+((AlignSize-TemporaryAddress) and (AlignSize-1));
@@ -13671,7 +13670,6 @@ begin
  fIOSize:=TPasRISCV.TPCI.PCI_IO_DEFAULT_SIZE;
  fMemAddr:=TPasRISCV.TPCI.PCI_MEM_DEFAULT_MMIO;
  fMemSize:=TPasRISCV.TPCI.PCI_MEM_DEFAULT_SIZE;
- fMemUsed:=0;
  fBusID:=0;
  for IRQPinIndex:=0 to TPCI.PCI_BUS_IRQS-1 do begin
   fIRQs[IRQPinIndex]:=TPCI.PCI_IRQs[IRQPinIndex];
@@ -22007,6 +22005,26 @@ begin
  fBusDevices:=nil;
  fCountBusDevices:=0;
  inherited Destroy;
+end;
+
+function TPasRISCV.TBus.GetAutoMemoryAddress(const aAddress,aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Index:TPasRISCVSizeInt;
+    OK:Boolean;
+    BusDevice:TBusDevice;
+begin
+ result:=aAddress;
+ if aSize<>0 then begin
+  repeat
+   OK:=true;
+   for Index:=0 to fCountBusDevices-1 do begin
+    BusDevice:=fBusDevices[Index];
+    if (result<(BusDevice.fBase+BusDevice.fSize)) and (BusDevice.fBase<(result+aSize)) then begin
+     result:=((BusDevice.fBase+BusDevice.fSize)+TPasRISCVUInt64($fff)) and TPasRISCVUInt64($fffffffffffff000);
+     OK:=false;
+    end;
+   end;
+  until OK;
+ end;
 end;
 
 procedure TPasRISCV.TBus.AddBusDevice(const aBusDevice:TBusDevice);
