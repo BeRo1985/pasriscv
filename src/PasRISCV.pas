@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-01-23-05-35-0000                       *
+ *                        Version 2025-01-31-15-38-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -285,6 +285,8 @@
  {$codealign loop=16}
  {$codealign proc=16}
 {$endif}//*)
+
+{$define NewPCI}
 
 interface
 
@@ -2209,10 +2211,28 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PCI_CMD_MEM_SPACE=$2;  // Accessible through MMIO
                     PCI_CMD_BUS_MASTER=$4;  // DMA
                     PCI_CMD_MWI_ENABLE=$10; // Memory Write and Invalidate
+                    PCI_CMD_INTX_DISABLE=$400;
+                    PCI_STATUS_INTX=$8;
+{$ifdef NewPCI}
+                    PCI_CMD_DEFAULT=PCI_CMD_IO_SPACE or PCI_CMD_MEM_SPACE or PCI_CMD_BUS_MASTER;// $17;
+                    PCI_CMD_MASK=PCI_CMD_IO_SPACE or PCI_CMD_MEM_SPACE or PCI_CMD_BUS_MASTER or PCI_CMD_INTX_DISABLE;
+                    PCI_STATUS_CAP=$10;
+                    PCI_HEADER_PCI_PCI=$1;
+                    PCI_HEADER_MULTIFUNC=$80;
+                    PCI_BAR_IO_SPACE=$1;
+                    PCI_BAR_64_BIT=$4;
+                    PCI_BAR_PREFETCH=$8;
+                    PCI_EXPANSION_ROM_ENABLED=$1;
+                    PCI_CAP_LIST_OFF=$80;
+                    PCI_MSI_CAP_OFF=$c0;
+                    PCIE_CAP_PORT_ENDPOINT=$0;
+                    PCIE_CAP_ROOT_PORT=$4;
+                    PCIE_CAP_UPSTREAM_SWITCH=$5;
+                    PCIE_CAP_DOWNSTREAM_SWITCH=$6;
+                    PCIE_CAP_INTEGRATED_ENDPOINT=$9;
+{$else}
                     PCI_CMD_DEFAULT=$17;
-                    PCI_CMD_IRQ_DISABLE=$400;
-                    PCI_STATUS_IRQ=$8;
-                    PCI_STATUS_CAP_LIST=$10;
+{$endif}
                     PCI_BUS_IRQS=4;
                     PCI_BUS_DEVS=32;
                     PCI_DEV_FUNCS=8;
@@ -2228,6 +2248,35 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PCI_MEM_DEFAULT_MMIO=TPasRISCVUInt64($40000000);
                     PCI_MEM_DEFAULT_SIZE=TPasRISCVUInt64($40000000);
                     PCI_IRQs:array[0..PCI_BUS_IRQS-1] of TPasRISCVUInt32=($01,$02,$03,$04);
+                    PCIExpressCapabilities:array[0..25] of TPasRISCVUInt32=
+                     (
+                      $0102c010, // [80] PCI Express (v2) Endpoint, IntMsgNum 0
+                      $00008002, // DevCap: MaxPayload 512 bytes, RBE+
+                      $00002050, // DevCtl: RlxdOrd+
+                      $01800d02, // LnkCap: Speed 5GT/s, Width x16
+                      $01020003, // LnkSta: Speed 5GT/s, Width x16
+                      $00020060,
+                      $00200028,
+                      $00000000,
+                      $00000000,
+                      $00000000,
+                      $00000000,
+                      $00000002,
+                      $00000000,
+                      $00000000,
+                      $00000000,
+                      $00000000,
+                      $0003d001, // [c0] Power Management version 3
+                      $00000008, // NoSoftRst+
+                      $00000000,
+                      $00000000,
+                      $01800005, // [d0] MSI: Enable- Count=1/1 Maskable+ 64bit+
+                      $00000000, // Message Address Low
+                      $00000000, // Message Address High
+                      $00000000, // Message Data
+                      $00000000, // Mask
+                      $00000000  // Pending
+                     );
             end;
             TPCIBARRegion=record
              fAddress:TPasRISCVUInt64;
@@ -2257,7 +2306,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               fBus:TPCIBusDevice;
               fDevice:TPCIDevice;
+{$ifndef NewPCI}
               fStatus:TPasRISCVUInt32;
+{$endif}
               fCommand:TPasRISCVUInt32;
               fIRQLine:TPasRISCVUInt32;
               fVendorID:TPasRISCVUInt16;
@@ -2265,16 +2316,24 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fClassCode:TPasRISCVUInt16;
               fProgIF:TPasRISCVUInt8;
               fRevisionID:TPasRISCVUInt8;
+              fBridgeIO:TPasRISCVUInt32;
+              fBridgeMem:TPasRISCVUInt32;
               fIRQPin:TPasRISCVUInt8;
               fBARMemoryDevices:TPCIBarMemoryDevices;
+              fExpansionROM:TPCIMemoryDevice;
              public
               constructor Create(const aBus:TPCIBusDevice;const aDevice:TPCIDevice;const aFuncDesc:TPCIFuncDescriptor);
               destructor Destroy; override;
+              function IsUpperHalf(const aBarID:TPasRISCVSizeUInt):Boolean;
+              function Is64Bit(const aBarID:TPasRISCVSizeUInt):Boolean;
+              function GetEffectiveBar(const aBarID:TPasRISCVSizeUInt):TPCIMemoryDevice;
+              function GetBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
             end;
             TPCIHostBridgeDevice=class;
             { TPCIBusDevice }
             TPCIBusDevice=class(TBusDevice)
              public
+              const BusShift=20; // 20 for ECAM (PCIe), 16 for legacy PCI regular CAM
              private
               fIRQs:array[0..TPCI.PCI_BUS_IRQS-1] of TPasRISCVUInt32;
               fDevices:array[0..TPCI.PCI_BUS_DEVS-1] of TPCIDevice;
@@ -2283,7 +2342,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fIOSize:TPasRISCVUInt64;
               fMemAddr:TPasRISCVUInt64;
               fMemSize:TPasRISCVUInt64;
-              fBusShift:TPasRISCVUInt8; // 20 for ECAM (PCIe), 16 for legacy PCI regular CAM
+              fMemUsed:TPasRISCVUInt64;
               fBusID:TPasRISCVUInt8;
               fHostBridgeDevice:TPCIHostBridgeDevice;
              public
@@ -2323,7 +2382,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             { TNVMeDevice }
             TNVMeDevice=class(TPCIDevice)
              public
-              const NVME_CAP1=$0;   // Controller Capabilities
+              const Dummy=0;
+{                   SSD_VendorID=$1f31; // Nextorage
+                    SSD_DeviceID=$4512; // Nextorage NE1N NVMe SSD //}
+                    SSD_VendorID=$144d; // Samsung Electronics Co Ltd
+                    SSD_DeviceID=$a809; // NVM Express SSD Controller 980 //}
+                    NVME_CAP1=$0;   // Controller Capabilities
                     NVME_CAP2=$4;
                     NVME_VS=$8;   // Version
                     NVME_INTMS=$C;   // Interrupt Mask Set
@@ -13500,7 +13564,9 @@ begin
  inherited Create;
  fBus:=aBus;
  fDevice:=aDevice;
+{$ifndef NewPCI}
  fStatus:=0;
+{$endif}
  fCommand:=TPCI.PCI_CMD_DEFAULT;
  fIRQLine:=0;
  fVendorID:=aFuncDesc.fVendorID;
@@ -13509,12 +13575,15 @@ begin
  fProgIF:=aFuncDesc.fProgIF;
  fRevisionID:=aFuncDesc.fRevisionID;
  fIRQPin:=aFuncDesc.fIRQPin;
+ fBridgeIO:=0;
+ fBridgeMem:=0;
  if fIRQPin<>0 then begin
 //writeln('IRQs: ',TPCI.PCI_IRQs[0],' ',TPCI.PCI_IRQs[1],' ',TPCI.PCI_IRQs[2],' ',TPCI.PCI_IRQs[3],' PCIFuncIRQPinID: ',TPCIBusDevice.PCIFuncIRQPinID(self));
   fIRQLine:=fBus.fIRQs[TPCIBusDevice.PCIFuncIRQPinID(self)];
  end else begin
   fIRQLine:=0;
  end;
+ fExpansionROM:=nil;
 //writeln('PCI Func: ',LowerCase(IntToHex(fVendorID,4)),' ',LowerCase(IntToHex(fDeviceID,4)),' ',LowerCase(IntToHex(fClassCode,6)),' ',LowerCase(IntToHex(fProgIF,2)),' ',LowerCase(IntToHex(fRevisionID,2)),' ',LowerCase(IntToHex(fIRQPin,2)),' ',LowerCase(IntToHex(fIRQLine,2)));
  for BARIndex:=0 to TPCI.PCI_FUNC_BARS-1 do begin
   fBARMemoryDevices[BARIndex]:=nil;
@@ -13522,6 +13591,12 @@ begin
  for BARIndex:=0 to TPCI.PCI_FUNC_BARS-1 do begin
   BARRegion:=aFuncDesc.fBARRegions[BARIndex];
   if BARRegion.fSize<>0 then begin
+{$ifdef NewPCI}
+   BARRegion.fAddress:=GetBARAddress(BARRegion.fSize);
+   PCIMemoryDevice:=TPCIMemoryDevice.Create(fBus.fMachine,aDevice,self,BARRegion.fAddress,BARRegion.fSize,BARRegion.fOnLoad,BARRegion.fOnStore);
+   fBARMemoryDevices[BARIndex]:=PCIMemoryDevice;
+   fBus.fMachine.fBus.AddBusDevice(PCIMemoryDevice);
+{$else}
    BARRegion.fSize:=(BARRegion.fSize+15) and TPasRISCVUInt64($fffffffffffffff0);
    if BARRegion.fSize<>0 then begin
     BARRegion.fAddress:=fBus.fMemAddr+((BARRegion.fSize-fBus.fMemAddr) mod BARRegion.fSize);
@@ -13531,6 +13606,7 @@ begin
     fBARMemoryDevices[BARIndex]:=PCIMemoryDevice;
     fBus.fMachine.fBus.AddBusDevice(PCIMemoryDevice);
    end;
+{$endif}
   end;
  end;
 end;
@@ -13546,25 +13622,56 @@ begin
   end;
   FreeAndNil(fBARMemoryDevices[BarIndex]);
  end;
+ FreeAndNil(fExpansionROM);
  inherited Destroy;
+end;
+
+function TPasRISCV.TPCIFunc.IsUpperHalf(const aBarID:TPasRISCVSizeUInt):Boolean;
+begin
+ result:=(aBarID<>0) and (not assigned(fBARMemoryDevices[aBarID])) and assigned(fBARMemoryDevices[aBarID]);
+end;
+
+function TPasRISCV.TPCIFunc.Is64Bit(const aBarID:TPasRISCVSizeUInt):Boolean;
+begin
+ result:=((aBarID+1)<TPCI.PCI_FUNC_BARS) and assigned(fBARMemoryDevices[aBarID]) and not assigned(fBARMemoryDevices[aBarID+1]);
+end;
+
+function TPasRISCV.TPCIFunc.GetEffectiveBar(const aBarID:TPasRISCVSizeUInt):TPCIMemoryDevice;
+begin
+ if IsUpperHalf(aBarID) then begin
+  result:=fBARMemoryDevices[aBarID-1];
+ end else begin
+  result:=fBARMemoryDevices[aBarID];
+ end;
+end;
+
+function TPasRISCV.TPCIFunc.GetBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var AlignSize,TemporaryAddress:TPasRISCVUInt64;
+begin
+ AlignSize:=RoundUpToPowerOfTwo64(Max(aBARSize,$1000));
+ result:=fBus.fMemAddr;
+ repeat
+  TemporaryAddress:=RoundUp64(fBus.fMemAddr+fBus.fMemUsed,$1000);
+  if result=TemporaryAddress then begin
+   fBus.fMemUsed:=TemporaryAddress-fBus.fMemAddr;
+   break;
+  end else begin
+   result:=TemporaryAddress+((AlignSize-TemporaryAddress) and (AlignSize-1));
+  end;
+ until false;
 end;
 
 { TPasRISCV.TPCIBusDevice }
 
 constructor TPasRISCV.TPCIBusDevice.Create(const aMachine:TPasRISCV);
-const ECAM=true;
 var IRQPinIndex:TPasRISCVSizeInt;
 begin
- if ECAM then begin
-  fBusShift:=20;
- end else begin
-  fBusShift:=16;
- end;
- inherited Create(aMachine,TPasRISCV.TPCI.PCI_BASE_DEFAULT_MMIO,256 shl fBusShift);
+ inherited Create(aMachine,TPasRISCV.TPCI.PCI_BASE_DEFAULT_MMIO,256 shl BusShift);
  fIOAddr:=TPasRISCV.TPCI.PCI_IO_DEFAULT_ADDR;
  fIOSize:=TPasRISCV.TPCI.PCI_IO_DEFAULT_SIZE;
  fMemAddr:=TPasRISCV.TPCI.PCI_MEM_DEFAULT_MMIO;
  fMemSize:=TPasRISCV.TPCI.PCI_MEM_DEFAULT_SIZE;
+ fMemUsed:=0;
  fBusID:=0;
  for IRQPinIndex:=0 to TPCI.PCI_BUS_IRQS-1 do begin
   fIRQs[IRQPinIndex]:=TPCI.PCI_IRQs[IRQPinIndex];
@@ -13641,18 +13748,21 @@ begin
 end;
 
 function TPasRISCV.TPCIBusDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
-var Address:TPasRISCVUInt64;
+var Index:TPasRISCVSizeInt;
+    Address,BusAddress,BarID,SecondaryBus,CapabilityID:TPasRISCVUInt64;
     BusID,DevID,FuncID,Register:TPasRISCVUInt8;
     Func:TPasRISCV.TPCIFunc;
     BusDevice:TPasRISCV.TBusDevice;
+    Device:TPCIDevice;
 begin
 
  Address:=aAddress-fBase;
 
- BusID:=Address shr fBusShift;
- DevID:=(Address shr (fBusShift-5)) and 31;
- FuncID:=(Address shr (fBusShift-8)) and 7;
- Register:=Address and ((TPasRISCVUInt64(1) shl (fBusShift-8))-1);
+ BusID:=Address shr BusShift;
+ DevID:=(Address shr (BusShift-5)) and 31;
+ FuncID:=(Address shr (BusShift-8)) and 7;
+ BusAddress:=Address shr (BusShift-8);
+ Register:=Address and (((TPasRISCVUInt64(1) shl (BusShift-8))-1) and TPasRISCVUInt64($fffffffffffffffc));
 
  Func:=GetFunc(BusID,DevID,FuncID);
  if assigned(Func) then begin
@@ -13664,32 +13774,127 @@ begin
     result:=Func.fVendorID or (TPasRISCVUInt32(Func.fDeviceID) shl 16);
    end;
    TPCI.PCI_REG_STATUS_CMD:begin
-    result:=(TPasMPInterlocked.Read(Func.fStatus) shl 16) or TPasMPInterlocked.Read(Func.fCommand);
+{$ifdef NewPCI}
+    result:=TPasMPInterlocked.Read(Func.fCommand);
+    if (result and TPCI.PCI_CMD_INTX_DISABLE)=0 then begin
+     result:=result or (TPasRISCVUInt32(TPCI.PCI_STATUS_INTX) shl 16);
+    end;
+    if BusAddress<>0 then begin
+     result:=result or (TPasRISCVUInt32(TPCI.PCI_STATUS_CAP) shl 16);
+    end;
+{$else}
+   result:=(TPasMPInterlocked.Read(Func.fStatus) shl 16) or TPasMPInterlocked.Read(Func.fCommand);
+{$endif}
    end;
    TPCI.PCI_REG_CLASS_REV:begin
     result:=(Func.fClassCode shl 16) or (TPasRISCVUInt32(Func.fProgIF) shl 8) or Func.fRevisionID;
    end;
    TPCI.PCI_REG_BIST_HDR_LATENCY_CACHE:begin
     result:=16;
+{$ifdef NewPCI}
+    if DevID<TPCI.PCI_BUS_DEVS then begin
+     Device:=fDevices[DevID];
+     if assigned(Device) then begin
+      for Index:=0 to TPCI.PCI_BUS_DEVS-1 do begin
+       if assigned(Device.fFuncs[Index]) and (Index<>FuncID) then begin
+        result:=result or (TPasRISCVUInt32(TPCI.PCI_HEADER_MULTIFUNC) shl 16);
+        break;
+       end;
+      end;
+     end;
+    end;
+    if Func.fClassCode=$0604 then begin
+     result:=result or (TPasRISCVUInt32(TPCI.PCI_HEADER_PCI_PCI) shl 16);
+    end;
+{$endif}
    end;
    TPCI.PCI_REG_IRQ_PIN_LINE:begin
     result:=(TPasMPInterlocked.Read(Func.fIRQLine) or (TPasRISCVUInt32(Func.fIRQPin) shl 8));
    end;
    TPCI.PCI_REG_BAR0..TPCI.PCI_REG_BAR5:begin
+{$ifdef NewPCI}
+    BarID:=(Register-TPCI.PCI_REG_BAR0) shr 2;
+    if (Func.fClassCode<>$0604) or (BarID<2) then begin
+     BusDevice:=Func.GetEffectiveBar(BarID);
+     if assigned(BusDevice) then begin
+      if Func.IsUpperHalf(BarID) then begin
+       result:=BusDevice.fBase shr 32;
+      end else begin
+       result:=TPasRISCVUInt32(BusDevice.fBase);
+       if Func.Is64Bit(BarID) then begin
+        result:=result or TPCI.PCI_BAR_64_BIT;
+       end;
+      end;
+     end else begin
+      result:=0;
+     end;
+    end else begin
+     SecondaryBus:=(BusAddress shr 3) or (BusAddress and 7);
+     case BarID of
+      $02:begin
+       result:=(SecondaryBus shl 16) or (SecondaryBus shl 8);
+      end;
+      $03:begin
+       result:=TPasMPInterlocked.Read(Func.fBridgeIO);
+      end;
+      $04:begin
+       result:=TPasMPInterlocked.Read(Func.fBridgeMem);
+      end;
+      else begin
+       result:=0;
+      end;
+     end;
+    end;
+{$else}
     BusDevice:=Func.fBARMemoryDevices[(Register-TPCI.PCI_REG_BAR0) shr 2];
     if assigned(BusDevice) then begin
      result:=BusDevice.fBase;
     end else begin
      result:=0;
     end;
+{$endif}
    end;
    TPCI.PCI_REG_SSID_SVID:begin
     result:=$eba110dc;
    end;
+{$ifdef NewPCI}
+   TPCI.PCI_REG_EXPANSION_ROM:begin
+    if assigned(Func.fExpansionROM) then begin
+     result:=Func.fExpansionROM.fBase or TPCI.PCI_EXPANSION_ROM_ENABLED;
+    end else begin
+     result:=0;
+    end;
+   end;
+   TPCI.PCI_REG_CAP_PTR:begin
+    if BusAddress<>0 then begin
+     result:=TPCI.PCI_CAP_LIST_OFF;
+    end else begin
+     result:=0;
+    end;
+   end;
+   else begin
+    if BusAddress<>0 then begin
+     CapabilityID:=(Register-TPCI.PCI_CAP_LIST_OFF) shr 2;
+     if CapabilityID<Length(TPCI.PCIExpressCapabilities) then begin
+      result:=TPCI.PCIExpressCapabilities[CapabilityID];
+     end else begin
+      result:=0;
+     end;
+     if CapabilityID=0 then begin
+      if Func.fClassCode=$0604 then begin
+       result:=result or (TPCI.PCIE_CAP_ROOT_PORT shl 20);
+      end else if (BusAddress shr 8)=0 then begin
+       result:=result or (TPCI.PCIE_CAP_INTEGRATED_ENDPOINT shl 20);
+      end;
+     end;
+    end;
+   end;
+{$else}
    TPCI.PCI_REG_EXPANSION_ROM,
    TPCI.PCI_REG_CAP_PTR:begin
     result:=0;
    end;
+{$endif}
   end;
 
 //writeln('PCI Read: ',LowerCase(IntToHex(Address,8)),' ',LowerCase(IntToHex(BusID,2)),':',LowerCase(IntToHex(DevID,2)),'.',LowerCase(IntToHex(FuncID,1)),' ',LowerCase(IntToHex(Register,2)),' = ',LowerCase(IntToHex(result,8)));
@@ -13703,7 +13908,7 @@ begin
 end;
 
 procedure TPasRISCV.TPCIBusDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
-var Address:TPasRISCVUInt64;
+var Address,BusAddress,BarID,BarAddress,BarSize,ROMAddress,ROMSize:TPasRISCVUInt64;
     BusID,DevID,FuncID,Register:TPasRISCVUInt8;
     Func:TPasRISCV.TPCIFunc;
     BusDevice:TPasRISCV.TBusDevice;
@@ -13711,10 +13916,11 @@ begin
 
  Address:=aAddress-fBase;
 
- BusID:=Address shr fBusShift;
- DevID:=(Address shr (fBusShift-5)) and 31;
- FuncID:=(Address shr (fBusShift-8)) and 7;
- Register:=Address and ((TPasRISCVUInt64(1) shl (fBusShift-8))-1);
+ BusID:=Address shr BusShift;
+ DevID:=(Address shr (BusShift-5)) and 31;
+ FuncID:=(Address shr (BusShift-8)) and 7;
+ BusAddress:=Address shr (BusShift-8);
+ Register:=Address and (((TPasRISCVUInt64(1) shl (BusShift-8))-1) and TPasRISCVUInt64($fffffffffffffffc));
 
 //writeln('PCI Write: ',LowerCase(IntToHex(Address,8)),' ',LowerCase(IntToHex(BusID,2)),':',LowerCase(IntToHex(DevID,2)),'.',LowerCase(IntToHex(FuncID,1)),' ',LowerCase(IntToHex(Register,2)),' = ',LowerCase(IntToHex(aValue,8)));
 
@@ -13722,9 +13928,40 @@ begin
  if assigned(Func) then begin
   case Register of
    TPCI.PCI_REG_STATUS_CMD:begin
+{$ifdef NewPCI}
+    TPasMPInterlocked.Write(Func.fCommand,aValue and TPCI.PCI_CMD_MASK);
+{$else}
     TPasMPInterlocked.Write(Func.fCommand,aValue and $ffff);
+{$endif}
    end;
    TPCI.PCI_REG_BAR0..TPCI.PCI_REG_BAR5:begin
+{$ifdef NewPCI}
+    BarID:=(Register-TPCI.PCI_REG_BAR0) shr 2;
+    if (Func.fClassCode<>$0604) or (BarID<2) then begin
+     BusDevice:=Func.GetEffectiveBar(BarID);
+     if assigned(BusDevice) then begin
+      BarAddress:=BusDevice.fBase;
+      BarSize:=RoundUpToPowerOfTwo64(BusDevice.fSize);
+      if Func.IsUpperHalf(BarID) then begin
+       BarAddress:=(BarAddress and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(aValue) shl 32);
+      end else begin
+       BarAddress:=(BarAddress and TPasRISCVUInt64($ffffffff00000000)) or (TPasRISCVUInt64(aValue) and TPasRISCVUInt64($00000000fffff000));
+      end;
+      BarAddress:=BarAddress and TPasRISCVUInt64(not TPasRISCVUInt64(BarSize-1));
+      TPasMPInterlocked.Write(BusDevice.fBase,BarAddress);
+      TPasMPMemoryBarrier.ReadWrite;
+     end;
+    end else begin
+     case BarID of
+      $3:begin
+       TPasMPInterlocked.Write(Func.fBridgeIO,TPasRISCVUInt32(aValue));
+      end;
+      $4:begin
+       TPasMPInterlocked.Write(Func.fBridgeMem,TPasRISCVUInt32(aValue));
+      end;
+     end;
+    end;
+{$else}
     BusDevice:=Func.fBARMemoryDevices[(Register-TPCI.PCI_REG_BAR0) shr 2];
     if assigned(BusDevice) then begin
      Address:=aValue and not TPasRISCVUInt64(15);
@@ -13734,11 +13971,21 @@ begin
      Address:=Address and not TPasRISCVUInt64(15);
      TPasMPInterlocked.Write(BusDevice.fBase,Address);
     end;
+{$endif}
    end;
    TPCI.PCI_REG_IRQ_PIN_LINE:begin
     TPasMPInterlocked.Write(Func.fIRQLine,aValue and $ff);
    end;
    TPCI.PCI_REG_EXPANSION_ROM:begin
+{$ifdef NewPCI}
+    if assigned(Func.fExpansionROM) then begin
+     ROMAddress:=aValue and TPasRISCVUInt64($fffffffffffff000);
+     ROMSize:=RoundUpToPowerOfTwo64(Func.fExpansionROM.fSize);
+     ROMAddress:=ROMAddress and TPasRISCVUInt64(not TPasRISCVUInt64(ROMSize-1));
+     TPasMPInterlocked.Write(Func.fExpansionROM.fBase,ROMAddress);
+     TPasMPMemoryBarrier.ReadWrite;
+    end;
+{$endif}
    end;
   end;
  end;
@@ -13771,8 +14018,10 @@ begin
   Func:=fFuncs[aFuncID];
   if assigned(Func) then begin
    Bus:=Func.fBus;
-   if (Func.fIRQPin<>0) and ((TPasMPInterlocked.Read(Func.fCommand) and TPCI.PCI_CMD_IRQ_DISABLE)=0) then begin
-    TPasMPInterlocked.BitwiseOr(Func.fStatus,TPCI.PCI_STATUS_IRQ);
+   if (Func.fIRQPin<>0) and ((TPasMPInterlocked.Read(Func.fCommand) and TPCI.PCI_CMD_INTX_DISABLE)=0) then begin
+{$ifndef NewPCI}
+    TPasMPInterlocked.BitwiseOr(Func.fStatus,TPCI.PCI_STATUS_INTX);
+{$endif}
     IRQ:=Bus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(Func)];
     Bus.fMachine.fPLICDevice.SendIRQ(IRQ);
 {   Bus.fMachine.Interrupt;
@@ -13783,14 +14032,18 @@ begin
 end;
 
 procedure TPasRISCV.TPCIDevice.ClearIRQ(const aFuncID:TPasRISCVUInt32);
+{$ifndef NewPCI}
 var Func:TPasRISCV.TPCIFunc;
+{$endif}
 begin
+{$ifndef NewPCI}
  if assigned(fBus) then begin
   Func:=fFuncs[aFuncID];
   if assigned(Func) then begin
-   TPasMPInterlocked.BitwiseAnd(Func.fStatus,TPasRISCVUInt32(not TPCI.PCI_STATUS_IRQ));
+   TPasMPInterlocked.BitwiseAnd(Func.fStatus,TPasRISCVUInt32(not TPCI.PCI_STATUS_INTX));
   end;
  end;
+{$endif}
 end;
 
 function TPasRISCV.TPCIDevice.GetGlobalDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
@@ -14093,15 +14346,19 @@ begin
  inherited Create(aBus);
 
  FillChar(FuncDesc,SizeOf(FuncDesc),#0);
- FuncDesc.fVendorID:=$144d; // Samsung Electronics Co Ltd
- FuncDesc.fDeviceID:=$a809; // NVM Express SSD Controller 980
+ FuncDesc.fVendorID:=SSD_VendorID;
+ FuncDesc.fDeviceID:=SSD_DeviceID;
  FuncDesc.fClassCode:=$0108; // Mass Storage Controller, Non-Volatile Memory Controller
  FuncDesc.fProgIF:=$02; // NVMHCI
  FuncDesc.fRevisionID:=0;
  FuncDesc.fIRQPin:=TPCI.PCI_IRQ_PIN_INTA;
 
  BARRegion:=@FuncDesc.fBARRegions[0];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
  BARRegion^.fSize:=$4000;
  BARRegion^.fOnLoad:=OnLoad;
  BARRegion^.fOnStore:=OnStore;
@@ -14325,8 +14582,8 @@ begin
       OK:=true;
      end;
      IDENT_CTRL:begin
-      PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)^[0])^:=$144d; // PCI Vendor ID
-      PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)^[2])^:=$144d; // PCI Vendor ID
+      PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)^[0])^:=SSD_VendorID; // PCI Vendor ID
+      PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)^[2])^:=SSD_VendorID; // PCI Vendor ID
       Move(fSerial,PPasRISCVUInt8Array(Ptr)^[4],SizeOf(fSerial)); // Serial Number
       Move(NVMeStr[1],PPasRISCVUInt8Array(Ptr)^[24],Length(NVMeStr)); // Model Number
       Move(R947Str[1],PPasRISCVUInt8Array(Ptr)^[64],Length(R947Str)); // Firmware Revision
@@ -30792,7 +31049,7 @@ begin
     Cells[3]:=256 shl 20;//TPCI.PCI_SIZE;
     PCIBusNode.AddPropertyCells('reg',@Cells,4);
 
-    PCIBusNode.AddPropertyString('compatible','pci-host-ecam-generic'); // 'pci-host-cam-generic' for CAM
+    PCIBusNode.AddPropertyString('compatible','pci-host-ecam-generic');
 
     PCIBusNode.AddPropertyString('dma-coherent','');
 
