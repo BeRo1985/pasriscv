@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-01-31-15-54-0000                       *
+ *                        Version 2025-02-07-03-54-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -2042,6 +2042,25 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property UnalignedAccessSupport:Boolean read fUnalignedAccessSupport write fUnalignedAccessSupport;
               property MinOpSize:TPasRISCVUInt64 read fMinOpSize write fMinOpSize;
               property MaxOpSize:TPasRISCVUInt64 read fMaxOpSize write fMaxOpSize;
+            end;
+            { TInterrupts }
+            TInterrupts=class
+             public
+              const CountIRQs=1024;
+                    NoIRQ=TPasRISCVUInt32($ffffffff);
+              type TIRQBitmap=array[0..(CountIRQs+$1f) shr 5] of TPasRISCVUInt32;
+             private
+              fMachine:TPasRISCV;
+              fIRQAllocationBitmap:TIRQBitmap;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              function AllocateIRQ:TPasRISCVUInt32;
+              function AcquireIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+              function ReleaseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+              function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+              function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+              function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
             end;
             { TCLINTDevice }
             TCLINTDevice=class(TBusDevice)
@@ -5085,6 +5104,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fBus:TBus;
 
+       fInterrupts:TInterrupts;
+
        fBootMemoryDevice:TMemoryDevice;
 
        fMemoryDevice:TMemoryDevice;
@@ -5215,6 +5236,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property Configuration:TConfiguration read fConfiguration;
 
        property Bus:TBus read fBus;
+
+       property Interrupts:TInterrupts read fInterrupts;
 
        property BootMemoryDevice:TMemoryDevice read fBootMemoryDevice;
 
@@ -13003,6 +13026,80 @@ procedure TPasRISCV.TBusDevice.Step;
 begin
 end;
 
+{ TPasRISCV.TInterrupts }
+
+constructor TPasRISCV.TInterrupts.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create;
+ fMachine:=aMachine;
+ FillChar(fIRQAllocationBitmap,SizeOf(fIRQAllocationBitmap),#0);
+end;
+
+destructor TPasRISCV.TInterrupts.Destroy;
+begin
+ inherited Destroy;
+end;
+
+function TPasRISCV.TInterrupts.AllocateIRQ:TPasRISCVUInt32;
+var Index:TPasRISCVUInt32;
+    Mask,IRQMask:TPasRISCVUInt32;
+begin
+ for Index:=0 to length(fIRQAllocationBitmap)-1 do begin
+  Mask:=TPasMPInterlocked.Read(fIRQAllocationBitmap[Index]);
+  while Mask<>TPasRISCVUInt32($ffffffff) do begin
+   result:=(Index shl 5) or TPasMPMath.BitScanForward32(not Mask);
+   IRQMask:=TPasRISCVUInt32(TPasRISCVUInt32(1) shl result);
+   if (TPasMPInterlocked.ExchangeBitwiseOr(fIRQAllocationBitmap[Index],IRQMask) and IRQMask)=0 then begin
+    exit;
+   end else begin
+    Mask:=TPasMPInterlocked.Read(fIRQAllocationBitmap[Index]);
+   end;
+  end;
+ end;
+ result:=NoIRQ;
+end;
+
+function TPasRISCV.TInterrupts.AcquireIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+var Index:TPasRISCVUInt32;
+    Mask:TPasRISCVUInt32;
+begin
+ Index:=aIRQ shr 5;
+ Mask:=TPasRISCVUInt32(TPasRISCVUInt32(1) shl (aIRQ and $1f));
+ if Index<length(fIRQAllocationBitmap) then begin
+  result:=(TPasMPInterlocked.ExchangeBitwiseOr(fIRQAllocationBitmap[Index],Mask) and Mask)=0;
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.TInterrupts.ReleaseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+var Index:TPasRISCVUInt32;
+    Mask:TPasRISCVUInt32;
+begin
+ Index:=aIRQ shr 5;
+ Mask:=TPasRISCVUInt32(TPasRISCVUInt32(1) shl (aIRQ and $1f));
+ if Index<length(fIRQAllocationBitmap) then begin
+  result:=(TPasMPInterlocked.ExchangeBitwiseAnd(fIRQAllocationBitmap[Index],not Mask) and Mask)<>0;
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.TInterrupts.SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+begin
+ result:=fMachine.fPLICDevice.SendIRQ(aIRQ);
+end;
+
+function TPasRISCV.TInterrupts.RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+begin
+ result:=fMachine.fPLICDevice.RaiseIRQ(aIRQ);
+end;
+
+function TPasRISCV.TInterrupts.LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+begin
+ result:=fMachine.fPLICDevice.LowerIRQ(aIRQ);
+end;
+
 { TPasRISCV.TCLINTDevice.TCLINTMTimerSubDevice }
 
 // For own MMIO sub-region with other minimum and maximum operation sizes, so it calls just the parent class methods for Load and Store.
@@ -14021,9 +14118,7 @@ begin
     TPasMPInterlocked.BitwiseOr(Func.fStatus,TPCI.PCI_STATUS_INTX);
 {$endif}
     IRQ:=Bus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(Func)];
-    Bus.fMachine.fPLICDevice.SendIRQ(IRQ);
-{   Bus.fMachine.Interrupt;
-    Bus.fMachine.WakeUp;}
+    Bus.fMachine.fInterrupts.SendIRQ(IRQ);
    end;
   end;
  end;
@@ -15702,9 +15797,9 @@ end;
 procedure TPasRISCV.TVirtIODevice.UpdateIRQ;
 begin
  if TPasMPInterlocked.Read(fIntStatus)<>0 then begin
-  fMachine.fPLICDevice.RaiseIRQ(fIRQ);
+  fMachine.fInterrupts.RaiseIRQ(fIRQ);
  end else begin
-  fMachine.fPLICDevice.LowerIRQ(fIRQ);
+  fMachine.fInterrupts.LowerIRQ(fIRQ);
  end;
 end;
 
@@ -15820,7 +15915,7 @@ begin
 
   fDriverOK:=false;
   fStatus:=0;
-  fMachine.fPLICDevice.LowerIRQ(fIRQ);
+  fMachine.fInterrupts.LowerIRQ(fIRQ);
   DeviceReset;
 
  end else begin
@@ -16148,7 +16243,7 @@ begin
       0:begin
        result:=fIntStatus;
        fIntStatus:=0;
-       fMachine.fPLICDevice.LowerIRQ(fIRQ);
+       fMachine.fInterrupts.LowerIRQ(fIRQ);
       end;
       else begin
        result:=0;
@@ -19668,7 +19763,7 @@ begin
  IER_:=TPasMPInterlocked.Read(fIER);
  if (((aFlags and POLL_RX)<>0) and ((IER_ and ier_rdi)<>0)) or
     (((aFlags and POLL_TX)<>0) and ((IER_ and ier_thri)<>0)) then begin
-  fMachine.fPLICDevice.SendIRQ(fIRQ);
+  fMachine.fInterrupts.SendIRQ(fIRQ);
  end;
 end;
 
@@ -20229,7 +20324,7 @@ begin
  fIsReset:=not aIsInit;
  HIDReset;
  if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) and not aIsInit then begin
-  fI2CDevice.fMachine.fPLICDevice.RaiseIRQ(fIRQ);
+  fI2CDevice.fMachine.fInterrupts.RaiseIRQ(fIRQ);
  end;
 end;
 
@@ -20240,7 +20335,7 @@ begin
   if not fIsReset then begin
    fReportIDQueue.Insert(aReportID);
    if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
-    fI2CDevice.fMachine.fPLICDevice.RaiseIRQ(fIRQ);
+    fI2CDevice.fMachine.fInterrupts.RaiseIRQ(fIRQ);
    end;
   end;
  finally
@@ -20268,11 +20363,11 @@ begin
    fReportIDQueue.RemoveAt(aReportID);
    if fReportIDQueue.Get>=0 then begin
     if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
-     fI2CDevice.fMachine.fPLICDevice.RaiseIRQ(fIRQ);
+     fI2CDevice.fMachine.fInterrupts.RaiseIRQ(fIRQ);
     end;
    end else begin
     if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
-     fI2CDevice.fMachine.fPLICDevice.LowerIRQ(fIRQ);
+     fI2CDevice.fMachine.fInterrupts.LowerIRQ(fIRQ);
     end;
    end;
   finally
@@ -20354,7 +20449,7 @@ begin
     ReportID:=fReportIDQueue.Get;
     if ReportID<0 then begin
      if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
-      fI2CDevice.fMachine.fPLICDevice.LowerIRQ(fIRQ);
+      fI2CDevice.fMachine.fInterrupts.LowerIRQ(fIRQ);
      end;
      result:=0;
     end else begin
@@ -20738,7 +20833,7 @@ procedure TPasRISCV.TI2CDevice.DispatchInterrupt;
 begin
  fStatus:=fStatus or SR_IF;
  if (fControl and CTR_IEN)<>0 then begin
-  fMachine.fPLICDevice.SendIRQ(IRQ);
+  fMachine.fInterrupts.SendIRQ(IRQ);
  end;
 end;
 
@@ -20791,7 +20886,7 @@ begin
    CTR:begin
     fControl:=TPasRISCVUInt8(aValue) and CTR_MASK;
 {   if (fControl and CTR_IEN)=0 then begin
-     fMachine.fPLICDevice.LowerIRQ(IRQ);
+     fMachine.fInterrupts.LowerIRQ(IRQ);
     end;}
    end;
    TXRXR:begin
@@ -20927,7 +21022,7 @@ begin
     assigned(fMachine.fPLICDevice) and
     ((aFlags and POLL_RX)<>0) and
     ((TPasMPInterlocked.ExchangeBitwiseOr(fControl,CTRL_RI) and CTRL_RE)<>0) then begin
-  fMachine.fPLICDevice.SendIRQ(fIRQ);
+  fMachine.fInterrupts.SendIRQ(fIRQ);
  end;
 end;
 
@@ -30490,6 +30585,8 @@ begin
 
  fPHandleCounter:=0;
 
+ fInterrupts:=TInterrupts.Create(self);
+
  fFDT:=TFDT.Create;
 
  fFDTStream:=TMemoryStream.Create;
@@ -30696,6 +30793,8 @@ begin
  FreeAndNil(fBus);
 
  FreeAndNil(fAtomicCriticalSection);
+
+ FreeAndNil(fInterrupts);
 
  FreeAndNil(fJobManager);
 
