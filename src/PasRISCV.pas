@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-02-07-03-54-0000                       *
+ *                        Version 2025-02-08-23-14-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -25,7 +25,7 @@
  * 3. This notice may not be removed or altered from any source distribution. *
  *                                                                            *
  *****************************************************************************)
- unit PasRISCV;
+unit PasRISCV;
 {$ifdef fpc}
  {$mode delphi}
  {$ifdef cpui386}
@@ -2062,8 +2062,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
               function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
             end;
-            { TCLINTDevice }
-            TCLINTDevice=class(TBusDevice)
+            { TACLINTDevice }
+            TACLINTDevice=class(TBusDevice)
              public
               const DefaultBaseAddress=TPasRISCVUInt64($2000000);
                     DefaultSize=TPasRISCVUInt64($10000);
@@ -2074,9 +2074,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               type { TCLINTMTimerSubDevice } // for own MMIO sub-region with other minimum and maximum operation sizes, so it calls just the parent class methods for Load and Store
                    TCLINTMTimerSubDevice=class(TBusDevice)
                     private
-                     fCLINTDevice:TCLINTDevice;
+                     fACLINTDevice:TACLINTDevice;
                     public
-                     constructor Create(const aCLINTDevice:TCLINTDevice); reintroduce;
+                     constructor Create(const aACLINTDevice:TACLINTDevice); reintroduce;
                      destructor Destroy; override;
                      function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
                      procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
@@ -4709,7 +4709,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fMachine:TPasRISCV;
               fPHandle:TPasRISCVUInt32;
               fBus:TBus;
-              fCLINTDevice:TCLINTDevice;
+              fACLINTDevice:TACLINTDevice;
               fMTIMECMP:TPasRISCVUInt64;
               fSTIMECMP:TPasRISCVUInt64;
               fMMUMode:TMMU.TMMUMode;
@@ -5110,7 +5110,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fMemoryDevice:TMemoryDevice;
 
-       fCLINTDevice:TCLINTDevice;
+       fACLINTDevice:TACLINTDevice;
 
        fPLICDevice:TPLICDevice;
 
@@ -5241,7 +5241,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        property BootMemoryDevice:TMemoryDevice read fBootMemoryDevice;
 
-       property CLINTDevice:TCLINTDevice read fCLINTDevice;
+       property ACLINTDevice:TACLINTDevice read fACLINTDevice;
 
        property PLICDevice:TPLICDevice read fPLICDevice;
 
@@ -13100,39 +13100,39 @@ begin
  result:=fMachine.fPLICDevice.LowerIRQ(aIRQ);
 end;
 
-{ TPasRISCV.TCLINTDevice.TCLINTMTimerSubDevice }
+{ TPasRISCV.TACLINTDevice.TCLINTMTimerSubDevice }
 
 // For own MMIO sub-region with other minimum and maximum operation sizes, so it calls just the parent class methods for Load and Store.
 // So no big magic here, just a simple wrapper class for the CLINT MTIME registers with different minimum and maximum operation sizes for
 // aligned accesses.
 
-constructor TPasRISCV.TCLINTDevice.TCLINTMTimerSubDevice.Create(const aCLINTDevice:TCLINTDevice);
+constructor TPasRISCV.TACLINTDevice.TCLINTMTimerSubDevice.Create(const aACLINTDevice:TACLINTDevice);
 begin
- inherited Create(aCLINTDevice.fMachine,aCLINTDevice.fBase+MTimeCmpAddress,MTimeCmpAddressSize);
- fCLINTDevice:=aCLINTDevice;
+ inherited Create(aACLINTDevice.fMachine,aACLINTDevice.fBase+MTimeCmpAddress,MTimeCmpAddressSize);
+ fACLINTDevice:=aACLINTDevice;
  fUnalignedAccessSupport:=false;
  fMinOpSize:=8; // <= these are the only differences to the parent class
  fMaxOpSize:=8;
 end;
 
-destructor TPasRISCV.TCLINTDevice.TCLINTMTimerSubDevice.Destroy;
+destructor TPasRISCV.TACLINTDevice.TCLINTMTimerSubDevice.Destroy;
 begin
  inherited Destroy;
 end;
 
-function TPasRISCV.TCLINTDevice.TCLINTMTimerSubDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TACLINTDevice.TCLINTMTimerSubDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
- result:=fCLINTDevice.Load(aAddress,aSize);
+ result:=fACLINTDevice.Load(aAddress,aSize);
 end;
 
-procedure TPasRISCV.TCLINTDevice.TCLINTMTimerSubDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+procedure TPasRISCV.TACLINTDevice.TCLINTMTimerSubDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 begin
- fCLINTDevice.Store(aAddress,aValue,aSize);
+ fACLINTDevice.Store(aAddress,aValue,aSize);
 end;
 
-{ TPasRISCV.TCLINTDevice }
+{ TPasRISCV.TACLINTDevice }
 
-constructor TPasRISCV.TCLINTDevice.Create(const aMachine:TPasRISCV);
+constructor TPasRISCV.TACLINTDevice.Create(const aMachine:TPasRISCV);
 begin
 
  inherited Create(aMachine,aMachine.fConfiguration.fCLINTBase,aMachine.fConfiguration.fCLINTSize);
@@ -13148,18 +13148,18 @@ begin
 
 end;
 
-destructor TPasRISCV.TCLINTDevice.Destroy;
+destructor TPasRISCV.TACLINTDevice.Destroy;
 begin
  inherited Destroy; // where each sub-device is also destroyed
 end;
 
-procedure TPasRISCV.TCLINTDevice.Reset;
+procedure TPasRISCV.TACLINTDevice.Reset;
 begin
  inherited Reset;
  fStartTime:=GetCurrentTime;
 end;
 
-function TPasRISCV.TCLINTDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TACLINTDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var CountHARTs,Address,HARTID:TPasRISCVUInt64;
 begin
  CountHARTs:=length(fMachine.fCPUCores);
@@ -13177,7 +13177,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCLINTDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+procedure TPasRISCV.TACLINTDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var CountHARTs,Address,HARTID,Time:TPasRISCVUInt64;
 begin
  CountHARTs:=length(fMachine.fCPUCores);
@@ -13210,14 +13210,14 @@ begin
  end;
 end;
 
-function TPasRISCV.TCLINTDevice.GetTime:TPasRISCVUInt64;
+function TPasRISCV.TACLINTDevice.GetTime:TPasRISCVUInt64;
 begin
  result:=TPasRISCVUInt64(GetCurrentTime-fStartTime);
 //fMTIME:=result;
 //fMachine.fCPUCore.fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.TIME]:=fMTIME;
 end;
 
-function TPasRISCV.TCLINTDevice.GetCachedTime(var aTime:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TACLINTDevice.GetCachedTime(var aTime:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  if aTime=TPasRISCVUInt64($ffffffffffffffff) then begin
   aTime:=GetTime;
@@ -22604,10 +22604,10 @@ begin
    result:=fData[TAddress.MSTATUS];
   end;
   TAddress.TIME:begin
-   result:=fCPUCore.fMachine.fCLINTDevice.GetTime;
+   result:=fCPUCore.fMachine.fACLINTDevice.GetTime;
   end;
   TAddress.TIMEH:begin
-   result:=fCPUCore.fMachine.fCLINTDevice.GetTime shr 32;
+   result:=fCPUCore.fMachine.fACLINTDevice.GetTime shr 32;
   end;
   TAddress.MCYCLE:begin
    result:=fCPUCore.fState.Cycle;
@@ -22847,7 +22847,7 @@ begin
 
  fPointerToState:=@fState;
 
- fCLINTDevice:=fMachine.fCLINTDevice;
+ fACLINTDevice:=fMachine.fACLINTDevice;
 
  fMTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
 
@@ -24328,7 +24328,7 @@ begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    CSRValue:=fState.CSR.Load(aCSR);
    fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
-   if ((fState.CSR.fData[TCSR.TAddress.MIP] and (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT))<>0) xor (fMachine.fCLINTDevice.GetTime>=fSTIMECMP) then begin
+   if ((fState.CSR.fData[TCSR.TAddress.MIP] and (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT))<>0) xor (fMachine.fACLINTDevice.GetTime>=fSTIMECMP) then begin
     fState.CSR.fData[TCSR.TAddress.MIP]:=fState.CSR.fData[TCSR.TAddress.MIP] xor (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT);
    end;
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -28851,7 +28851,7 @@ begin
 
   if ActiveTimers<>0 then begin
 
-   Time:=fCLINTDevice.GetTime;
+   Time:=fACLINTDevice.GetTime;
 
    SleepDuration:=TPasRISCVUInt64($ffffffffffffffff);
 
@@ -28899,7 +28899,7 @@ begin
        if WaitForDuration>0 then begin
         fMachine.fWakeUpConditionVariable.Wait(fMachine.fWakeUpConditionVariableLock,WaitForDuration);
        end;
-       TimeB:=fCLINTDevice.GetTime;
+       TimeB:=fACLINTDevice.GetTime;
        Difference:=TimeB-TimeA;
        if Remaining>Difference then begin
         dec(Remaining,Difference);
@@ -28912,7 +28912,7 @@ begin
       fMachine.fWakeUpConditionVariableLock.Release;
      end;
 
-     TimeB:=fCLINTDevice.GetTime;
+     TimeB:=fACLINTDevice.GetTime;
      Difference:=TimeB-TimeA;
      if Remaining>Difference then begin
       dec(Remaining,Difference);
@@ -28924,7 +28924,7 @@ begin
     end;
 
     while (Remaining>0) and ((TPasMPInterlocked.Read(fMachine.fRunState) and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) do begin
-     TimeB:=fCLINTDevice.GetTime;
+     TimeB:=fACLINTDevice.GetTime;
      Difference:=TimeB-TimeA;
      if Remaining>Difference then begin
       dec(Remaining,Difference);
@@ -28934,7 +28934,7 @@ begin
      TimeA:=TimeB;
     end;
 
-    Time:=fCLINTDevice.GetTime;
+    Time:=fACLINTDevice.GetTime;
 
    end;
 
@@ -28970,7 +28970,7 @@ const MTIPMask=TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BI
 var MIP,Time,TimeCmp:TPasRISCVUInt64;
 begin
 
- Time:=fCLINTDevice.GetTime;
+ Time:=fACLINTDevice.GetTime;
 
  MIP:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or TPasMPInterlocked.Exchange(fState.PendingIRQs,0);
 
@@ -28999,7 +28999,7 @@ var Interrupts,Time:TPasRISCVUInt64;
 begin
  Interrupts:=(fState.CSR.fData[TCSR.TAddress.MIE] and not fState.CSR.fData[TCSR.TAddress.MIP]) and (MTIPMask or STIPMask);
  if Interrupts<>0 then begin
-  Time:=fCLINTDevice.GetTime;
+  Time:=fACLINTDevice.GetTime;
   if (((Interrupts and MTIPMask)<>0) and (Time>=fMTIMECMP)) or
      (((Interrupts and STIPMask)<>0) and (Time>=fSTIMECMP)) then begin
    TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
@@ -30314,8 +30314,8 @@ begin
  fMemoryBase:=TPasRISCVUInt64($80000000);
  fMemorySize:=TPasRISCVUInt64(256) shl 20;
 
- fCLINTBase:=TPasRISCV.TCLINTDevice.DefaultBaseAddress;
- fCLINTSize:=TPasRISCV.TCLINTDevice.DefaultSize;
+ fCLINTBase:=TPasRISCV.TACLINTDevice.DefaultBaseAddress;
+ fCLINTSize:=TPasRISCV.TACLINTDevice.DefaultSize;
 
  fPLICBase:=TPasRISCV.TPLICDevice.DefaultBaseAddress;
  fPLICSize:=TPasRISCV.TPLICDevice.DefaultSize;
@@ -30639,7 +30639,7 @@ begin
 
  fMemoryDevice:=TMemoryDevice.Create(self,fConfiguration.fMemoryBase,fConfiguration.fMemorySize);
 
- fCLINTDevice:=TCLINTDevice.Create(self);
+ fACLINTDevice:=TACLINTDevice.Create(self);
 
  fPLICDevice:=TPLICDevice.Create(self);
 
@@ -30681,7 +30681,7 @@ begin
  fBus:=TBus.Create(self);
  fBus.AddBusDevice(fBootMemoryDevice);
  fBus.AddBusDevice(fMemoryDevice);
- fBus.AddBusDevice(fCLINTDevice);
+ fBus.AddBusDevice(fACLINTDevice);
  fBus.AddBusDevice(fPLICDevice);
  fBus.AddBusDevice(fSYSCONDevice);
  fBus.AddBusDevice(fVirtIOBlockDevice);
@@ -30763,7 +30763,7 @@ begin
 
  FreeAndNil(fPLICDevice);
 
- FreeAndNil(fCLINTDevice);
+ FreeAndNil(fACLINTDevice);
 
  FreeAndNil(fVirtIOBlockDevice);
 
@@ -30870,7 +30870,7 @@ procedure TPasRISCV.InitializeFDT;
 var Index:TPasRISCVSizeInt;
     ChosenNode,CPUNode,CPUsNode,CPUMap,CPUClusterNode,CoreNode,
     MemoryNode,SysConNode,PowerOffNode,RebootNode,
-    SoCNode,PLIC0,CLINT0,UART0,DS1742Node,
+    SoCNode,PLIC0,ACLINTNode,UART0,DS1742Node,
     PCIBusNode,
     I2CClockNode,I2CNode,I2CHIDKeyboardNode,
     PS2KeyboardNode,PS2MouseNode,
@@ -31097,14 +31097,14 @@ begin
    SoCNode.AddChild(PLIC0);
   end;
 
-  CLINT0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'clint',fConfiguration.fCLINTBase);
+  ACLINTNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'clint',fConfiguration.fCLINTBase);
   try
 
    Cells[0]:=0;
    Cells[1]:=fConfiguration.fCLINTBase;
    Cells[2]:=0;
    Cells[3]:=fConfiguration.fCLINTSize;
-   CLINT0.AddPropertyCells('reg',@Cells,4);
+   ACLINTNode.AddPropertyCells('reg',@Cells,4);
 
    for Index:=0 to length(fCPUCores)-1 do begin
     InterruptExtCells[(Index shl 2) or 0]:=CPUInterruptControllerNodes[Index].GetPHandle;
@@ -31112,12 +31112,12 @@ begin
     InterruptExtCells[(Index shl 2) or 2]:=CPUInterruptControllerNodes[Index].GetPHandle;
     InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(TCPUCore.TInterruptValue.MachineTimer);
    end;
-   CLINT0.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fCPUCores)*4);
+   ACLINTNode.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fCPUCores)*4);
 
-   CLINT0.AddPropertyString('compatible','sifive,clint0'#0'riscv,clint0'#0);
+   ACLINTNode.AddPropertyString('compatible','sifive,clint0'#0'riscv,clint0'#0);
 
   finally
-   SoCNode.AddChild(CLINT0);
+   SoCNode.AddChild(ACLINTNode);
   end;
 
   UART0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'uart',fConfiguration.fUARTBase);
@@ -31857,7 +31857,7 @@ begin
 
  fStartStackPointer:=fConfiguration.fMemoryBase+fConfiguration.fMemorySize; // Initial startup stack starts below FDT at the end of the memory
 
- fCLINTDevice.Reset;
+ fACLINTDevice.Reset;
  fPLICDevice.Reset;
  fSYSCONDevice.Reset;
  fVirtIOBlockDevice.Reset;
