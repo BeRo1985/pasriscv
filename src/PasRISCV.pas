@@ -4044,21 +4044,40 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    end;
                    TInterruptValue=
                     (
-                     None=-1,
-                     UserSoftware=0,
-                     SupervisorSoftware=1,
-                     HypervisorSoftware=2,
-                     MachineSoftware=3,
-                     UserTimer=4,
-                     SupervisorTimer=5,
-                     HypervisorTimer=6,
-                     MachineTimer=7,
-                     UserExternal=8,
-                     SupervisorExternal=9,
-                     HypervisorExternal=10,
-                     MachineExternal=11
+                     None=-1,                    // No Interrupt    
+                     UserSoftware=0,             // User Software Interrupt
+                     SupervisorSoftware=1,       // S-mode Software Interrupt (ACLINT-SSWI)
+                     HypervisorSoftware=2,       // H-mode Software Interrupt
+                     MachineSoftware=3,          // M-mode Software Interrupt (ACLINT-MSWI)  
+                     UserTimer=4,                // User Timer Interrupt
+                     SupervisorTimer=5,          // S-mode Timer Interrupt (Sstc)
+                     HypervisorTimer=6,          // H-mode Timer Interrupt 
+                     MachineTimer=7,             // M-mode Timer Interrupt (ACLINT-MTIMER)
+                     UserExternal=8,             // User External Interrupt
+                     SupervisorExternal=9,       // S-mode External Interrupt (PLIC) 
+                     HypervisorExternal=10,      // H-mode External Interrupt 
+                     MachineExternal=11,         // M-mode External Interrupt (PLIC) 
+                     Reserved=12,                // Reserved
+                     LocalCounterOverflow=13     // Local Counter Overflow (Sscofpmf) 
                     );
                    PInterruptValue=^TInterruptValue;
+                   TInterruptValueMasks=class
+                    public
+                     const UserSoftware=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.UserSoftware);
+                           SupervisorSoftware=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.SupervisorSoftware);
+                           HypervisorSoftware=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.HypervisorSoftware);
+                           MachineSoftware=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.MachineSoftware);
+                           UserTimer=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.UserTimer);
+                           SupervisorTimer=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.SupervisorTimer);
+                           HypervisorTimer=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.HypervisorTimer);
+                           MachineTimer=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.MachineTimer);
+                           UserExternal=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.UserExternal);
+                           SupervisorExternal=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.SupervisorExternal);
+                           HypervisorExternal=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.HypervisorExternal);
+                           MachineExternal=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.MachineExternal);
+                           Reserved=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.Reserved);
+                           LocalCounterOverflow=TPasRISCVUInt64(1) shl TPasRISCVUInt32(TInterruptValue.LocalCounterOverflow);
+                   end;
                    TRegister=
                     (
                      // Raw
@@ -4359,39 +4378,24 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                          SD=TPasRISCVUInt64($8000000000000000);//TPasRISCVUInt64(TPasRISCVUInt64(1) shl 63);
                                          //SSTATUS=TPasRISCVUInt64(SIE or SPIE or UBE or SPP or FS or XS or SUM or MXR or UXL or TPasRISCVUInt64(SD));
                                  end;
-                                 TBit=class
+                                 TSSTATUSBit=class
                                   public
-                                   const SSIP_BIT=1;
-                                         MSIP_BIT=3;
-                                         STIP_BIT=5;
-                                         MTIP_BIT=7;
-                                         SEIP_BIT=9;
-                                         MEIP_BIT=11;
-                                         SSIP=1 shl SSIP_BIT;
-                                         MSIP=1 shl MSIP_BIT;
-                                         STIP=1 shl STIP_BIT;
-                                         MTIP=1 shl MTIP_BIT;
-                                         SEIP=1 shl SEIP_BIT;
-                                         MEIP=1 shl MEIP_BIT;
-                                  end;
-                                  TSSTATUSBit=class
-                                   public
-                                    const SIE=1;
-                                          SPIE=5;
-                                          SPP=8;
-                                  end;
-                                  TMSTATUSBit=class
-                                   public
-                                    const MIE=3;
-                                          MPIE=7;
-                                          MPP=11;
-                                          MPRV=17;
-                                          SUM=18;
-                                          MXR=19;
-                                          TVM=20;
-                                          TW=21;
-                                          TSR=22;
-                                  end;
+                                   const SIE=1;
+                                         SPIE=5;
+                                         SPP=8;
+                                 end;
+                                 TMSTATUSBit=class
+                                  public
+                                   const MIE=3;
+                                         MPIE=7;
+                                         MPP=11;
+                                         MPRV=17;
+                                         SUM=18;
+                                         MXR=19;
+                                         TVM=20;
+                                         TW=21;
+                                         TSR=22;
+                                 end;
                           end;
                           TMISA=class
                            public
@@ -4675,7 +4679,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                       'UserExternal',
                       'SupervisorExternal',
                       'HypervisorExternal',
-                      'MachineExternal'
+                      'MachineExternal',
+                      'Reserved',
+                      'LocalCounterOverflow'
                      );
                     RegisterRawNames:array[TRegister] of TPasRISCVUTF8String=
                      (
@@ -22667,7 +22673,7 @@ begin
    fData[TAddress.MIE]:=Value;
   end;
   TAddress.SIP:begin
-   Mask:=fData[TAddress.MIDELEG] and TPasRISCVUInt64(TMask.TBit.SSIP);
+   Mask:=fData[TAddress.MIDELEG] and TInterruptValueMasks.SupervisorSoftware;
    Value:=(fData[TAddress.MIP] and not Mask) or (aValue and Mask);
    fData[TAddress.MIP]:=Value;
   end;
@@ -24328,8 +24334,8 @@ begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    CSRValue:=fState.CSR.Load(aCSR);
    fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
-   if ((fState.CSR.fData[TCSR.TAddress.MIP] and (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT))<>0) xor (fMachine.fACLINTDevice.GetTime>=fSTIMECMP) then begin
-    fState.CSR.fData[TCSR.TAddress.MIP]:=fState.CSR.fData[TCSR.TAddress.MIP] xor (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT);
+   if ((fState.CSR.fData[TCSR.TAddress.MIP] and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) xor (fMachine.fACLINTDevice.GetTime>=fSTIMECMP) then begin
+    fState.CSR.fData[TCSR.TAddress.MIP]:=fState.CSR.fData[TCSR.TAddress.MIP] xor TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
    end;
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=CSRValue;
@@ -28845,9 +28851,9 @@ begin
 
  fState.Sleep:=true;
 
- if (fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] and ((TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BIT) or (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT)))=0 then begin
+ if (fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] and (TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer))=0 then begin
 
-  ActiveTimers:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIE] and ((TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BIT) or (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT));
+  ActiveTimers:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIE] and (TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer);
 
   if ActiveTimers<>0 then begin
 
@@ -28857,7 +28863,7 @@ begin
 
    MTIMECMP:=fMTIMECMP;
    if (MTIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
-      ((ActiveTimers and (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BIT))<>0) and
+      ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer)<>0) and
       (Time<MTIMECMP) then begin
     CurrentSleepDuration:=TPasRISCVInt64(MTIMECMP)-TPasRISCVInt64(Time);
     if CurrentSleepDuration<SleepDuration then begin
@@ -28867,7 +28873,7 @@ begin
 
    STIMECMP:=fSTIMECMP;
    if (STIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
-      ((ActiveTimers and (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT))<>0) and
+      ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) and
       (Time<STIMECMP) then begin
     CurrentSleepDuration:=TPasRISCVInt64(STIMECMP)-TPasRISCVInt64(Time);
     if CurrentSleepDuration<SleepDuration then begin
@@ -28938,12 +28944,12 @@ begin
 
    end;
 
-   if ((ActiveTimers and (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BIT))<>0) and (Time>=fMTIMECMP) then begin
-    fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BIT);
+   if ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP) then begin
+    fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer;
    end;
 
-   if ((ActiveTimers and (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT))<>0) and (Time>=STIMECMP) then begin
-    fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or (TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT);
+   if ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=STIMECMP) then begin
+    fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
    end;
 
   end;
@@ -28965,8 +28971,6 @@ begin
 end;
 
 procedure TPasRISCV.TCPUCore.HandlePendingInterrupts;
-const MTIPMask=TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BIT;
-      STIPMask=TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT;
 var MIP,Time,TimeCmp:TPasRISCVUInt64;
 begin
 
@@ -28976,16 +28980,16 @@ begin
 
  TimeCmp:=fMTIMECMP;
  if Time>=TimeCmp then begin
-  MIP:=MIP or MTIPMask;
+  MIP:=MIP or TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer;
  end else begin
-  MIP:=MIP and not MTIPMask;
+  MIP:=MIP and not TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer;
  end;
 
  TimeCmp:=fSTIMECMP;
  if Time>=TimeCmp then begin
-  MIP:=MIP or STIPMask;
+  MIP:=MIP or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
  end else begin
-  MIP:=MIP and not STIPMask;
+  MIP:=MIP and not TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
  end;
 
  fState.CSR.fData[TCSR.TAddress.MIP]:=MIP;
@@ -28993,15 +28997,13 @@ begin
 end;
 
 procedure TPasRISCV.TCPUCore.CheckPendingInterrupts;
-const MTIPMask=TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.MTIP_BIT;
-      STIPMask=TPasRISCVUInt64(1) shl TPasRISCV.TCPUCore.TCSR.TMask.TBit.STIP_BIT;
 var Interrupts,Time:TPasRISCVUInt64;
 begin
- Interrupts:=(fState.CSR.fData[TCSR.TAddress.MIE] and not fState.CSR.fData[TCSR.TAddress.MIP]) and (MTIPMask or STIPMask);
+ Interrupts:=(fState.CSR.fData[TCSR.TAddress.MIE] and not fState.CSR.fData[TCSR.TAddress.MIP]) and (TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer);
  if Interrupts<>0 then begin
   Time:=fACLINTDevice.GetTime;
-  if (((Interrupts and MTIPMask)<>0) and (Time>=fMTIMECMP)) or
-     (((Interrupts and STIPMask)<>0) and (Time>=fSTIMECMP)) then begin
+  if (((Interrupts and TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP)) or
+     (((Interrupts and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=fSTIMECMP)) then begin
    TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
   end;
  end;
