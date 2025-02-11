@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-02-08-23-14-0000                       *
+ *                        Version 2025-02-11-01-00-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -2071,6 +2071,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     MTimeCmpAddress=$4000;
                     MTimeCmpAddressSize=$8000;
                     MTimeAddress=$bff8;
+                    SSIPAddress=$c000;
               type { TCLINTMTimerSubDevice } // for own MMIO sub-region with other minimum and maximum operation sizes, so it calls just the parent class methods for Load and Store
                    TCLINTMTimerSubDevice=class(TBusDevice)
                     private
@@ -13171,13 +13172,16 @@ begin
  CountHARTs:=length(fMachine.fCPUCores);
  Address:=aAddress-fBase;
  if (Address>=MSIPAddress) and (Address<(MSIPAddress+(CountHARTs shl 2))) then begin
-  HARTID:=(Address-MTimeCmpAddress) shr 2;
+  HARTID:=(Address-MSIPAddress) shr 2;
   result:=(fMachine.fCPUCores[HARTID].InterruptsRaised shr TPasRISCVUInt32(TCPUCore.TInterruptValue.MachineSoftware)) and 1;
  end else if (Address>=MTimeCmpAddress) and (Address<(MTimeCmpAddress+(CountHARTs shl 3))) then begin
   HARTID:=(Address-MTimeCmpAddress) shr 3;
   result:=fMachine.fCPUCores[HARTID].fMTIMECMP;
  end else if (Address>=MTimeAddress) and (Address<(MTimeAddress+8)) then begin
   result:=GetTime;
+ end else if (Address>=SSIPAddress) and (Address<(SSIPAddress+(CountHARTs shl 2))) then begin
+  HARTID:=(Address-SSIPAddress) shr 2;
+  result:=(fMachine.fCPUCores[HARTID].InterruptsRaised shr TPasRISCVUInt32(TCPUCore.TInterruptValue.SupervisorSoftware)) and 1;
  end else begin
   result:=0;
  end;
@@ -13212,6 +13216,13 @@ begin
    end else begin
     fMachine.fCPUCores[HARTID-1].ClearInterrupt(TCPUCore.TInterruptValue.MachineTimer);
    end;
+  end;
+ end else if (Address>=SSIPAddress) and (Address<(SSIPAddress+(CountHARTs shl 2))) then begin
+  HARTID:=(Address-SSIPAddress) shr 2;
+  if (aValue and 1)<>0 then begin
+   fMachine.fCPUCores[HARTID].RaiseInterrupt(TCPUCore.TInterruptValue.SupervisorSoftware);
+  end else begin
+   fMachine.fCPUCores[HARTID].ClearInterrupt(TCPUCore.TInterruptValue.SupervisorSoftware);
   end;
  end;
 end;
