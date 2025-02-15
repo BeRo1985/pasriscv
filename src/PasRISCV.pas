@@ -6028,14 +6028,17 @@ asm
 end;
 {$else}
 begin
- result:=((aValue and TPasRISCVUInt64($ff00000000000000)) shr 56) or
+ result:=((aValue shr 8) and TPasRISCVUInt64($00ff00ff00ff00ff)) or ((aValue and TPasRISCVUInt64($00ff00ff00ff00ff)) shl 8);
+ result:=((result shr 16) and TPasRISCVUInt64($0000ffff0000ffff)) or ((result and TPasRISCVUInt64($0000ffff0000ffff)) shl 16);
+ result:=((result shr 32) and TPasRISCVUInt64($00000000ffffffff)) or ((result and TPasRISCVUInt64($00000000ffffffff)) shl 32);
+{result:=((aValue and TPasRISCVUInt64($ff00000000000000)) shr 56) or
          ((aValue and TPasRISCVUInt64($00ff000000000000)) shr 40) or
          ((aValue and TPasRISCVUInt64($0000ff0000000000)) shr 24) or
          ((aValue and TPasRISCVUInt64($000000ff00000000)) shr 8) or
          ((aValue and TPasRISCVUInt64($00000000ff000000)) shl 8) or
          ((aValue and TPasRISCVUInt64($0000000000ff0000)) shl 24) or
          ((aValue and TPasRISCVUInt64($000000000000ff00)) shl 40) or
-         ((aValue and TPasRISCVUInt64($00000000000000ff)) shl 56);
+         ((aValue and TPasRISCVUInt64($00000000000000ff)) shl 56);}
 end;
 {$ifend}
 
