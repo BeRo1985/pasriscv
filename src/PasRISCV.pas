@@ -6003,10 +6003,12 @@ asm
 end;
 {$else}
 begin
- aValue:=aValue or (((aValue shr 1) or (aValue shl 1)) and TPasRISCVUInt64($7e7e7e7e7e7e7e7e));
+ result:=((((aValue or TPasRISCVUInt64($8080808080808080))-TPasRISCVUInt64($0101010101010101)) or aValue) and TPasRISCVUInt64($8080808080808080)) shr 7;
+ result:=(result shl 8)-result;
+{aValue:=aValue or (((aValue shr 1) or (aValue shl 1)) and TPasRISCVUInt64($7e7e7e7e7e7e7e7e));
  aValue:=aValue or (((aValue shr 2) or (aValue shl 2)) and TPasRISCVUInt64($3c3c3c3c3c3c3c3c));
  aValue:=aValue or ((aValue shr 4) and TPasRISCVUInt64($0f0f0f0f0f0f0f0f));
- result:=aValue or ((aValue shl 4) and TPasRISCVUInt64($f0f0f0f0f0f0f0f0));
+ result:=aValue or ((aValue shl 4) and TPasRISCVUInt64($f0f0f0f0f0f0f0f0));}
 end;
 {$ifend}
 
