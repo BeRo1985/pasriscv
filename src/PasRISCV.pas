@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-02-22-05-06-0000                       *
+ *                        Version 2025-02-22-10-37-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -14618,7 +14618,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;const aStatusField,aCommandSpecificStatus:TPasRISCVUInt32); overload;
+procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;const aStatusField,aCommandSpecificStatus:TPasRISCVUInt32);
 begin
  aCommand^.CommandSpecificStatus:=aCommandSpecificStatus;
  CompleteCommand(aCommand,aStatusField);
