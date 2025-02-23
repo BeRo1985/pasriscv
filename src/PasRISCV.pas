@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-02-22-10-37-0000                       *
+ *                        Version 2025-02-23-01-42-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -2220,7 +2220,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PCI_REG_BAR0=$10;
                     PCI_REG_BAR1=$14;
                     PCI_REG_BAR2=$18;
-                    PCI_REG_BAR3=$1C;
+                    PCI_REG_BAR3=$1c;
                     PCI_REG_BAR4=$20;
                     PCI_REG_BAR5=$24;
                     PCI_REG_SSID_SVID=$2c;
@@ -2326,9 +2326,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               fBus:TPCIBusDevice;
               fDevice:TPCIDevice;
-{$ifndef NewPCI}
               fStatus:TPasRISCVUInt32;
-{$endif}
               fCommand:TPasRISCVUInt32;
               fIRQLine:TPasRISCVUInt32;
               fVendorID:TPasRISCVUInt16;
@@ -2348,6 +2346,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function Is64Bit(const aBarID:TPasRISCVSizeUInt):Boolean;
               function GetEffectiveBar(const aBarID:TPasRISCVSizeUInt):TPCIMemoryDevice;
               function GetBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
+              procedure LowerIRQ;
             end;
             TPCIHostBridgeDevice=class;
             { TPCIBusDevice }
@@ -2387,7 +2387,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               destructor Destroy; override;
               procedure Reset; virtual;
               procedure SendIRQ(const aFuncID,aMSIID:TPasRISCVUInt32);
-              procedure ClearIRQ(const aFuncID:TPasRISCVUInt32);
+              procedure RaiseIRQ(const aFuncID,aMSIID:TPasRISCVUInt32);
+              procedure LowerIRQ(const aFuncID:TPasRISCVUInt32);
               function GetGlobalDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
             end;
             { TPCIHostBridgeDevice }
@@ -13716,9 +13717,7 @@ begin
  inherited Create;
  fBus:=aBus;
  fDevice:=aDevice;
-{$ifndef NewPCI}
  fStatus:=0;
-{$endif}
  fCommand:=TPCI.PCI_CMD_DEFAULT;
  fIRQLine:=0;
  fVendorID:=aFuncDesc.fVendorID;
@@ -13780,7 +13779,7 @@ end;
 
 function TPasRISCV.TPCIFunc.IsUpperHalf(const aBarID:TPasRISCVSizeUInt):Boolean;
 begin
- result:=(aBarID<>0) and (not assigned(fBARMemoryDevices[aBarID])) and assigned(fBARMemoryDevices[aBarID]);
+ result:=(aBarID<>0) and (not assigned(fBARMemoryDevices[aBarID])) and assigned(fBARMemoryDevices[aBarID-1]);
 end;
 
 function TPasRISCV.TPCIFunc.Is64Bit(const aBarID:TPasRISCVSizeUInt):Boolean;
@@ -13810,6 +13809,28 @@ begin
    result:=TemporaryAddress+((AlignSize-TemporaryAddress) and (AlignSize-1));
   end;
  until false;
+end;
+
+procedure TPasRISCV.TPCIFunc.SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
+var IRQ:TPasRISCVUInt32;
+begin
+ if (fIRQPin<>0) and ((TPasMPInterlocked.Read(fCommand) and TPCI.PCI_CMD_INTX_DISABLE)=0) then begin
+  TPasMPInterlocked.BitwiseOr(fStatus,TPCI.PCI_STATUS_INTX);
+  IRQ:=fBus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(self)];
+  if aRaiseIRQ then begin
+   fBus.fMachine.fInterrupts.RaiseIRQ(IRQ);
+  end else begin
+   fBus.fMachine.fInterrupts.SendIRQ(IRQ);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TPCIFunc.LowerIRQ;
+var IRQ:TPasRISCVUInt32;
+begin
+ TPasMPInterlocked.BitwiseAnd(fStatus,TPasRISCVUInt32(not TPCI.PCI_STATUS_INTX));
+ IRQ:=fBus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(self)];
+ fBus.fMachine.fInterrupts.LowerIRQ(IRQ);
 end;
 
 { TPasRISCV.TPCIBusDevice }
@@ -13924,16 +13945,11 @@ begin
     result:=Func.fVendorID or (TPasRISCVUInt32(Func.fDeviceID) shl 16);
    end;
    TPCI.PCI_REG_STATUS_CMD:begin
+    result:=(TPasMPInterlocked.Read(Func.fStatus) shl 16) or TPasMPInterlocked.Read(Func.fCommand);
 {$ifdef NewPCI}
-    result:=TPasMPInterlocked.Read(Func.fCommand);
-    if (result and TPCI.PCI_CMD_INTX_DISABLE)=0 then begin
-     result:=result or (TPasRISCVUInt32(TPCI.PCI_STATUS_INTX) shl 16);
-    end;
     if BusAddress<>0 then begin
      result:=result or (TPasRISCVUInt32(TPCI.PCI_STATUS_CAP) shl 16);
     end;
-{$else}
-   result:=(TPasMPInterlocked.Read(Func.fStatus) shl 16) or TPasMPInterlocked.Read(Func.fCommand);
 {$endif}
    end;
    TPCI.PCI_REG_CLASS_REV:begin
@@ -13945,7 +13961,7 @@ begin
     if DevID<TPCI.PCI_BUS_DEVS then begin
      Device:=fDevices[DevID];
      if assigned(Device) then begin
-      for Index:=0 to TPCI.PCI_BUS_DEVS-1 do begin
+      for Index:=0 to TPCI.PCI_DEV_FUNCS-1 do begin
        if assigned(Device.fFuncs[Index]) and (Index<>FuncID) then begin
         result:=result or (TPasRISCVUInt32(TPCI.PCI_HEADER_MULTIFUNC) shl 16);
         break;
@@ -14059,6 +14075,7 @@ end;
 
 procedure TPasRISCV.TPCIBusDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var Address,BusAddress,BarID,BarAddress,BarSize,ROMAddress,ROMSize:TPasRISCVUInt64;
+    Old,IRQ:TPasRISCVUInt32;
     BusID,DevID,FuncID,Register:TPasRISCVUInt8;
     Func:TPasRISCV.TPCIFunc;
     BusDevice:TPasRISCV.TBusDevice;
@@ -14079,7 +14096,10 @@ begin
   case Register of
    TPCI.PCI_REG_STATUS_CMD:begin
 {$ifdef NewPCI}
-    TPasMPInterlocked.Write(Func.fCommand,aValue and TPCI.PCI_CMD_MASK);
+    Old:=TPasMPInterlocked.Exchange(Func.fCommand,aValue and TPCI.PCI_CMD_MASK);
+    if ((Old and TPCI.PCI_CMD_INTX_DISABLE)=0) and ((aValue and TPCI.PCI_CMD_INTX_DISABLE)<>0) then begin
+     Func.LowerIRQ;
+    end;
 {$else}
     TPasMPInterlocked.Write(Func.fCommand,aValue and $ffff);
 {$endif}
@@ -14161,37 +14181,29 @@ end;
 
 procedure TPasRISCV.TPCIDevice.SendIRQ(const aFuncID,aMSIID:TPasRISCVUInt32);
 var Func:TPasRISCV.TPCIFunc;
-    Bus:TPasRISCV.TPCIBusDevice;
-    IRQ:TPasRISCVUInt32;
 begin
- if assigned(fBus) then begin
-  Func:=fFuncs[aFuncID];
-  if assigned(Func) then begin
-   Bus:=Func.fBus;
-   if (Func.fIRQPin<>0) and ((TPasMPInterlocked.Read(Func.fCommand) and TPCI.PCI_CMD_INTX_DISABLE)=0) then begin
-{$ifndef NewPCI}
-    TPasMPInterlocked.BitwiseOr(Func.fStatus,TPCI.PCI_STATUS_INTX);
-{$endif}
-    IRQ:=Bus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(Func)];
-    Bus.fMachine.fInterrupts.SendIRQ(IRQ);
-   end;
-  end;
+ Func:=fFuncs[aFuncID];
+ if assigned(Func) then begin
+  Func.SendIRQ(aMSIID,false);
  end;
 end;
 
-procedure TPasRISCV.TPCIDevice.ClearIRQ(const aFuncID:TPasRISCVUInt32);
-{$ifndef NewPCI}
+procedure TPasRISCV.TPCIDevice.RaiseIRQ(const aFuncID,aMSIID:TPasRISCVUInt32);
 var Func:TPasRISCV.TPCIFunc;
-{$endif}
 begin
-{$ifndef NewPCI}
- if assigned(fBus) then begin
-  Func:=fFuncs[aFuncID];
-  if assigned(Func) then begin
-   TPasMPInterlocked.BitwiseAnd(Func.fStatus,TPasRISCVUInt32(not TPCI.PCI_STATUS_INTX));
-  end;
+ Func:=fFuncs[aFuncID];
+ if assigned(Func) then begin
+  Func.SendIRQ(aMSIID,true);
  end;
-{$endif}
+end;
+
+procedure TPasRISCV.TPCIDevice.LowerIRQ(const aFuncID:TPasRISCVUInt32);
+var Func:TPasRISCV.TPCIFunc;
+begin
+ Func:=fFuncs[aFuncID];
+ if assigned(Func) then begin
+  Func.LowerIRQ;
+ end;
 end;
 
 function TPasRISCV.TPCIDevice.GetGlobalDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
@@ -15136,7 +15148,7 @@ begin
  if aSize=4 then begin
   case Address of
    NVME_REG_CAP1:begin
-    result:=NVME_CAP1_MQES;
+    result:=NVME_CAP1_MQES or NVME_CAP1_CQR0 or NVME_CAP1_TO;
    end;
    NVME_REG_CAP2:begin
     result:=NVME_CAP2_CSS;
