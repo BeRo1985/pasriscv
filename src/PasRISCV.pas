@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-02-23-01-42-0000                       *
+ *                        Version 2025-02-27-00-33-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -26667,7 +26667,9 @@ begin
        case (aInstruction shr 25) and $7f of
         $09:begin
          // SFENCEVMA7
-         if (fState.Mode>=TMode.Supervisor) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0) then begin
+         if ((fState.Mode>=TCPUCore.TMode.Supervisor) and
+             ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0)) or
+            (fState.Mode=TCPUCore.TMode.Machine) then begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           if rs1<>TRegister.Zero then begin
            FlushTLBPage(true,fState.Registers[rs1]);
@@ -26820,11 +26822,15 @@ begin
            case (aInstruction shr 25) and $7f of
             $08:begin
              // wfi7
-             if ((fState.Mode<>TMode.Machine) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))<>0)) or (fState.Mode=TMode.User) then begin
+             if ((fState.Mode>=TCPUCore.TMode.Supervisor) and
+                 ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))=0)) or
+                (fState.Mode=TCPUCore.TMode.Machine) then begin
+              if InterruptsPending=0 then begin // ((fState.CSR.fData[TCSR.TAddress.MIE] and fState.CSR.fData[TCSR.TAddress.MIP])=0) then begin
+               SleepUntilNextInterrupt;
+              end;
+             end else begin 
               SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-             end else if InterruptsPending=0 then begin // ((fState.CSR.fData[TCSR.TAddress.MIE] and fState.CSR.fData[TCSR.TAddress.MIP])=0) then begin
-              SleepUntilNextInterrupt;
-             end;
+             end; 
              result:=4;
              exit;
             end;
