@@ -39,8 +39,8 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - PS/2 keyboard and mouse
   - Raw keyboard input with scancode bit-array (for more direct input per polling) 
   - DS1742 real-time clock (read-only, no write support)
-  - PCI Bus
-    - NVMe
+  - PCIe Bus
+    - NVMe SSD
   - I2C bus (disabled for now, due to IRQ issues, will be either fixed, removed, or replaced with virtio-i2c later)
     - HID devices
       - Keyboard
