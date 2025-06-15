@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-15-02-45-0000                       *
+ *                        Version 2025-06-15-03-03-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -31140,6 +31140,8 @@ begin
       CPUNode.AddPropertyU32('riscv,cbom-block-size',64);
       CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot');
    // CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot_svpbmt');
+      CPUNode.AddPropertyString('riscv,isa-base','rv64i');
+      CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot');
       CPUNode.AddPropertyString('mmu-type','riscv,sv39');
       CPUNode.AddPropertyU32('clock-frequency',3000000000);
 
