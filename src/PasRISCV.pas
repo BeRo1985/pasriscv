@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-15-03-03-0000                       *
+ *                        Version 2025-06-15-23-00-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -271,6 +271,7 @@ unit PasRISCV;
 
 {$undef ExplicitEnforceZeroRegister}
 {$define CombinedDirectAccessTLBCache}
+{$define UseSpecializedRegisterLoadStores}
 {$undef PreferDirectMemoryAccess}
 {$undef FrameBufferDeviceDirtyMarking}
 
@@ -4773,13 +4774,29 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure RaisePhysicalFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               procedure RaisePageFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               function Load8(const aAddress:TPasRISCVUInt64):TPasRISCVUInt8; inline;
+              procedure LoadRegisterS8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
+              procedure LoadRegisterU8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
               procedure Store8(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8); inline;
+              procedure StoreRegisterU8(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
               function Load16(const aAddress:TPasRISCVUInt64):TPasRISCVUInt16; inline;
+              procedure LoadRegisterS16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
+              procedure LoadRegisterU16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
               procedure Store16(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt16); inline;
+              procedure StoreRegisterU16(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
               function Load32(const aAddress:TPasRISCVUInt64):TPasRISCVUInt32; inline;
+              procedure LoadRegisterS32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
+              procedure LoadRegisterU32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
+              procedure LoadRegisterF32(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64); inline;
               procedure Store32(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt32); inline;
+              procedure StoreRegisterU32(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+              procedure StoreRegisterF32(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
               function Load64(const aAddress:TPasRISCVUInt64):TPasRISCVUInt64; //inline;
+              procedure LoadRegisterS64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); //inline;
+              procedure LoadRegisterU64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); //inline;
+              procedure LoadRegisterF64(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64); //inline;
               procedure Store64(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64); //inline;
+              procedure StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); //inline;
+              procedure StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); //inline;
               function RMWTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer; //inline;
               procedure RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer); //inline;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -23652,6 +23669,84 @@ begin
 
 end;
 
+procedure TPasRISCV.TCPUCore.LoadRegisterS8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if DirectAccessTLBEntry^.Read=VPN then begin
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+ if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+  if DirectAccessTLBEntry^.Read=VPN then begin
+   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+  end else{$endif}begin
+   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.Load(self,TranslatedAddress,1)))));
+  end;
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.LoadRegisterU8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if DirectAccessTLBEntry^.Read=VPN then begin
+  Value:=PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+ if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+  if DirectAccessTLBEntry^.Read=VPN then begin
+   Value:=PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+  end else{$endif}begin
+   Value:=TPasRISCVUInt8(fBus.Load(self,TranslatedAddress,1));
+  end;
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+ end;
+
+end;
+
 procedure TPasRISCV.TCPUCore.Store8(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
@@ -23671,6 +23766,33 @@ begin
    PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
   end else{$endif}begin
    fBus.Store(self,TranslatedAddress,aValue,1);
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.StoreRegisterU8(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt8;
+begin
+
+ Value:=fState.Registers[aRegister];
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if DirectAccessTLBEntry^.Write=VPN then begin
+  PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+  exit;
+ end;
+
+ TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+ if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+  if DirectAccessTLBEntry^.Write=VPN then begin
+   PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+  end else{$endif}begin
+   fBus.Store(self,TranslatedAddress,Value,1);
   end;
  end;
 
@@ -23708,6 +23830,117 @@ begin
 
 end;
 
+procedure TPasRISCV.TCPUCore.LoadRegisterS16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+   end else {$endif}begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.Load(self,TranslatedAddress,2)))));
+   end; 
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end else begin
+  Value:=TPasRISCVUInt8(Load(aAddress,1));
+  if fState.ExceptionValue=TExceptionValue.None then begin
+   Value:=Value or (TPasRISCVUInt16(TPasRISCVUInt8(Load(aAddress+1,1))) shl 8);
+   if fState.ExceptionValue=TExceptionValue.None then begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(Value))));
+{$ifndef ExplicitEnforceZeroRegister}
+    if aRegister<>TRegister.Zero then begin
+{$endif}
+     fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+    end;
+{$endif}
+   end;
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.LoadRegisterU16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+  Value:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+   end else{$endif}begin
+    Value:=TPasRISCVUInt16(fBus.Load(self,TranslatedAddress,2));
+   end;
+{$ifndef ExplicitEnforceZeroRegister} 
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end else begin
+  Value:=TPasRISCVUInt8(Load(aAddress,1));
+  if fState.ExceptionValue=TExceptionValue.None then begin
+   Value:=Value or (TPasRISCVUInt16(TPasRISCVUInt8(Load(aAddress+1,1))) shl 8);
+   if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifndef ExplicitEnforceZeroRegister}
+    if aRegister<>TRegister.Zero then begin
+{$endif}
+     fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+    end;
+{$endif}
+   end;
+  end;
+ end;
+
+end;
+
 procedure TPasRISCV.TCPUCore.Store16(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt16);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
@@ -23734,6 +23967,40 @@ begin
   Store(aAddress,(aValue shr 0) and $ff,1);
   if fState.ExceptionValue=TExceptionValue.None then begin
    Store(aAddress+1,(aValue shr 8) and $ff,1);
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.StoreRegisterU16(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt16;
+begin
+
+ Value:=fState.Registers[aRegister];
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+  PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Write=VPN then begin
+    PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+   end else{$endif}begin
+    fBus.Store(self,TranslatedAddress,Value,2);
+   end;
+  end;
+ end else begin
+  Store(aAddress,(Value shr 0) and $ff,1);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+   Store(aAddress+1,(Value shr 8) and $ff,1);
   end;
  end;
 
@@ -23768,6 +24035,147 @@ begin
 
 end;
 
+procedure TPasRISCV.TCPUCore.LoadRegisterS32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+   end else{$endif}begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4)))));
+   end;
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end else begin
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Load(aAddress,4))));
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    State.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.LoadRegisterU32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+  Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+   end else{$endif}begin
+    Value:=TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4));
+   end;
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end else begin
+  Value:=TPasRISCVUInt32(Load(aAddress,4));
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    State.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.LoadRegisterF32(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+  Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+  fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
+  fState.CSR.SetFSDirty;
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+   end else{$endif}begin
+    Value:=TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4));
+   end;
+   fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
+   fState.CSR.SetFSDirty;
+  end;
+ end else begin
+  Value:=TPasRISCVUInt32(Load(aAddress,4));
+  if fState.ExceptionValue=TExceptionValue.None then begin
+   fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
+   fState.CSR.SetFSDirty;
+  end;
+ end;
+
+end;
+
 procedure TPasRISCV.TCPUCore.Store32(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt32);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
@@ -23792,6 +24200,68 @@ begin
   end;
  end else begin
   Store(aAddress,aValue,4);
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.StoreRegisterU32(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt32;
+begin
+
+ Value:=fState.Registers[aRegister];
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+  PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+    PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+   end else{$endif} begin
+    fBus.Store(self,TranslatedAddress,Value,4);
+   end;
+  end;
+ end else begin
+  Store(aAddress,Value,4);
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.StoreRegisterF32(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt32;
+begin
+
+ Value:=fState.FPURegisters[aRegister].ui32;
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+  PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+    PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+   end else{$endif} begin
+    fBus.Store(self,TranslatedAddress,Value,4);
+   end;
+  end;
+ end else begin
+  Store(aAddress,Value,4);
  end;
 
 end;
@@ -23825,6 +24295,147 @@ begin
 
 end;
 
+procedure TPasRISCV.TCPUCore.LoadRegisterS64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^));
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+   end else{$endif}begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(fBus.Load(self,TranslatedAddress,8)));
+   end;
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end else begin
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(Load(aAddress,8)));
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.LoadRegisterU64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+  Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$ifndef ExplicitEnforceZeroRegister}
+  if aRegister<>TRegister.Zero then begin
+{$endif}
+   fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+  end;
+{$endif}
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+   end else{$endif}begin
+    Value:=TPasRISCVUInt64(fBus.Load(self,TranslatedAddress,8));
+   end;
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end else begin
+  Value:=Load(aAddress,8);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifndef ExplicitEnforceZeroRegister}
+   if aRegister<>TRegister.Zero then begin
+{$endif}
+    fState.Registers[aRegister]:=Value;
+{$ifndef ExplicitEnforceZeroRegister}
+   end;
+{$endif}
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.LoadRegisterF64(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64);
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+  Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+  fState.FPURegisters[aRegister].ui64:=Value;
+  fState.CSR.SetFSDirty;
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Read=VPN then begin
+    Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+   end else{$endif}begin
+    Value:=TPasRISCVUInt64(fBus.Load(self,TranslatedAddress,8));
+   end;
+   fState.FPURegisters[aRegister].ui64:=Value;
+   fState.CSR.SetFSDirty;
+  end;
+ end else begin
+  Value:=Load(aAddress,8);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+   fState.FPURegisters[aRegister].ui64:=Value;
+   fState.CSR.SetFSDirty;
+  end;
+ end;
+
+end;
+
 procedure TPasRISCV.TCPUCore.Store64(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
@@ -23849,6 +24460,68 @@ begin
   end;
  end else begin
   Store(aAddress,aValue,8);
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ Value:=fState.Registers[aRegister];
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+  PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Write=VPN then begin
+    PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+   end else{$endif}begin
+    fBus.Store(self,TranslatedAddress,Value,8);
+   end;
+  end;
+ end else begin
+  Store(aAddress,Value,8);
+ end;
+
+end;
+
+procedure TPasRISCV.TCPUCore.StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
+var VPN,TranslatedAddress:TPasRISCVUInt64;
+    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+    Value:TPasRISCVUInt64;
+begin
+
+ Value:=fState.FPURegisters[aRegister].ui64;
+
+ VPN:=aAddress shr PAGE_SHIFT;
+ DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+  PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+  exit;
+ end;
+
+ if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  if fState.ExceptionValue=TExceptionValue.None then begin
+{$ifdef PreferDirectMemoryAccess}
+   if DirectAccessTLBEntry^.Write=VPN then begin
+    PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+   end else{$endif}begin
+    fBus.Store(self,TranslatedAddress,Value,8);
+   end;
+  end;
+ end else begin
+  Store(aAddress,Value,8);
  end;
 
 end;
@@ -24683,11 +25356,16 @@ begin
      frd:=TFPURegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
+{$ifdef UseSpecializedRegisterLoadStores}
+     LoadRegisterF64(frd,fState.Registers[rs1]+Offset);
+{$else}
      Temporary:=Load64(fState.Registers[rs1]+Offset);
      if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
       fState.FPURegisters[frd].ui64:=Temporary;
       fState.CSR.SetFSDirty;
      end;
+{$endif}
+//   SetFPUExceptions(FE_ALL_EXCEPT and not FE_INEXACT);
      result:=2;
      exit;
     end;
@@ -24696,10 +25374,14 @@ begin
      rd:=TRegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Immediate:=((aInstruction shl 1) and $40) or ((aInstruction shr 7) and $38) or ((aInstruction shr 4) and $04);
+{$ifdef UseSpecializedRegisterLoadStores}
+     LoadRegisterS32(rd,fState.Registers[rs1]+TPasRISCVUInt64(Immediate));
+{$else}
      Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Load32(fState.Registers[rs1]+TPasRISCVUInt64(Immediate)))));
      if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
       fState.Registers[rd]:=Temporary;
      end;
+{$endif}
      result:=2;
      exit;
     end;
@@ -24708,10 +25390,14 @@ begin
      rd:=TRegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
+{$ifdef UseSpecializedRegisterLoadStores}
+     LoadRegisterU64(rd,fState.Registers[rs1]+Offset);
+{$else}
      Temporary:=Load64(fState.Registers[rs1]+Offset);
      if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
       fState.Registers[rd]:=Temporary;
      end;
+{$endif}
      result:=2;
      exit;
     end;
@@ -24722,29 +25408,46 @@ begin
        // c.lbu (Zcb)
        rs1:=TRegister(((aInstruction shr 7) and $7)+8);
        Offset:=((aInstruction and $20) shr 4) or ((aInstruction and $40) shr 6);
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterU8(TRegister(((aInstruction shr 2) and $7)+8),fState.Registers[rs1]+Offset);
+{$else}
        Temporary:=Load8(fState.Registers[rs1]+Offset);
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         rd:=TRegister(((aInstruction shr 2) and $7)+8);
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=2;
        exit;
       end;
       $1:begin
        // c.lh/c.lhu (Zcb)
+{$ifdef UseSpecializedRegisterLoadStores}
+       rd:=TRegister(((aInstruction shr 2) and $7)+8);
+{$endif}
        rs1:=TRegister(((aInstruction shr 7) and $7)+8);
        Offset:=(aInstruction and $20) shr 4;
        if (aInstruction and $40)<>0 then begin
         // c.lh (Zcb)
-        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Load16(Load16(fState.Registers[rs1]+Offset)))));
+{$ifdef UseSpecializedRegisterLoadStores}
+        LoadRegisterS16(rd,fState.Registers[rs1]+Offset);
+{$else}
+        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Load16(fState.Registers[rs1]+Offset))));
+{$endif}
        end else begin
         // c.lhu (Zcb)
+{$ifdef UseSpecializedRegisterLoadStores}
+        LoadRegisterU16(rd,fState.Registers[rs1]+Offset);
+{$else}
         Temporary:=Load16(fState.Registers[rs1]+Offset);
+{$endif}
        end;
+{$ifndef UseSpecializedRegisterLoadStores}
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         rd:=TRegister(((aInstruction shr 2) and $7)+8);
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=2;
        exit;
       end;
@@ -24784,7 +25487,11 @@ begin
      frd:=TFPURegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
+{$ifdef UseSpecializedRegisterLoadStores}
+     StoreRegisterF64(fState.Registers[rs1]+Offset,frd);
+{$else}
      Store64(fState.Registers[rs1]+Offset,fState.FPURegisters[frd].ui64);
+{$endif}
      result:=2;
      exit;
     end;
@@ -24793,7 +25500,11 @@ begin
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      rs2:=TRegister(((aInstruction shr 2) and $7)+8);
      Offset:=(((aInstruction shl 1) and $40) or ((aInstruction shr 7) and $38) or ((aInstruction shr 4) and $04));
+{$ifdef UseSpecializedRegisterLoadStores}
+     StoreRegisterU32(fState.Registers[rs1]+Offset,rs2);
+{$else}
      Store32(fState.Registers[rs1]+Offset,fState.Registers[rs2]);
+{$endif}
      result:=2;
      exit;
     end;
@@ -24802,7 +25513,11 @@ begin
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      rs2:=TRegister(((aInstruction shr 2) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
+{$ifdef UseSpecializedRegisterLoadStores}
+     StoreRegisterU64(fState.Registers[rs1]+Offset,rs2);
+{$else}
      Store64(fState.Registers[rs1]+Offset,fState.Registers[rs2]);
+{$endif}
      result:=2;
      exit;
     end;
@@ -25138,11 +25853,16 @@ begin
       Offset:=((aInstruction shl 4) and $1c0) or
               ((aInstruction shr 7) and $20) or
               ((aInstruction shr 2) and $18);
+{$ifdef UseSpecializedRegisterLoadStores}
+      LoadRegisterF64(frd,fState.Registers[TRegister.SP]+Offset);
+{$else}
       Temporary:=Load64(fState.Registers[TRegister.SP]+Offset);
       if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
        fState.FPURegisters[frd].ui64:=Temporary;
        fState.CSR.SetFSDirty;
       end;
+{$endif}
+//    SetFPUExceptions(FE_ALL_EXCEPT and not FE_INEXACT);
       result:=2;
       exit;
      end else begin
@@ -25158,10 +25878,14 @@ begin
       Offset:=((aInstruction shl 4) and $c0) or
               ((aInstruction shr 7) and $20) or
               ((aInstruction shr 2) and $1c);
+{$ifdef UseSpecializedRegisterLoadStores}
+      LoadRegisterS32(rd,fState.Registers[TRegister.SP]+Offset);
+{$else}
       Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Load32(fState.Registers[TRegister.SP]+Offset))));
       if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
        fState.Registers[rd]:=Temporary;
       end;
+{$endif}
       result:=2;
       exit;
      end else begin
@@ -25177,10 +25901,14 @@ begin
       Offset:=((aInstruction shl 4) and $1c0) or
               ((aInstruction shr 7) and $20) or
               ((aInstruction shr 2) and $18);
+{$ifdef UseSpecializedRegisterLoadStores}
+      LoadRegisterU64(rd,fState.Registers[TRegister.SP]+Offset);
+{$else}
       Temporary:=Load64(fState.Registers[TRegister.SP]+Offset);
       if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
        fState.Registers[rd]:=Temporary;
       end;
+{$endif}
       result:=2;
       exit;
      end else begin
@@ -25246,7 +25974,11 @@ begin
      if fState.CSR.IsFPUEnabled then begin
       frs1:=TFPURegister((aInstruction shr 2) and $1f);
       Offset:=(((aInstruction shr 1) and $1c0) or ((aInstruction shr 7) and $38));
+{$ifdef UseSpecializedRegisterLoadStores}
+      StoreRegisterF64(fState.Registers[TRegister.SP]+Offset,frs1);
+{$else}
       Store64(fState.Registers[TRegister.SP]+Offset,fState.FPURegisters[frs1].ui64);
+{$endif}
       result:=2;
       exit;
      end else begin
@@ -25259,7 +25991,11 @@ begin
      // c.swsp
      rs1:=TRegister((aInstruction shr 2) and $1f);
      Offset:=(((aInstruction shr 1) and $c0) or ((aInstruction shr 7) and $3c));
+{$ifdef UseSpecializedRegisterLoadStores}
+     StoreRegisterU32(fState.Registers[TRegister.SP]+Offset,rs1);
+{$else}
      Store32(fState.Registers[TRegister.SP]+Offset,fState.Registers[rs1]);
+{$endif}
      result:=2;
      exit;
     end;
@@ -25267,7 +26003,11 @@ begin
      // c.sdsp
      rs1:=TRegister((aInstruction shr 2) and $1f);
      Offset:=(((aInstruction shr 1) and $1c0) or ((aInstruction shr 7) and $38));
+{$ifdef UseSpecializedRegisterLoadStores}
+     StoreRegisterU64(fState.Registers[TRegister.SP]+Offset,rs1);
+{$else}
      Store64(fState.Registers[TRegister.SP]+Offset,fState.Registers[rs1]);
+{$endif}
      result:=2;
      exit;
     end;
@@ -25294,64 +26034,92 @@ begin
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
       {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
        // lb
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterS8(rd,Address);
+{$else}
        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Load8(Address))));
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$1:{$else}$01,$09,$11,$19,$21,$29,$31,$39,$41,$49,$51,$59,$61,$69,$71,$79,$81,$89,$91,$99,$a1,$a9,$b1,$b9,$c1,$c9,$d1,$d9,$e1,$e9,$f1,$f9:{$endif}begin
        // lh
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterS16(rd,Address);
+{$else}
        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Load16(Address))));
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
        // lw
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterS32(rd,Address);
+{$else}
        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Load32(Address))));
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$3:{$else}$03,$0b,$13,$1b,$23,$2b,$33,$3b,$43,$4b,$53,$5b,$63,$6b,$73,$7b,$83,$8b,$93,$9b,$a3,$ab,$b3,$bb,$c3,$cb,$d3,$db,$e3,$eb,$f3,$fb:{$endif}begin
        // ld
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterU64(rd,Address);
+{$else}
        Temporary:=Load64(Address);
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$4:{$else}$04,$0c,$14,$1c,$24,$2c,$34,$3c,$44,$4c,$54,$5c,$64,$6c,$74,$7c,$84,$8c,$94,$9c,$a4,$ac,$b4,$bc,$c4,$cc,$d4,$dc,$e4,$ec,$f4,$fc:{$endif}begin
        // lbu
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterU8(rd,Address);
+{$else}
        Temporary:=Load8(Address);
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
        // lhu
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterU16(rd,Address);
+{$else}
        Temporary:=Load16(Address);
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$6:{$else}$06,$0e,$16,$1e,$26,$2e,$36,$3e,$46,$4e,$56,$5e,$66,$6e,$76,$7e,$86,$8e,$96,$9e,$a6,$ae,$b6,$be,$c6,$ce,$d6,$de,$e6,$ee,$f6,$fe:{$endif}begin
        // lwu
+{$ifdef UseSpecializedRegisterLoadStores}
+       LoadRegisterU32(rd,Address);
+{$else}
        Temporary:=Load32(Address);
        if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
+{$endif}
        result:=4;
        exit;
       end;
@@ -25809,25 +26577,41 @@ begin
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
       {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
        // sb
+{$ifdef UseSpecializedRegisterLoadStores}
+       StoreRegisterU8(Address,rs2);
+{$else}
        Store8(Address,fState.Registers[rs2] and $ff);
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$1:{$else}$01,$09,$11,$19,$21,$29,$31,$39,$41,$49,$51,$59,$61,$69,$71,$79,$81,$89,$91,$99,$a1,$a9,$b1,$b9,$c1,$c9,$d1,$d9,$e1,$e9,$f1,$f9:{$endif}begin
        // sh
+{$ifdef UseSpecializedRegisterLoadStores}
+       StoreRegisterU16(Address,rs2);
+{$else}
        Store16(Address,fState.Registers[rs2] and $ffff);
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
        // sw
+{$ifdef UseSpecializedRegisterLoadStores}
+       StoreRegisterU32(Address,rs2);
+{$else}
        Store32(Address,fState.Registers[rs2] and $ffffffff);
+{$endif}
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$3:{$else}$03,$0b,$13,$1b,$23,$2b,$33,$3b,$43,$4b,$53,$5b,$63,$6b,$73,$7b,$83,$8b,$93,$9b,$a3,$ab,$b3,$bb,$c3,$cb,$d3,$db,$e3,$eb,$f3,$fb:{$endif}begin
        // sd
+{$ifdef UseSpecializedRegisterLoadStores}
+       StoreRegisterU64(Address,rs2);
+{$else}
        Store64(Address,fState.Registers[rs2]);
+{$endif}
        result:=4;
        exit;
       end;
@@ -26915,11 +27699,15 @@ begin
         Offset:=TPasRISCVInt64(TPasRISCVInt32(SARLongint(TPasRISCVInt32(aInstruction),20)));
 //      Offset:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(aInstruction)),20);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
+{$ifdef UseSpecializedRegisterLoadStores}
+        LoadRegisterF32(frd,Address);
+{$else}
         Temporary:=Load32(Address) or TPasRISCVUInt64($ffffffff00000000);
         if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
          fState.FPURegisters[frd].ui64:=Temporary;
          fState.CSR.SetFSDirty;
         end;
+{$endif}
         SetFPUExceptions(FE_ALL_EXCEPT and not FE_INEXACT);
         result:=4;
         exit;
@@ -26931,11 +27719,15 @@ begin
         Offset:=TPasRISCVInt64(TPasRISCVInt32(SARLongint(TPasRISCVInt32(aInstruction),20)));
 //      Offset:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(aInstruction)),20);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
+{$ifdef UseSpecializedRegisterLoadStores}
+        LoadRegisterF64(frd,Address);
+{$else}
         Temporary:=Load64(Address);
         if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
          fState.FPURegisters[frd].ui64:=Temporary;
          fState.CSR.SetFSDirty;
         end;
+{$endif}
         SetFPUExceptions(FE_ALL_EXCEPT and not FE_INEXACT);
         result:=4;
         exit;
@@ -26963,7 +27755,11 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         Offset:=SignExtend((((aInstruction shr 25) and $7f) shl 5) or ((aInstruction shr 7) and $1f),12);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
+{$ifdef UseSpecializedRegisterLoadStores}
+        StoreRegisterF32(Address,frs2);
+{$else}
         Store32(Address,fState.FPURegisters[frs2].ui64);
+{$endif}
         SetFPUExceptions(FE_ALL_EXCEPT and not FE_INEXACT);
         result:=4;
         exit;
@@ -26974,7 +27770,11 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         Offset:=SignExtend((((aInstruction shr 25) and $7f) shl 5) or ((aInstruction shr 7) and $1f),12);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
+{$ifdef UseSpecializedRegisterLoadStores}
+        StoreRegisterF64(Address,frs2);
+{$else}
         Store64(Address,fState.FPURegisters[frs2].ui64);
+{$endif}
         SetFPUExceptions(FE_ALL_EXCEPT and not FE_INEXACT);
         result:=4;
         exit;
