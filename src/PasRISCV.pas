@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-02-27-00-33-0000                       *
+ *                        Version 2025-06-15-02-45-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -28865,9 +28865,11 @@ begin
    IRQs:=PendingIRQs and not IDELEG;
    PendingIRQs:=PendingIRQs and IDELEG;
 
-   if IRQs=0 then begin
+   // No TMode.User here, since User-level interrupts are optional for implementation were part of the
+   // "n" extension that has been removed from the RISC-V specs.
+{  if IRQs=0 then begin
     Privilege:=TMode.User;
-   end;
+   end;}
 
   end;
 
@@ -28935,7 +28937,7 @@ end;
 
 procedure TPasRISCV.TCPUCore.ExecuteException;
 var Status:TPasRISCVUInt64;
-    Mode:TCPUCore.TMode;
+    Mode,Privilege:TCPUCore.TMode;
 begin
 
  if fState.ExceptionValue=TExceptionValue.DebuggerBreakpoint then begin
@@ -28944,41 +28946,60 @@ begin
   exit;
  end;
 
+ // No TMode.User here, since User-level interrupts are optional for implementation were part of the
+ // "n" extension that has been removed from the RISC-V specs.
+
  Mode:=fState.Mode;
 
  if (TCPUCore.TMode.Machine>Mode) and ((fState.CSR.fData[TCSR.TAddress.MEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
-
-  SetMode(TCPUCore.TMode.Supervisor);
-
-  fState.PC:=fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc);
-
-  fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
-
-  fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
-
-  fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.ExceptionData;
-
-  Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
-  Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
-  Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
-  fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
-
+//if (TCPUCore.TMode.Hypervisor>Mode) and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
+   Privilege:=TCPUCore.TMode.Supervisor;
+{ end else begin
+   Privilege:=TCPUCore.TMode.Hypervisor;
+  end;}
  end else begin
+  Privilege:=TCPUCore.TMode.Machine;
+ end;
 
-  SetMode(TCPUCore.TMode.Machine);
+ case Privilege of
 
-  fState.PC:=fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc);
+  TCPUCore.TMode.Supervisor:begin
 
-  fState.CSR.fData[TCSR.TAddress.MEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
+   SetMode(TCPUCore.TMode.Supervisor);
 
-  fState.CSR.fData[TCSR.TAddress.MCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
+   fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
 
-  fState.CSR.fData[TCSR.TAddress.MTVAL]:=fState.ExceptionData;
+   fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
 
-  Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
-  Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE))) or (((Status shr TCSR.TMask.TMSTATUSBit.MIE) and 1) shl TCSR.TMask.TMSTATUSBit.MPIE);
-  Status:=(Status and not (TPasRISCVUInt64(3) shl 11)) or (TPasRISCVUInt64(TPasRISCVUInt64(Mode) and 3) shl 11);
-  fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
+   fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
+
+   fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.ExceptionData;
+
+   Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+   Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
+   Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+   fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
+
+  end;
+
+  else {TCPUCore.TMode.Machine:}begin
+
+   SetMode(TCPUCore.TMode.Machine);
+
+   fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+
+   fState.CSR.fData[TCSR.TAddress.MEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
+
+   fState.CSR.fData[TCSR.TAddress.MCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
+
+   fState.CSR.fData[TCSR.TAddress.MTVAL]:=fState.ExceptionData;
+
+   Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+   Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE))) or (((Status shr TCSR.TMask.TMSTATUSBit.MIE) and 1) shl TCSR.TMask.TMSTATUSBit.MPIE);
+   Status:=(Status and not (TPasRISCVUInt64(3) shl 11)) or (TPasRISCVUInt64(TPasRISCVUInt64(Mode) and 3) shl 11);
+   fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
+
+  end;
 
  end;
 
