@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-15-23-00-0000                       *
+ *                        Version 2025-06-17-01-29-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -270,8 +270,10 @@ unit PasRISCV;
 {$endif}
 
 {$undef ExplicitEnforceZeroRegister}
+{$undef UseExtraShAmt}
 {$define CombinedDirectAccessTLBCache}
 {$define UseSpecializedRegisterLoadStores}
+{$undef Use16BitSplittedInstructionFetches}
 {$undef PreferDirectMemoryAccess}
 {$undef FrameBufferDeviceDirtyMarking}
 
@@ -25198,7 +25200,14 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Execute=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef Use16BitSplittedInstructionFetches}
+  aInstruction:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress)))^;
+  if (aInstruction and 3)=3 then begin
+   aInstruction:=aInstruction or (TPasRISCVUInt32(PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress+2)))^) shl 16);
+  end;
+{$else}
   aInstruction:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress)))^;
+{$endif}
   result:=true;
   exit;
  end;
@@ -25210,13 +25219,14 @@ begin
   exit;
  end;
 
+{$ifndef Use16BitSplittedInstructionFetches}
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 
   aInstruction:=TPasRISCVUInt32(fBus.Fetch(self,TranslatedAddress,4));
 
   result:=fState.ExceptionValue=TExceptionValue.None;
 
- end else begin
+ end else{$endif}begin
 
   aInstruction:=TPasRISCVUInt32(fBus.Fetch(self,TranslatedAddress,2));
   if fState.ExceptionValue<>TExceptionValue.None then begin
@@ -25307,7 +25317,7 @@ function TPasRISCV.TCPUCore.ExecuteInstruction(const aInstruction:TPasRISCVUInt3
 {$define TryToForceCaseJumpTableOnLevel1}
 {-$define TryToForceCaseJumpTableOnCompressedLevel2}
 {-$define TryToForceCaseJumpTableOnLevel2}
-var Address,Temporary,Offset:TPasRISCVUInt64;
+var Address,Temporary,Offset{$ifdef UseExtraShAmt},ShAmt{$endif}:TPasRISCVUInt64;
     Immediate:TPasRISCVInt64;
     Ptr:Pointer;
     rd,rs1,rs2:TRegister;
@@ -26025,11 +26035,14 @@ begin
     case aInstruction and $7f of
   {$endif}
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Load                                                                     //
+    //////////////////////////////////////////////////////////////////////////////
     $03{$ifdef TryToForceCaseJumpTableOnLevel1},$83{$endif}:begin
      // Immediate[11:0] = inst[31:20]
      rd:=TRegister((aInstruction shr 7) and $1f);
      rs1:=TRegister((aInstruction shr 15) and $1f);
-     Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fff00000)))),20);
+     Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction{and TPasRISCVUInt32($fff00000)}))),20);
      Address:=fState.Registers[rs1]+Immediate;
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
       {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
@@ -26131,6 +26144,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Misc. Mem                                                                //
+    //////////////////////////////////////////////////////////////////////////////
     $0f{$ifdef TryToForceCaseJumpTableOnLevel1},$8f{$endif}:begin
      // A fence instruction does nothing because this emulator executes an instruction sequentially on a single thread.
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
@@ -26217,9 +26233,12 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Imm                                                                      //
+    //////////////////////////////////////////////////////////////////////////////
     $13{$ifdef TryToForceCaseJumpTableOnLevel1},$93{$endif}:begin
      // Immediate[11:0] = inst[31:20]
-     Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fff00000)))),20);
+     Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction{and TPasRISCVUInt32($fff00000)}))),20);
      rd:=TRegister((aInstruction shr 7) and $1f);
      rs1:=TRegister((aInstruction shr 15) and $1f);
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
@@ -26233,11 +26252,12 @@ begin
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$1:{$else}$01,$09,$11,$19,$21,$29,$31,$39,$41,$49,$51,$59,$61,$69,$71,$79,$81,$89,$91,$99,$a1,$a9,$b1,$b9,$c1,$c9,$d1,$d9,$e1,$e9,$f1,$f9:{$endif}begin
        // slli bseti bclri binvi
+       {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $3f;
        case ((aInstruction shr 25) and $7f) shr 1 of
         $00:begin
          // slli
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=fState.Registers[rs1] shl (TPasRISCVUInt64(Immediate) and $3f);
+          fState.Registers[rd]:=fState.Registers[rs1] shl {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif};
          end;
          result:=4;
          exit;
@@ -26245,7 +26265,7 @@ begin
         $14:begin
          // bseti (Zbs)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=fState.Registers[rs1] or (TPasRISCVUInt64(1) shl (TPasRISCVUInt64(Immediate) and $3f));
+          fState.Registers[rd]:=fState.Registers[rs1] or (TPasRISCVUInt64(1) shl {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
          result:=4;
          exit;
@@ -26253,14 +26273,14 @@ begin
         $24:begin
          // bclri (Zbs)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=fState.Registers[rs1] and not TPasRISCVUInt64(TPasRISCVUInt64(1) shl (TPasRISCVUInt64(Immediate) and $3f));
+          fState.Registers[rd]:=fState.Registers[rs1] and not TPasRISCVUInt64(TPasRISCVUInt64(1) shl {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
          result:=4;
          exit;
         end;
         $30:begin
          // Zbb
-         case Immediate of
+         case {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} of
           $00:begin
            // clz (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -26301,7 +26321,7 @@ begin
         $34:begin
          // binvi (Zbs)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=fState.Registers[rs1] xor (TPasRISCVUInt64(1) shl (TPasRISCVUInt64(Immediate) and $3f));
+          fState.Registers[rd]:=fState.Registers[rs1] xor (TPasRISCVUInt64(1) shl {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
          result:=4;
          exit;
@@ -26339,11 +26359,12 @@ begin
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
        // srli srai bexti orcb.b rev8
+       {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $3f;
        case ((aInstruction shr 25) and $7f) shr 1 of
         $00:begin
          // srli
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=fState.Registers[rs1] shr (TPasRISCVUInt64(Immediate) and $3f);
+          fState.Registers[rd]:=fState.Registers[rs1] shr {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif};
          end;
          result:=4;
          exit;
@@ -26351,13 +26372,13 @@ begin
         $10:begin
          // srai
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=SARInt64(fState.Registers[rs1],TPasRISCVUInt64(Immediate) and $3f);
+          fState.Registers[rd]:=SARInt64(fState.Registers[rs1],{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
          result:=4;
          exit;
         end;
         $14:begin
-         case Immediate of
+         case {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} of
           $07:begin
            // orc.b (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -26376,7 +26397,7 @@ begin
         $24:begin
          // bexti (Zbs)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=(fState.Registers[rs1] shr TPasRISCVUInt64(Immediate)) and 1;
+          fState.Registers[rd]:=(fState.Registers[rs1] shr {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}) and 1;
          end;
          result:=4;
          exit;
@@ -26384,13 +26405,13 @@ begin
         $30:begin
          // rori (Zbb)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=RORQWord(fState.Registers[rs1],TPasRISCVUInt64(Immediate) and $3f);
+          fState.Registers[rd]:=RORQWord(fState.Registers[rs1],{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
          result:=4;
          exit;
         end;
         $34:begin
-         case Immediate of
+         case {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} of
           $38:begin
            // rev8 (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -26437,6 +26458,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // auipc                                                                    //
+    //////////////////////////////////////////////////////////////////////////////
     $17{$ifdef TryToForceCaseJumpTableOnLevel1},$97{$endif}:begin
      // auipc
      rd:=TRegister((aInstruction shr 7) and $1f);
@@ -26448,15 +26472,18 @@ begin
      exit;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Imm32                                                                    //
+    //////////////////////////////////////////////////////////////////////////////
     $1b{$ifdef TryToForceCaseJumpTableOnLevel1},$9b{$endif}:begin
      rd:=TRegister((aInstruction shr 7) and $1f);
      rs1:=TRegister((aInstruction shr 15) and $1f);
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
       {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
        // addiw
-       Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fff00000)))),20);
+       Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction{and TPasRISCVUInt32($fff00000)}))),20);
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-        fState.Registers[rd]:=TPasRISCVInt32(fState.Registers[rs1]+Immediate);
+        fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1])+Immediate)));
        end;
        result:=4;
        exit;
@@ -26466,18 +26493,18 @@ begin
        case (aInstruction shr 25) and $7f of
         $00:begin
          // slliw
-         Immediate:=(aInstruction shr 20) and $1f;
+         {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $1f;
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt32(fState.Registers[rs1] shl TPasRISCVUInt64(Immediate));
+          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]) shl TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}))));
          end;
          result:=4;
          exit;
         end;
         $04,$05:begin
          // slli.uw
-         Immediate:=(aInstruction shr 20) and $3f;
+         {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $3f;
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=fState.Registers[rs1] shl TPasRISCVUInt64(Immediate);
+          fState.Registers[rd]:=TPasRISCVUInt32(fState.Registers[rs1]) shl TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
          result:=4;
          exit;
@@ -26487,7 +26514,7 @@ begin
           $00:begin
            // clzw (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=CLZDWord(fState.Registers[rs1]);
+            fState.Registers[rd]:=CLZDWord(TPasRISCVUInt32(fState.Registers[rs1]));
            end;
            result:=4;
            exit;
@@ -26495,7 +26522,7 @@ begin
           $01:begin
            // ctxw (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=CTZDWord(fState.Registers[rs1]);
+            fState.Registers[rd]:=CTZDWord(TPasRISCVUInt32(fState.Registers[rs1]));
            end;
            result:=4;
            exit;
@@ -26503,7 +26530,7 @@ begin
           $02:begin
            // cpopw (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=POPCNTDWord(fState.Registers[rs1]);
+            fState.Registers[rd]:=POPCNTDWord(TPasRISCVUInt32(fState.Registers[rs1]));
            end;
            result:=4;
            exit;
@@ -26524,12 +26551,12 @@ begin
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
        // srliw sraiw roriw
+       {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $1f;
        case (aInstruction shr 25) and $7f of
         $00:begin
          // srliw
-         Immediate:=(aInstruction shr 20) and $1f;
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shr TPasRISCVUInt64(Immediate))));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shr TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}))));
          end;
          result:=4;
          exit;
@@ -26538,7 +26565,7 @@ begin
          // sraiw
          Immediate:=(aInstruction shr 20) and $1f;
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=SARLongint(fState.Registers[rs1],TPasRISCVUInt64(Immediate));
+          fState.Registers[rd]:=SARLongint(fState.Registers[rs1],TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}));
          end;
          result:=4;
          exit;
@@ -26547,7 +26574,7 @@ begin
          // roriw (Zbb)
          Immediate:=(aInstruction shr 20) and $1f;
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),TPasRISCVUInt32(Immediate)))));
+          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),TPasRISCVUInt32({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif})))));
          end;
          result:=4;
          exit;
@@ -26567,6 +26594,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Store                                                                    //
+    //////////////////////////////////////////////////////////////////////////////
     $23{$ifdef TryToForceCaseJumpTableOnLevel1},$a3{$endif}:begin
      // Immediate[11:5|4:0] = inst[31:25|11:7]
 //   Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fe000000)))),20) or ((aInstruction shr 7) and $1f);
@@ -26623,6 +26653,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Op                                                                       //
+    //////////////////////////////////////////////////////////////////////////////
     $33{$ifdef TryToForceCaseJumpTableOnLevel1},$b3{$endif}:begin
      // "SLL, SRL, and SRA perform logical left, logical right, and arithmetic right
      // shifts on the value in register rs1 by the shift amount held in register rs2.
@@ -27073,6 +27106,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // lui                                                                      //
+    //////////////////////////////////////////////////////////////////////////////
     $37{$ifdef TryToForceCaseJumpTableOnLevel1},$b7{$endif}:begin
      // lui
      rd:=TRegister((aInstruction shr 7) and $1f);
@@ -27084,6 +27120,9 @@ begin
      exit;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Op32                                                                     //
+    //////////////////////////////////////////////////////////////////////////////
     $3b{$ifdef TryToForceCaseJumpTableOnLevel1},$bb{$endif}:begin
      // "The shift amount is given by rs2[4:0]."
      rd:=TRegister((aInstruction shr 7) and $1f);
@@ -27096,7 +27135,7 @@ begin
         $00:begin
          // addw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(fState.Registers[rs1]+fState.Registers[rs2]));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1])+TPasRISCVUInt32(fState.Registers[rs2])));
          end;
          result:=4;
          exit;
@@ -27104,7 +27143,7 @@ begin
         $01:begin
          // mulw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(fState.Registers[rs1])*TPasRISCVInt32(fState.Registers[rs2])));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1])*TPasRISCVUInt32(fState.Registers[rs2]))));
          end;
          result:=4;
          exit;
@@ -27120,7 +27159,7 @@ begin
         $20:begin
          // subw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(fState.Registers[rs1]-fState.Registers[rs2]));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1])-TPasRISCVUInt32(fState.Registers[rs2])));
          end;
          result:=4;
          exit;
@@ -27138,7 +27177,7 @@ begin
         $00:begin
          // sllw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(fState.Registers[rs1]) shl (fState.Registers[rs2] and $3f)));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shl (fState.Registers[rs2] and $3f))));
          end;
          result:=4;
          exit;
@@ -27146,7 +27185,7 @@ begin
         $30:begin
          // rolw (Zbb)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(ROLDWord(fState.Registers[rs1],fState.Registers[rs2] and $1f))));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(ROLDWord(TPasRISCVUInt32(fState.Registers[rs1]),fState.Registers[rs2] and $1f))));
          end;
          result:=4;
          exit;
@@ -27182,7 +27221,7 @@ begin
         $01:begin
          // divw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          if fState.Registers[rs2]=0 then begin
+          if TPasRISCVUInt32(fState.Registers[rs2])=0 then begin
            fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
           end else if (TPasRISCVInt32(fState.Registers[rs1])=Low(TPasRISCVInt32)) and (TPasRISCVInt32(fState.Registers[rs2])=-1) then begin
            fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(fState.Registers[rs1]));
@@ -27228,7 +27267,7 @@ begin
         $00:begin
          // srlw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(fState.Registers[rs1]) shr (fState.Registers[rs2] and $3f)));
+          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shr (fState.Registers[rs2] and $3f)))));
          end;
          result:=4;
          exit;
@@ -27236,7 +27275,7 @@ begin
         $01:begin
          // divuw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          if fState.Registers[rs2]=0 then begin
+          if TPasRISCVUInt32(fState.Registers[rs2])=0 then begin
            fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
           end else begin
            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) div TPasRISCVUInt32(fState.Registers[rs2])))));
@@ -27256,7 +27295,7 @@ begin
         $30:begin
          // rorw (Zbb)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(RORDWord(fState.Registers[rs1],fState.Registers[rs2] and $3f))));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),fState.Registers[rs2] and $3f))));
          end;
          result:=4;
          exit;
@@ -27274,12 +27313,12 @@ begin
         $01:begin
          // remw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          if fState.Registers[rs2]=0 then begin
-           fState.Registers[rd]:=TPasRISCVInt64(fState.Registers[rs1]);
+          if TPasRISCVUInt32(fState.Registers[rs2])=0 then begin
+           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]))));
           end else if (TPasRISCVInt32(fState.Registers[rs1])=Low(TPasRISCVInt32)) and (TPasRISCVInt32(fState.Registers[rs2])=-1) then begin
            fState.Registers[rd]:=0;
           end else begin
-           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(fState.Registers[rs1]) mod TPasRISCVInt32(fState.Registers[rs2])));
+           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(fState.Registers[rs1]) mod TPasRISCVInt32(fState.Registers[rs2]))));
           end;
          end;
          result:=4;
@@ -27306,10 +27345,10 @@ begin
         $01:begin
          // remuw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          if fState.Registers[rs2]=0 then begin
-           fState.Registers[rd]:=TPasRISCVUInt64(fState.Registers[rs1]);
+          if TPasRISCVUInt32(fState.Registers[rs2])=0 then begin
+           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]))));
           end else begin
-           fState.Registers[rd]:=fState.Registers[rs1] mod fState.Registers[rs2];
+           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]) mod TPasRISCVUInt32(fState.Registers[rs2]))));
           end;
          end;
          result:=4;
@@ -27330,6 +27369,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Branch                                                                   //
+    //////////////////////////////////////////////////////////////////////////////
     $63{$ifdef TryToForceCaseJumpTableOnLevel1},$e3{$endif}:begin
      // Immediate[12|10:5|4:1|11] = inst[31|30:25|11:8|7]
      rs1:=TRegister((aInstruction shr 15) and $1f);
@@ -27415,6 +27457,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // jalr                                                                     //
+    //////////////////////////////////////////////////////////////////////////////
     $67{$ifdef TryToForceCaseJumpTableOnLevel1},$e7{$endif}:begin
      // jalr
      Temporary:=fState.PC+4;
@@ -27429,6 +27474,9 @@ begin
      exit;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // jal                                                                      //
+    //////////////////////////////////////////////////////////////////////////////
     $6f{$ifdef TryToForceCaseJumpTableOnLevel1},$ef{$endif}:begin
      // jal
      rd:=TRegister((aInstruction shr 7) and $1f);
@@ -27444,6 +27492,9 @@ begin
      exit;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // System                                                                   //
+    //////////////////////////////////////////////////////////////////////////////
     $73{$ifdef TryToForceCaseJumpTableOnLevel1},$f3{$endif}:begin
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
       {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
@@ -27684,6 +27735,9 @@ begin
 
     // FPU
 
+    //////////////////////////////////////////////////////////////////////////////
+    // FPU Load                                                                 //
+    //////////////////////////////////////////////////////////////////////////////
     $07{$ifdef TryToForceCaseJumpTableOnLevel1},$87{$endif}:begin
      // fl
      if not fState.CSR.IsFPUEnabled then begin
@@ -27741,6 +27795,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // FPU Store                                                                //
+    //////////////////////////////////////////////////////////////////////////////
     $27{$ifdef TryToForceCaseJumpTableOnLevel1},$a7{$endif}:begin
      // fs
      if not fState.CSR.IsFPUEnabled then begin
@@ -27788,6 +27845,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // FPU Add                                                                  //
+    //////////////////////////////////////////////////////////////////////////////
     $43{$ifdef TryToForceCaseJumpTableOnLevel1},$c3{$endif}:begin
      // fmadd
      if not fState.CSR.IsFPUEnabled then begin
@@ -27836,6 +27896,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // FPU Sub                                                                  //
+    //////////////////////////////////////////////////////////////////////////////
     $47{$ifdef TryToForceCaseJumpTableOnLevel1},$c7{$endif}:begin
      // fmsub
      if not fState.CSR.IsFPUEnabled then begin
@@ -27910,6 +27973,9 @@ begin
     end;
 {$ifend}
 
+    //////////////////////////////////////////////////////////////////////////////
+    // FPU NAdd                                                                 //
+    //////////////////////////////////////////////////////////////////////////////
     $4b{$ifdef TryToForceCaseJumpTableOnLevel1},$cb{$endif}:begin
      // fnmadd
      if not fState.CSR.IsFPUEnabled then begin
@@ -27958,6 +28024,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // FPU NSub                                                                 //
+    //////////////////////////////////////////////////////////////////////////////
     $4f{$ifdef TryToForceCaseJumpTableOnLevel1},$cf{$endif}:begin
      // fnmsub
      if not fState.CSR.IsFPUEnabled then begin
@@ -28006,6 +28075,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // FPU Op                                                                   //
+    //////////////////////////////////////////////////////////////////////////////
     $53{$ifdef TryToForceCaseJumpTableOnLevel1},$d3{$endif}:begin
      // fother
      if not fState.CSR.IsFPUEnabled then begin
@@ -29040,6 +29112,9 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // AMO                                                                      //
+    //////////////////////////////////////////////////////////////////////////////
     $2f{$ifdef TryToForceCaseJumpTableOnLevel1},$af{$endif}:begin
      // RV64A: "A" standard extension for atomic instructions
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
