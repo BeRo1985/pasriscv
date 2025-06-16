@@ -270,7 +270,7 @@ unit PasRISCV;
 {$endif}
 
 {$undef ExplicitEnforceZeroRegister}
-{$undef UseExtraShAmt}
+{$define UseExtraShAmt}
 {$define CombinedDirectAccessTLBCache}
 {$define UseSpecializedRegisterLoadStores}
 {$undef Use16BitSplittedInstructionFetches}
