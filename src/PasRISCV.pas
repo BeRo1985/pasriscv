@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-17-23-20-0000                       *
+ *                        Version 2025-06-18-01-19-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -4467,11 +4467,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           end;
                           TFloatingPointRoundingModes=
                            (
-                            RoundToNearest=0,
-                            RoundToZero=1,
-                            RoundDown=2,
-                            RoundUp=3,
-                            RoundNearestMaxMagnitude=4,
+                            RoundToNearestEven=0,       // RNE - Round to nearest, ties to even
+                            RoundToZero=1,              // RTZ - Round to zero
+                            RoundDown=2,                // RDN - Round down - towards -inf
+                            RoundUp=3,                  // RUP - Round up - towards +inf
+                            RoundNearestMaxMagnitude=4, // RMM - Round to nearest, ties to max magnitude
                             RoundDynamic=5,
                             Mask=1 or 2 or 3 or 4 or 5
                            );
@@ -8178,6 +8178,114 @@ begin
  end;
 end;
 
+procedure SplitFloat32(const aValue:TPasRISCVFloat;out aIntPart,aFracPart:TPasRISCVFloat);
+var Casted,Mask:TPasRISCVUInt32;
+    Exponent:TPasRISCVInt32;
+begin
+
+ Casted:=TPasRISCVUInt32(Pointer(@aValue)^);
+ Exponent:=TPasRISCVInt32((Casted shr 23) and $ff)-$7f;
+
+ // No fractional part
+ if Exponent>=23 then begin
+  aIntPart:=aValue;
+  if (Exponent=$80) and ((Casted and TPasRISCVUInt32($007fffff))<>0) then begin
+   // NaN
+   aFracPart:=aValue;
+   exit;
+  end;
+  Casted:=Casted and TPasRISCVUInt32($80000000); // Signed zero
+  aFracPart:=TPasRISCVFloat(Pointer(@Casted)^);
+  exit;
+ end;
+
+ // No integral part
+ if Exponent<0 then begin
+  Casted:=Casted and TPasRISCVUInt32($80000000); // Signed zero
+  aIntPart:=TPasRISCVFloat(Pointer(@Casted)^);
+  aFracPart:=aValue;
+  exit;
+ end;
+
+ Mask:=TPasRISCVUInt32($007fffff) shr Exponent;
+ if (Casted and Mask)=0 then begin
+  aIntPart:=aValue;
+  Casted:=Casted and TPasRISCVUInt32($80000000); // Signed zero
+  aFracPart:=TPasRISCVFloat(Pointer(@Casted)^);
+  exit;
+ end;
+
+ Casted:=Casted and not Mask;
+ aIntPart:=TPasRISCVFloat(Pointer(@Casted)^);
+ aFracPart:=aValue-aIntPart;
+
+end;
+
+function RoundToNearestTiesToEven32(const aValue:TPasRISCVFloat):TPasRISCVFloat;
+var Fraction,AbsFraction:TPasRISCVFloat;
+begin
+ case Float32Classify(aValue) of
+  TPasRISCVFPType.Infinite:begin
+   result:=Trunc(aValue);
+  end;
+  TPasRISCVFPType.QuietNaN,
+  TPasRISCVFPType.SignalingNaN:begin
+   result:=aValue;
+  end;
+  TPasRISCVFPType.Normal,
+  TPasRISCVFPType.Subnormal:begin
+   SplitFloat32(aValue,result,Fraction);
+   AbsFraction:=abs(Fraction);
+   if AbsFraction>0.5 then begin
+    if Fraction>0.0 then begin
+     result:=result+1.0;
+    end else begin
+     result:=result-1.0;
+    end;
+   end else if AbsFraction<0.5 then begin
+    // Do nothing
+   end else begin
+    if (Trunc(result) and 1)<>0 then begin
+     if Fraction>0.0 then begin
+      result:=result+1.0;
+     end else begin
+      result:=result-1.0;
+     end;
+    end;
+   end;
+  end;
+  else {TPasRISCVFPType.Zero:}begin
+   result:=0.0;
+  end;
+ end;
+end;
+
+function RoundToNearestTiesToMaxMagnitude32(const aValue:TPasRISCVFloat):TPasRISCVFloat;
+var Fraction:TPasRISCVFloat;
+begin
+ case Float32Classify(aValue) of
+  TPasRISCVFPType.Infinite:begin
+   result:=Trunc(aValue);
+  end;
+  TPasRISCVFPType.QuietNaN,
+  TPasRISCVFPType.SignalingNaN:begin
+   result:=aValue;
+  end;
+  TPasRISCVFPType.Normal,
+  TPasRISCVFPType.Subnormal:begin
+   SplitFloat32(aValue,result,Fraction);
+   if Fraction>=0.5 then begin
+    result:=result+1.0;
+   end else if Fraction<=-0.5 then begin
+    result:=result-1.0;
+   end;
+  end;
+  else {TPasRISCVFPType.Zero:}begin
+   result:=0.0;
+  end;
+ end;
+end;
+
 function IsFloat64NaNOrInfinite(const aValue:TPasRISCVDouble):Boolean;
 var Casted:TPasRISCVUInt64 absolute aValue;
 begin
@@ -8242,22 +8350,130 @@ end;
 function Float64Classify(const aValue:TPasRISCVDouble):TPasRISCVFPType;
 var Casted:TPasRISCVUInt64;
 begin
- Casted:=TPasRISCVUInt64(Pointer(@aValue)^) and $7fffffffffffffff; // Mask out sign bit
- if (Casted and $7ff0000000000000)=$7ff0000000000000 then begin
-  if (Casted and $000fffffffffffff)=0 then begin
+ Casted:=TPasRISCVUInt64(Pointer(@aValue)^) and TPasRISCVUInt64($7fffffffffffffff); // Mask out sign bit
+ if (Casted and TPasRISCVUInt64($7ff0000000000000))=TPasRISCVUInt64($7ff0000000000000) then begin
+  if (Casted and TPasRISCVUInt64($000fffffffffffff))=0 then begin
    result:=TPasRISCVFPType.Infinite;
-  end else if (Casted and $7ff8000000000000)<>TPasRISCVUInt64($7ff8000000000000) then begin
+  end else if (Casted and TPasRISCVUInt64($7ff8000000000000))<>TPasRISCVUInt64($7ff8000000000000) then begin
    result:=TPasRISCVFPType.SignalingNaN;
   end else begin
    result:=TPasRISCVFPType.QuietNaN;
   end;
  end else begin
-  if Casted>=$0010000000000000 then begin
+  if Casted>=TPasRISCVUInt64($0010000000000000) then begin
    result:=TPasRISCVFPType.Normal;
   end else if Casted=0 then begin
    result:=TPasRISCVFPType.Zero;
   end else begin
    result:=TPasRISCVFPType.Subnormal;
+  end;
+ end;
+end;
+
+procedure SplitFloat64(const aValue:TPasRISCVDouble;out aIntPart,aFracPart:TPasRISCVDouble);
+var Casted,Mask:TPasRISCVUInt64;
+    Exponent:TPasRISCVInt64;
+begin
+
+ Casted:=TPasRISCVUInt64(Pointer(@aValue)^);
+ Exponent:=TPasRISCVInt64((Casted shr 52) and $7ff)-$3ff;
+
+ // No fractional part
+ if Exponent>=52 then begin
+  aIntPart:=aValue;
+  if (Exponent=$400) and ((Casted and TPasRISCVUInt64($000fffffffffffff))<>0) then begin
+   // NaN
+   aFracPart:=aValue;
+   exit;
+  end;
+  Casted:=Casted and TPasRISCVUInt64($8000000000000000); // Signed zero
+  aFracPart:=TPasRISCVDouble(Pointer(@Casted)^);
+  exit;
+ end;
+
+ // No integral part
+ if Exponent<0 then begin
+  Casted:=Casted and TPasRISCVUInt64($8000000000000000); // Signed zero
+  aIntPart:=TPasRISCVDouble(Pointer(@Casted)^);
+  aFracPart:=aValue;
+  exit;
+ end;
+
+ Mask:=TPasRISCVUInt64($000fffffffffffff) shr Exponent;
+ if (Casted and Mask)=0 then begin
+  aIntPart:=aValue;
+  Casted:=Casted and TPasRISCVUInt64($8000000000000000); // Signed zero
+  aFracPart:=TPasRISCVDouble(Pointer(@Casted)^);
+  exit;
+ end;
+
+ Casted:=Casted and not Mask;
+ aIntPart:=TPasRISCVDouble(Pointer(@Casted)^);
+ aFracPart:=aValue-aIntPart;
+
+end;
+
+function RoundToNearestTiesToEven64(const aValue:TPasRISCVDouble):TPasRISCVDouble;
+var Fraction,AbsFraction:TPasRISCVDouble;
+begin
+ case Float64Classify(aValue) of
+  TPasRISCVFPType.Infinite:begin
+   result:=Trunc(aValue);
+  end;
+  TPasRISCVFPType.QuietNaN,
+  TPasRISCVFPType.SignalingNaN:begin
+   result:=aValue;
+  end;
+  TPasRISCVFPType.Normal,
+  TPasRISCVFPType.Subnormal:begin
+   SplitFloat64(aValue,result,Fraction);
+   AbsFraction:=abs(Fraction);
+   if AbsFraction>0.5 then begin
+    if Fraction>0.0 then begin
+     result:=result+1.0;
+    end else begin
+     result:=result-1.0;
+    end;
+   end else if AbsFraction<0.5 then begin
+    // Do nothing
+   end else begin
+    if (Trunc(result) and 1)<>0 then begin
+     if Fraction>0.0 then begin
+      result:=result+1.0;
+     end else begin
+      result:=result-1.0;
+     end;
+    end;
+   end;
+  end;
+  else {TPasRISCVFPType.Zero:}begin
+   result:=0.0;
+  end;
+ end;
+end;
+
+function RoundToNearestTiesToMaxMagnitude64(const aValue:TPasRISCVDouble):TPasRISCVDouble;
+var Fraction:TPasRISCVDouble;
+begin
+ case Float64Classify(aValue) of
+  TPasRISCVFPType.Infinite:begin
+   result:=Trunc(aValue);
+  end;
+  TPasRISCVFPType.QuietNaN,
+  TPasRISCVFPType.SignalingNaN:begin
+   result:=aValue;
+  end;
+  TPasRISCVFPType.Normal,
+  TPasRISCVFPType.Subnormal:begin
+   SplitFloat64(aValue,result,Fraction);
+   if Fraction>=0.5 then begin
+    result:=result+1.0;
+   end else if Fraction<=-0.5 then begin
+    result:=result-1.0;
+   end;
+  end;
+  else {TPasRISCVFPType.Zero:}begin
+   result:=0.0;
   end;
  end;
 end;
@@ -22876,7 +23092,7 @@ procedure TPasRISCV.TCPUCore.TCSR.SetFPURM(const aValue:TPasRISCVUInt64);
 begin
  fData[TAddress.FRM]:=(fData[TAddress.FRM] and not TPasRISCVUInt64(TFloatingPointRoundingModes.Mask)) or (aValue and TPasRISCVUInt64(TFloatingPointRoundingModes.Mask));
  case TFloatingPointRoundingModes(aValue and TPasRISCVUInt64(TFloatingPointRoundingModes.Mask)) of
-  TFloatingPointRoundingModes.RoundToNearest:begin
+  TFloatingPointRoundingModes.RoundToNearestEven:begin
 {$ifdef fpc}
    SetRoundMode(TFPURoundingMode.rmNearest);
 {$else}
@@ -28582,18 +28798,20 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64);
         case (aInstruction shr 12) and 3 of
-         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearest),
-         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
-          f32n:=round(f32);
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+          f32n:=RoundToNearestTiesToEven32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-          f32n:=trunc(f32);
+          f32n:=Trunc(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDown):begin
           f32n:=Floor(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundUp):begin
           f32n:=Ceil(f32);
+         end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+          f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
          end;
          else begin
           f32n:=f32;
@@ -28696,18 +28914,20 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         f64:=fState.FPURegisters[frs1].f64;
         case (aInstruction shr 12) and 3 of
-         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearest),
-         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
-          f64n:=round(f64);
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+          f64n:=RoundToNearestTiesToEven64(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-          f64n:=trunc(f64);
+          f64n:=Trunc(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDown):begin
           f64n:=Floor(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundUp):begin
           f64n:=Ceil(f64);
+         end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+          f32n:=RoundToNearestTiesToMaxMagnitude64(f32);
          end;
          else begin
           f64n:=f64;
