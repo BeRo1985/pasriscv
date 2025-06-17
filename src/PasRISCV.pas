@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-18-01-19-0000                       *
+ *                        Version 2025-06-18-01-42-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -28797,7 +28797,7 @@ begin
         rd:=TRegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64);
-        case (aInstruction shr 12) and 3 of
+        case (aInstruction shr 12) and 7 of
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
           f32n:=RoundToNearestTiesToEven32(f32);
          end;
@@ -28913,7 +28913,7 @@ begin
         rd:=TRegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         f64:=fState.FPURegisters[frs1].f64;
-        case (aInstruction shr 12) and 3 of
+        case (aInstruction shr 12) and 7 of
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
           f64n:=RoundToNearestTiesToEven64(f64);
          end;
