@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-18-01-46-0000                       *
+ *                        Version 2025-06-18-01-57-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -4473,7 +4473,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                             RoundUp=3,                  // RUP - Round up - towards +inf
                             RoundNearestMaxMagnitude=4, // RMM - Round to nearest, ties to max magnitude
                             RoundDynamic=7,
-                            Mask=1 or 2 or 3 or 4 or 7
+                            Mask=1 or 2 or 4
                            );
                           TFS=class
                            public
@@ -28797,7 +28797,11 @@ begin
         rd:=TRegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64);
-        case (aInstruction shr 12) and 7 of
+        Immediate:=(aInstruction shr 12) and 7;
+        if Immediate=TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
+         Immediate:=fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask);
+        end;
+        case Immediate of
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
           f32n:=RoundToNearestTiesToEven32(f32);
          end;
@@ -28917,7 +28921,11 @@ begin
         rd:=TRegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         f64:=fState.FPURegisters[frs1].f64;
-        case (aInstruction shr 12) and 7 of
+        Immediate:=(aInstruction shr 12) and 7;
+        if Immediate=TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
+         Immediate:=fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask);
+        end;
+        case Immediate of
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
           f64n:=RoundToNearestTiesToEven64(f64);
          end;
