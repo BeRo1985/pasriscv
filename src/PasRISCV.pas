@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-17-01-29-0000                       *
+ *                        Version 2025-06-17-22-44-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -27177,7 +27177,7 @@ begin
         $00:begin
          // sllw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shl (fState.Registers[rs2] and $3f))));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shl (fState.Registers[rs2] and $1f))));
          end;
          result:=4;
          exit;
@@ -27267,7 +27267,7 @@ begin
         $00:begin
          // srlw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shr (fState.Registers[rs2] and $3f)))));
+          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) shr (fState.Registers[rs2] and $1f)))));
          end;
          result:=4;
          exit;
@@ -27287,7 +27287,7 @@ begin
         $20:begin
          // sraw
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(SARLongint(TPasRISCVInt32(fState.Registers[rs1]),fState.Registers[rs2] and $3f)));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(SARLongint(TPasRISCVInt32(fState.Registers[rs1]),fState.Registers[rs2] and $1f)));
          end;
          result:=4;
          exit;
@@ -27295,7 +27295,7 @@ begin
         $30:begin
          // rorw (Zbb)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),fState.Registers[rs2] and $3f))));
+          fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),fState.Registers[rs2] and $1f))));
          end;
          result:=4;
          exit;
@@ -27348,7 +27348,7 @@ begin
           if TPasRISCVUInt32(fState.Registers[rs2])=0 then begin
            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]))));
           end else begin
-           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]) mod TPasRISCVUInt32(fState.Registers[rs2]))));
+           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fState.Registers[rs1]) mod TPasRISCVUInt32(fState.Registers[rs2])))));
           end;
          end;
          result:=4;
