@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-18-01-42-0000                       *
+ *                        Version 2025-06-18-01-46-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -4472,8 +4472,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                             RoundDown=2,                // RDN - Round down - towards -inf
                             RoundUp=3,                  // RUP - Round up - towards +inf
                             RoundNearestMaxMagnitude=4, // RMM - Round to nearest, ties to max magnitude
-                            RoundDynamic=5,
-                            Mask=1 or 2 or 3 or 4 or 5
+                            RoundDynamic=7,
+                            Mask=1 or 2 or 3 or 4 or 7
                            );
                           TFS=class
                            public
@@ -28813,7 +28813,11 @@ begin
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
           f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
          end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic):begin
+          f32n:=Round(f32);
+         end;
          else begin
+          // Rounding mode values of 5 & 6 are illegal
           f32n:=f32;
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
@@ -28927,9 +28931,13 @@ begin
           f64n:=Ceil(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
-          f32n:=RoundToNearestTiesToMaxMagnitude64(f32);
+          f64n:=RoundToNearestTiesToMaxMagnitude64(f64);
+         end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic):begin
+          f64n:=Round(f64);
          end;
          else begin
+          // Rounding mode values of 5 & 6 are illegal
           f64n:=f64;
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
