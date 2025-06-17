@@ -431,9 +431,9 @@ begin
 
    GetAllBinaryFiles(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'../externals/pasriscv_software/riscv-tests/binaries/elf/'),StringList);
 
-// RunTest('/home/bero/Projects/GitHub/pasriscv/externals/pasriscv_software/riscv-tests/binaries/elf/rv64mi-p-illegal.elf');
+// RunTest('/home/bero/Projects/GitHub/pasriscv/externals/pasriscv_software/riscv-tests/binaries/elf/rv64mi-p-access.elf');
 
-   for Index:=0 to StringList.Count-1 do begin
+{} for Index:=0 to StringList.Count-1 do begin
     if false or
        //(pos('f',ChangeFileExt(ExtractFileName(StringList[Index]),''))=1) or
        //(ChangeFileExt(ExtractFileName(StringList[Index]),'')='dirty') or
@@ -444,7 +444,7 @@ begin
     if not RunTest(StringList[Index]) then begin
      Sleep(0);
     end;
-   end;
+   end;//}
 
   finally
    FreeAndNil(StringList);
