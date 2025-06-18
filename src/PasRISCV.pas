@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-18-01-57-0000                       *
+ *                        Version 2025-06-18-02-16-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -1342,8 +1342,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                'K','L','M','N','O','P','Q','R','S','T',
                'U','V','W','X','Y','Z'
               );
-       type TCPUCore=class;
-            TCPUCores=array of TCPUCore;
+       type THART=class;
+            THARTs=array of THART;
             TBus=class;
             { TPCG32 }
             TPCG32=record
@@ -4027,15 +4027,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure RemoveBusDevice(const aBusDevice:TBusDevice);
               function FindBusDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
               function GetDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
-              function Fetch(const aCPUCore:TCPUCore;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
-              function Load(const aCPUCore:TCPUCore;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
-              procedure Store(const aCPUCore:TCPUCore;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function Fetch(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              function Load(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure Store(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               function LoadEx(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               function StoreEx(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               procedure Step;
             end;
-            { TCPUCore }
-            TCPUCore=class
+            { THART }
+            THART=class
              public
               type TMode=
                     (
@@ -4483,10 +4483,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   Dirty=3;
                           end;
                     private
-                     fCPUCore:TCPUCore;
+                     fHART:THART;
                      fData:array[0..4095] of TPasRISCVUInt64;
                     public
-                     procedure Init(const aCPUCore:TCPUCore);
+                     procedure Init(const aHART:THART);
                      function Load(const aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
                      procedure Store(const aAddress,aValue:TPasRISCVUInt64);
                      procedure SetFPUException(const aValue:TPasRISCVUInt64);
@@ -4529,7 +4529,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      FPURegisters:TFPURegisters;
 //                   LastPC:TPasRISCVUInt64;
                      PC:TPasRISCVUInt64;
-                     Mode:TPasRISCV.TCPUCore.TMode;
+                     Mode:TPasRISCV.THART.TMode;
                      CSR:TCSR;
                      Sleep:TPasMPBool32;
                      EnablePaging:TPasMPBool32;
@@ -4674,11 +4674,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    end;
                    TExecutionThread=class(TPasMPThread)
                     private
-                     fCPUCore:TCPUCore;
+                     fHART:THART;
                     protected
                      procedure Execute; override;
                     public
-                     constructor Create(const aCPUCore:TCPUCore); reintroduce;
+                     constructor Create(const aHART:THART); reintroduce;
                      destructor Destroy; override;
                      procedure Shutdown;
                    end;
@@ -4767,7 +4767,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fExecutionThread:TExecutionThread;
               fPCG32:TPCG32;
               procedure UpdateMMU;
-              function CheckPrivilege(const aCPUMode:TCPUCore.TMode;const aAccessType:TMMU.TAccessType):Boolean;
+              function CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
               function AddressTranslate(const aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
               procedure FlushTLB(const aInterrupt:Boolean);
               procedure FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
@@ -4842,8 +4842,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
               function InterruptsRaised:TPasRISCVUInt64; inline;
               function InterruptsPending:TPasRISCVUInt64; inline;
-              procedure ClearInterrupt(const aInterruptValue:TPasRISCV.TCPUCore.TInterruptValue);
-              procedure RaiseInterrupt(const aInterruptValue:TPasRISCV.TCPUCore.TInterruptValue);
+              procedure ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
+              procedure RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
               procedure HandleInterrupts;
               procedure ExecuteException;
               procedure SleepUntilNextInterrupt;
@@ -4873,7 +4873,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fSocket:TRNLSocket;
                      fAddress:TRNLAddress;
                      fEvent:TRNLNetworkEvent;
-                     fHART:TCPUCore;
+                     fHART:THART;
                      fRecvBuffer:TPacketBuffer;
                      fRecvSize:TPasRISCVSizeInt;
                      fSendBufferString:TPasRISCVRawByteString;
@@ -4958,7 +4958,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fDebugger:Boolean;
               fDebuggerPort:TPasRISCVUInt16;
 
-              fCountCPUCores:TPasRISCVUInt64;
+              fCountHARTs:TPasRISCVUInt64;
 
               fBootArguments:TPasRISCVRawByteString;
 
@@ -5058,7 +5058,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property Debugger:Boolean read fDebugger write fDebugger;
               property DebuggerPort:TPasRISCVUInt16 read fDebuggerPort write fDebuggerPort;
 
-              property CountCPUCores:TPasRISCVUInt64 read fCountCPUCores write fCountCPUCores;
+              property CountHARTs:TPasRISCVUInt64 read fCountHARTs write fCountHARTs;
 
               property BootArguments:TPasRISCVRawByteString read fBootArguments write fBootArguments;
 
@@ -5143,7 +5143,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             end;
             TOnReboot=procedure of object;
             TOnNewFrame=procedure of object;
-            TOnCPUException=function(const aCPUCore:TCPUCore;const aExceptionValue:TCPUCore.TExceptionValue;const aExceptionData:TPasRISCVUInt64;const aExceptionPC:TPasRISCVUInt64):Boolean of object;
+            TOnCPUException=function(const aHART:THART;const aExceptionValue:THART.TExceptionValue;const aExceptionData:TPasRISCVUInt64;const aExceptionPC:TPasRISCVUInt64):Boolean of object;
       private
 
        fConfiguration:TConfiguration;
@@ -5210,11 +5210,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fVirtIORandomGeneratorDevice:TVirtIORandomGeneratorDevice;
 
-       fCountCPUCores:TPasRISCVSizeInt;
+       fCountHARTs:TPasRISCVSizeInt;
 
-       fCPUCore:TCPUCore;
+       fHART:THART;
 
-       fCPUCores:TCPUCores;
+       fHARTs:THARTs;
 
        fRunState:TPasMPUInt32;
 
@@ -5345,9 +5345,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
       public
 
-       property CPUCore:TCPUCore read fCPUCore;
+       property HART:THART read fHART;
 
-       property CPUCores:TCPUCores read fCPUCores;
+       property HARTs:THARTs read fHARTs;
 
       published
 
@@ -13443,19 +13443,19 @@ end;
 function TPasRISCV.TACLINTDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var CountHARTs,Address,HARTID:TPasRISCVUInt64;
 begin
- CountHARTs:=length(fMachine.fCPUCores);
+ CountHARTs:=length(fMachine.fHARTs);
  Address:=aAddress-fBase;
  if (Address>=MSIPAddress) and (Address<(MSIPAddress+(CountHARTs shl 2))) then begin
   HARTID:=(Address-MSIPAddress) shr 2;
-  result:=(fMachine.fCPUCores[HARTID].InterruptsRaised shr TPasRISCVUInt32(TCPUCore.TInterruptValue.MachineSoftware)) and 1;
+  result:=(fMachine.fHARTs[HARTID].InterruptsRaised shr TPasRISCVUInt32(THART.TInterruptValue.MachineSoftware)) and 1;
  end else if (Address>=MTimeCmpAddress) and (Address<(MTimeCmpAddress+(CountHARTs shl 3))) then begin
   HARTID:=(Address-MTimeCmpAddress) shr 3;
-  result:=fMachine.fCPUCores[HARTID].fMTIMECMP;
+  result:=fMachine.fHARTs[HARTID].fMTIMECMP;
  end else if (Address>=MTimeAddress) and (Address<(MTimeAddress+8)) then begin
   result:=GetTime;
  end else if (Address>=SSIPAddress) and (Address<(SSIPAddress+(CountHARTs shl 2))) then begin
   HARTID:=(Address-SSIPAddress) shr 2;
-  result:=(fMachine.fCPUCores[HARTID].InterruptsRaised shr TPasRISCVUInt32(TCPUCore.TInterruptValue.SupervisorSoftware)) and 1;
+  result:=(fMachine.fHARTs[HARTID].InterruptsRaised shr TPasRISCVUInt32(THART.TInterruptValue.SupervisorSoftware)) and 1;
  end else begin
   result:=0;
  end;
@@ -13464,39 +13464,39 @@ end;
 procedure TPasRISCV.TACLINTDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var CountHARTs,Address,HARTID,Time:TPasRISCVUInt64;
 begin
- CountHARTs:=length(fMachine.fCPUCores);
+ CountHARTs:=length(fMachine.fHARTs);
  Address:=aAddress-fBase;
  if (Address>=MSIPAddress) and (Address<(MSIPAddress+(CountHARTs shl 2))) then begin
   HARTID:=(Address-MSIPAddress) shr 2;
   if (aValue and 1)<>0 then begin
-   fMachine.fCPUCores[HARTID].RaiseInterrupt(TCPUCore.TInterruptValue.MachineSoftware);
+   fMachine.fHARTs[HARTID].RaiseInterrupt(THART.TInterruptValue.MachineSoftware);
   end else begin
-   fMachine.fCPUCores[HARTID].ClearInterrupt(TCPUCore.TInterruptValue.MachineSoftware);
+   fMachine.fHARTs[HARTID].ClearInterrupt(THART.TInterruptValue.MachineSoftware);
   end;
  end else if (Address>=MTimeCmpAddress) and (Address<(MTimeCmpAddress+(CountHARTs shl 3))) then begin
   HARTID:=(Address-MTimeCmpAddress) shr 3;
-  fMachine.fCPUCores[HARTID].fMTIMECMP:=aValue;
+  fMachine.fHARTs[HARTID].fMTIMECMP:=aValue;
   if GetTime>=aValue then begin
-   fMachine.fCPUCores[HARTID].RaiseInterrupt(TCPUCore.TInterruptValue.MachineTimer);
+   fMachine.fHARTs[HARTID].RaiseInterrupt(THART.TInterruptValue.MachineTimer);
   end else begin
-   fMachine.fCPUCores[HARTID].ClearInterrupt(TCPUCore.TInterruptValue.MachineTimer);
+   fMachine.fHARTs[HARTID].ClearInterrupt(THART.TInterruptValue.MachineTimer);
   end;
  end else if (Address>=MTimeAddress) and (Address<(MTimeAddress+8)) then begin
   fStartTime:=GetTime-aValue;
   Time:=GetTime;
   for HARTID:=1 to CountHARTs do begin
-   if Time>=fMachine.fCPUCores[HARTID-1].fMTIMECMP then begin
-    fMachine.fCPUCores[HARTID-1].RaiseInterrupt(TCPUCore.TInterruptValue.MachineTimer);
+   if Time>=fMachine.fHARTs[HARTID-1].fMTIMECMP then begin
+    fMachine.fHARTs[HARTID-1].RaiseInterrupt(THART.TInterruptValue.MachineTimer);
    end else begin
-    fMachine.fCPUCores[HARTID-1].ClearInterrupt(TCPUCore.TInterruptValue.MachineTimer);
+    fMachine.fHARTs[HARTID-1].ClearInterrupt(THART.TInterruptValue.MachineTimer);
    end;
   end;
  end else if (Address>=SSIPAddress) and (Address<(SSIPAddress+(CountHARTs shl 2))) then begin
   HARTID:=(Address-SSIPAddress) shr 2;
   if (aValue and 1)<>0 then begin
-   fMachine.fCPUCores[HARTID].RaiseInterrupt(TCPUCore.TInterruptValue.SupervisorSoftware);
+   fMachine.fHARTs[HARTID].RaiseInterrupt(THART.TInterruptValue.SupervisorSoftware);
   end else begin
-   fMachine.fCPUCores[HARTID].ClearInterrupt(TCPUCore.TInterruptValue.SupervisorSoftware);
+   fMachine.fHARTs[HARTID].ClearInterrupt(THART.TInterruptValue.SupervisorSoftware);
   end;
  end;
 end;
@@ -13505,7 +13505,7 @@ function TPasRISCV.TACLINTDevice.GetTime:TPasRISCVUInt64;
 begin
  result:=TPasRISCVUInt64(GetCurrentTime-fStartTime);
 //fMTIME:=result;
-//fMachine.fCPUCore.fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.TIME]:=fMTIME;
+//fMachine.fHART.fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.TIME]:=fMTIME;
 end;
 
 function TPasRISCV.TACLINTDevice.GetCachedTime(var aTime:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -13525,7 +13525,7 @@ begin
  fMinOpSize:=4;
  fMaxOpSize:=4;
  fAllocationIRQCounter:=0;
- fCountContexts:=fMachine.fCountCPUCores shl 1;
+ fCountContexts:=fMachine.fCountHARTs shl 1;
  Reset;
 end;
 
@@ -13559,11 +13559,11 @@ begin
  if IsIRQEnabled(aContext,aIRQ) and
     (TPasMPInterlocked.Read(fPriority[aIRQ])>TPasMPInterlocked.Read(fThreshold[aContext])) then begin
   HARTID:=aContext shr 1;
-  if HARTID<length(fMachine.fCPUCores) then begin
+  if HARTID<length(fMachine.fHARTs) then begin
    if (aContext and 1)<>0 then begin
-    fMachine.fCPUCores[HARTID].RaiseInterrupt(TPasRISCV.TCPUCore.TInterruptValue.SupervisorExternal);
+    fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
    end else begin
-    fMachine.fCPUCores[HARTID].RaiseInterrupt(TPasRISCV.TCPUCore.TInterruptValue.MachineExternal);
+    fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.MachineExternal);
    end;
   end;
   result:=true;
@@ -13606,11 +13606,11 @@ function TPasRISCV.TPLICDevice.UpdateContext(const aContext:TPasRISCVUInt32;cons
 var Threshold,NotifyingIRQs,HighestPriorityIRQ,Priority,MaxPriority,IRQs,Index,IRQ,HARTID:TPasRISCVUInt32;
 begin
  HARTID:=aContext shr 1;
- if HARTID<length(fMachine.fCPUCores) then begin
+ if HARTID<length(fMachine.fHARTs) then begin
   if (aContext and 1)<>0 then begin
-   fMachine.fCPUCores[HARTID].ClearInterrupt(TPasRISCV.TCPUCore.TInterruptValue.SupervisorExternal);
+   fMachine.fHARTs[HARTID].ClearInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
   end else begin
-   fMachine.fCPUCores[HARTID].ClearInterrupt(TPasRISCV.TCPUCore.TInterruptValue.MachineExternal);
+   fMachine.fHARTs[HARTID].ClearInterrupt(TPasRISCV.THART.TInterruptValue.MachineExternal);
   end;
  end;
  Threshold:=TPasMPInterlocked.Read(fThreshold[aContext]);
@@ -13636,11 +13636,11 @@ begin
   dec(NotifyingIRQs);
  end;
  if NotifyingIRQs<>0 then begin
-  if HARTID<length(fMachine.fCPUCores) then begin
+  if HARTID<length(fMachine.fHARTs) then begin
    if (aContext and 1)<>0 then begin
-    fMachine.fCPUCores[HARTID].RaiseInterrupt(TPasRISCV.TCPUCore.TInterruptValue.SupervisorExternal);
+    fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
    end else begin
-    fMachine.fCPUCores[HARTID].RaiseInterrupt(TPasRISCV.TCPUCore.TInterruptValue.MachineExternal);
+    fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.MachineExternal);
    end;
   end;
  end;
@@ -22557,15 +22557,15 @@ begin
  end;
 end;
 
-function TPasRISCV.TBus.Fetch(const aCPUCore:TCPUCore;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TBus.Fetch(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var BusDevice:TBusDevice;
 begin
  BusDevice:=FindBusDevice(aAddress);
  if assigned(BusDevice) then begin
   result:=BusDevice.Load(aAddress,aSize);
  end else begin
-  if {((aAddress and TCPUCore.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aCPUCore) then begin
-   aCPUCore.SetException(TCPUCore.TExceptionValue.InstructionAccessFault,aAddress,aCPUCore.fState.PC);
+  if {((aAddress and THART.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aHART) then begin
+   aHART.SetException(THART.TExceptionValue.InstructionAccessFault,aAddress,aHART.fState.PC);
   end;
   result:=0;
  end;
@@ -22824,7 +22824,7 @@ begin
 
 end;
 
-function TPasRISCV.TBus.Load(const aCPUCore:TCPUCore;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TBus.Load(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var BusDevice:TBusDevice;
 begin
  BusDevice:=FindBusDevice(aAddress);
@@ -22833,20 +22833,20 @@ begin
    result:=BusDevice.Load(aAddress,aSize);
   end else begin
    if not LoadUnaligned(BusDevice,aAddress,result,aSize) then begin
-    if assigned(aCPUCore) then begin
-     aCPUCore.SetException(TCPUCore.TExceptionValue.LoadAccessFault,aAddress,aCPUCore.fState.PC);
+    if assigned(aHART) then begin
+     aHART.SetException(THART.TExceptionValue.LoadAccessFault,aAddress,aHART.fState.PC);
     end;
    end;
   end;
  end else begin
-  if {((aAddress and TCPUCore.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aCPUCore) then begin
-   aCPUCore.SetException(TCPUCore.TExceptionValue.LoadAccessFault,aAddress,aCPUCore.fState.PC);
+  if {((aAddress and THART.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aHART) then begin
+   aHART.SetException(THART.TExceptionValue.LoadAccessFault,aAddress,aHART.fState.PC);
   end;
   result:=0;
  end;
 end;
 
-procedure TPasRISCV.TBus.Store(const aCPUCore:TCPUCore;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+procedure TPasRISCV.TBus.Store(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var BusDevice:TBusDevice;
 begin
  BusDevice:=FindBusDevice(aAddress);
@@ -22855,14 +22855,14 @@ begin
    BusDevice.Store(aAddress,aValue,aSize);
   end else begin
    if not StoreUnaligned(BusDevice,aAddress,aValue,aSize) then begin
-    if assigned(aCPUCore) then begin
-     aCPUCore.SetException(TCPUCore.TExceptionValue.StoreAccessFault,aAddress,aCPUCore.fState.PC);
+    if assigned(aHART) then begin
+     aHART.SetException(THART.TExceptionValue.StoreAccessFault,aAddress,aHART.fState.PC);
     end;
    end;
   end;
  end else begin
-  if {((aAddress and TCPUCore.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aCPUCore) then begin
-   aCPUCore.SetException(TCPUCore.TExceptionValue.StoreAccessFault,aAddress,aCPUCore.fState.PC);
+  if {((aAddress and THART.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aHART) then begin
+   aHART.SetException(THART.TExceptionValue.StoreAccessFault,aAddress,aHART.fState.PC);
   end;
  end;
 end;
@@ -22904,27 +22904,27 @@ procedure TPasRISCV.TBus.Step;
 begin
 end;
 
-{ TPasRISCV.TCPUCore.TException }
+{ TPasRISCV.THART.TException }
 
-constructor TPasRISCV.TCPUCore.TException.Create(const aExceptionValue:TExceptionValue;const aExceptionData,aExceptionPC:TPasRISCVUInt64);
+constructor TPasRISCV.THART.TException.Create(const aExceptionValue:TExceptionValue;const aExceptionData,aExceptionPC:TPasRISCVUInt64);
 begin
  fExceptionValue:=aExceptionValue;
  fExceptionData:=aExceptionData;
  fExceptionPC:=aExceptionPC;
- inherited Create(TPasRISCV.TCPUCore.ExceptionNames[aExceptionValue]+' at '+IntToStr(aExceptionPC)+' with data '+IntToStr(aExceptionData));
+ inherited Create(TPasRISCV.THART.ExceptionNames[aExceptionValue]+' at '+IntToStr(aExceptionPC)+' with data '+IntToStr(aExceptionData));
 end;
 
-destructor TPasRISCV.TCPUCore.TException.Destroy;
+destructor TPasRISCV.THART.TException.Destroy;
 begin
  inherited Destroy;
 end;
 
-{ TPasRISCV.TCPUCore.TCSR }
+{ TPasRISCV.THART.TCSR }
 
-procedure TPasRISCV.TCPUCore.TCSR.Init(const aCPUCore:TCPUCore);
+procedure TPasRISCV.THART.TCSR.Init(const aHART:THART);
 begin
 
- fCPUCore:=aCPUCore;
+ fHART:=aHART;
 
  FillChar(fData,SizeOf(fData),#0);
 
@@ -22938,7 +22938,7 @@ begin
                        TMISA.TExtension.SUPERVISOR or
                        TMISA.TExtension.USER;
 
- fData[TAddress.MHARTID]:=fCPUCore.fHARTID;
+ fData[TAddress.MHARTID]:=fHART.fHARTID;
 
  fData[TAddress.MARCHID]:=(TPasRISCVUInt32(Ord('P')) shl 0) or
                           (TPasRISCVUInt32(Ord('A')) shl 8) or
@@ -22958,7 +22958,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.TCSR.Load(const aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.TCSR.Load(const aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  case aAddress of
   TAddress.SEED:begin // Seed (Zkr)
@@ -22967,7 +22967,7 @@ begin
    // ChaCha20 instead of RC4. If a more robust and direct entropy source is needed, the guest
    // system should use virtio-rng. Note, however, that virtio-rng may block when its entropy
    // pool is exhausted, causing delays as the pool is rekeyed.
-   result:=(fCPUCore.fPCG32.Get32 shr 16) and TPasRISCVUInt64($ffff); // limited to 16 physical entropy bits
+   result:=(fHART.fPCG32.Get32 shr 16) and TPasRISCVUInt64($ffff); // limited to 16 physical entropy bits
   end;
   TAddress.SSTATUS:begin
    result:=fData[TAddress.MSTATUS] and TMask.SSTATUS;
@@ -22982,34 +22982,34 @@ begin
    result:=fData[TAddress.MSTATUS];
   end;
   TAddress.TIME:begin
-   result:=fCPUCore.fMachine.fACLINTDevice.GetTime;
+   result:=fHART.fMachine.fACLINTDevice.GetTime;
   end;
   TAddress.TIMEH:begin
-   result:=fCPUCore.fMachine.fACLINTDevice.GetTime shr 32;
+   result:=fHART.fMachine.fACLINTDevice.GetTime shr 32;
   end;
   TAddress.MCYCLE:begin
-   result:=fCPUCore.fState.Cycle;
+   result:=fHART.fState.Cycle;
   end;
   TAddress.MCYCLEH:begin
-   result:=fCPUCore.fState.Cycle shr 32;
+   result:=fHART.fState.Cycle shr 32;
   end;
   TAddress.CYCLE:begin
-   result:=fCPUCore.fState.Cycle;
+   result:=fHART.fState.Cycle;
   end;
   TAddress.CYCLEH:begin
-   result:=fCPUCore.fState.Cycle shr 32;
+   result:=fHART.fState.Cycle shr 32;
   end;
   TAddress.MINSTRET:begin
-   result:=fCPUCore.fState.Cycle;
+   result:=fHART.fState.Cycle;
   end;
   TAddress.MINSTRETH:begin
-   result:=fCPUCore.fState.Cycle shr 32;
+   result:=fHART.fState.Cycle shr 32;
   end;
   TAddress.INSTRET:begin
-   result:=fCPUCore.fState.Cycle;
+   result:=fHART.fState.Cycle;
   end;
   TAddress.INSTRETH:begin
-   result:=fCPUCore.fState.Cycle shr 32;
+   result:=fHART.fState.Cycle shr 32;
   end;
   TAddress.MENVCFG:begin
    result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($80000000000000d0)));
@@ -23021,7 +23021,7 @@ begin
    result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.SENVCFG] and TPasRISCVUInt64($00000000000000d0)));
   end;
   TAddress.STIMECMP:begin
-   result:=fCPUCore.fSTIMECMP;
+   result:=fHART.fSTIMECMP;
   end;
 {TAddress.STIMECMPH:begin
    result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.STIMECMP] shr 32));
@@ -23032,7 +23032,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.Store(const aAddress,aValue:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TCSR.Store(const aAddress,aValue:TPasRISCVUInt64);
 var Value,Mask:TPasRISCVUInt64;
 begin
  case aAddress of
@@ -23065,7 +23065,7 @@ begin
    fData[TAddress.SENVCFG]:=aValue and TPasRISCVUInt64($00000000000000d0);
   end;
   TAddress.STIMECMP:begin
-   fCPUCore.fSTIMECMP:=aValue;
+   fHART.fSTIMECMP:=aValue;
    fData[TAddress.STIMECMP]:=aValue;
   end;
 { TAddress.STIMECMPH:begin
@@ -23078,17 +23078,17 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.SetFPUException(const aValue:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TCSR.SetFPUException(const aValue:TPasRISCVUInt64);
 begin
  fData[TAddress.FFLAGS]:=(fData[TAddress.FFLAGS] and not TFPUExceptionMasks.Mask) or (aValue and TPasRISCVUInt64(TFPUExceptionMasks.Mask));
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.ClearFPUExceptions;
+procedure TPasRISCV.THART.TCSR.ClearFPUExceptions;
 begin
  fData[TAddress.FFLAGS]:=fData[TAddress.FFLAGS] and not TPasRISCVUInt64(TFPUExceptionMasks.Mask);
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.SetFPURM(const aValue:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TCSR.SetFPURM(const aValue:TPasRISCVUInt64);
 begin
  fData[TAddress.FRM]:=(fData[TAddress.FRM] and not TPasRISCVUInt64(TFloatingPointRoundingModes.Mask)) or (aValue and TPasRISCVUInt64(TFloatingPointRoundingModes.Mask));
  case TFloatingPointRoundingModes(aValue and TPasRISCVUInt64(TFloatingPointRoundingModes.Mask)) of
@@ -23139,66 +23139,66 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.ClearFPURM;
+procedure TPasRISCV.THART.TCSR.ClearFPURM;
 begin
  fData[TAddress.FRM]:=fData[TAddress.FRM] and not TPasRISCVUInt64(TFloatingPointRoundingModes.Mask);
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.SetFS(const aValue:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TCSR.SetFS(const aValue:TPasRISCVUInt64);
 begin
  fData[TAddress.MSTATUS]:=(fData[TAddress.MSTATUS] and not (TPasRISCVUInt64(3) shl 13)) or (TPasRISCVUInt64(TPasRISCVUInt64(aValue) and 3) shl 13);
 end;
 
-function TPasRISCV.TCPUCore.TCSR.GetFS:TPasRISCVUInt64;
+function TPasRISCV.THART.TCSR.GetFS:TPasRISCVUInt64;
 begin
  result:=(fData[TAddress.MSTATUS] shr 13) and 3;
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.ClearFS;
+procedure TPasRISCV.THART.TCSR.ClearFS;
 begin
  fData[TAddress.MSTATUS]:=fData[TAddress.MSTATUS] and not (TPasRISCVUInt64(3) shl 13);
 end;
 
-procedure TPasRISCV.TCPUCore.TCSR.SetFSDirty;
+procedure TPasRISCV.THART.TCSR.SetFSDirty;
 begin
  if ((fData[TCSR.TAddress.MSTATUS] shr 13) and 3)<>TCSR.TFS.Dirty then begin
   fData[TCSR.TAddress.MSTATUS]:=fData[TCSR.TAddress.MSTATUS] or (TCSR.TFS.Dirty shl 13);
  end;
 end;
 
-function TPasRISCV.TCPUCore.TCSR.IsFPUEnabled:Boolean;
+function TPasRISCV.THART.TCSR.IsFPUEnabled:Boolean;
 begin
  result:=((fData[TAddress.MSTATUS] shr 13) and 3)<>TFS.Off;
 end;
 
-{ TPasRISCV.TCPUCore.TExecutionThread }
+{ TPasRISCV.THART.TExecutionThread }
 
-constructor TPasRISCV.TCPUCore.TExecutionThread.Create(const aCPUCore:TCPUCore);
+constructor TPasRISCV.THART.TExecutionThread.Create(const aHART:THART);
 begin
- fCPUCore:=aCPUCore;
- fCPUCore.fExecutionThread:=self;
+ fHART:=aHART;
+ fHART.fExecutionThread:=self;
  inherited Create(false);
 end;
 
-destructor TPasRISCV.TCPUCore.TExecutionThread.Destroy;
+destructor TPasRISCV.THART.TExecutionThread.Destroy;
 begin
- if assigned(fCPUCore) then begin
-  fCPUCore.fExecutionThread:=nil;
+ if assigned(fHART) then begin
+  fHART.fExecutionThread:=nil;
  end;
  inherited Destroy;
 end;
 
-procedure TPasRISCV.TCPUCore.TExecutionThread.Execute;
+procedure TPasRISCV.THART.TExecutionThread.Execute;
 begin
- if assigned(fCPUCore) then begin
-  NameThreadForDebugging('TCPUCore['+IntToStr(fCPUCore.fHARTID)+'].TExecutionThread');
-  fCPUCore.ThreadProc;
+ if assigned(fHART) then begin
+  NameThreadForDebugging('THART['+IntToStr(fHART.fHARTID)+'].TExecutionThread');
+  fHART.ThreadProc;
  end else begin
-  NameThreadForDebugging('TCPUCore.TExecutionThread');
+  NameThreadForDebugging('THART.TExecutionThread');
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.TExecutionThread.Shutdown;
+procedure TPasRISCV.THART.TExecutionThread.Shutdown;
 begin
  if not Finished then begin
   Terminate;
@@ -23206,9 +23206,9 @@ begin
  end;
 end;
 
-{ TPasRISCV.TCPUCore }
+{ TPasRISCV.THART }
 
-constructor TPasRISCV.TCPUCore.Create(const aMachine:TPasRISCV;const aHARTID:TPasRISCVUInt32);
+constructor TPasRISCV.THART.Create(const aMachine:TPasRISCV;const aHARTID:TPasRISCVUInt32);
 var CSRIndex:TPasRISCVSizeInt;
 begin
  inherited Create;
@@ -23377,19 +23377,19 @@ begin
 
 end;
 
-destructor TPasRISCV.TCPUCore.Destroy;
+destructor TPasRISCV.THART.Destroy;
 begin
  fExecutionThread.Shutdown;
  FreeAndNil(fExecutionThread);
  inherited Destroy;
 end;
 
-procedure TPasRISCV.TCPUCore.Init;
+procedure TPasRISCV.THART.Init;
 begin
 
  FillChar(fState,SizeOf(TState),#0);
  fState.CSR.Init(self);
- fState.Mode:=TPasRISCV.TCPUCore.TMode.Machine;
+ fState.Mode:=TPasRISCV.THART.TMode.Machine;
  fState.Registers[TRegister.Zero]:=0;
  fState.Registers[TRegister.SP]:=fMachine.fStartStackPointer-(fHARTID shl 16);
  fState.Registers[TRegister.A0]:=fHARTID;
@@ -23416,7 +23416,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.SetMode(const aMode:TMode);
+procedure TPasRISCV.THART.SetMode(const aMode:TMode);
 begin
  if fState.Mode<>aMode then begin
   fState.Mode:=aMode;
@@ -23424,7 +23424,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.SetException(const aExceptionValue:TExceptionValue;
+procedure TPasRISCV.THART.SetException(const aExceptionValue:TExceptionValue;
                                           const aExceptionData:TPasRISCVUInt64;
                                           const aExceptionPC:TPasRISCVUInt64);
 begin
@@ -23436,23 +23436,23 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.ClearException;
+procedure TPasRISCV.THART.ClearException;
 begin
  fState.ExceptionValue:=TExceptionValue.None;
  fState.ExceptionData:=0;
  fState.ExceptionPC:=0;
 end;
 
-procedure TPasRISCV.TCPUCore.UpdateMMU;
+procedure TPasRISCV.THART.UpdateMMU;
 var SATP:TPasRISCVUInt64;
 begin
- SATP:=fState.CSR.Load(TCPUCore.TCSR.TAddress.SATP);
+ SATP:=fState.CSR.Load(THART.TCSR.TAddress.SATP);
  fMMUMode:=TMMU.TMMUMode(SATP shr 60);
  fRootPageTable:=(SATP and ((TPasRISCVUInt64(1) shl 44)-1)) shl 12;
  FlushTLB(true);
 end;
 
-procedure TPasRISCV.TCPUCore.RaisePhysicalFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+procedure TPasRISCV.THART.RaisePhysicalFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
 begin
  case aAccessType of
   TMMU.TAccessType.LoadInstruction,
@@ -23468,7 +23468,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.RaisePageFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+procedure TPasRISCV.THART.RaisePageFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
 begin
  case aAccessType of
   TMMU.TAccessType.LoadInstruction,
@@ -23485,7 +23485,7 @@ begin
  FlushTLB(true);
 end;
 
-procedure TPasRISCV.TCPUCore.FlushTLB(const aInterrupt:Boolean);
+procedure TPasRISCV.THART.FlushTLB(const aInterrupt:Boolean);
 var DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
  FillChar(fDirectAccessTLBCache,SizeOf(TMMU.TDirectAccessTLBEntries),#0);
@@ -23498,7 +23498,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
 var VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -23525,7 +23525,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
+procedure TPasRISCV.THART.TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
 var VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -23594,7 +23594,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.TCPUCore.TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+procedure TPasRISCV.THART.TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
 var Target:Pointer;
 begin
  Target:=fBus.GetDirectMemoryAccessPointer(aPhysicalAddress and PAGE_ADDRESS_MASK,PAGE_SIZE,TMMU.AccessWrite[aAccessType],nil);
@@ -23603,12 +23603,12 @@ begin
  end;
 end;
 
-function TPasRISCV.TCPUCore.CheckPrivilege(const aCPUMode:TCPUCore.TMode;const aAccessType:TMMU.TAccessType):Boolean;
+function TPasRISCV.THART.CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
 begin
  if aAccessType=TMMU.TAccessType.Instruction then begin
   // Disallow allow executing user pages in supervisor mode and vice versa, but not in the MXR case (TMMU.TAccessType.LoadInstruction)
   result:=false;
- end else if (aCPUMode<>TCPUCore.TMode.Supervisor) or ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and TCSR.TMask.TStatus.SUM)=0) then begin
+ end else if (aCPUMode<>THART.TMode.Supervisor) or ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and TCSR.TMask.TStatus.SUM)=0) then begin
   // RW operations on user pages are allowed in supervisor mode when the SUM bit is set
   result:=false;
  end else begin
@@ -23616,9 +23616,9 @@ begin
  end;
 end;
 
-function TPasRISCV.TCPUCore.AddressTranslate(const aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
+function TPasRISCV.THART.AddressTranslate(const aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
 var Index:TPasRISCVSizeInt;
-    CPUMode:TCPUCore.TMode;
+    CPUMode:THART.TMode;
     MSTATUS,Levels:TPasRISCVUInt64;
     EffectiveAccessType:TMMU.TAccessType;
     PageTable,BitOffset,PageTableOffset,PageTableEntry,VirtualMask,PhysicalMask,
@@ -23630,31 +23630,31 @@ begin
 
  CPUMode:=fState.Mode;
 
- MSTATUS:=fState.CSR.fData[TCPUCore.TCSR.TAddress.MSTATUS];
+ MSTATUS:=fState.CSR.fData[THART.TCSR.TAddress.MSTATUS];
 
- PBMTE:=IsCSRENVCFGEnabled(TCPUCore.TCSR.ENVCFG_PBMTE);
+ PBMTE:=IsCSRENVCFGEnabled(THART.TCSR.ENVCFG_PBMTE);
 
- ADUE:=IsCSRENVCFGEnabled(TCPUCore.TCSR.ENVCFG_ADUE);
+ ADUE:=IsCSRENVCFGEnabled(THART.TCSR.ENVCFG_ADUE);
 
  SVANPOT:=true;
 
  EffectiveAccessType:=aAccessType;
 
  if (EffectiveAccessType<>TMMU.TAccessType.Instruction) and
-    ((MSTATUS and (TPasRISCVUInt64(1) shl TCPUCore.TCSR.TMask.TMSTATUSBit.MPRV))<>0) then begin
-  CPUMode:=TPasRISCV.TCPUCore.TMode(TPasRISCVUInt64((fState.CSR.fData[TCSR.TAddress.MSTATUS] shr 11) and 3));
+    ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MPRV))<>0) then begin
+  CPUMode:=TPasRISCV.THART.TMode(TPasRISCVUInt64((fState.CSR.fData[TCSR.TAddress.MSTATUS] shr 11) and 3));
  end;
 
  if (EffectiveAccessType=TMMU.TAccessType.Load) and
-    ((MSTATUS and (TPasRISCVUInt64(1) shl TCPUCore.TCSR.TMask.TMSTATUSBit.MXR))<>0) then begin
+    ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MXR))<>0) then begin
   EffectiveAccessType:=TMMU.TAccessType.LoadInstruction;
  end;
 
  case CPUMode of
 
-  TCPUCore.TMode.User,
-  TCPUCore.TMode.Supervisor,
-  TCPUCore.TMode.Hypervisor:begin
+  THART.TMode.User,
+  THART.TMode.Supervisor,
+  THART.TMode.Hypervisor:begin
 
    case fMMUMode of
     TMMU.TMMUMode.SV39:begin
@@ -23736,7 +23736,7 @@ begin
 
       if (PageTableEntry and TMMU.TPTEMasks.Leaf)<>0 then begin
 
-       if ((PageTableEntry and TMMU.TPTEMasks.User)<>0)=(CPUMode<>TCPUCore.TMode.User) then begin
+       if ((PageTableEntry and TMMU.TPTEMasks.User)<>0)=(CPUMode<>THART.TMode.User) then begin
         if not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
          if not CheckPrivilege(CPUMode,EffectiveAccessType) then begin
           if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
@@ -23849,7 +23849,7 @@ begin
 
   end;
 
-  else {TCPUCore.TMode.Machine:}begin
+  else {THART.TMode.Machine:}begin
 
    if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
     TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,aVirtualAddress and PAGE_ADDRESS_MASK,aAccessType);
@@ -23862,7 +23862,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.Load8(const aAddress:TPasRISCVUInt64):TPasRISCVUInt8;
+function TPasRISCV.THART.Load8(const aAddress:TPasRISCVUInt64):TPasRISCVUInt8;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -23887,7 +23887,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterS8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterS8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -23921,7 +23921,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterU8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterU8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -23955,7 +23955,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.Store8(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8);
+procedure TPasRISCV.THART.Store8(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -23979,7 +23979,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.StoreRegisterU8(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU8(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt8;
@@ -24006,7 +24006,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.Load16(const aAddress:TPasRISCVUInt64):TPasRISCVUInt16;
+function TPasRISCV.THART.Load16(const aAddress:TPasRISCVUInt64):TPasRISCVUInt16;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24038,7 +24038,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterS16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterS16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24082,7 +24082,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterU16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterU16(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24126,7 +24126,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.Store16(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt16);
+procedure TPasRISCV.THART.Store16(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt16);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24157,7 +24157,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.StoreRegisterU16(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU16(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt16;
@@ -24191,7 +24191,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.Load32(const aAddress:TPasRISCVUInt64):TPasRISCVUInt32;
+function TPasRISCV.THART.Load32(const aAddress:TPasRISCVUInt64):TPasRISCVUInt32;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24220,7 +24220,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterS32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterS32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24261,7 +24261,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterU32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterU32(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24302,7 +24302,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterF32(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterF32(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24343,7 +24343,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.Store32(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt32);
+procedure TPasRISCV.THART.Store32(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt32);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24371,7 +24371,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.StoreRegisterU32(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU32(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt32;
@@ -24402,7 +24402,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.StoreRegisterF32(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
+procedure TPasRISCV.THART.StoreRegisterF32(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt32;
@@ -24433,7 +24433,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.Load64(const aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.Load64(const aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24462,7 +24462,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterS64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterS64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24503,7 +24503,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterU64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterU64(const aRegister:TRegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24544,7 +24544,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.LoadRegisterF64(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64);
+procedure TPasRISCV.THART.LoadRegisterF64(const aRegister:TFPURegister;const aAddress:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24585,7 +24585,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.Store64(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64);
+procedure TPasRISCV.THART.Store64(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24613,7 +24613,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24644,7 +24644,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
+procedure TPasRISCV.THART.StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24675,7 +24675,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.RMWTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer;
+function TPasRISCV.THART.RMWTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24729,7 +24729,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer); //inline;
+procedure TPasRISCV.THART.RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer); //inline;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -24778,7 +24778,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var TranslatedAddress,PartSize:TPasRISCVUInt64;
 begin
  if ((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE then begin
@@ -24828,7 +24828,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+procedure TPasRISCV.THART.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var TranslatedAddress,PartSize:TPasRISCVUInt64;
 begin
  if ((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE then begin
@@ -24876,7 +24876,7 @@ begin
  end;
 end;
 
-function TPasRISCV.TCPUCore.LoadEx(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.LoadEx(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
 var TranslatedAddress,PartSize,PartValue:TPasRISCVUInt64;
 begin
  result:=false;
@@ -24960,7 +24960,7 @@ begin
  end;
 end;
 
-function TPasRISCV.TCPUCore.StoreEx(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.StoreEx(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
 var TranslatedAddress,PartSize:TPasRISCVUInt64;
 begin
  result:=false;
@@ -25020,50 +25020,50 @@ begin
  end;
 end;
 
-function TPasRISCV.TCPUCore.IsCSRENVCFGEnabled(const aMask:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.IsCSRENVCFGEnabled(const aMask:TPasRISCVUInt64):Boolean;
 var Mask:TPasRISCVUInt64;
 begin
  Mask:=aMask;
- if fState.Mode<TPasRISCV.TCPUCore.TMode.Machine then begin
+ if fState.Mode<TPasRISCV.THART.TMode.Machine then begin
   Mask:=Mask and fState.CSR.fData[TCSR.TAddress.MENVCFG];
  end;
- if fState.Mode<TPasRISCV.TCPUCore.TMode.Supervisor then begin
+ if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
   Mask:=Mask and fState.CSR.fData[TCSR.TAddress.SENVCFG];
  end;
  result:=Mask<>0;
 end;
 
-function TPasRISCV.TCPUCore.CSROpCSRW(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.CSROpCSRW(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  result:=aRHS;
 end;
 
-function TPasRISCV.TCPUCore.CSROpCSRS(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.CSROpCSRS(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  result:=aCSR or aRHS;
 end;
 
-function TPasRISCV.TCPUCore.CSROpCSRC(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.CSROpCSRC(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  result:=aCSR and not aRHS;
 end;
 
-function TPasRISCV.TCPUCore.CSROpCSRWI(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.CSROpCSRWI(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  result:=aRHS;
 end;
 
-function TPasRISCV.TCPUCore.CSROpCSRSI(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.CSROpCSRSI(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  result:=aCSR or aRHS;
 end;
 
-function TPasRISCV.TCPUCore.CSROpCSRCI(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.THART.CSROpCSRCI(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  result:=aCSR and not aRHS;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -25075,7 +25075,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -25086,11 +25086,11 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.TCPUCore.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.TCPUCore.TMode.User then begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
@@ -25102,11 +25102,11 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.TCPUCore.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.TCPUCore.TMode.User then begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
@@ -25117,13 +25117,13 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 begin
 //writeln(aCSR);
  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue:TPasRISCVUInt64;
 begin
@@ -25139,24 +25139,24 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerFCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerFCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue,FExceptions:TPasRISCVUInt64;
 begin
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
- FExceptions:=fState.CSR.fData[TCPUCore.TCSR.TAddress.FFLAGS] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask);
+ FExceptions:=fState.CSR.fData[THART.TCSR.TAddress.FFLAGS] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask);
  OperationValue:=aOperation(CSRValue or FExceptions,aRHS);
  fState.CSR.SetFPURM(OperationValue and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask));
  fState.CSR.ClearFPUExceptions;
  fState.CSR.SetFPUException(OperationValue and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
- fState.CSR.fData[TCPUCore.TCSR.TAddress.FCSR]:=OperationValue and $ff;
+ fState.CSR.fData[THART.TCSR.TAddress.FCSR]:=OperationValue and $ff;
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue and $ff;
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerFFLAGS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerFFLAGS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue,FExceptions:TPasRISCVUInt64;
 begin
@@ -25168,7 +25168,7 @@ begin
  fState.CSR.ClearFPUExceptions;
  fState.CSR.SetFPUException(OperationValue and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
 
- fState.CSR.fData[TCPUCore.TCSR.TAddress.FCSR]:=(fState.CSR.fData[TCPUCore.TCSR.TAddress.FCSR] and not TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask)) or (OperationValue and $ff);
+ fState.CSR.fData[THART.TCSR.TAddress.FCSR]:=(fState.CSR.fData[THART.TCSR.TAddress.FCSR] and not TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask)) or (OperationValue and $ff);
 
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask);
@@ -25176,19 +25176,19 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerFRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerFRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue:TPasRISCVUInt64;
 begin
 
  rd:=TRegister((aInstruction shr 7) and $1f);
- CSRValue:=fState.CSR.fData[TCPUCore.TCSR.TAddress.FCSR] shr 5;
+ CSRValue:=fState.CSR.fData[THART.TCSR.TAddress.FCSR] shr 5;
  OperationValue:=aOperation(CSRValue,aRHS);
 
  fState.CSR.ClearFPURM;
  fState.CSR.SetFPURM(OperationValue and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask));
 
- fState.CSR.fData[TCPUCore.TCSR.TAddress.FCSR]:=((fState.CSR.fData[TCPUCore.TCSR.TAddress.FCSR] and not $e0) or (OperationValue shl 5)) and $ff;
+ fState.CSR.fData[THART.TCSR.TAddress.FCSR]:=((fState.CSR.fData[THART.TCSR.TAddress.FCSR] and not $e0) or (OperationValue shl 5)) and $ff;
 
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask);
@@ -25196,7 +25196,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -25213,12 +25213,12 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     Status,OldStatus,OutStatus,fs,vs,xs,Mask:TPasRISCVUInt64;
 begin
 
- if fState.Mode<TPasRISCV.TCPUCore.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.TCPUCore.TMode.User then begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
 
@@ -25263,9 +25263,9 @@ begin
    end;
   end;
 
-  if TCPUCore.TMode((Status shr 11) and 3)=TCPUCore.TMode.Hypervisor then begin
+  if THART.TMode((Status shr 11) and 3)=THART.TMode.Hypervisor then begin
    // Validate MPP
-   Status:=(Status and not (TPasRISCVUInt64(3) shl TCSR.TMask.TMSTATUSBit.MPP)) or (TPasRISCVUInt64(TCPUCore.TMode.User) shl 11);
+   Status:=(Status and not (TPasRISCVUInt64(3) shl TCSR.TMask.TMSTATUSBit.MPP)) or (TPasRISCVUInt64(THART.TMode.User) shl 11);
   end;
 
   if ((Status and $a) and not (OldStatus and $a))<>0 then begin
@@ -25282,19 +25282,19 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+procedure TPasRISCV.THART.CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.TCPUCore.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.TCPUCore.TMode.User then begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   if IsCSRENVCFGEnabled(TCSR.ENVCFG_STCE) then begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    CSRValue:=fState.CSR.Load(aCSR);
    fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
-   if ((fState.CSR.fData[TCSR.TAddress.MIP] and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) xor (fMachine.fACLINTDevice.GetTime>=fSTIMECMP) then begin
-    fState.CSR.fData[TCSR.TAddress.MIP]:=fState.CSR.fData[TCSR.TAddress.MIP] xor TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
+   if ((fState.CSR.fData[TCSR.TAddress.MIP] and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) xor (fMachine.fACLINTDevice.GetTime>=fSTIMECMP) then begin
+    fState.CSR.fData[TCSR.TAddress.MIP]:=fState.CSR.fData[TCSR.TAddress.MIP] xor TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
    end;
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=CSRValue;
@@ -25305,7 +25305,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.SetFPUExceptions(const aMask:TPasRISCVUInt32=$3f);
+procedure TPasRISCV.THART.SetFPUExceptions(const aMask:TPasRISCVUInt32=$3f);
 var Exceptions:TPasRISCVUInt32;
 begin
  Exceptions:=fetestexcept(FE_ALL_EXCEPT);
@@ -25330,7 +25330,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.Breakpoint(const aInstruction:TPasRISCVUInt32);
+procedure TPasRISCV.THART.Breakpoint(const aInstruction:TPasRISCVUInt32);
 begin
  if assigned(fMachine.fDebugger) and fMachine.fDebugger.Halt then begin
   SetException(TExceptionValue.DebuggerBreakpoint,aInstruction,fState.PC);
@@ -25339,7 +25339,7 @@ begin
  end;
 end;
 
-function TPasRISCV.TCPUCore.FetchInstruction(const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32):Boolean;
+function TPasRISCV.THART.FetchInstruction(const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32):Boolean;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -25405,7 +25405,7 @@ begin
 
 end;
 
-function TPasRISCV.TCPUCore.GetInstructionSize(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+function TPasRISCV.THART.GetInstructionSize(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
 begin
  if (aInstruction and 3)=3 then begin
   result:=4; // Normal instruction
@@ -25420,7 +25420,7 @@ end;
  {$codealign loop=16}
  {$codealign proc=16}
 {$endif}
-function TPasRISCV.TCPUCore.ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+function TPasRISCV.THART.ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
 // This function decodes and executes a single RISC-V instruction by using a simple but effective
 // switch-based interpreter. This approach is chosen for its simplicity, portability, and ease of
 // maintenance. The function is designed to be easily extensible to support additional instruction
@@ -25517,7 +25517,7 @@ begin
      LoadRegisterF64(frd,fState.Registers[rs1]+Offset);
 {$else}
      Temporary:=Load64(fState.Registers[rs1]+Offset);
-     if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
+     if fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None then begin
       fState.FPURegisters[frd].ui64:=Temporary;
       fState.CSR.SetFSDirty;
      end;
@@ -25535,7 +25535,7 @@ begin
      LoadRegisterS32(rd,fState.Registers[rs1]+TPasRISCVUInt64(Immediate));
 {$else}
      Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Load32(fState.Registers[rs1]+TPasRISCVUInt64(Immediate)))));
-     if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+     if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
       fState.Registers[rd]:=Temporary;
      end;
 {$endif}
@@ -25551,7 +25551,7 @@ begin
      LoadRegisterU64(rd,fState.Registers[rs1]+Offset);
 {$else}
      Temporary:=Load64(fState.Registers[rs1]+Offset);
-     if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+     if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
       fState.Registers[rd]:=Temporary;
      end;
 {$endif}
@@ -25569,7 +25569,7 @@ begin
        LoadRegisterU8(TRegister(((aInstruction shr 2) and $7)+8),fState.Registers[rs1]+Offset);
 {$else}
        Temporary:=Load8(fState.Registers[rs1]+Offset);
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         rd:=TRegister(((aInstruction shr 2) and $7)+8);
         fState.Registers[rd]:=Temporary;
        end;
@@ -25600,7 +25600,7 @@ begin
 {$endif}
        end;
 {$ifndef UseSpecializedRegisterLoadStores}
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         rd:=TRegister(((aInstruction shr 2) and $7)+8);
         fState.Registers[rd]:=Temporary;
        end;
@@ -26014,7 +26014,7 @@ begin
       LoadRegisterF64(frd,fState.Registers[TRegister.SP]+Offset);
 {$else}
       Temporary:=Load64(fState.Registers[TRegister.SP]+Offset);
-      if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
+      if fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None then begin
        fState.FPURegisters[frd].ui64:=Temporary;
        fState.CSR.SetFSDirty;
       end;
@@ -26039,7 +26039,7 @@ begin
       LoadRegisterS32(rd,fState.Registers[TRegister.SP]+Offset);
 {$else}
       Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Load32(fState.Registers[TRegister.SP]+Offset))));
-      if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
+      if fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None then begin
        fState.Registers[rd]:=Temporary;
       end;
 {$endif}
@@ -26062,7 +26062,7 @@ begin
       LoadRegisterU64(rd,fState.Registers[TRegister.SP]+Offset);
 {$else}
       Temporary:=Load64(fState.Registers[TRegister.SP]+Offset);
-      if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
+      if fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None then begin
        fState.Registers[rd]:=Temporary;
       end;
 {$endif}
@@ -26198,7 +26198,7 @@ begin
        LoadRegisterS8(rd,Address);
 {$else}
        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Load8(Address))));
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -26211,7 +26211,7 @@ begin
        LoadRegisterS16(rd,Address);
 {$else}
        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Load16(Address))));
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -26224,7 +26224,7 @@ begin
        LoadRegisterS32(rd,Address);
 {$else}
        Temporary:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Load32(Address))));
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -26237,7 +26237,7 @@ begin
        LoadRegisterU64(rd,Address);
 {$else}
        Temporary:=Load64(Address);
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -26250,7 +26250,7 @@ begin
        LoadRegisterU8(rd,Address);
 {$else}
        Temporary:=Load8(Address);
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -26263,7 +26263,7 @@ begin
        LoadRegisterU16(rd,Address);
 {$else}
        Temporary:=Load16(Address);
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -26276,7 +26276,7 @@ begin
        LoadRegisterU32(rd,Address);
 {$else}
        Temporary:=Load32(Address);
-       if (fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
+       if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -27649,9 +27649,9 @@ begin
        case (aInstruction shr 25) and $7f of
         $09:begin
          // SFENCEVMA7
-         if ((fState.Mode>=TCPUCore.TMode.Supervisor) and
+         if ((fState.Mode>=THART.TMode.Supervisor) and
              ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0)) or
-            (fState.Mode=TCPUCore.TMode.Machine) then begin
+            (fState.Mode=THART.TMode.Machine) then begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           if rs1<>TRegister.Zero then begin
            FlushTLBPage(true,fState.Registers[rs1]);
@@ -27681,22 +27681,22 @@ begin
           $00:begin
            // ecall
            case fState.Mode of
-            TCPUCore.TMode.User:begin
+            THART.TMode.User:begin
              SetException(TExceptionValue.ECallUMode,fState.PC,fState.PC);
              result:=4;
              exit;
             end;
-            TCPUCore.TMode.Supervisor:begin
+            THART.TMode.Supervisor:begin
              SetException(TExceptionValue.ECallSMode,fState.PC,fState.PC);
              result:=4;
              exit;
             end;
-            TCPUCore.TMode.Hypervisor:begin
+            THART.TMode.Hypervisor:begin
              SetException(TExceptionValue.ECallHMode,fState.PC,fState.PC);
              result:=4;
              exit;
             end;
-            TCPUCore.TMode.Machine:begin
+            THART.TMode.Machine:begin
              SetException(TExceptionValue.ECallMMode,fState.PC,fState.PC);
              result:=4;
              exit;
@@ -27725,16 +27725,16 @@ begin
             end;
             $08:begin
              // sret7
-             if ((fState.Mode>=TCPUCore.TMode.Supervisor) and
+             if ((fState.Mode>=THART.TMode.Supervisor) and
                  ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TSR))=0)) or
-                (fState.Mode=TCPUCore.TMode.Machine) then begin
+                (fState.Mode=THART.TMode.Machine) then begin
 
               Temporary:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
 
-              SetMode(TCPUCore.TMode((Temporary shr TCSR.TMask.TSSTATUSBit.SPP) and 1));
+              SetMode(THART.TMode((Temporary shr TCSR.TMask.TSSTATUSBit.SPP) and 1));
 
               // Set SPP to U
-              Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((ord(TCPUCore.TMode.User) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+              Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((ord(THART.TMode.User) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
 
               // Set SIE to SPIE
               Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE)) or (((Temporary shr TCSR.TMask.TSSTATUSBit.SPIE) and 1) shl TCSR.TMask.TSSTATUSBit.SIE);
@@ -27759,19 +27759,19 @@ begin
             end;
             $18:begin
              // mret7
-             if fState.Mode=TCPUCore.TMode.Machine then begin
+             if fState.Mode=THART.TMode.Machine then begin
 
               Temporary:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
 
-              SetMode(TCPUCore.TMode((Temporary shr TCSR.TMask.TMSTATUSBit.MPP) and 3));
+              SetMode(THART.TMode((Temporary shr TCSR.TMask.TMSTATUSBit.MPP) and 3));
 
               // Clear MPRV when returning to less privileged mode
-              if fState.Mode<TCPUCore.TMode.Machine then begin
+              if fState.Mode<THART.TMode.Machine then begin
                Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPRV);
               end;
 
               // Set MPP to U
-              Temporary:=(Temporary and not (TPasRISCVUInt64(3) shl TCSR.TMask.TMSTATUSBit.MPP)) or ((ord(TCPUCore.TMode.User) and 3) shl TCSR.TMask.TMSTATUSBit.MPP);
+              Temporary:=(Temporary and not (TPasRISCVUInt64(3) shl TCSR.TMask.TMSTATUSBit.MPP)) or ((ord(THART.TMode.User) and 3) shl TCSR.TMask.TMSTATUSBit.MPP);
 
               // Set MIE to MPIE
               Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE)) or (((Temporary shr TCSR.TMask.TMSTATUSBit.MPIE) and 1) shl TCSR.TMask.TMSTATUSBit.MIE);
@@ -27804,9 +27804,9 @@ begin
            case (aInstruction shr 25) and $7f of
             $08:begin
              // wfi7
-             if ((fState.Mode>=TCPUCore.TMode.Supervisor) and
+             if ((fState.Mode>=THART.TMode.Supervisor) and
                  ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))=0)) or
-                (fState.Mode=TCPUCore.TMode.Machine) then begin
+                (fState.Mode=THART.TMode.Machine) then begin
               if InterruptsPending=0 then begin // ((fState.CSR.fData[TCSR.TAddress.MIE] and fState.CSR.fData[TCSR.TAddress.MIP])=0) then begin
                SleepUntilNextInterrupt;
               end;
@@ -27904,7 +27904,7 @@ begin
         LoadRegisterF32(frd,Address);
 {$else}
         Temporary:=Load32(Address) or TPasRISCVUInt64($ffffffff00000000);
-        if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
+        if fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None then begin
          fState.FPURegisters[frd].ui64:=Temporary;
          fState.CSR.SetFSDirty;
         end;
@@ -27924,7 +27924,7 @@ begin
         LoadRegisterF64(frd,Address);
 {$else}
         Temporary:=Load64(Address);
-        if fState.ExceptionValue=TPasRISCV.TCPUCore.TExceptionValue.None then begin
+        if fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None then begin
          fState.FPURegisters[frd].ui64:=Temporary;
          fState.CSR.SetFSDirty;
         end;
@@ -29851,17 +29851,17 @@ begin
 end;
 {$ifdef fpc}{$pop}{$endif}
 
-function TPasRISCV.TCPUCore.InterruptsRaised:TPasRISCVUInt64;
+function TPasRISCV.THART.InterruptsRaised:TPasRISCVUInt64;
 begin
  result:=TPasMPInterlocked.Read(fState.PendingIRQs);
 end;
 
-function TPasRISCV.TCPUCore.InterruptsPending:TPasRISCVUInt64;
+function TPasRISCV.THART.InterruptsPending:TPasRISCVUInt64;
 begin
  result:=(TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.MIE];
 end;
 
-procedure TPasRISCV.TCPUCore.ClearInterrupt(const aInterruptValue:TPasRISCV.TCPUCore.TInterruptValue);
+procedure TPasRISCV.THART.ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
 var Mask:TPasRISCVUInt64;
 begin
  Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
@@ -29869,7 +29869,7 @@ begin
  TPasMPInterlocked.BitwiseAnd(fState.CSR.fData[TCSR.TAddress.MIP],TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
 end;
 
-procedure TPasRISCV.TCPUCore.RaiseInterrupt(const aInterruptValue:TPasRISCV.TCPUCore.TInterruptValue);
+procedure TPasRISCV.THART.RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
 var Mask:TPasRISCVUInt64;
 begin
  Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
@@ -29884,11 +29884,11 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.HandleInterrupts;
+procedure TPasRISCV.THART.HandleInterrupts;
 var PC,Status,PendingIRQs,IRQs,IDELEG:TPasRISCVUInt64;
     MIP:TPasRISCVUInt32;
-    Mode,Privilege:TCPUCore.TMode;
-    InterruptValue:TPasRISCV.TCPUCore.TInterruptValue;
+    Mode,Privilege:THART.TMode;
+    InterruptValue:TPasRISCV.THART.TInterruptValue;
 begin
 
  PendingIRQs:=fState.CSR.fData[TCSR.TAddress.MIP] and fState.CSR.fData[TCSR.TAddress.MIE];
@@ -29930,7 +29930,7 @@ begin
 
     TMode.Machine:begin
 
-     SetMode(TCPUCore.TMode.Machine);
+     SetMode(THART.TMode.Machine);
 
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
 
@@ -29949,7 +29949,7 @@ begin
 
     TMode.Supervisor:begin
 
-     SetMode(TCPUCore.TMode.Supervisor);
+     SetMode(THART.TMode.Supervisor);
 
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
 
@@ -29977,9 +29977,9 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.ExecuteException;
+procedure TPasRISCV.THART.ExecuteException;
 var Status:TPasRISCVUInt64;
-    Mode,Privilege:TCPUCore.TMode;
+    Mode,Privilege:THART.TMode;
 begin
 
  if fState.ExceptionValue=TExceptionValue.DebuggerBreakpoint then begin
@@ -29993,21 +29993,21 @@ begin
 
  Mode:=fState.Mode;
 
- if (TCPUCore.TMode.Machine>Mode) and ((fState.CSR.fData[TCSR.TAddress.MEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
-//if (TCPUCore.TMode.Hypervisor>Mode) and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
-   Privilege:=TCPUCore.TMode.Supervisor;
+ if (THART.TMode.Machine>Mode) and ((fState.CSR.fData[TCSR.TAddress.MEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
+//if (THART.TMode.Hypervisor>Mode) and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
+   Privilege:=THART.TMode.Supervisor;
 { end else begin
-   Privilege:=TCPUCore.TMode.Hypervisor;
+   Privilege:=THART.TMode.Hypervisor;
   end;}
  end else begin
-  Privilege:=TCPUCore.TMode.Machine;
+  Privilege:=THART.TMode.Machine;
  end;
 
  case Privilege of
 
-  TCPUCore.TMode.Supervisor:begin
+  THART.TMode.Supervisor:begin
 
-   SetMode(TCPUCore.TMode.Supervisor);
+   SetMode(THART.TMode.Supervisor);
 
    fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
 
@@ -30024,9 +30024,9 @@ begin
 
   end;
 
-  else {TCPUCore.TMode.Machine:}begin
+  else {THART.TMode.Machine:}begin
 
-   SetMode(TCPUCore.TMode.Machine);
+   SetMode(THART.TMode.Machine);
 
    fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
 
@@ -30049,7 +30049,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.SleepUntilNextInterrupt;
+procedure TPasRISCV.THART.SleepUntilNextInterrupt;
 var SleepDuration,CurrentSleepDuration,WaitForDuration,
     Time,TimeA,TimeB,ActiveTimers,MTIMECMP,STIMECMP,SleepThreshold,
     Remaining,Difference:TPasRISCVUInt64;
@@ -30057,9 +30057,9 @@ begin
 
  fState.Sleep:=true;
 
- if (fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] and (TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer))=0 then begin
+ if (fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer))=0 then begin
 
-  ActiveTimers:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIE] and (TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer);
+  ActiveTimers:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIE] and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer);
 
   if ActiveTimers<>0 then begin
 
@@ -30069,7 +30069,7 @@ begin
 
    MTIMECMP:=fMTIMECMP;
    if (MTIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
-      ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer)<>0) and
+      ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and
       (Time<MTIMECMP) then begin
     CurrentSleepDuration:=TPasRISCVInt64(MTIMECMP)-TPasRISCVInt64(Time);
     if CurrentSleepDuration<SleepDuration then begin
@@ -30079,7 +30079,7 @@ begin
 
    STIMECMP:=fSTIMECMP;
    if (STIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
-      ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) and
+      ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and
       (Time<STIMECMP) then begin
     CurrentSleepDuration:=TPasRISCVInt64(STIMECMP)-TPasRISCVInt64(Time);
     if CurrentSleepDuration<SleepDuration then begin
@@ -30150,12 +30150,12 @@ begin
 
    end;
 
-   if ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP) then begin
-    fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer;
+   if ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP) then begin
+    fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] or TPasRISCV.THART.TInterruptValueMasks.MachineTimer;
    end;
 
-   if ((ActiveTimers and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=STIMECMP) then begin
-    fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
+   if ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=STIMECMP) then begin
+    fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
    end;
 
   end;
@@ -30166,7 +30166,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.SleepPause;
+procedure TPasRISCV.THART.SleepPause;
 begin
  fMachine.fWakeUpConditionVariableLock.Acquire;
  try
@@ -30176,46 +30176,46 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.HandlePendingInterrupts;
+procedure TPasRISCV.THART.HandlePendingInterrupts;
 var MIP,Time,TimeCmp:TPasRISCVUInt64;
 begin
 
  Time:=fACLINTDevice.GetTime;
 
- MIP:=fState.CSR.fData[TPasRISCV.TCPUCore.TCSR.TAddress.MIP] or TPasMPInterlocked.Exchange(fState.PendingIRQs,0);
+ MIP:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] or TPasMPInterlocked.Exchange(fState.PendingIRQs,0);
 
  TimeCmp:=fMTIMECMP;
  if Time>=TimeCmp then begin
-  MIP:=MIP or TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer;
+  MIP:=MIP or TPasRISCV.THART.TInterruptValueMasks.MachineTimer;
  end else begin
-  MIP:=MIP and not TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer;
+  MIP:=MIP and not TPasRISCV.THART.TInterruptValueMasks.MachineTimer;
  end;
 
  TimeCmp:=fSTIMECMP;
  if Time>=TimeCmp then begin
-  MIP:=MIP or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
+  MIP:=MIP or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
  end else begin
-  MIP:=MIP and not TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer;
+  MIP:=MIP and not TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
  end;
 
  fState.CSR.fData[TCSR.TAddress.MIP]:=MIP;
 
 end;
 
-procedure TPasRISCV.TCPUCore.CheckPendingInterrupts;
+procedure TPasRISCV.THART.CheckPendingInterrupts;
 var Interrupts,Time:TPasRISCVUInt64;
 begin
- Interrupts:=(fState.CSR.fData[TCSR.TAddress.MIE] and not fState.CSR.fData[TCSR.TAddress.MIP]) and (TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer or TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer);
+ Interrupts:=(fState.CSR.fData[TCSR.TAddress.MIE] and not fState.CSR.fData[TCSR.TAddress.MIP]) and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer);
  if Interrupts<>0 then begin
   Time:=fACLINTDevice.GetTime;
-  if (((Interrupts and TPasRISCV.TCPUCore.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP)) or
-     (((Interrupts and TPasRISCV.TCPUCore.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=fSTIMECMP)) then begin
+  if (((Interrupts and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP)) or
+     (((Interrupts and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=fSTIMECMP)) then begin
    TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
   end;
  end;
 end;
 
-procedure TPasRISCV.TCPUCore.Execute;
+procedure TPasRISCV.THART.Execute;
 type PDirectAccessTLBEntry=TMMU.PDirectAccessTLBEntry;
 var Instruction:TPasRISCVUInt32;
     InstructionAddress,PageAddress:TPasRISCVUInt64;
@@ -30297,7 +30297,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.ThreadProc;
+procedure TPasRISCV.THART.ThreadProc;
 var HARTActive:Boolean;
 begin
 
@@ -30363,7 +30363,7 @@ begin
 
 end;
 
-procedure TPasRISCV.TCPUCore.DumpRegisters;
+procedure TPasRISCV.THART.DumpRegisters;
 var Register:TRegister;
     FPURegister:TFPURegister;
     s:string;
@@ -30399,8 +30399,8 @@ begin
  fRecvSize:=0;
  fSendBufferString:='';
  fEvent:=TRNLNetworkEvent.Create;
- if fDebugger.fMachine.fCountCPUCores>0 then begin
-  fHART:=fDebugger.fMachine.fCPUCores[0];
+ if fDebugger.fMachine.fCountHARTs>0 then begin
+  fHART:=fDebugger.fMachine.fHARTs[0];
  end else begin
   fHART:=nil;
  end;
@@ -30955,11 +30955,11 @@ end;
 
 procedure TPasRISCV.TDebugger.TClientThread.ProcessReadRegisters;
 var s:TPasRISCVRawByteString;
-    Register:TCPUCore.TRegister;
+    Register:THART.TRegister;
 begin
  if assigned(fHART) then begin
   s:='';
-  for Register:=TCPUCore.TRegister(0) to TCPUCore.TRegister(31) do begin
+  for Register:=THART.TRegister(0) to THART.TRegister(31) do begin
    s:=s+LittleEndianValueToHex(fHART.fState.Registers[Register],8);
   end;
   s:=s+LittleEndianValueToHex(fHART.fState.PC,8);
@@ -30971,11 +30971,11 @@ end;
 
 procedure TPasRISCV.TDebugger.TClientThread.ProcessWriteRegisters(const aPacketString:TPasRISCVRawByteString);
 var StringPosition:TPasRISCVSizeInt;
-    Register:TCPUCore.TRegister;
+    Register:THART.TRegister;
 begin
  if assigned(fHART) then begin
   StringPosition:=1;
-  for Register:=TCPUCore.TRegister(0) to TCPUCore.TRegister(31) do begin
+  for Register:=THART.TRegister(0) to THART.TRegister(31) do begin
    if (StringPosition+16)<=length(aPacketString) then begin
     fHART.fState.Registers[Register]:=HexToLittleEndianValue(aPacketString,StringPosition,8);
    end else begin
@@ -30997,8 +30997,8 @@ begin
   if (Position<=length(aPacketString)) and (aPacketString[Position]='g') then begin
    inc(Position);
    ThreadID:=StrToUIntBase(aPacketString,Position,Size,16);
-   if ThreadID<fDebugger.fMachine.fCountCPUCores then begin
-    fHART:=fDebugger.fMachine.fCPUCores[ThreadID];
+   if ThreadID<fDebugger.fMachine.fCountHARTs then begin
+    fHART:=fDebugger.fMachine.fHARTs[ThreadID];
    end else begin
     fHART:=nil;
    end;
@@ -31069,9 +31069,9 @@ begin
   ReplyString(s);
  end else if QueryCommand='fThreadInfo' then begin
   s:='m';
-  for HARTIndex:=0 to fDebugger.fMachine.fCountCPUCores-1 do begin
+  for HARTIndex:=0 to fDebugger.fMachine.fCountHARTs-1 do begin
    s:=s+IntToStr(HARTIndex);
-   if (HARTIndex+1)<fDebugger.fMachine.fCountCPUCores then begin
+   if (HARTIndex+1)<fDebugger.fMachine.fCountHARTs then begin
     s:=s+',';
    end;
   end;
@@ -31512,7 +31512,7 @@ begin
  fDebugger:=false;
  fDebuggerPort:=1234;
 
- fCountCPUCores:=1;
+ fCountHARTs:=1;
 
  fBootArguments:='root=/dev/mem rw earlyprintk console=$LINUXUART$ console=tty0 earlycon=sbi';
 
@@ -31610,7 +31610,7 @@ begin
  fDebugger:=aConfiguration.fDebugger;
  fDebuggerPort:=aConfiguration.fDebuggerPort;
 
- fCountCPUCores:=aConfiguration.fCountCPUCores;
+ fCountHARTs:=aConfiguration.fCountHARTs;
 
  fBootArguments:=aConfiguration.fBootArguments;
 
@@ -31779,7 +31779,7 @@ end;
 
 constructor TPasRISCV.Create(const aConfiguration:TConfiguration);
 var Index:TPasRISCVSizeInt;
-    CPUCore:TCPUCore;
+    HART:THART;
 begin
  inherited Create;
 
@@ -31804,11 +31804,11 @@ begin
   fConfiguration.Assign(aConfiguration);
  end;
 
- fCountCPUCores:=fConfiguration.fCountCPUCores;
- if fCountCPUCores<1 then begin
-  fCountCPUCores:=1;
- end else if fCountCPUCores>16 then begin
-  fCountCPUCores:=16;
+ fCountHARTs:=fConfiguration.fCountHARTs;
+ if fCountHARTs<1 then begin
+  fCountHARTs:=1;
+ end else if fCountHARTs>16 then begin
+  fCountHARTs:=16;
  end;
 
  InitializeFDT;
@@ -31911,17 +31911,17 @@ begin
  fNVMeDevice:=TNVMeDevice.Create(fPCIBusDevice);
  fPCIBusDevice.AddBusDevice(fNVMeDevice);
 
- fCPUCores:=nil;
- SetLength(fCPUCores,fCountCPUCores);
- for Index:=0 to length(fCPUCores)-1 do begin
-  CPUCore:=TCPUCore.Create(self,Index);
+ fHARTs:=nil;
+ SetLength(fHARTs,fCountHARTs);
+ for Index:=0 to length(fHARTs)-1 do begin
+  HART:=THART.Create(self,Index);
   try
   finally
-   fCPUCores[Index]:=CPUCore;
+   fHARTs[Index]:=HART;
   end;
  end;
 
- fCPUCore:=fCPUCores[0];
+ fHART:=fHARTs[0];
 
  if fConfiguration.fDebugger then begin
 
@@ -31939,7 +31939,7 @@ end;
 
 destructor TPasRISCV.Destroy;
 var Index:TPasRISCVSizeInt;
-//  CPUCore:TCPUCore;
+//  HART:THART;
 begin
 
  if assigned(fDebugger) then begin
@@ -31954,12 +31954,12 @@ begin
 
  fJobManager.Shutdown;
 
- for Index:=0 to length(fCPUCores)-1 do begin
-  FreeAndNil(fCPUCores[Index]);
+ for Index:=0 to length(fHARTs)-1 do begin
+  FreeAndNil(fHARTs[Index]);
  end;
 
- fCPUCores:=nil;
- fCPUCore:=nil;
+ fHARTs:=nil;
+ fHART:=nil;
 
  fPCIBusDevice.RemoveBusDevice(fNVMeDevice);
 
@@ -32032,13 +32032,13 @@ end;
 
 procedure TPasRISCV.ShutdownCPUs;
 var Index:TPasRISCVSizeInt;
-    CPUCore:TCPUCore;
+    HART:THART;
 begin
 
- for Index:=0 to length(fCPUCores)-1 do begin
-  CPUCore:=fCPUCores[Index];
-  if not CPUCore.fExecutionThread.Finished then begin
-   CPUCore.fExecutionThread.Terminate;
+ for Index:=0 to length(fHARTs)-1 do begin
+  HART:=fHARTs[Index];
+  if not HART.fExecutionThread.Finished then begin
+   HART.fExecutionThread.Terminate;
   end;
  end;
 
@@ -32060,10 +32060,10 @@ begin
   fHARTStatusChangeConditionVariableLock.Release;
  end;
 
- for Index:=0 to length(fCPUCores)-1 do begin
-  CPUCore:=fCPUCores[Index];
-  if not CPUCore.fExecutionThread.Finished then begin
-   CPUCore.fExecutionThread.WaitFor;
+ for Index:=0 to length(fHARTs)-1 do begin
+  HART:=fHARTs[Index];
+  if not HART.fExecutionThread.Finished then begin
+   HART.fExecutionThread.WaitFor;
   end;
  end;
 
@@ -32167,7 +32167,7 @@ begin
    CPUClusterNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cluster0');
    try
 
-    for Index:=0 to length(fCPUCores)-1 do begin
+    for Index:=0 to length(fHARTs)-1 do begin
 
      CPUNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpu@'+IntToStr(Index));
      try
@@ -32289,13 +32289,13 @@ begin
    Cells[3]:=fConfiguration.fPLICSize;
    PLIC0.AddPropertyCells('reg',@Cells,4);
 
-   for Index:=0 to length(fCPUCores)-1 do begin
+   for Index:=0 to length(fHARTs)-1 do begin
     InterruptExtCells[(Index shl 2) or 0]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(TCPUCore.TInterruptValue.MachineExternal);
+    InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(THART.TInterruptValue.MachineExternal);
     InterruptExtCells[(Index shl 2) or 2]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(TCPUCore.TInterruptValue.SupervisorExternal);
+    InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(THART.TInterruptValue.SupervisorExternal);
    end;
-   PLIC0.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fCPUCores)*4);
+   PLIC0.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fHARTs)*4);
 
    PLIC0.AddPropertyCells('interrupt-controller',nil,0);
 // PLIC0.AddPropertyString('compatible','riscv,plic0');
@@ -32316,13 +32316,13 @@ begin
    Cells[3]:=fConfiguration.fCLINTSize;
    ACLINTNode.AddPropertyCells('reg',@Cells,4);
 
-   for Index:=0 to length(fCPUCores)-1 do begin
+   for Index:=0 to length(fHARTs)-1 do begin
     InterruptExtCells[(Index shl 2) or 0]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(TCPUCore.TInterruptValue.MachineSoftware);
+    InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(THART.TInterruptValue.MachineSoftware);
     InterruptExtCells[(Index shl 2) or 2]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(TCPUCore.TInterruptValue.MachineTimer);
+    InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(THART.TInterruptValue.MachineTimer);
    end;
-   ACLINTNode.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fCPUCores)*4);
+   ACLINTNode.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fHARTs)*4);
 
    ACLINTNode.AddPropertyString('compatible','sifive,clint0'#0'riscv,clint0'#0);
 
@@ -33088,8 +33088,8 @@ begin
 
  fNVMeDevice.Reset;
 
- for Index:=0 to length(fCPUCores)-1 do begin
-  fCPUCores[Index].Init;
+ for Index:=0 to length(fHARTs)-1 do begin
+  fHARTs[Index].Init;
  end;
 
 end;
@@ -33149,8 +33149,8 @@ begin
 
    if aSingleStep and ((fRunState and RUNSTATE_SINGLESTEP)<>0) then begin
 
-    for Index:=0 to length(fCPUCores)-1 do begin
-     fCPUCores[Index].Execute;
+    for Index:=0 to length(fHARTs)-1 do begin
+     fHARTs[Index].Execute;
     end;
 
     SingleStepExecuted:=true;
