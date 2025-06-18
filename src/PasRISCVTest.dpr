@@ -127,9 +127,29 @@ begin
  Configuration:=TPasRISCV.TConfiguration.Create;
  try
 
-  Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'bios.bin');
+  Configuration.CountHARTs:=4;
 
-  Configuration.LoadKernelFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'kernel.bin');
+  Configuration.MemorySize:=TPasRISCVUInt64(2048) shl 20; // 2GB
+
+  if ParamStr(1)='image' then begin
+   // Image
+   if ParamStr(2)='kernel' then begin
+    // With other external kernel
+    Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_jump.bin');
+    Configuration.LoadKernelFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'kernel.bin');
+   end else begin
+    // With image-embedded kernel
+    Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_payload.bin');
+   end;
+   Configuration.BootArguments:='root=/dev/vda1 rw noquiet rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+// Configuration.BootArguments:='root=LABEL=rootfs rw noquiet rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+// Configuration.BootArguments:='root=/dev/vda1 rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+  end else begin
+   // Buildroot
+   Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_jump.bin');
+   Configuration.LoadKernelFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'kernel.bin');
+   Configuration.BootArguments:='root=/dev/mem rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+  end;
 
   MachineInstance:=TMachineInstance.Create;
 
@@ -137,6 +157,10 @@ begin
 
    Machine:=TPasRISCV.Create(Configuration);
    try
+
+    if ParamStr(1)='image' then begin
+     Machine.VirtIOBlockDevice.AttachStream(TFileStream.Create(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'image.img',fmOpenReadWrite{or fmShareDenyNone}));
+    end;
 
     Machine.OnReboot:=MachineInstance.OnReboot;
 
@@ -462,6 +486,6 @@ end;
 
 begin
  SetExceptionMask([exInvalidOp,exDenormalized,exZeroDivide,exOverflow,exUnderflow,exPrecision]);
- RunTests;
-//Run;
+//RunTests;
+ Run;
 end.
