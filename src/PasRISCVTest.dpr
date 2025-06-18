@@ -56,7 +56,7 @@ type { TMachineInstance }
       public
        procedure Boot;
        procedure OnReboot;
-       function OnCPUException(const aCPUCore:TPasRISCV.TCPUCore;const aExceptionValue:TPasRISCV.TCPUCore.TExceptionValue;const aExceptionData:TPasRISCVUInt64;const aExceptionPC:TPasRISCVUInt64):Boolean;
+       function OnCPUException(const aHART:TPasRISCV.THART;const aExceptionValue:TPasRISCV.THART.TExceptionValue;const aExceptionData:TPasRISCVUInt64;const aExceptionPC:TPasRISCVUInt64):Boolean;
      end;
 
 { TReboot }
@@ -77,15 +77,15 @@ begin
  Boot;
 end;
 
-function TMachineInstance.OnCPUException(const aCPUCore:TPasRISCV.TCPUCore;const aExceptionValue:TPasRISCV.TCPUCore.TExceptionValue;const aExceptionData:TPasRISCVUInt64;const aExceptionPC:TPasRISCVUInt64):Boolean;
+function TMachineInstance.OnCPUException(const aHART:TPasRISCV.THART;const aExceptionValue:TPasRISCV.THART.TExceptionValue;const aExceptionData:TPasRISCVUInt64;const aExceptionPC:TPasRISCVUInt64):Boolean;
 begin
  case aExceptionValue of
-  TPasRISCV.TCPUCore.TExceptionValue.ECallUMode,
-  TPasRISCV.TCPUCore.TExceptionValue.ECallSMode,
-  TPasRISCV.TCPUCore.TExceptionValue.ECallHMode,
-  TPasRISCV.TCPUCore.TExceptionValue.ECallMMode:begin
-   if Machine.CPUCore.State^.Registers[TPasRISCV.TCPUCore.TRegister.A7]=93 then begin // Exit syscall
-    TestErrorCode:=Machine.CPUCore.State^.Registers[TPasRISCV.TCPUCore.TRegister.A0];
+  TPasRISCV.THART.TExceptionValue.ECallUMode,
+  TPasRISCV.THART.TExceptionValue.ECallSMode,
+  TPasRISCV.THART.TExceptionValue.ECallHMode,
+  TPasRISCV.THART.TExceptionValue.ECallMMode:begin
+   if Machine.HART.State^.Registers[TPasRISCV.THART.TRegister.A7]=93 then begin // Exit syscall
+    TestErrorCode:=Machine.HART.State^.Registers[TPasRISCV.THART.TRegister.A0];
     result:=true;
    end else begin
     result:=false;
@@ -262,7 +262,7 @@ begin
      HTIF_SYSTEM_CMD_SYSCALL:begin
       if (Payload and 1)<>0 then begin
        HTIFExitCode:=Payload shr 1;
-       TestErrorCode:=Machine.CPUCore.State^.Registers[TPasRISCV.TCPUCore.TRegister.A0];
+       TestErrorCode:=Machine.HART.State^.Registers[TPasRISCV.THART.TRegister.A0];
       end else begin
        SysCall[0]:=Machine.Bus.Load(nil,Payload+(0*SizeOf(TPasRISCVUInt64)),8);
        SysCall[1]:=Machine.Bus.Load(nil,Payload+(1*SizeOf(TPasRISCVUInt64)),8);
@@ -356,14 +356,14 @@ begin
   FailedOnException:=false;
 
   repeat
-//   WriteLn('PC=',LowerCase(IntToHex(Machine.CPUCore.State^.PC,16)));
-{  if Machine.CPUCore.State^.PC=TPasRISCVUInt64($FFFFFFFFFFE022C8) then begin
+//   WriteLn('PC=',LowerCase(IntToHex(Machine.HART.State^.PC,16)));
+{  if Machine.HART.State^.PC=TPasRISCVUInt64($FFFFFFFFFFE022C8) then begin
     Sleep(0);
    end;//}
-{  if Machine.CPUCore.State^.PC=TPasRISCVUInt64($0000000000002AA4) then begin
+{  if Machine.HART.State^.PC=TPasRISCVUInt64($0000000000002AA4) then begin
     Sleep(0);
    end;//}
-{  if Machine.CPUCore.State^.PC=TPasRISCVUInt64($0000000000002f1c) then begin
+{  if Machine.HART.State^.PC=TPasRISCVUInt64($0000000000002f1c) then begin
     Sleep(0);
    end;//}
   // Sleep(20);
@@ -377,13 +377,13 @@ begin
    end;
 
    if not VModeTest then begin
-    if (Machine.CPUCore.State^.ExceptionValue<>TPasRISCV.TCPUCore.TExceptionValue.None) and
-       (Machine.CPUCore.State^.CSR.Load(TPasRISCV.TCPUCore.TCSR.TAddress.MTVEC)=0) and
-       (Machine.CPUCore.State^.CSR.Load(TPasRISCV.TCPUCore.TCSR.TAddress.STVEC)=0) then begin
+    if (Machine.HART.State^.ExceptionValue<>TPasRISCV.THART.TExceptionValue.None) and
+       (Machine.HART.State^.CSR.Load(TPasRISCV.THART.TCSR.TAddress.MTVEC)=0) and
+       (Machine.HART.State^.CSR.Load(TPasRISCV.THART.TCSR.TAddress.STVEC)=0) then begin
      FailedOnException:=true;
      break;
     end else begin
-     Machine.CPUCore.ClearException;
+     Machine.HART.ClearException;
     end;
    end;
 
@@ -405,7 +405,7 @@ begin
     WriteLn('Failed otherwise');
    end;
 
-   WriteLn('PC=',IntToHex(Machine.CPUCore.State^.PC,16));
+   WriteLn('PC=',IntToHex(Machine.HART.State^.PC,16));
    WriteLn('HTIFErrorCode=',IntToHex(TestErrorCode,16));
 
    WriteLn;
