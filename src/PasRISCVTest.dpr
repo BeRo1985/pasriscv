@@ -486,6 +486,9 @@ end;
 
 begin
  SetExceptionMask([exInvalidOp,exDenormalized,exZeroDivide,exOverflow,exUnderflow,exPrecision]);
-//RunTests;
- Run;
+ if ParamStr(1)='tests' then begin
+  RunTests;
+ end else begin
+  Run;
+ end;
 end.
