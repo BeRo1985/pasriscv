@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-06-18-02-16-0000                       *
+ *                        Version 2025-06-23-17-44-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -23979,7 +23979,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.StoreRegisterU8(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU8(const aAddress:TPasRISCVUInt64;const aRegister:TRegister);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt8;
@@ -24157,7 +24157,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.StoreRegisterU16(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU16(const aAddress:TPasRISCVUInt64;const aRegister:TRegister);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt16;
@@ -24371,7 +24371,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.StoreRegisterU32(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU32(const aAddress:TPasRISCVUInt64;const aRegister:TRegister);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt32;
@@ -24402,7 +24402,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.StoreRegisterF32(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
+procedure TPasRISCV.THART.StoreRegisterF32(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt32;
@@ -24613,7 +24613,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
+procedure TPasRISCV.THART.StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24644,7 +24644,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
+procedure TPasRISCV.THART.StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
@@ -24729,7 +24729,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer); //inline;
+procedure TPasRISCV.THART.RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
