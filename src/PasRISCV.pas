@@ -291,6 +291,8 @@ unit PasRISCV;
 
 {$define NewPCI}
 
+{$define NVMELevelTriggeredPCIEInterrupts}
+
 interface
 
 uses {$if defined(Posix) and not defined(fpc)}
@@ -2350,7 +2352,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function GetEffectiveBar(const aBarID:TPasRISCVSizeUInt):TPCIMemoryDevice;
               function GetBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
-              procedure LowerIRQ;
+              procedure RaiseIRQ(const aMSIID:TPasRISCVUInt32);
+              procedure LowerIRQ; overload;
+              procedure LowerIRQ(const aMSIID:TPasRISCVUInt32); overload;
             end;
             TPCIHostBridgeDevice=class;
             { TPCIBusDevice }
@@ -2457,6 +2461,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     ADMIN_ABORT=$8;   // Abort Command
                     ADMIN_SET_FEATURES=$9;   // Set Features
                     ADMIN_GET_FEATURES=$A;   // Get Features
+                    CQ_FLAGS_PC=$1; // Physically Contiguous
+                    CQ_FLAGS_IEN=$2; // Interrupts Enabled
                     IDENT_NS=$0;   // Identify Namespace
                     IDENT_CTRL=$1;   // Identify Controller
                     IDENT_NSLS=$2;   // Identify Namespace List
@@ -2499,7 +2505,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      IRQ:TPasRISCVUInt32;
                      class function GetNext(var aHeadOrTail:TPasRISCVUInt32;const aSize:TPasRISCVUInt32):TPasRISCVUInt32; static;
                      function GetAddress:TPasRISCVUInt64;
-                     procedure Setup(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32);
+                     procedure RaiseIRQ(const aNVMEDevice:TNVMEDevice);
+                     procedure LowerIRQ(const aNVMEDevice:TNVMEDevice);
+                     procedure Setup(const aNVMEDevice:TNVMEDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32);
                    end;
                    PNVMeQueue=^TNVMeQueue;
                    TNVMePRPCtx=record
@@ -2531,7 +2539,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               constructor Create(const aBus:TPCIBusDevice); reintroduce;
               destructor Destroy; override;
-              procedure Shutdown;
+              procedure ResetDevice;
               procedure CompleteCommand(const aCommand:PNVMeCommand;const aStatusField:TPasRISCVUInt32); overload;
               procedure CompleteCommand(const aCommand:PNVMeCommand;const aStatusField,aCommandSpecificStatus:TPasRISCVUInt32); overload;
               function ProcessPRPChunk(const aCommand:PNVMeCommand):TPasRISCVUInt64;
@@ -14060,12 +14068,22 @@ begin
  end;
 end;
 
+procedure TPasRISCV.TPCIFunc.RaiseIRQ(const aMSIID:TPasRISCVUInt32);
+begin
+ SendIRQ(aMSIID,true);
+end;
+
 procedure TPasRISCV.TPCIFunc.LowerIRQ;
 var IRQ:TPasRISCVUInt32;
 begin
  TPasMPInterlocked.BitwiseAnd(fStatus,TPasRISCVUInt32(not TPCI.PCI_STATUS_INTX));
  IRQ:=fBus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(self)];
  fBus.fMachine.fInterrupts.LowerIRQ(IRQ);
+end;
+
+procedure TPasRISCV.TPCIFunc.LowerIRQ(const aMSIID:TPasRISCVUInt32);
+begin
+ LowerIRQ;
 end;
 
 { TPasRISCV.TPCIBusDevice }
@@ -14756,13 +14774,35 @@ begin
  result:=result or (TPasRISCVUInt64(TPasMPInterlocked.Read(AddressHigh)) shl 32);
 end;
 
-procedure TPasRISCV.TNVMeDevice.TNVMeQueue.Setup(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32);
+procedure TPasRISCV.TNVMeDevice.TNVMeQueue.RaiseIRQ(const aNVMEDevice:TNVMEDevice);
+var IRQRegister,IRQVector,IRQMask:TPasRISCVUInt32;
+begin
+ IRQRegister:=TPasMPInterlocked.Read(IRQ);
+ IRQVector:=(IRQRegister shr 16) and $1f;
+ IRQMask:=TPasRISCVUInt32(1) shl (IRQVector and $1f);
+ if ((IRQRegister and CQ_FLAGS_IEN)<>0) and ((TPasMPInterlocked.Read(aNVMEDevice.fIRQMask) and IRQMask)=0) then begin
+  aNVMEDevice.fFuncs[0].RaiseIRQ(IRQVector);
+ end;
+end;
+
+procedure TPasRISCV.TNVMeDevice.TNVMeQueue.LowerIRQ(const aNVMEDevice:TNVMEDevice);
+var IRQRegister,IRQVector:TPasRISCVUInt32;
+begin
+ IRQRegister:=TPasMPInterlocked.Read(IRQ);
+ IRQVector:=(IRQRegister shr 16) and $1f;
+ aNVMEDevice.fFuncs[0].LowerIRQ(IRQVector);
+end;
+
+procedure TPasRISCV.TNVMeDevice.TNVMeQueue.Setup(const aNVMEDevice:TNVMEDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32);
 begin
  TPasMPInterlocked.Write(Head,0);
  TPasMPInterlocked.Write(Tail,0);
  TPasMPInterlocked.Write(AddressLow,TPasRISCVUInt32(aAddress and not NVME_PAGE_MASK));
  TPasMPInterlocked.Write(AddressHigh,TPasRISCVUInt32(aAddress shr 32));
  TPasMPInterlocked.Write(Size,aSize);
+{$ifdef NVMELevelTriggeredPCIEInterrupts}
+ LowerIRQ(aNVMEDevice);
+{$endif}
 end;
 
 { TPasRISCV.TNVMeDevice }
@@ -14795,6 +14835,11 @@ begin
 
  fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
 
+{$ifdef NVMELevelTriggeredPCIEInterrupts}
+ // Enable IEN on Admin Completion Queue
+ fQueues[ADMIN_COMPLETION_QUEUE].IRQ:=CQ_FLAGS_IEN;
+{$endif}
+
  // Random serial number
  PCG32.Init(GetCurrentTime xor TPasRISCVPtrUInt(self));
  for Index:=0 to 11 do begin
@@ -14815,26 +14860,29 @@ begin
  inherited Destroy;
 end;
 
-procedure TPasRISCV.TNVMeDevice.Shutdown;
+procedure TPasRISCV.TNVMeDevice.ResetDevice;
 var Index:TPasRISCVSizeInt;
     Queue:PNVMeQueue;
 begin
  while TPasMPInterlocked.Read(fThreads)<>0 do begin
   sleep(1);
  end;
- for Index:=2 to length(fQueues)-1 do begin
-  fQueues[Index].Setup(0,0);
- end;
- for Index:=0 to ADMIN_COMPLETION_QUEUE do begin
+ for Index:=0 to length(fQueues)-1 do begin
   Queue:=@fQueues[Index];
-  Queue^.Head:=0;
-  Queue^.Tail:=0;
+  case Index of
+   ADMIN_SUBMISSION_QUEUE,ADMIN_COMPLETION_QUEUE:begin
+    Queue.Setup(self,Queue^.GetAddress,TPasMPInterlocked.Read(Queue^.Size));
+   end;
+   else begin
+    Queue.Setup(self,0,0);
+   end;
+  end;
  end;
 end;
 
 procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;const aStatusField:TPasRISCVUInt32);
 var Queue:PNVMeQueue;
-    QueueSize,QueueTail,Phase,IRQVector,IRQMask:TPasRISCVUInt32;
+    QueueSize,QueueTail,Phase{$ifndef NVMELevelTriggeredPCIEInterrupts},IRQVector,IRQMask{$endif}:TPasRISCVUInt32;
     Address:TPasRISCVUInt64;
     Ptr:PByte;
 begin
@@ -14857,11 +14905,15 @@ begin
   PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[12])^:=aCommand^.CmdID or (aStatusField shl 17) or Phase;
  end;
 
+{$ifdef NVMELevelTriggeredPCIEInterrupts}
+ Queue^.RaiseIRQ(self);
+{$else}
  IRQVector:=Queue^.IRQ shr 16;
  IRQMask:=TPasRISCVUInt32(1) shl (IRQVector and $1f);
  if (fIRQMask and IRQMask)=0 then begin
   SendIRQ(0,IRQMask);
  end;
+{$endif}
 
 end;
 
@@ -15050,22 +15102,27 @@ end;
 
 procedure TPasRISCV.TNVMeDevice.CreateIOSubmissionQueue(const aCommand:PNVMeCommand);
 var Address:TPasRISCVUInt64;
-    SubmissionQueueID,SubmissionQueueSize,CompletionQueueID:TPasRISCVUInt32;
+    SubmissionQueueID,SubmissionQueueSize,CompletionQueueFlag,CompletionQueueID:TPasRISCVUInt32;
     Queue:PNVMeQueue;
 begin
  Address:=aCommand^.PRP.PRP1;
  SubmissionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[40])^;
  SubmissionQueueSize:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[42])^;
- CompletionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[46])^;
+ CompletionQueueFlag:=PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)[44])^;
+ CompletionQueueID:=CompletionQueueFlag shr 16;
  if (SubmissionQueueID=0) or (SubmissionQueueID>NVME_MAX_QUEUES) then begin
   CompleteCommand(aCommand,SC_BAD_FIELD,CS_ID_INVALID);
  end else if (CompletionQueueID=0) or (CompletionQueueID>NVME_MAX_QUEUES) then begin
   CompleteCommand(aCommand,SC_BAD_FIELD,CS_CQ_INVALID);
  end else if SubmissionQueueSize=0 then begin
   CompleteCommand(aCommand,SC_BAD_FIELD,CS_SIZE_INVALID);
+{$ifdef NVMELevelTriggeredPCIEInterrupts}
+ end else if (CompletionQueueFlag and CQ_FLAGS_PC)=0 then begin
+  CompleteCommand(aCommand,SC_BAD_FIELD);
+{$endif}
  end else begin
   Queue:=@fQueues[SubmissionQueueID shl 1];
-  Queue^.Setup(Address,SubmissionQueueSize);
+  Queue^.Setup(self,Address,SubmissionQueueSize);
   TPasMPInterlocked.Write(Queue^.CompletionQueueID,CompletionQueueID);
   CompleteCommand(aCommand,SC_SUCCESS);
  end;
@@ -15073,21 +15130,25 @@ end;
 
 procedure TPasRISCV.TNVMeDevice.CreateIOCompletionQueue(const aCommand:PNVMeCommand);
 var Address:TPasRISCVUInt64;
-    CompletionQueueID,CompletionQueueSize,CompletionQueueIRQ:TPasRISCVUInt32;
+    CompletionQueueID,CompletionQueueSize,CompletionQueueFlag:TPasRISCVUInt32;
     Queue:PNVMeQueue;
 begin
  Address:=aCommand^.PRP.PRP1;
  CompletionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[40])^;
  CompletionQueueSize:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[42])^;
- CompletionQueueIRQ:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[44])^;
+ CompletionQueueFlag:=PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)[44])^;
  if (CompletionQueueID=0) or (CompletionQueueID>NVME_MAX_QUEUES) then begin
   CompleteCommand(aCommand,SC_BAD_FIELD,CS_ID_INVALID);
  end else if CompletionQueueSize=0 then begin
   CompleteCommand(aCommand,SC_BAD_FIELD,CS_SIZE_INVALID);
+{$ifdef NVMELevelTriggeredPCIEInterrupts}
+ end else if (CompletionQueueFlag and CQ_FLAGS_PC)=0 then begin
+  CompleteCommand(aCommand,SC_BAD_FIELD);
+{$endif}
  end else begin
   Queue:=@fQueues[(CompletionQueueID shl 1) or 1];
-  Queue^.Setup(Address,CompletionQueueSize);
-  TPasMPInterlocked.Write(Queue^.IRQ,CompletionQueueIRQ);
+  Queue^.Setup(self,Address,CompletionQueueSize);
+  TPasMPInterlocked.Write(Queue^.IRQ,CompletionQueueFlag);
   CompleteCommand(aCommand,SC_SUCCESS);
  end;
 end;
@@ -15101,7 +15162,7 @@ begin
   CompleteCommand(aCommand,SC_BAD_FIELD,CS_ID_INVALID);
  end else begin
   Queue:=@fQueues[(QueueID shl 1) or (ord(aIsCompletionQueue) and 1)];
-  Queue^.Setup(0,0);
+  Queue^.Setup(self,0,0);
   CompleteCommand(aCommand,SC_SUCCESS);
  end;
 end;
@@ -15359,6 +15420,13 @@ begin
    TPasMPMemoryBarrier.ReadWrite;
    Queue^.Head:=aValue;
 
+{$ifdef NVMELevelTriggeredPCIEInterrupts}
+   TPasMPMemoryBarrier.ReadDependency;
+   if Queue^.Tail=aValue then begin
+    Queue^.LowerIRQ(self);
+   end;
+{$endif}
+
   end else begin
 
    TPasMPMemoryBarrier.ReadWrite;
@@ -15462,7 +15530,7 @@ begin
     NVME_REG_CC:begin
      TPasMPInterlocked.Write(fConf,TPasRISCVUInt32(aValue));
      if ((aValue and NVME_CC_SHN)<>0) or ((aValue and NVME_CC_EN)=0) then begin
-      Shutdown;
+      ResetDevice;
      end;
     end;
     NVME_REG_AQA:begin
