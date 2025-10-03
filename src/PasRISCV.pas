@@ -2270,8 +2270,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PCI_BASE_DEFAULT_MMIO=TPasRISCVUInt64($30000000);
                     PCI_IO_DEFAULT_ADDR=TPasRISCVUInt64($03000000);
                     PCI_IO_DEFAULT_SIZE=TPasRISCVUInt64($00010000);
-                    PCI_MEM_DEFAULT_MMIO=TPasRISCVUInt64($40000000);
-                    PCI_MEM_DEFAULT_SIZE=TPasRISCVUInt64($40000000);
+                    PCI_MEM32_DEFAULT_MMIO=TPasRISCVUInt64($40000000);
+                    PCI_MEM32_DEFAULT_SIZE=TPasRISCVUInt64($40000000);
+                    PCI_MEM64_DEFAULT_MMIO=TPasRISCVUInt64($4000000000);
+                    PCI_MEM64_DEFAULT_SIZE=TPasRISCVUInt64($4000000000);
                     PCI_IRQs:array[0..PCI_BUS_IRQS-1] of TPasRISCVUInt32=($01,$02,$03,$04);
                     PCIExpressCapabilities:array[0..25] of TPasRISCVUInt32=
                      (
@@ -14094,8 +14096,8 @@ begin
  inherited Create(aMachine,TPasRISCV.TPCI.PCI_BASE_DEFAULT_MMIO,256 shl BusShift);
  fIOAddr:=TPasRISCV.TPCI.PCI_IO_DEFAULT_ADDR;
  fIOSize:=TPasRISCV.TPCI.PCI_IO_DEFAULT_SIZE;
- fMemAddr:=TPasRISCV.TPCI.PCI_MEM_DEFAULT_MMIO;
- fMemSize:=TPasRISCV.TPCI.PCI_MEM_DEFAULT_SIZE;
+ fMemAddr:=TPasRISCV.TPCI.PCI_MEM32_DEFAULT_MMIO;
+ fMemSize:=TPasRISCV.TPCI.PCI_MEM32_DEFAULT_SIZE;
  fBusID:=0;
  for IRQPinIndex:=0 to TPCI.PCI_BUS_IRQS-1 do begin
   fIRQs[IRQPinIndex]:=TPCI.PCI_IRQs[IRQPinIndex];
@@ -14242,6 +14244,9 @@ begin
        result:=TPasRISCVUInt32(BusDevice.fBase);
        if Func.Is64Bit(BarID) then begin
         result:=result or TPCI.PCI_BAR_64_BIT;
+       end;
+       if BusDevice.fSize>=$10000000 then begin
+        result:=result or TPCI.PCI_BAR_PREFETCH;
        end;
       end;
      end else begin
@@ -32158,7 +32163,7 @@ var Index:TPasRISCVSizeInt;
     PLICHandle:TPasRISCVUInt32;
     RandomBuffer:array[0..15] of TPasRISCVUInt32;
     Cells:array[0..3] of TPasRISCVUInt32;
-    Ranges:array[0..13] of TPasRISCVUInt32;
+    Ranges:array[0..20] of TPasRISCVUInt32;
     InterruptExtCells:array[0..(4*16)-1] of TPasRISCVUInt32;
     InterruptMap:array[0..95] of TPasRISCVUInt32;
     InterrurtMask:array[0..3] of TPasRISCVUInt32;
@@ -32461,15 +32466,23 @@ begin
     Ranges[6]:=TPCI.PCI_IO_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);
 
     Ranges[7]:=$2000000;
-    Ranges[8]:=TPCI.PCI_MEM_DEFAULT_MMIO shr 32;
-    Ranges[9]:=TPCI.PCI_MEM_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
-    Ranges[10]:=TPCI.PCI_MEM_DEFAULT_MMIO shr 32;
-    Ranges[11]:=TPCI.PCI_MEM_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
-    Ranges[12]:=TPCI.PCI_MEM_DEFAULT_SIZE shr 32;
-    Ranges[13]:=TPCI.PCI_MEM_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);
+    Ranges[8]:=TPCI.PCI_MEM32_DEFAULT_MMIO shr 32;
+    Ranges[9]:=TPCI.PCI_MEM32_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+    Ranges[10]:=TPCI.PCI_MEM32_DEFAULT_MMIO shr 32;
+    Ranges[11]:=TPCI.PCI_MEM32_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+    Ranges[12]:=TPCI.PCI_MEM32_DEFAULT_SIZE shr 32;
+    Ranges[13]:=TPCI.PCI_MEM32_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);
+
+{   Ranges[14]:=$43000000;
+    Ranges[15]:=TPCI.PCI_MEM64_DEFAULT_MMIO shr 32;
+    Ranges[16]:=TPCI.PCI_MEM64_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+    Ranges[17]:=TPCI.PCI_MEM64_DEFAULT_MMIO shr 32;
+    Ranges[18]:=TPCI.PCI_MEM64_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+    Ranges[19]:=TPCI.PCI_MEM64_DEFAULT_SIZE shr 32;
+    Ranges[20]:=TPCI.PCI_MEM64_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);}
 
     if TPCI.PCI_IO_DEFAULT_SIZE<>0 then begin
-     PCIBusNode.AddPropertyCells('ranges',@Ranges[0],14);
+     PCIBusNode.AddPropertyCells('ranges',@Ranges[0],14{21});
     end else begin
      PCIBusNode.AddPropertyCells('ranges',@Ranges[7],7);
     end;
