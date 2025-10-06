@@ -14889,7 +14889,7 @@ procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;cons
 var Queue:PNVMeQueue;
     QueueSize,QueueTail,Phase{$ifndef NVMELevelTriggeredPCIEInterrupts},IRQVector,IRQMask{$endif}:TPasRISCVUInt32;
     Address:TPasRISCVUInt64;
-    Ptr:PByte;
+    Ptr:PPasRISCVUInt8;
 begin
 
  Queue:=@fQueues[(aCommand^.CompletionQueueID shl 1) or 1];
@@ -21828,7 +21828,7 @@ begin
  try
   result:=0;
   for Index:=0 to aSize-1 do begin
-   Value:=TPasRISCVUInt8(PByte(aBuffer)[Index]);
+   Value:=TPasRISCVUInt8(PPasRISCVUInt8Array(aBuffer)^[Index]);
    case fState of
     STATE_CMD:begin
      Command(Value);
