@@ -4834,8 +4834,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
-              procedure HandlePendingInterrupts;
-              procedure CheckPendingInterrupts;
+              procedure CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CheckTimers;
+              procedure CheckInterrupts;
              public
               constructor Create(const aMachine:TPasRISCV;const aHARTID:TPasRISCVUInt32); reintroduce;
               destructor Destroy; override;
@@ -4852,8 +4856,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
               function InterruptsRaised:TPasRISCVUInt64; inline;
               function InterruptsPending:TPasRISCVUInt64; inline;
+              function InterruptsNotPending:TPasRISCVUInt64; inline;
               procedure ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
               procedure RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
+              function SetInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue):Boolean;
               procedure HandleInterrupts;
               procedure ExecuteException;
               procedure SleepUntilNextInterrupt;
@@ -5292,6 +5298,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure FlushTLB;
        procedure Interrupt;
        procedure WakeUp;
+       procedure InterruptAndWakeUp;
        function QueuePause(const aWaitUntilHalted:Boolean):Boolean;
        procedure Pause(const aWaitUntilHalted:Boolean);
        procedure Resume(const aWaitUntilRunning:Boolean);
@@ -23020,6 +23027,8 @@ begin
 
  fData[TAddress.MIMPID]:=0;
 
+ fData[TAddress.MVENDORID]:=0;
+
  fData[TAddress.MSTATUS]:=TPasRISCVUInt64($200000000);
 
  fData[TAddress.MENVCFG]:=TPasRISCVUInt64($a0000000000000d0); // $e
@@ -23047,9 +23056,6 @@ begin
   end;
   TAddress.SIE:begin
    result:=fData[TAddress.MIE] and fData[TAddress.MIDELEG];
-  end;
-  TAddress.SIP:begin
-   result:=fData[TAddress.MIP] and fData[TAddress.MIDELEG];
   end;
   TAddress.MSTATUS:begin
    result:=fData[TAddress.MSTATUS];
@@ -23116,11 +23122,6 @@ begin
   TAddress.SIE:begin
    Value:=(fData[TAddress.MIE] and not fData[TAddress.MIDELEG]) or (aValue and fData[TAddress.MIDELEG]);
    fData[TAddress.MIE]:=Value;
-  end;
-  TAddress.SIP:begin
-   Mask:=fData[TAddress.MIDELEG] and TInterruptValueMasks.SupervisorSoftware;
-   Value:=(fData[TAddress.MIP] and not Mask) or (aValue and Mask);
-   fData[TAddress.MIP]:=Value;
   end;
   TAddress.MENVCFG:begin
    fData[TAddress.MENVCFG]:=aValue and TPasRISCVUInt64($80000000000000d0);
@@ -23330,7 +23331,7 @@ begin
    TCSR.TAddress.SSTATUS,
    TCSR.TAddress.SEDELEG,
    TCSR.TAddress.SIDELEG,
-   TCSR.TAddress.SIE,
+// TCSR.TAddress.SIE,
    TCSR.TAddress.STVEC,
    TCSR.TAddress.SCOUNTEREN,
 
@@ -23340,7 +23341,7 @@ begin
    TCSR.TAddress.SEPC,
    TCSR.TAddress.SCAUSE,
    TCSR.TAddress.STVAL,
-   TCSR.TAddress.SIP,
+// TCSR.TAddress.SIP,
 // TCSR.TAddress.STIMECMP,
 // TCSR.TAddress.STIMECMPH,
 
@@ -23358,7 +23359,7 @@ begin
    TCSR.TAddress.MEDELEG,
 // TCSR.TAddress.MEDELEGH,
    TCSR.TAddress.MIDELEG,
-   TCSR.TAddress.MIE,
+// TCSR.TAddress.MIE,
    TCSR.TAddress.MTVEC,
    TCSR.TAddress.MCOUNTEREN,
 
@@ -23366,7 +23367,7 @@ begin
    TCSR.TAddress.MEPC,
    TCSR.TAddress.MCAUSE,
    TCSR.TAddress.MTVAL,
-   TCSR.TAddress.MIP,
+// TCSR.TAddress.MIP,
 
    TCSR.TAddress.MCYCLE,
 // TCSR.TAddress.MCYCLEH,
@@ -23442,6 +23443,12 @@ begin
  fCSRHandlerMap[TCSR.TAddress.MARCHID]:=CSRHandlerDefaultReadOnly; // MARCHID
  fCSRHandlerMap[TCSR.TAddress.MIMPID]:=CSRHandlerDefaultReadOnly; // MIMPID
  fCSRHandlerMap[TCSR.TAddress.MHARTID]:=CSRHandlerDefaultReadOnly; // MHARTID
+
+ fCSRHandlerMap[TCSR.TAddress.MIE]:=CSRHandlerMIE; // MIE
+ fCSRHandlerMap[TCSR.TAddress.SIE]:=CSRHandlerSIE; // SIE
+
+ fCSRHandlerMap[TCSR.TAddress.MIP]:=CSRHandlerMIP; // MIP
+ fCSRHandlerMap[TCSR.TAddress.SIP]:=CSRHandlerSIP; // SIP
 
  fCSRHandlerMap[TCSR.TAddress.MTOPEI]:=CSRHandlerIllegal; // MTOPEI
  fCSRHandlerMap[TCSR.TAddress.MTOPI]:=CSRHandlerIllegal; // MTOPI
@@ -25342,7 +25349,8 @@ begin
   end;
 
   if ((Status and $a) and not (OldStatus and $a))<>0 then begin
-   TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
+   // MIE/SIE were enabled, check interrupts
+   CheckInterrupts;
   end;
 
   fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
@@ -25366,8 +25374,10 @@ begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    CSRValue:=fState.CSR.Load(aCSR);
    fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
-   if ((fState.CSR.fData[TCSR.TAddress.MIP] and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) xor (fMachine.fACLINTDevice.GetTime>=fSTIMECMP) then begin
-    fState.CSR.fData[TCSR.TAddress.MIP]:=fState.CSR.fData[TCSR.TAddress.MIP] xor TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
+   if fMachine.fACLINTDevice.GetTime>=fSTIMECMP then begin
+    RaiseInterrupt(TInterruptValue.SupervisorTimer);
+   end else begin
+    ClearInterrupt(TInterruptValue.SupervisorTimer);
    end;
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=CSRValue;
@@ -25375,6 +25385,80 @@ begin
   end else begin
    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
   end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.MIE];
+  CSRValue:=aOperation(Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
+  fState.CSR.fData[TCSR.TAddress.MIE]:=(CSRValue and TCSR.CSR_MEIP_MASK) or (Value and not TCSR.CSR_MEIP_MASK);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+  Checkinterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.MIE];
+  CSRValue:=aOperation(Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
+  fState.CSR.fData[TCSR.TAddress.MIE]:=(CSRValue and TCSR.CSR_SEIP_MASK) or (Value and not TCSR.CSR_SEIP_MASK);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+  Checkinterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.MIP];
+  CSRValue:=aOperation(Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
+  fState.CSR.fData[TCSR.TAddress.MIP]:=(CSRValue and TCSR.CSR_MEIP_MASK) or (Value and not TCSR.CSR_MEIP_MASK);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_MEIP_MASK);
+   fState.Registers[rd]:=CSRValue;
+  end;
+  Checkinterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.MIP];
+  CSRValue:=aOperation(Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
+  fState.CSR.fData[TCSR.TAddress.MIP]:=(CSRValue and TCSR.CSR_SEIP_MASK) or (Value and not TCSR.CSR_SEIP_MASK);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_SEIP_MASK);
+   fState.Registers[rd]:=CSRValue;
+  end;
+  Checkinterrupts;
  end;
 end;
 
@@ -27819,7 +27903,7 @@ begin
               // Set PC to CSR.SEPC
               fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
 
-              CheckPendingInterrupts;
+              CheckInterrupts;
 
               result:=4;
               exit;
@@ -27854,7 +27938,7 @@ begin
               // Set PC to CSR.MEPC
               fState.PC:=fState.CSR.fData[TCSR.TAddress.MEPC]-4;
 
-              CheckPendingInterrupts;
+              CheckInterrupts;
 
               result:=4;
               exit;
@@ -27880,7 +27964,7 @@ begin
              if ((fState.Mode>=THART.TMode.Supervisor) and
                  ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))=0)) or
                 (fState.Mode=THART.TMode.Machine) then begin
-              if InterruptsPending=0 then begin // ((fState.CSR.fData[TCSR.TAddress.MIE] and fState.CSR.fData[TCSR.TAddress.MIP])=0) then begin
+              if InterruptsPending=0 then begin
                SleepUntilNextInterrupt;
               end;
              end else begin
@@ -29934,12 +30018,17 @@ begin
  result:=(TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.MIE];
 end;
 
+function TPasRISCV.THART.InterruptsNotPending:TPasRISCVUInt64;
+begin
+ result:=(not (TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP])) and fState.CSR.fData[TCSR.TAddress.MIE];
+end;
+
 procedure TPasRISCV.THART.ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
 var Mask:TPasRISCVUInt64;
 begin
  Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
  TPasMPInterlocked.BitwiseAnd(fState.PendingIRQs,TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
- TPasMPInterlocked.BitwiseAnd(fState.CSR.fData[TCSR.TAddress.MIP],TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
+//TPasMPInterlocked.BitwiseAnd(fState.CSR.fData[TCSR.TAddress.MIP],TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
 end;
 
 procedure TPasRISCV.THART.RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
@@ -29957,14 +30046,20 @@ begin
  end;
 end;
 
+function TPasRISCV.THART.SetInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue):Boolean;
+var Mask:TPasRISCVUInt64;
+begin
+ Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
+ result:=(TPasMPInterlocked.ExchangeBitwiseOr(fState.PendingIRQs,Mask) and Mask)=0;
+end;
+
 procedure TPasRISCV.THART.HandleInterrupts;
 var PC,Status,PendingIRQs,IRQs,IDELEG:TPasRISCVUInt64;
-    MIP:TPasRISCVUInt32;
     Mode,Privilege:THART.TMode;
     InterruptValue:TPasRISCV.THART.TInterruptValue;
 begin
 
- PendingIRQs:=fState.CSR.fData[TCSR.TAddress.MIP] and fState.CSR.fData[TCSR.TAddress.MIE];
+ PendingIRQs:=InterruptsPending;
 
  if PendingIRQs<>0 then begin
 
@@ -30126,11 +30221,12 @@ procedure TPasRISCV.THART.SleepUntilNextInterrupt;
 var SleepDuration,CurrentSleepDuration,WaitForDuration,
     Time,TimeA,TimeB,ActiveTimers,MTIMECMP,STIMECMP,SleepThreshold,
     Remaining,Difference:TPasRISCVUInt64;
+    DoInterrupt:Boolean;
 begin
 
  fState.Sleep:=true;
 
- if (fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer))=0 then begin
+ if (InterruptsPending and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer))=0 then begin
 
   ActiveTimers:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIE] and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer);
 
@@ -30223,12 +30319,22 @@ begin
 
    end;
 
+   DoInterrupt:=false;
+
    if ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP) then begin
-    fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] or TPasRISCV.THART.TInterruptValueMasks.MachineTimer;
+    if SetInterrupt(TPasRISCV.THART.TInterruptValue.MachineTimer) then begin
+     DoInterrupt:=true;
+    end;
    end;
 
    if ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=STIMECMP) then begin
-    fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP]:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
+    if SetInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorTimer) then begin
+     DoInterrupt:=true;
+    end;
+   end;
+
+   if DoInterrupt then begin
+    fMachine.InterruptAndWakeUp;
    end;
 
   end;
@@ -30249,42 +30355,36 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.HandlePendingInterrupts;
-var MIP,Time,TimeCmp:TPasRISCVUInt64;
-begin
-
- Time:=fACLINTDevice.GetTime;
-
- MIP:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIP] or TPasMPInterlocked.Exchange(fState.PendingIRQs,0);
-
- TimeCmp:=fMTIMECMP;
- if Time>=TimeCmp then begin
-  MIP:=MIP or TPasRISCV.THART.TInterruptValueMasks.MachineTimer;
- end else begin
-  MIP:=MIP and not TPasRISCV.THART.TInterruptValueMasks.MachineTimer;
- end;
-
- TimeCmp:=fSTIMECMP;
- if Time>=TimeCmp then begin
-  MIP:=MIP or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
- end else begin
-  MIP:=MIP and not TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer;
- end;
-
- fState.CSR.fData[TCSR.TAddress.MIP]:=MIP;
-
-end;
-
-procedure TPasRISCV.THART.CheckPendingInterrupts;
+procedure TPasRISCV.THART.CheckTimers;
 var Interrupts,Time:TPasRISCVUInt64;
+    DoInterrupt:Boolean;
 begin
- Interrupts:=(fState.CSR.fData[TCSR.TAddress.MIE] and not fState.CSR.fData[TCSR.TAddress.MIP]) and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer);
+ Interrupts:=InterruptsNotPending and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer);
  if Interrupts<>0 then begin
   Time:=fACLINTDevice.GetTime;
-  if (((Interrupts and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP)) or
-     (((Interrupts and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=fSTIMECMP)) then begin
-   TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
+  DoInterrupt:=false;
+  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP) then begin
+   if SetInterrupt(TPasRISCV.THART.TInterruptValue.MachineTimer) then begin
+    DoInterrupt:=true;
+   end;
   end;
+  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=fSTIMECMP) then begin
+   if SetInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorTimer) then begin
+    DoInterrupt:=true;
+   end;
+  end;
+  if DoInterrupt then begin
+   fMachine.InterruptAndWakeUp;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CheckInterrupts;
+var Interrupts:TPasRISCVUInt64;
+begin
+ Interrupts:=InterruptsPending;
+ if Interrupts<>0 then begin
+  fMachine.InterruptAndWakeUp;
  end;
 end;
 
@@ -30306,7 +30406,7 @@ begin
   end;
 
   {$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
-   HandlePendingInterrupts;
+   CheckTimers;
   end;
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
@@ -33304,6 +33404,17 @@ end;
 procedure TPasRISCV.WakeUp;
 begin
  fWakeUpConditionVariable.Broadcast;
+end;
+
+procedure TPasRISCV.InterruptAndWakeUp;
+begin
+ fWakeUpConditionVariableLock.Acquire;
+ try
+  TPasMPInterlocked.BitwiseOr(fRunState,fAllHARTMask);
+  fWakeUpConditionVariable.Broadcast;
+ finally
+  fWakeUpConditionVariableLock.Release;
+ end;
 end;
 
 function TPasRISCV.QueuePause(const aWaitUntilHalted:Boolean):Boolean;
