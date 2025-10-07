@@ -23054,9 +23054,6 @@ begin
   TAddress.SSTATUS:begin
    result:=fData[TAddress.MSTATUS] and TMask.SSTATUS;
   end;
-  TAddress.SIE:begin
-   result:=fData[TAddress.MIE] and fData[TAddress.MIDELEG];
-  end;
   TAddress.MSTATUS:begin
    result:=fData[TAddress.MSTATUS];
   end;
@@ -23118,10 +23115,6 @@ begin
   TAddress.SSTATUS:begin
    Value:=(fData[TAddress.MSTATUS] and not TPasRISCVUInt64(TMask.SSTATUS)) or (aValue and TPasRISCVUInt64(TMask.SSTATUS));
    fData[TAddress.MSTATUS]:=Value;
-  end;
-  TAddress.SIE:begin
-   Value:=(fData[TAddress.MIE] and not fData[TAddress.MIDELEG]) or (aValue and fData[TAddress.MIDELEG]);
-   fData[TAddress.MIE]:=Value;
   end;
   TAddress.MENVCFG:begin
    fData[TAddress.MENVCFG]:=aValue and TPasRISCVUInt64($80000000000000d0);
