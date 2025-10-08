@@ -1803,6 +1803,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     KEY_MEDIA_REFRESH=$fa;
                     KEY_MEDIA_CALC=$fb;
             end;
+            TAIARegFileMode=
+             (
+              Machine,
+              Supervisor
+             );
             { TTimer }
             TTimer=record
              public
@@ -2094,6 +2099,21 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function GetCachedTime(var aTime:TPasRISCVUInt64):TPasRISCVUInt64;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+            end;
+            { TIMSICDevice }
+            TIMSICDevice=class(TBusDevice)
+             public
+              const DefaultBaseAddressMachine=TPasRISCVUInt64($24000000);
+                    DefaultBaseAddressSupervisor=TPasRISCVUInt64($28000000);
+                    DefaultSize=TPasRISCVUInt64($4000);
+             private
+              fAIARegFileMode:TAIARegFileMode;
+             public
+              constructor Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode); reintroduce;
               destructor Destroy; override;
               procedure Reset; override;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
@@ -4732,11 +4752,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      destructor Destroy; override;
                      procedure Reset;
                    end;
-                   TAIARegFileMode=
-                    (
-                     Machine,
-                     Supervisor
-                    );
                    TAIARegFiles=array[TAIARegFileMode] of TAIARegFile;
                    { TExecutionThread }
                    TExecutionThread=class(TPasMPThread)
@@ -4923,10 +4938,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
               procedure RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
               function SetInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue):Boolean;
-              procedure SendAIAIRQ(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
-              function UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
-              function UpdateAIAState(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode):TPasRISCVUInt32;
-              function GetAIAIRQ(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode;const aClaim:Boolean):TPasRISCVUInt32;
+              procedure SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
+              function UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
+              function UpdateAIAState(const aAIARegFileMode:TPasRISCV.TAIARegFileMode):TPasRISCVUInt32;
+              function GetAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aClaim:Boolean):TPasRISCVUInt32;
               procedure HandleInterrupts;
               procedure ExecuteException;
               procedure SleepUntilNextInterrupt;
@@ -5054,6 +5069,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCLINTBase:TPasRISCVUInt64;
               fCLINTSize:TPasRISCVUInt64;
 
+              fIMSICMachineBase:TPasRISCVUInt64;
+              fIMSICMachineSize:TPasRISCVUInt64;
+
+              fIMSICSupervisorBase:TPasRISCVUInt64;
+              fIMSICSupervisorSize:TPasRISCVUInt64;
+
               fPLICBase:TPasRISCVUInt64;
               fPLICSize:TPasRISCVUInt64;
 
@@ -5155,6 +5176,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property CLINTBase:TPasRISCVUInt64 read fCLINTBase write fCLINTBase;
               property CLINTSize:TPasRISCVUInt64 read fCLINTSize write fCLINTSize;
+
+              property IMSICMachineBase:TPasRISCVUInt64 read fIMSICMachineBase write fIMSICMachineBase;
+              property IMSICMachineSize:TPasRISCVUInt64 read fIMSICMachineSize write fIMSICMachineSize;
+
+              property IMSICSupervisorBase:TPasRISCVUInt64 read fIMSICSupervisorBase write fIMSICSupervisorBase;
+              property IMSICSupervisorSize:TPasRISCVUInt64 read fIMSICSupervisorSize write fIMSICSupervisorSize;
 
               property PLICBase:TPasRISCVUInt64 read fPLICBase write fPLICBase;
               property PLICSize:TPasRISCVUInt64 read fPLICSize write fPLICSize;
@@ -5258,6 +5285,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fMemoryDevice:TMemoryDevice;
 
        fACLINTDevice:TACLINTDevice;
+
+       fIMSICMachineDevice:TIMSICDevice;
+
+       fIMSICSupervisorDevice:TIMSICDevice;
 
        fPLICDevice:TPLICDevice;
 
@@ -5390,6 +5421,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property BootMemoryDevice:TMemoryDevice read fBootMemoryDevice;
 
        property ACLINTDevice:TACLINTDevice read fACLINTDevice;
+
+       property IMSICMachineDevice:TIMSICDevice read fIMSICMachineDevice;
+
+       property IMSICSupervisorDevice:TIMSICDevice read fIMSICSupervisorDevice;
 
        property PLICDevice:TPLICDevice read fPLICDevice;
 
@@ -6150,6 +6185,31 @@ begin
  aValue:=aValue or (((aValue shr 2) or (aValue shl 2)) and TPasRISCVUInt64($3c3c3c3c3c3c3c3c));
  aValue:=aValue or ((aValue shr 4) and TPasRISCVUInt64($0f0f0f0f0f0f0f0f));
  result:=aValue or ((aValue shl 4) and TPasRISCVUInt64($f0f0f0f0f0f0f0f0));}
+end;
+{$ifend}
+
+function ByteSwap32(aValue:TPasRISCVUInt32):TPasRISCVUInt32; {$if defined(fpc) and defined(cpuamd64)} assembler; {$if defined(fpc)}nostackframe; {$if defined(Windows)}ms_abi_default;{$else}sysv_abi_default;{$ifend}{$ifend}
+asm
+{$if not defined(fpc)}
+ .noframe
+{$ifend}
+{$if defined(Windows)}
+ // Win64 ABI: rcx, rdx, r8, r9
+ mov eax,ecx
+{$else}
+ // SysV ABI: rdi, rsi, rdx, rcx, r8, r9
+ mov eax,edi
+{$ifend}
+ bswap eax
+end;
+{$else}
+begin
+{result:=((aValue shr 8) and TPasRISCVUInt32($00ff00ff)) or ((aValue and TPasRISCVUInt32($00ff00ff)) shl 8);
+ result:=((result shr 16) and TPasRISCVUInt32($0000ffff)) or ((result and TPasRISCVUInt32($0000ffff)) shl 16);}
+ result:=((aValue and TPasRISCVUInt64($00000000ff000000)) shr 24) or
+         ((aValue and TPasRISCVUInt64($0000000000ff0000)) shr 8) or
+         ((aValue and TPasRISCVUInt64($000000000000ff00)) shl 8) or
+         ((aValue and TPasRISCVUInt64($00000000000000ff)) shl 24);
 end;
 {$ifend}
 
@@ -13600,6 +13660,57 @@ begin
   aTime:=GetTime;
  end;
  result:=aTime;
+end;
+
+{ TPasRISCV.TIMSICDevice }
+
+constructor TPasRISCV.TIMSICDevice.Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode);
+begin
+ inherited Create(aMachine,aBase,aSize);
+ fAIARegFileMode:=aAIARegFileMode;
+ fUnalignedAccessSupport:=false;
+ fMinOpSize:=4;
+ fMaxOpSize:=4;
+end; 
+
+destructor TPasRISCV.TIMSICDevice.Destroy;
+begin
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TIMSICDevice.Reset;
+begin
+ inherited Reset;
+end;
+
+function TPasRISCV.TIMSICDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=0;
+end;
+
+procedure TPasRISCV.TIMSICDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+const IMSIC_REG_SETEIPNUM_LE=$00;
+      IMSIC_REG_SETEIPNUM_BE=$04;
+var Address,HARTID:TPasRISCVUInt64;
+    HART:TPasRISCV.THART;
+begin
+ Address:=aAddress-fBase;
+ if (Address>=0) and (Address<Size) then begin
+  HARTID:=Address shr 12;
+  if HARTID<length(fMachine.fHARTs) then begin
+   HART:=fMachine.fHARTs[HARTID];
+   case Address and $ffc of
+    IMSIC_REG_SETEIPNUM_LE:begin
+     HART.SendAIAIRQ(fAIARegFileMode,TPasRISCVUInt32(aValue));
+    end; 
+    IMSIC_REG_SETEIPNUM_BE:begin
+     HART.SendAIAIRQ(fAIARegFileMode,ByteSwap32(TPasRISCVUInt32(aValue)));
+    end; 
+    else begin
+    end;
+   end;
+  end;
+ end;     
 end;
 
 { TPasRISCV.TPLICDevice }
@@ -25635,7 +25746,7 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   IsWrite:=(rd<>TRegister.Zero) or (aOperationKind=TCSROperationKind.Swap);
-  IRQ:=GetAIAIRQ(TPasRISCV.THART.TAIARegFileMode.Machine,IsWrite);
+  IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Machine,IsWrite);
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -25653,7 +25764,7 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   IsWrite:=(rd<>TRegister.Zero) or (aOperationKind=TCSROperationKind.Swap);
-  IRQ:=GetAIAIRQ(TPasRISCV.THART.TAIARegFileMode.Supervisor,IsWrite);
+  IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -25722,7 +25833,7 @@ var rd:TRegister;
     OK:Boolean;
     ISelect,CSRValue,Reg:TPasRISCVUInt64;
     Mode:TPasRISCV.THART.TMode;
-    AIARegFileMode:TPasRISCV.THART.TAIARegFileMode;
+    AIARegFileMode:TPasRISCV.TAIARegFileMode;
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -25731,17 +25842,17 @@ begin
   case aCSR of
    TCSR.TAddress.MIREG:begin
     Mode:=THART.TMode.Machine;
-    AIARegFileMode:=TPasRISCV.THART.TAIARegFileMode.Machine;
+    AIARegFileMode:=TPasRISCV.TAIARegFileMode.Machine;
     ISelect:=fState.CSR.fData[TCSR.TAddress.MISELECT];
    end;
    TCSR.TAddress.SIREG:begin
     Mode:=THART.TMode.Supervisor;
-    AIARegFileMode:=TPasRISCV.THART.TAIARegFileMode.Supervisor;
+    AIARegFileMode:=TPasRISCV.TAIARegFileMode.Supervisor;
     ISelect:=fState.CSR.fData[TCSR.TAddress.SISELECT];
    end;
    else begin
     Mode:=THART.TMode.Invalid;
-    AIARegFileMode:=TPasRISCV.THART.TAIARegFileMode.Machine;
+    AIARegFileMode:=TPasRISCV.TAIARegFileMode.Machine;
     ISelect:=0;
    end;
   end;
@@ -30404,7 +30515,7 @@ begin
  result:=(TPasMPInterlocked.ExchangeBitwiseOr(fState.PendingIRQs,Mask) and Mask)=0;
 end;
 
-procedure TPasRISCV.THART.SendAIAIRQ(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
+procedure TPasRISCV.THART.SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
 var AIARegFile:TPasRISCV.THART.TAIARegFile;
     MSIP:THART.TInterruptValue;
     Threshold,Reg,Value,EIE,Previous:TPasRISCVUInt32;
@@ -30416,10 +30527,10 @@ begin
    TPasMPMemoryBarrier.ReadDependency;
    Threshold:=AIARegFile.fEIThreshold-1;
    case aAIARegFileMode of
-    TPasRISCV.THART.TAIARegFileMode.Machine:begin
+    TPasRISCV.TAIARegFileMode.Machine:begin
      MSIP:=THART.TInterruptValue.MachineExternal;
     end;
-    TPasRISCV.THART.TAIARegFileMode.Supervisor:begin
+    TPasRISCV.TAIARegFileMode.Supervisor:begin
      MSIP:=THART.TInterruptValue.SupervisorExternal;
     end;
     else begin
@@ -30438,7 +30549,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
+function TPasRISCV.THART.UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
 var AIARegFile:TPasRISCV.THART.TAIARegFile;
     MSIP:THART.TInterruptValue;
     Threshold,Reg,EIE,EIP,Bits,Bit,IRQ,Mask:TPasRISCVUInt32;
@@ -30450,10 +30561,10 @@ begin
   TPasMPMemoryBarrier.ReadDependency;
   Threshold:=AIARegFile.fEIThreshold-1;
   case aAIARegFileMode of
-   TPasRISCV.THART.TAIARegFileMode.Machine:begin
+   TPasRISCV.TAIARegFileMode.Machine:begin
     MSIP:=THART.TInterruptValue.MachineExternal;
    end;
-   TPasRISCV.THART.TAIARegFileMode.Supervisor:begin
+   TPasRISCV.TAIARegFileMode.Supervisor:begin
     MSIP:=THART.TInterruptValue.SupervisorExternal;
    end;
    else begin
@@ -30501,12 +30612,12 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.UpdateAIAState(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode):TPasRISCVUInt32;
+function TPasRISCV.THART.UpdateAIAState(const aAIARegFileMode:TPasRISCV.TAIARegFileMode):TPasRISCVUInt32;
 begin
  result:=UpdateAIAInternal(aAIARegFileMode,true,false);
 end;
 
-function TPasRISCV.THART.GetAIAIRQ(const aAIARegFileMode:TPasRISCV.THART.TAIARegFileMode;const aClaim:Boolean):TPasRISCVUInt32;
+function TPasRISCV.THART.GetAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aClaim:Boolean):TPasRISCVUInt32;
 begin
  result:=UpdateAIAInternal(aAIARegFileMode,true,aClaim);
 end;
@@ -32156,6 +32267,12 @@ begin
  fCLINTBase:=TPasRISCV.TACLINTDevice.DefaultBaseAddress;
  fCLINTSize:=TPasRISCV.TACLINTDevice.DefaultSize;
 
+ fIMSICMachineBase:=TPasRISCV.TIMSICDevice.DefaultBaseAddressMachine;
+ fIMSICMachineSize:=TPasRISCV.TIMSICDevice.DefaultSize;
+
+ fIMSICSupervisorBase:=TPasRISCV.TIMSICDevice.DefaultBaseAddressSupervisor;
+ fIMSICSupervisorSize:=TPasRISCV.TIMSICDevice.DefaultSize;
+
  fPLICBase:=TPasRISCV.TPLICDevice.DefaultBaseAddress;
  fPLICSize:=TPasRISCV.TPLICDevice.DefaultSize;
 
@@ -32255,6 +32372,12 @@ begin
 
  fCLINTBase:=aConfiguration.fCLINTBase;
  fCLINTSize:=aConfiguration.fCLINTSize;
+
+ fIMSICMachineBase:=aConfiguration.fIMSICMachineBase;
+ fIMSICMachineSize:=aConfiguration.fIMSICMachineSize; 
+
+ fIMSICSupervisorBase:=aConfiguration.fIMSICSupervisorBase;
+ fIMSICSupervisorSize:=aConfiguration.fIMSICSupervisorSize;
 
  fPLICBase:=aConfiguration.fPLICBase;
  fPLICSize:=aConfiguration.fPLICSize;
@@ -32482,7 +32605,23 @@ begin
 
  fACLINTDevice:=TACLINTDevice.Create(self);
 
- fPLICDevice:=TPLICDevice.Create(self);
+ if fConfiguration.fAIA then begin
+
+  fIMSICMachineDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICMachineBase,fConfiguration.fIMSICMachineSize,TPasRISCV.TAIARegFileMode.Machine);
+
+  fIMSICSupervisorDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICSupervisorBase,fConfiguration.fIMSICSupervisorSize,TPasRISCV.TAIARegFileMode.Supervisor);
+
+  fPLICDevice:=nil;
+
+ end else begin
+
+  fIMSICMachineDevice:=nil;
+
+  fIMSICSupervisorDevice:=nil;
+
+  fPLICDevice:=TPLICDevice.Create(self);
+
+ end;
 
  fSYSCONDevice:=TSYSCONDevice.Create(self);
 
@@ -32523,7 +32662,15 @@ begin
  fBus.AddBusDevice(fBootMemoryDevice);
  fBus.AddBusDevice(fMemoryDevice);
  fBus.AddBusDevice(fACLINTDevice);
- fBus.AddBusDevice(fPLICDevice);
+ if assigned(fIMSICMachineDevice) then begin
+  fBus.AddBusDevice(fIMSICMachineDevice);
+ end;
+ if assigned(fIMSICSupervisorDevice) then begin
+  fBus.AddBusDevice(fIMSICSupervisorDevice);
+ end;
+ if assigned(fPLICDevice) then begin
+  fBus.AddBusDevice(fPLICDevice);
+ end;
  fBus.AddBusDevice(fSYSCONDevice);
  fBus.AddBusDevice(fVirtIOBlockDevice);
  fBus.AddBusDevice(fUARTDevice);
@@ -32603,6 +32750,10 @@ begin
  FreeAndNil(fSYSCONDevice);
 
  FreeAndNil(fPLICDevice);
+
+ FreeAndNil(fIMSICSupervisorDevice);
+
+ FreeAndNil(fIMSICMachineDevice);
 
  FreeAndNil(fACLINTDevice);
 
@@ -32709,9 +32860,9 @@ end;
 
 procedure TPasRISCV.InitializeFDT;
 var Index:TPasRISCVSizeInt;
-    ChosenNode,CPUNode,CPUsNode,CPUMap,CPUClusterNode,CoreNode,
+    ChosenNode,CPUNode,CPUInterruptControllerNode,CPUsNode,CPUMap,CPUClusterNode,CoreNode,
     MemoryNode,SysConNode,PowerOffNode,RebootNode,
-    SoCNode,PLIC0,ACLINTNode,UART0,DS1742Node,
+    SoCNode,IMSIC0,IMSICM0,IMSICS0,APLIC0,APLICM0,APLICS0,PLIC0,ACLINTNode,UART0,DS1742Node,
     PCIBusNode,
     I2CClockNode,I2CNode,I2CHIDKeyboardNode,
     PS2KeyboardNode,PS2MouseNode,
@@ -32719,7 +32870,9 @@ var Index:TPasRISCVSizeInt;
     VirtIOInputKeyboardNode,VirtIOInputMouseNode,VirtIOSoundNode,VirtIO9PNode,VirtIONetNode,
     VirtIORandomGeneratorNode,
     SimpleFrameBufferNode:TPasRISCV.TFDT.TFDTNode;
+    AIARegFileMode:TPasRISCV.TAIARegFileMode;
     CPUInterruptControllerNodes:array[0..15] of TPasRISCV.TFDT.TFDTNode;
+    CPUNodes:array of TPasRISCV.TFDT.TFDTNode;
     PLICHandle:TPasRISCVUInt32;
     RandomBuffer:array[0..15] of TPasRISCVUInt32;
     Cells:array[0..3] of TPasRISCVUInt32;
@@ -32729,579 +32882,684 @@ var Index:TPasRISCVSizeInt;
     InterrurtMask:array[0..3] of TPasRISCVUInt32;
     BootArguments:TPasRISCVRawByteString;
     FileStream:TFileStream;
+    IRQExt:TPasRISCVUInt32DynamicArray;
 begin
 
  FreeAndNil(fFDT);
 
- fFDT:=TFDT.Create;
-
- fFDT.fRoot.AddPropertyU32('#address-cells',2);
- fFDT.fRoot.AddPropertyU32('#size-cells',2);
-
- fFDT.fRoot.AddPropertyString('model','riscv-virtio,qemu,pasriscv');
- fFDT.fRoot.AddPropertyString('compatible','riscv-virtio'#0'pasriscv'#0);
-
- ChosenNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'chosen');
+ CPUNodes:=nil;
  try
-  BootArguments:=fConfiguration.fBootArguments;
-  BootArguments:=StringReplace(BootArguments,'$LINUXUART$','uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase),[rfReplaceAll,rfIgnoreCase]);
-  ChosenNode.AddPropertyString('bootargs',BootArguments);
-//ChosenNode.AddPropertyString('bootargs','console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/vda1 rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/vda4 rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/vda4 rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
-// ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS earlycon=sbi earlyprintk');
-//  ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS console=tty0 earlycon=sbi earlyprintk');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/nvme0 rootflags=discard rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
-//  ChosenNode.AddPropertyString('bootargs','root=/dev/vda rootflags=discard rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/nvme0n1 rootflags=discard rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','earlyprintk debug root=/dev/vda1 console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','rw console=ttyS console=tty0 earlycon=sbi');
-//ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS console=tty0 earlycon=sbi');
-  ChosenNode.AddPropertyString('stdout-path','/soc/uart@'+FDTHex64(fConfiguration.fUARTBase));
-  if fKernelSize>0 then begin
-   ChosenNode.AddPropertyU64('riscv,kernel-start',fConfiguration.fMemoryBase+fKernelOffset);
-   ChosenNode.AddPropertyU64('riscv,kernel-end',fConfiguration.fMemoryBase+fKernelOffset+fKernelSize);
-  end;
-  if fINITRDSize>0 then begin
-   ChosenNode.AddPropertyU64('linux,initrd-start',fConfiguration.fMemoryBase+fINITRDOffset);
-   ChosenNode.AddPropertyU64('linux,initrd-end',fConfiguration.fMemoryBase+fINITRDOffset+fINITRDSize);
-  end;
-  fRandomGeneratorLock.Acquire;
+
+  fFDT:=TFDT.Create;
+
+  fFDT.fRoot.AddPropertyU32('#address-cells',2);
+  fFDT.fRoot.AddPropertyU32('#size-cells',2);
+
+  fFDT.fRoot.AddPropertyString('model','riscv-virtio,qemu,pasriscv');
+  fFDT.fRoot.AddPropertyString('compatible','riscv-virtio'#0'pasriscv'#0);
+
+  ChosenNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'chosen');
   try
-   for Index:=0 to 15 do begin
-    RandomBuffer[Index]:=fRandomGenerator.GetUInt32;
+   BootArguments:=fConfiguration.fBootArguments;
+   BootArguments:=StringReplace(BootArguments,'$LINUXUART$','uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase),[rfReplaceAll,rfIgnoreCase]);
+   ChosenNode.AddPropertyString('bootargs',BootArguments);
+ //ChosenNode.AddPropertyString('bootargs','console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/vda1 rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/vda4 rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/vda4 rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/mem rw earlyprintk console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' console=tty0 earlycon=sbi');
+ // ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS earlycon=sbi earlyprintk');
+ //  ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS console=tty0 earlycon=sbi earlyprintk');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/nvme0 rootflags=discard rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
+ //  ChosenNode.AddPropertyString('bootargs','root=/dev/vda rootflags=discard rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/nvme0n1 rootflags=discard rw earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','earlyprintk debug console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','earlyprintk debug root=/dev/vda1 console=uart,mmio,0x'+FDTHex64(fConfiguration.fUARTBase)+' rootwait earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','rw console=ttyS console=tty0 earlycon=sbi');
+ //ChosenNode.AddPropertyString('bootargs','root=/dev/vda rw console=ttyS console=tty0 earlycon=sbi');
+   ChosenNode.AddPropertyString('stdout-path','/soc/uart@'+FDTHex64(fConfiguration.fUARTBase));
+   if fKernelSize>0 then begin
+    ChosenNode.AddPropertyU64('riscv,kernel-start',fConfiguration.fMemoryBase+fKernelOffset);
+    ChosenNode.AddPropertyU64('riscv,kernel-end',fConfiguration.fMemoryBase+fKernelOffset+fKernelSize);
    end;
+   if fINITRDSize>0 then begin
+    ChosenNode.AddPropertyU64('linux,initrd-start',fConfiguration.fMemoryBase+fINITRDOffset);
+    ChosenNode.AddPropertyU64('linux,initrd-end',fConfiguration.fMemoryBase+fINITRDOffset+fINITRDSize);
+   end;
+   fRandomGeneratorLock.Acquire;
+   try
+    for Index:=0 to 15 do begin
+     RandomBuffer[Index]:=fRandomGenerator.GetUInt32;
+    end;
+   finally
+    fRandomGeneratorLock.Release;
+   end;
+   ChosenNode.AddProperty('rng-seed',RandomBuffer,SizeOf(RandomBuffer));
   finally
-   fRandomGeneratorLock.Release;
+   fFDT.fRoot.AddChild(ChosenNode);
   end;
-  ChosenNode.AddProperty('rng-seed',RandomBuffer,SizeOf(RandomBuffer));
- finally
-  fFDT.fRoot.AddChild(ChosenNode);
- end;
 
- CPUsNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpus');
- try
-
-  CPUsNode.AddPropertyU32('#address-cells',1);
-  CPUsNode.AddPropertyU32('#size-cells',0);
-  CPUsNode.AddPropertyU32('timebase-frequency',CLOCK_FREQUENCY);
-
-  CPUMap:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpus-map');
+  CPUsNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpus');
   try
 
-   CPUClusterNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cluster0');
+   CPUsNode.AddPropertyU32('#address-cells',1);
+   CPUsNode.AddPropertyU32('#size-cells',0);
+   CPUsNode.AddPropertyU32('timebase-frequency',CLOCK_FREQUENCY);
+
+   CPUMap:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpus-map');
    try
 
-    for Index:=0 to length(fHARTs)-1 do begin
+    CPUClusterNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cluster0');
+    try
 
-     CPUNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpu@'+IntToStr(Index));
-     try
+     SetLength(CPUNodes,length(fHARTs));
+     for Index:=0 to length(fHARTs)-1 do begin
 
-      CPUNode.GetPHandle;
-
-      CPUNode.AddPropertyString('device_type','cpu');
-      CPUNode.AddPropertyU32('reg',Index);
-      CPUNode.AddPropertyString('status','okay');
-      CPUNode.AddPropertyString('compatible','riscv');
-      CPUNode.AddPropertyU32('riscv,cboz-block-size',64);
-      CPUNode.AddPropertyU32('riscv,cbom-block-size',64);
-      CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot');
-   // CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot_svpbmt');
-      CPUNode.AddPropertyString('riscv,isa-base','rv64i');
-      CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot');
-      CPUNode.AddPropertyString('mmu-type','riscv,sv39');
-      CPUNode.AddPropertyU32('clock-frequency',3000000000);
-
-      CPUInterruptControllerNodes[Index]:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpu'+IntToStr(Index)+'-intc');
+      CPUNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpu@'+IntToStr(Index));
       try
-       CPUInterruptControllerNodes[Index].GetPHandle;
-       CPUInterruptControllerNodes[Index].AddPropertyU32('#interrupt-cells',1);
-       CPUInterruptControllerNodes[Index].AddPropertyCells('interrupt-controller',nil,0);
-       CPUInterruptControllerNodes[Index].AddPropertyString('compatible','riscv,cpu-intc');
+
+       CPUNode.GetPHandle;
+
+       CPUNode.AddPropertyString('device_type','cpu');
+       CPUNode.AddPropertyU32('reg',Index);
+       CPUNode.AddPropertyString('status','okay');
+       CPUNode.AddPropertyString('compatible','riscv');
+       CPUNode.AddPropertyU32('riscv,cboz-block-size',64);
+       CPUNode.AddPropertyU32('riscv,cbom-block-size',64);
+       CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot');
+    // CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot_svpbmt');
+       CPUNode.AddPropertyString('riscv,isa-base','rv64i');
+       CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot');
+       CPUNode.AddPropertyString('mmu-type','riscv,sv39');
+       CPUNode.AddPropertyU32('clock-frequency',3000000000);
+
+       CPUInterruptControllerNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'cpu'+IntToStr(Index)+'-intc');
+       try
+        CPUInterruptControllerNode.GetPHandle;
+        CPUInterruptControllerNode.AddPropertyU32('#interrupt-cells',1);
+        CPUInterruptControllerNode.AddPropertyCells('interrupt-controller',nil,0);
+        CPUInterruptControllerNode.AddPropertyString('compatible','riscv,cpu-intc');
+       finally
+        CPUNode.AddChild(CPUInterruptControllerNode);
+        CPUInterruptControllerNodes[Index]:=CPUInterruptControllerNode;
+       end;
+
+       CoreNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'core'+IntToStr(Index));
+       try
+
+        CoreNode.AddPropertyU32('cpu',CPUNode.GetPHandle);
+
+       finally
+        CPUClusterNode.AddChild(CoreNode);
+       end;
+
       finally
-       CPUNode.AddChild(CPUInterruptControllerNodes[Index]);
+       CPUsNode.AddChild(CPUNode);
+       CPUNodes[Index]:=CPUNode;
       end;
 
-      CoreNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'core'+IntToStr(Index));
+     end;
+
+    finally
+     CPUMap.AddChild(CPUClusterNode);
+    end;
+
+   finally
+    CPUsNode.AddChild(CPUMap);
+   end;
+
+  finally
+   fFDT.fRoot.AddChild(CPUsNode);
+  end;
+
+  MemoryNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'memory',fConfiguration.fMemoryBase);
+  try
+   MemoryNode.AddPropertyString('device_type','memory');
+   Cells[0]:=0;
+   Cells[1]:=fConfiguration.fMemoryBase;
+   Cells[2]:=0;
+   Cells[3]:=fConfiguration.fMemorySize;
+   MemoryNode.AddPropertyCells('reg',@Cells,4);
+  finally
+   fFDT.fRoot.AddChild(MemoryNode);
+  end;
+
+  SysConNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'syscon',fConfiguration.fSYSCONBase);
+  try
+   SysConNode.GetPHandle;
+   Cells[0]:=0;
+   Cells[1]:=fConfiguration.fSYSCONBase;
+   Cells[2]:=0;
+   Cells[3]:=fConfiguration.fSYSCONSize;
+   SysConNode.AddPropertyCells('reg',@Cells,4);
+   SysConNode.AddPropertyString('compatible','sifive,test1'#0'sifive,test0'#0'syscon'#0);
+  finally
+   fFDT.fRoot.AddChild(SysConNode);
+  end;
+
+  PowerOffNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'poweroff');
+  try
+   PowerOffNode.AddPropertyU32('value',$5555);
+   PowerOffNode.AddPropertyU32('offset',0);
+   PowerOffNode.AddPropertyU32('regmap',SysConNode.GetPHandle);
+   PowerOffNode.AddPropertyString('compatible','syscon-poweroff');
+  finally
+   fFDT.fRoot.AddChild(PowerOffNode);
+  end;
+
+  RebootNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'reboot');
+  try
+   RebootNode.AddPropertyU32('value',$7777);
+   RebootNode.AddPropertyU32('offset',0);
+   RebootNode.AddPropertyU32('regmap',SysConNode.GetPHandle);
+   RebootNode.AddPropertyString('compatible','syscon-reboot');
+  finally
+   fFDT.fRoot.AddChild(RebootNode);
+  end;
+
+  SoCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'soc');
+  try
+
+   SoCNode.AddPropertyU32('#address-cells',2);
+   SoCNode.AddPropertyU32('#size-cells',2);
+   SoCNode.AddPropertyString('compatible','simple-bus');
+   SoCNode.AddPropertyCells('ranges',nil,0);
+
+   if fConfiguration.fAIA then begin
+
+    // IMSIC
+    for AIARegFileMode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
+
+     case AIARegFileMode of
+      TPasRISCV.TAIARegFileMode.Machine:begin
+       IMSIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'imsics_m',fConfiguration.fIMSICMachineBase);
+      end;
+      TPasRISCV.TAIARegFileMode.Supervisor:begin
+       IMSIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'imsics_s',fConfiguration.fIMSICSupervisorBase);
+      end;
+      else begin
+      end;
+     end;
+     try
+
+      IMSIC0.GetPHandle;
+
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fIMSICMachineBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fIMSICMachineSize;
+      IMSIC0.AddPropertyCells('reg',@Cells,4);
+
+      IMSIC0.AddPropertyString('compatible','riscv,imsics');
+      IMSIC0.AddPropertyCells('interrupt-controller',nil,0);
+      IMSIC0.AddPropertyU32('#interrupt-cells',0);
+      IMSIC0.AddPropertyCells('msi-controller',nil,0);
+      IMSIC0.AddPropertyU32('#msi-cells',0);
+      IMSIC0.AddPropertyU32('riscv,num-ids',TPasRISCV.THART.TAIARegFile.IRQ_LIMIT-1);
+
+      IRQExt:=nil;
       try
-
-       CoreNode.AddPropertyU32('cpu',CPUNode.GetPHandle);
-
+       SetLength(IRQExt,length(CPUNodes)*2);
+       for Index:=0 to length(CPUNodes)-1 do begin
+        CPUNode:=CPUNodes[Index];
+        if assigned(CPUNode) then begin
+         CPUInterruptControllerNode:=CPUInterruptControllerNodes[Index];
+         if assigned(CPUInterruptControllerNode) then begin
+          IRQExt[(Index shl 1) or 0]:=CPUInterruptControllerNode.GetPHandle;
+          case AIARegFileMode of
+           TPasRISCV.TAIARegFileMode.Machine:begin
+            IRQExt[(Index shl 1) or 1]:=TPasRISCVUInt32(TPasRISCV.THART.TInterruptValue.MachineExternal);
+           end;
+           TPasRISCV.TAIARegFileMode.Supervisor:begin
+            IRQExt[(Index shl 1) or 1]:=TPasRISCVUInt32(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
+           end;
+           else begin
+           end;
+          end;
+         end;
+        end;
+       end;
+       IMSIC0.AddPropertyCells('interrupts-extended',@IRQExt[0],length(IRQExt));
       finally
-       CPUClusterNode.AddChild(CoreNode);
+       IRQExt:=nil;
       end;
 
      finally
-      CPUsNode.AddChild(CPUNode);
+      SoCNode.AddChild(IMSIC0);
+      case AIARegFileMode of
+       TPasRISCV.TAIARegFileMode.Machine:begin
+        IMSICM0:=IMSIC0;
+       end;
+       TPasRISCV.TAIARegFileMode.Supervisor:begin
+        IMSICS0:=IMSIC0;
+       end;
+       else begin
+       end;
+      end;
      end;
 
     end;
 
-   finally
-    CPUMap.AddChild(CPUClusterNode);
-   end;
+    // APLIC
+    for AIARegFileMode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
 
-  finally
-   CPUsNode.AddChild(CPUMap);
-  end;
-
- finally
-  fFDT.fRoot.AddChild(CPUsNode);
- end;
-
- MemoryNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'memory',fConfiguration.fMemoryBase);
- try
-  MemoryNode.AddPropertyString('device_type','memory');
-  Cells[0]:=0;
-  Cells[1]:=fConfiguration.fMemoryBase;
-  Cells[2]:=0;
-  Cells[3]:=fConfiguration.fMemorySize;
-  MemoryNode.AddPropertyCells('reg',@Cells,4);
- finally
-  fFDT.fRoot.AddChild(MemoryNode);
- end;
-
- SysConNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'syscon',fConfiguration.fSYSCONBase);
- try
-  SysConNode.GetPHandle;
-  Cells[0]:=0;
-  Cells[1]:=fConfiguration.fSYSCONBase;
-  Cells[2]:=0;
-  Cells[3]:=fConfiguration.fSYSCONSize;
-  SysConNode.AddPropertyCells('reg',@Cells,4);
-  SysConNode.AddPropertyString('compatible','sifive,test1'#0'sifive,test0'#0'syscon'#0);
- finally
-  fFDT.fRoot.AddChild(SysConNode);
- end;
-
- PowerOffNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'poweroff');
- try
-  PowerOffNode.AddPropertyU32('value',$5555);
-  PowerOffNode.AddPropertyU32('offset',0);
-  PowerOffNode.AddPropertyU32('regmap',SysConNode.GetPHandle);
-  PowerOffNode.AddPropertyString('compatible','syscon-poweroff');
- finally
-  fFDT.fRoot.AddChild(PowerOffNode);
- end;
-
- RebootNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'reboot');
- try
-  RebootNode.AddPropertyU32('value',$7777);
-  RebootNode.AddPropertyU32('offset',0);
-  RebootNode.AddPropertyU32('regmap',SysConNode.GetPHandle);
-  RebootNode.AddPropertyString('compatible','syscon-reboot');
- finally
-  fFDT.fRoot.AddChild(RebootNode);
- end;
-
- SoCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'soc');
- try
-
-  SoCNode.AddPropertyU32('#address-cells',2);
-  SoCNode.AddPropertyU32('#size-cells',2);
-  SoCNode.AddPropertyString('compatible','simple-bus');
-  SoCNode.AddPropertyCells('ranges',nil,0);
-
-  PLIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'interrupt-controller',fConfiguration.fPLICBase);
-  try
-
-   PLIC0.GetPHandle;
-   PLIC0.AddPropertyU32('riscv,ndev',$35);
-
-   Cells[0]:=0;
-   Cells[1]:=fConfiguration.fPLICBase;
-   Cells[2]:=0;
-   Cells[3]:=fConfiguration.fPLICSize;
-   PLIC0.AddPropertyCells('reg',@Cells,4);
-
-   for Index:=0 to length(fHARTs)-1 do begin
-    InterruptExtCells[(Index shl 2) or 0]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(THART.TInterruptValue.MachineExternal);
-    InterruptExtCells[(Index shl 2) or 2]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(THART.TInterruptValue.SupervisorExternal);
-   end;
-   PLIC0.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fHARTs)*4);
-
-   PLIC0.AddPropertyCells('interrupt-controller',nil,0);
-// PLIC0.AddPropertyString('compatible','riscv,plic0');
-   PLIC0.AddPropertyString('compatible','sifive,plic-1.0.0');
-   PLIC0.AddPropertyU32('#interrupt-cells',1);
-   PLIC0.AddPropertyU32('#address-cells',0);
-
-  finally
-   SoCNode.AddChild(PLIC0);
-  end;
-
-  ACLINTNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'clint',fConfiguration.fCLINTBase);
-  try
-
-   Cells[0]:=0;
-   Cells[1]:=fConfiguration.fCLINTBase;
-   Cells[2]:=0;
-   Cells[3]:=fConfiguration.fCLINTSize;
-   ACLINTNode.AddPropertyCells('reg',@Cells,4);
-
-   for Index:=0 to length(fHARTs)-1 do begin
-    InterruptExtCells[(Index shl 2) or 0]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(THART.TInterruptValue.MachineSoftware);
-    InterruptExtCells[(Index shl 2) or 2]:=CPUInterruptControllerNodes[Index].GetPHandle;
-    InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(THART.TInterruptValue.MachineTimer);
-   end;
-   ACLINTNode.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fHARTs)*4);
-
-   ACLINTNode.AddPropertyString('compatible','sifive,clint0'#0'riscv,clint0'#0);
-
-  finally
-   SoCNode.AddChild(ACLINTNode);
-  end;
-
-  UART0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'uart',fConfiguration.fUARTBase);
-  try
-
-   UART0.AddPropertyU32('interrupts',fConfiguration.fUARTIRQ);
-   UART0.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
-   UART0.AddPropertyU32('clock-frequency',$384000);
-
-   Cells[0]:=0;
-   Cells[1]:=fConfiguration.fUARTBase;
-   Cells[2]:=0;
-   Cells[3]:=fConfiguration.fUARTSize;
-   UART0.AddPropertyCells('reg',@Cells,4);
-
-   UART0.AddPropertyString('compatible','ns16550a');
-
-  finally
-   SoCNode.AddChild(UART0);
-  end;
-
-  DS1742Node:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fDS1742Base);
-  try
-   DS1742Node.AddPropertyReg('reg',fConfiguration.fDS1742Base,fConfiguration.fDS1742Size);
-   DS1742Node.AddPropertyString('compatible','maxim,ds1742');
-  finally
-   SoCNode.AddChild(DS1742Node);
-  end;//}
-
-  begin
-
-   PCIBusNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'pci',TPCI.PCI_BASE_DEFAULT_MMIO);
-   try
-
-    PCIBusNode.AddPropertyU32('#address-cells',3);
-
-    PCIBusNode.AddPropertyU32('#size-cells',2);
-
-    PCIBusNode.AddPropertyU32('#interrupt-cells',1);
-
-    PCIBusNode.AddPropertyString('device_type','pci');
-
-    Cells[0]:=0;
-    Cells[1]:=TPCI.PCI_BASE_DEFAULT_MMIO;
-    Cells[2]:=0;
-    Cells[3]:=256 shl 20;//TPCI.PCI_SIZE;
-    PCIBusNode.AddPropertyCells('reg',@Cells,4);
-
-    PCIBusNode.AddPropertyString('compatible','pci-host-ecam-generic');
-
-    PCIBusNode.AddPropertyString('dma-coherent','');
-
-    Cells[0]:=0;
-    Cells[1]:=255;//TPCI.PCI_BUS_COUNT-1;
-    PCIBusNode.AddPropertyCells('bus-range',@Cells,2);
-
-    Ranges[0]:=$1000000;
-    Ranges[1]:=0;
-    Ranges[2]:=0;
-    Ranges[3]:=TPCI.PCI_IO_DEFAULT_ADDR shr 32;
-    Ranges[4]:=TPCI.PCI_IO_DEFAULT_ADDR and TPasRISCVUInt64($ffffffff);
-    Ranges[5]:=TPCI.PCI_IO_DEFAULT_SIZE shr 32;
-    Ranges[6]:=TPCI.PCI_IO_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);
-
-    Ranges[7]:=$2000000;
-    Ranges[8]:=TPCI.PCI_MEM32_DEFAULT_MMIO shr 32;
-    Ranges[9]:=TPCI.PCI_MEM32_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
-    Ranges[10]:=TPCI.PCI_MEM32_DEFAULT_MMIO shr 32;
-    Ranges[11]:=TPCI.PCI_MEM32_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
-    Ranges[12]:=TPCI.PCI_MEM32_DEFAULT_SIZE shr 32;
-    Ranges[13]:=TPCI.PCI_MEM32_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);
-
-{   Ranges[14]:=$43000000;
-    Ranges[15]:=TPCI.PCI_MEM64_DEFAULT_MMIO shr 32;
-    Ranges[16]:=TPCI.PCI_MEM64_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
-    Ranges[17]:=TPCI.PCI_MEM64_DEFAULT_MMIO shr 32;
-    Ranges[18]:=TPCI.PCI_MEM64_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
-    Ranges[19]:=TPCI.PCI_MEM64_DEFAULT_SIZE shr 32;
-    Ranges[20]:=TPCI.PCI_MEM64_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);}
-
-    if TPCI.PCI_IO_DEFAULT_SIZE<>0 then begin
-     PCIBusNode.AddPropertyCells('ranges',@Ranges[0],14{21});
-    end else begin
-     PCIBusNode.AddPropertyCells('ranges',@Ranges[7],7);
     end;
 
-    // Crossing-style IRQ routing for IRQ balancing
-    PLICHandle:=PLIC0.GetPHandle;
-    InterruptMap[0]:=$0000;  InterruptMap[1]:=0;  InterruptMap[2]:=0;  InterruptMap[3]:=1;  InterruptMap[4]:=PLICHandle;  InterruptMap[5]:=TPCI.PCI_IRQs[0];
-    InterruptMap[6]:=$0000;  InterruptMap[7]:=0;  InterruptMap[8]:=0;  InterruptMap[9]:=2;  InterruptMap[10]:=PLICHandle; InterruptMap[11]:=TPCI.PCI_IRQs[1];
-    InterruptMap[12]:=$0000; InterruptMap[13]:=0; InterruptMap[14]:=0; InterruptMap[15]:=3; InterruptMap[16]:=PLICHandle; InterruptMap[17]:=TPCI.PCI_IRQs[2];
-    InterruptMap[18]:=$0000; InterruptMap[19]:=0; InterruptMap[20]:=0; InterruptMap[21]:=4; InterruptMap[22]:=PLICHandle; InterruptMap[23]:=TPCI.PCI_IRQs[3];
-    InterruptMap[24]:=$0800; InterruptMap[25]:=0; InterruptMap[26]:=0; InterruptMap[27]:=1; InterruptMap[28]:=PLICHandle; InterruptMap[29]:=TPCI.PCI_IRQs[1];
-    InterruptMap[30]:=$0800; InterruptMap[31]:=0; InterruptMap[32]:=0; InterruptMap[33]:=2; InterruptMap[34]:=PLICHandle; InterruptMap[35]:=TPCI.PCI_IRQs[2];
-    InterruptMap[36]:=$0800; InterruptMap[37]:=0; InterruptMap[38]:=0; InterruptMap[39]:=3; InterruptMap[40]:=PLICHandle; InterruptMap[41]:=TPCI.PCI_IRQs[3];
-    InterruptMap[42]:=$0800; InterruptMap[43]:=0; InterruptMap[44]:=0; InterruptMap[45]:=4; InterruptMap[46]:=PLICHandle; InterruptMap[47]:=TPCI.PCI_IRQs[0];
-    InterruptMap[48]:=$1000; InterruptMap[49]:=0; InterruptMap[50]:=0; InterruptMap[51]:=1; InterruptMap[52]:=PLICHandle; InterruptMap[53]:=TPCI.PCI_IRQs[2];
-    InterruptMap[54]:=$1000; InterruptMap[55]:=0; InterruptMap[56]:=0; InterruptMap[57]:=2; InterruptMap[58]:=PLICHandle; InterruptMap[59]:=TPCI.PCI_IRQs[3];
-    InterruptMap[60]:=$1000; InterruptMap[61]:=0; InterruptMap[62]:=0; InterruptMap[63]:=3; InterruptMap[64]:=PLICHandle; InterruptMap[65]:=TPCI.PCI_IRQs[0];
-    InterruptMap[66]:=$1000; InterruptMap[67]:=0; InterruptMap[68]:=0; InterruptMap[69]:=4; InterruptMap[70]:=PLICHandle; InterruptMap[71]:=TPCI.PCI_IRQs[1];
-    InterruptMap[72]:=$1800; InterruptMap[73]:=0; InterruptMap[74]:=0; InterruptMap[75]:=1; InterruptMap[76]:=PLICHandle; InterruptMap[77]:=TPCI.PCI_IRQs[3];
-    InterruptMap[78]:=$1800; InterruptMap[79]:=0; InterruptMap[80]:=0; InterruptMap[81]:=2; InterruptMap[82]:=PLICHandle; InterruptMap[83]:=TPCI.PCI_IRQs[0];
-    InterruptMap[84]:=$1800; InterruptMap[85]:=0; InterruptMap[86]:=0; InterruptMap[87]:=3; InterruptMap[88]:=PLICHandle; InterruptMap[89]:=TPCI.PCI_IRQs[2];
-    InterruptMap[90]:=$1800; InterruptMap[91]:=0; InterruptMap[92]:=0; InterruptMap[93]:=4; InterruptMap[94]:=PLICHandle; InterruptMap[95]:=TPCI.PCI_IRQs[1];
-    PCIBusNode.AddPropertyCells('interrupt-map',@InterruptMap,96);
+    PLIC0:=nil;
 
-    InterrurtMask[0]:=$1800; InterrurtMask[1]:=0; InterrurtMask[2]:=0; InterrurtMask[3]:=7;
-    PCIBusNode.AddPropertyCells('interrupt-map-mask',@InterrurtMask,4);
+   end else begin
 
-   finally
-    SoCNode.AddChild(PCIBusNode);
+    IMSICM0:=nil;
+
+    IMSICS0:=nil;
+
+    APLICM0:=nil;
+
+    APLICS0:=nil;
+
+    PLIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'interrupt-controller',fConfiguration.fPLICBase);
+    try
+
+     PLIC0.GetPHandle;
+     PLIC0.AddPropertyU32('riscv,ndev',$35);
+
+     Cells[0]:=0;
+     Cells[1]:=fConfiguration.fPLICBase;
+     Cells[2]:=0;
+     Cells[3]:=fConfiguration.fPLICSize;
+     PLIC0.AddPropertyCells('reg',@Cells,4);
+
+     for Index:=0 to length(fHARTs)-1 do begin
+      InterruptExtCells[(Index shl 2) or 0]:=CPUInterruptControllerNodes[Index].GetPHandle;
+      InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(THART.TInterruptValue.MachineExternal);
+      InterruptExtCells[(Index shl 2) or 2]:=CPUInterruptControllerNodes[Index].GetPHandle;
+      InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(THART.TInterruptValue.SupervisorExternal);
+     end;
+     PLIC0.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fHARTs)*4);
+
+     PLIC0.AddPropertyCells('interrupt-controller',nil,0);
+  // PLIC0.AddPropertyString('compatible','riscv,plic0');
+     PLIC0.AddPropertyString('compatible','sifive,plic-1.0.0');
+     PLIC0.AddPropertyU32('#interrupt-cells',1);
+     PLIC0.AddPropertyU32('#address-cells',0);
+
+    finally
+     SoCNode.AddChild(PLIC0);
+    end;
+
    end;
 
-  end;
+   ACLINTNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'clint',fConfiguration.fCLINTBase);
+   try
 
-  SimpleFrameBufferNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'framebuffer',fConfiguration.fFrameBufferBase+TFrameBufferDevice.FrameBufferAddress);
-  try
-   Cells[0]:=0;
-   Cells[1]:=fConfiguration.fFrameBufferBase+TFrameBufferDevice.FrameBufferAddress;
-   Cells[2]:=0;
-   Cells[3]:=fConfiguration.fFrameBufferSize;
-   SimpleFrameBufferNode.AddPropertyCells('reg',@Cells,4);
-   SimpleFrameBufferNode.AddPropertyString('compatible','simple-framebuffer');
-   SimpleFrameBufferNode.AddPropertyString('format','a8b8g8r8');
-   SimpleFrameBufferNode.AddPropertyU32('width',fConfiguration.fFrameBufferWidth);
-   SimpleFrameBufferNode.AddPropertyU32('height',fConfiguration.fFrameBufferHeight);
-   SimpleFrameBufferNode.AddPropertyU32('stride',fConfiguration.fFrameBufferStride);
-  finally
-   SoCNode.AddChild(SimpleFrameBufferNode);
-  end;//}
+    Cells[0]:=0;
+    Cells[1]:=fConfiguration.fCLINTBase;
+    Cells[2]:=0;
+    Cells[3]:=fConfiguration.fCLINTSize;
+    ACLINTNode.AddPropertyCells('reg',@Cells,4);
 
-  if true then begin
+    for Index:=0 to length(fHARTs)-1 do begin
+     InterruptExtCells[(Index shl 2) or 0]:=CPUInterruptControllerNodes[Index].GetPHandle;
+     InterruptExtCells[(Index shl 2) or 1]:=TPasRISCVUInt32(THART.TInterruptValue.MachineSoftware);
+     InterruptExtCells[(Index shl 2) or 2]:=CPUInterruptControllerNodes[Index].GetPHandle;
+     InterruptExtCells[(Index shl 2) or 3]:=TPasRISCVUInt32(THART.TInterruptValue.MachineTimer);
+    end;
+    ACLINTNode.AddPropertyCells('interrupts-extended',@InterruptExtCells[0],length(fHARTs)*4);
+
+    ACLINTNode.AddPropertyString('compatible','sifive,clint0'#0'riscv,clint0'#0);
+
+   finally
+    SoCNode.AddChild(ACLINTNode);
+   end;
+
+   UART0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'uart',fConfiguration.fUARTBase);
+   try
+
+    UART0.AddPropertyU32('interrupts',fConfiguration.fUARTIRQ);
+    UART0.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+    UART0.AddPropertyU32('clock-frequency',$384000);
+
+    Cells[0]:=0;
+    Cells[1]:=fConfiguration.fUARTBase;
+    Cells[2]:=0;
+    Cells[3]:=fConfiguration.fUARTSize;
+    UART0.AddPropertyCells('reg',@Cells,4);
+
+    UART0.AddPropertyString('compatible','ns16550a');
+
+   finally
+    SoCNode.AddChild(UART0);
+   end;
+
+   DS1742Node:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fDS1742Base);
+   try
+    DS1742Node.AddPropertyReg('reg',fConfiguration.fDS1742Base,fConfiguration.fDS1742Size);
+    DS1742Node.AddPropertyString('compatible','maxim,ds1742');
+   finally
+    SoCNode.AddChild(DS1742Node);
+   end;//}
+
+   begin
+
+    PCIBusNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'pci',TPCI.PCI_BASE_DEFAULT_MMIO);
+    try
+
+     PCIBusNode.AddPropertyU32('#address-cells',3);
+
+     PCIBusNode.AddPropertyU32('#size-cells',2);
+
+     PCIBusNode.AddPropertyU32('#interrupt-cells',1);
+
+     PCIBusNode.AddPropertyString('device_type','pci');
+
+     Cells[0]:=0;
+     Cells[1]:=TPCI.PCI_BASE_DEFAULT_MMIO;
+     Cells[2]:=0;
+     Cells[3]:=256 shl 20;//TPCI.PCI_SIZE;
+     PCIBusNode.AddPropertyCells('reg',@Cells,4);
+
+     PCIBusNode.AddPropertyString('compatible','pci-host-ecam-generic');
+
+     PCIBusNode.AddPropertyString('dma-coherent','');
+
+     Cells[0]:=0;
+     Cells[1]:=255;//TPCI.PCI_BUS_COUNT-1;
+     PCIBusNode.AddPropertyCells('bus-range',@Cells,2);
+
+     Ranges[0]:=$1000000;
+     Ranges[1]:=0;
+     Ranges[2]:=0;
+     Ranges[3]:=TPCI.PCI_IO_DEFAULT_ADDR shr 32;
+     Ranges[4]:=TPCI.PCI_IO_DEFAULT_ADDR and TPasRISCVUInt64($ffffffff);
+     Ranges[5]:=TPCI.PCI_IO_DEFAULT_SIZE shr 32;
+     Ranges[6]:=TPCI.PCI_IO_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);
+
+     Ranges[7]:=$2000000;
+     Ranges[8]:=TPCI.PCI_MEM32_DEFAULT_MMIO shr 32;
+     Ranges[9]:=TPCI.PCI_MEM32_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+     Ranges[10]:=TPCI.PCI_MEM32_DEFAULT_MMIO shr 32;
+     Ranges[11]:=TPCI.PCI_MEM32_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+     Ranges[12]:=TPCI.PCI_MEM32_DEFAULT_SIZE shr 32;
+     Ranges[13]:=TPCI.PCI_MEM32_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);
+
+ {   Ranges[14]:=$43000000;
+     Ranges[15]:=TPCI.PCI_MEM64_DEFAULT_MMIO shr 32;
+     Ranges[16]:=TPCI.PCI_MEM64_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+     Ranges[17]:=TPCI.PCI_MEM64_DEFAULT_MMIO shr 32;
+     Ranges[18]:=TPCI.PCI_MEM64_DEFAULT_MMIO and TPasRISCVUInt64($ffffffff);
+     Ranges[19]:=TPCI.PCI_MEM64_DEFAULT_SIZE shr 32;
+     Ranges[20]:=TPCI.PCI_MEM64_DEFAULT_SIZE and TPasRISCVUInt64($ffffffff);}
+
+     if TPCI.PCI_IO_DEFAULT_SIZE<>0 then begin
+      PCIBusNode.AddPropertyCells('ranges',@Ranges[0],14{21});
+     end else begin
+      PCIBusNode.AddPropertyCells('ranges',@Ranges[7],7);
+     end;
+
+     // Crossing-style IRQ routing for IRQ balancing
+     PLICHandle:=PLIC0.GetPHandle;
+     InterruptMap[0]:=$0000;  InterruptMap[1]:=0;  InterruptMap[2]:=0;  InterruptMap[3]:=1;  InterruptMap[4]:=PLICHandle;  InterruptMap[5]:=TPCI.PCI_IRQs[0];
+     InterruptMap[6]:=$0000;  InterruptMap[7]:=0;  InterruptMap[8]:=0;  InterruptMap[9]:=2;  InterruptMap[10]:=PLICHandle; InterruptMap[11]:=TPCI.PCI_IRQs[1];
+     InterruptMap[12]:=$0000; InterruptMap[13]:=0; InterruptMap[14]:=0; InterruptMap[15]:=3; InterruptMap[16]:=PLICHandle; InterruptMap[17]:=TPCI.PCI_IRQs[2];
+     InterruptMap[18]:=$0000; InterruptMap[19]:=0; InterruptMap[20]:=0; InterruptMap[21]:=4; InterruptMap[22]:=PLICHandle; InterruptMap[23]:=TPCI.PCI_IRQs[3];
+     InterruptMap[24]:=$0800; InterruptMap[25]:=0; InterruptMap[26]:=0; InterruptMap[27]:=1; InterruptMap[28]:=PLICHandle; InterruptMap[29]:=TPCI.PCI_IRQs[1];
+     InterruptMap[30]:=$0800; InterruptMap[31]:=0; InterruptMap[32]:=0; InterruptMap[33]:=2; InterruptMap[34]:=PLICHandle; InterruptMap[35]:=TPCI.PCI_IRQs[2];
+     InterruptMap[36]:=$0800; InterruptMap[37]:=0; InterruptMap[38]:=0; InterruptMap[39]:=3; InterruptMap[40]:=PLICHandle; InterruptMap[41]:=TPCI.PCI_IRQs[3];
+     InterruptMap[42]:=$0800; InterruptMap[43]:=0; InterruptMap[44]:=0; InterruptMap[45]:=4; InterruptMap[46]:=PLICHandle; InterruptMap[47]:=TPCI.PCI_IRQs[0];
+     InterruptMap[48]:=$1000; InterruptMap[49]:=0; InterruptMap[50]:=0; InterruptMap[51]:=1; InterruptMap[52]:=PLICHandle; InterruptMap[53]:=TPCI.PCI_IRQs[2];
+     InterruptMap[54]:=$1000; InterruptMap[55]:=0; InterruptMap[56]:=0; InterruptMap[57]:=2; InterruptMap[58]:=PLICHandle; InterruptMap[59]:=TPCI.PCI_IRQs[3];
+     InterruptMap[60]:=$1000; InterruptMap[61]:=0; InterruptMap[62]:=0; InterruptMap[63]:=3; InterruptMap[64]:=PLICHandle; InterruptMap[65]:=TPCI.PCI_IRQs[0];
+     InterruptMap[66]:=$1000; InterruptMap[67]:=0; InterruptMap[68]:=0; InterruptMap[69]:=4; InterruptMap[70]:=PLICHandle; InterruptMap[71]:=TPCI.PCI_IRQs[1];
+     InterruptMap[72]:=$1800; InterruptMap[73]:=0; InterruptMap[74]:=0; InterruptMap[75]:=1; InterruptMap[76]:=PLICHandle; InterruptMap[77]:=TPCI.PCI_IRQs[3];
+     InterruptMap[78]:=$1800; InterruptMap[79]:=0; InterruptMap[80]:=0; InterruptMap[81]:=2; InterruptMap[82]:=PLICHandle; InterruptMap[83]:=TPCI.PCI_IRQs[0];
+     InterruptMap[84]:=$1800; InterruptMap[85]:=0; InterruptMap[86]:=0; InterruptMap[87]:=3; InterruptMap[88]:=PLICHandle; InterruptMap[89]:=TPCI.PCI_IRQs[2];
+     InterruptMap[90]:=$1800; InterruptMap[91]:=0; InterruptMap[92]:=0; InterruptMap[93]:=4; InterruptMap[94]:=PLICHandle; InterruptMap[95]:=TPCI.PCI_IRQs[1];
+     PCIBusNode.AddPropertyCells('interrupt-map',@InterruptMap,96);
+
+     InterrurtMask[0]:=$1800; InterrurtMask[1]:=0; InterrurtMask[2]:=0; InterrurtMask[3]:=7;
+     PCIBusNode.AddPropertyCells('interrupt-map-mask',@InterrurtMask,4);
+
+    finally
+     SoCNode.AddChild(PCIBusNode);
+    end;
+
+   end;
+
+   SimpleFrameBufferNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'framebuffer',fConfiguration.fFrameBufferBase+TFrameBufferDevice.FrameBufferAddress);
+   try
+    Cells[0]:=0;
+    Cells[1]:=fConfiguration.fFrameBufferBase+TFrameBufferDevice.FrameBufferAddress;
+    Cells[2]:=0;
+    Cells[3]:=fConfiguration.fFrameBufferSize;
+    SimpleFrameBufferNode.AddPropertyCells('reg',@Cells,4);
+    SimpleFrameBufferNode.AddPropertyString('compatible','simple-framebuffer');
+    SimpleFrameBufferNode.AddPropertyString('format','a8b8g8r8');
+    SimpleFrameBufferNode.AddPropertyU32('width',fConfiguration.fFrameBufferWidth);
+    SimpleFrameBufferNode.AddPropertyU32('height',fConfiguration.fFrameBufferHeight);
+    SimpleFrameBufferNode.AddPropertyU32('stride',fConfiguration.fFrameBufferStride);
+   finally
+    SoCNode.AddChild(SimpleFrameBufferNode);
+   end;//}
 
    if true then begin
 
-    PS2KeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'ps2',fConfiguration.fPS2KeyboardBase);
-    try
-     Cells[0]:=0;
-     Cells[1]:=fConfiguration.fPS2KeyboardBase;
-     Cells[2]:=0;
-     Cells[3]:=TPasRISCVUInt32(TPasRISCV.TPS2KeyboardDevice.DefaultSize);
-     PS2KeyboardNode.AddPropertyCells('reg',@Cells,4);
-     PS2KeyboardNode.AddPropertyString('compatible','altr,ps2-1.0');
-     PS2KeyboardNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
-     PS2KeyboardNode.AddPropertyU32('interrupts',fConfiguration.fPS2KeyboardIRQ);
-    finally
-     SoCNode.AddChild(PS2KeyboardNode);
+    if true then begin
+
+     PS2KeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'ps2',fConfiguration.fPS2KeyboardBase);
+     try
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fPS2KeyboardBase;
+      Cells[2]:=0;
+      Cells[3]:=TPasRISCVUInt32(TPasRISCV.TPS2KeyboardDevice.DefaultSize);
+      PS2KeyboardNode.AddPropertyCells('reg',@Cells,4);
+      PS2KeyboardNode.AddPropertyString('compatible','altr,ps2-1.0');
+      PS2KeyboardNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+      PS2KeyboardNode.AddPropertyU32('interrupts',fConfiguration.fPS2KeyboardIRQ);
+     finally
+      SoCNode.AddChild(PS2KeyboardNode);
+     end;
+
+     PS2MouseNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'ps2',fConfiguration.fPS2MouseBase);
+     try
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fPS2MouseBase;
+      Cells[2]:=0;
+      Cells[3]:=TPasRISCVUInt32(TPasRISCV.TPS2MouseDevice.DefaultSize);
+      PS2MouseNode.AddPropertyCells('reg',@Cells,4);
+      PS2MouseNode.AddPropertyString('compatible','altr,ps2-1.0');
+      PS2MouseNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+      PS2MouseNode.AddPropertyU32('interrupts',fConfiguration.fPS2MouseIRQ);
+     finally
+      SoCNode.AddChild(PS2MouseNode);
+     end;
+
     end;
 
-    PS2MouseNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'ps2',fConfiguration.fPS2MouseBase);
+    if true then begin
+
+     VirtIOInputKeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOInputKeyboardBase);
+     try
+      VirtIOInputKeyboardNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIOInputKeyboardBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIOInputKeyboardSize;
+      VirtIOInputKeyboardNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=PLIC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputKeyboardIRQ);
+      VirtIOInputKeyboardNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIOInputKeyboardNode);
+     end;
+
+     VirtIOInputMouseNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOInputMouseBase);
+     try
+      VirtIOInputMouseNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIOInputMouseBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIOInputMouseSize;
+      VirtIOInputMouseNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=PLIC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputMouseIRQ);
+      VirtIOInputMouseNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIOInputMouseNode);
+     end;
+
+     VirtIOSoundNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOSoundBase);
+     try
+      VirtIOSoundNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIOSoundBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIOSoundSize;
+      VirtIOSoundNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=PLIC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOSoundIRQ);
+      VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIOSoundNode);
+     end;
+
+     VirtIO9PNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIO9PBase);
+     try
+      VirtIO9PNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIO9PBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIO9PSize;
+      VirtIO9PNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=PLIC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIO9PIRQ);
+      VirtIO9PNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIO9PNode);
+     end;
+
+     VirtIONetNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIONetBase);
+     try
+      VirtIONetNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIONetBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIONetSize;
+      VirtIONetNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=PLIC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIONetIRQ);
+      VirtIONetNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIONetNode);
+     end;
+
+     VirtIORandomGeneratorNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIORandomGeneratorBase);
+     try
+      VirtIORandomGeneratorNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIORandomGeneratorBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIORandomGeneratorSize;
+      VirtIORandomGeneratorNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=PLIC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIORandomGeneratorIRQ);
+      VirtIORandomGeneratorNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIORandomGeneratorNode);
+     end;
+
+    end;
+
+   end;
+
+   if false then begin
+
+    I2CClockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c_oc_osc');
+    try
+     I2CClockNode.AddPropertyString('compatible','fixed-clock');
+     I2CClockNode.AddPropertyU32('#clock-cells',0);
+     I2CClockNode.AddPropertyU32('clock-frequency',20000000);
+     I2CClockNode.AddPropertyString('clock-output-names','clk');
+    finally
+     SoCNode.AddChild(I2CClockNode);
+    end;
+
+    I2CNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',fConfiguration.fI2CBase);
     try
      Cells[0]:=0;
-     Cells[1]:=fConfiguration.fPS2MouseBase;
+     Cells[1]:=fConfiguration.fI2CBase;
      Cells[2]:=0;
-     Cells[3]:=TPasRISCVUInt32(TPasRISCV.TPS2MouseDevice.DefaultSize);
-     PS2MouseNode.AddPropertyCells('reg',@Cells,4);
-     PS2MouseNode.AddPropertyString('compatible','altr,ps2-1.0');
-     PS2MouseNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
-     PS2MouseNode.AddPropertyU32('interrupts',fConfiguration.fPS2MouseIRQ);
+     Cells[3]:=fConfiguration.fI2CSize;
+     I2CNode.AddPropertyCells('reg',@Cells,4);
+     I2CNode.AddPropertyString('compatible','opencores,i2c-ocores');
+     I2CNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+     I2CNode.AddPropertyU32('interrupts',TI2CDevice.IRQ);
+     I2CNode.AddPropertyU32('clocks',I2CClockNode.GetPHandle);
+     I2CNode.AddPropertyString('clock-names','clk');
+     I2CNode.AddPropertyU32('reg-shift',2);
+     I2CNode.AddPropertyU32('reg-io-width',1);
+     I2CNode.AddPropertyU32('opencores,ip-clock-frequency',20000000);
+     I2CNode.AddPropertyU32('#address-cells',1);
+     I2CNode.AddPropertyU32('#size-cells',0);
+     I2CNode.AddPropertyString('status','okay');
+
+     I2CHIDKeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',TI2CHIDKeyboardBusDevice.Address);
+     try
+      I2CHIDKeyboardNode.AddPropertyString('compatible','hid-over-i2c');
+      I2CHIDKeyboardNode.AddPropertyU32('reg',TI2CHIDKeyboardBusDevice.Address);
+      I2CHIDKeyboardNode.AddPropertyU32('hid-descr-addr',TI2CHIDKeyboardBusDevice.DESC_REG);
+      I2CHIDKeyboardNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+      I2CHIDKeyboardNode.AddPropertyU32('interrupts',TI2CHIDKeyboardBusDevice.IRQ);
+     finally
+      I2CNode.AddChild(I2CHIDKeyboardNode);
+     end;
+
     finally
-     SoCNode.AddChild(PS2MouseNode);
+     SoCNode.AddChild(I2CNode);
     end;
 
    end;
 
    if true then begin
 
-    VirtIOInputKeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOInputKeyboardBase);
+    VirtIOBlockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOBlockBase);
     try
-     VirtIOInputKeyboardNode.AddPropertyString('compatible','virtio,mmio');
+     VirtIOBlockNode.AddPropertyString('compatible','virtio,mmio');
      Cells[0]:=0;
-     Cells[1]:=fConfiguration.fVirtIOInputKeyboardBase;
+     Cells[1]:=fConfiguration.fVirtIOBlockBase;
      Cells[2]:=0;
-     Cells[3]:=fConfiguration.fVirtIOInputKeyboardSize;
-     VirtIOInputKeyboardNode.AddPropertyCells('reg',@Cells,4);
+     Cells[3]:=fConfiguration.fVirtIOBlockSize;
+     VirtIOBlockNode.AddPropertyCells('reg',@Cells,4);
      Cells[0]:=PLIC0.GetPHandle;
-     Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputKeyboardIRQ);
-     VirtIOInputKeyboardNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOBlockIRQ);
+     VirtIOBlockNode.AddPropertyCells('interrupts-extended',@Cells,2);
     finally
-     SoCNode.AddChild(VirtIOInputKeyboardNode);
-    end;
-
-    VirtIOInputMouseNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOInputMouseBase);
-    try
-     VirtIOInputMouseNode.AddPropertyString('compatible','virtio,mmio');
-     Cells[0]:=0;
-     Cells[1]:=fConfiguration.fVirtIOInputMouseBase;
-     Cells[2]:=0;
-     Cells[3]:=fConfiguration.fVirtIOInputMouseSize;
-     VirtIOInputMouseNode.AddPropertyCells('reg',@Cells,4);
-     Cells[0]:=PLIC0.GetPHandle;
-     Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputMouseIRQ);
-     VirtIOInputMouseNode.AddPropertyCells('interrupts-extended',@Cells,2);
-    finally
-     SoCNode.AddChild(VirtIOInputMouseNode);
-    end;
-
-    VirtIOSoundNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOSoundBase);
-    try
-     VirtIOSoundNode.AddPropertyString('compatible','virtio,mmio');
-     Cells[0]:=0;
-     Cells[1]:=fConfiguration.fVirtIOSoundBase;
-     Cells[2]:=0;
-     Cells[3]:=fConfiguration.fVirtIOSoundSize;
-     VirtIOSoundNode.AddPropertyCells('reg',@Cells,4);
-     Cells[0]:=PLIC0.GetPHandle;
-     Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOSoundIRQ);
-     VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,2);
-    finally
-     SoCNode.AddChild(VirtIOSoundNode);
-    end;
-
-    VirtIO9PNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIO9PBase);
-    try
-     VirtIO9PNode.AddPropertyString('compatible','virtio,mmio');
-     Cells[0]:=0;
-     Cells[1]:=fConfiguration.fVirtIO9PBase;
-     Cells[2]:=0;
-     Cells[3]:=fConfiguration.fVirtIO9PSize;
-     VirtIO9PNode.AddPropertyCells('reg',@Cells,4);
-     Cells[0]:=PLIC0.GetPHandle;
-     Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIO9PIRQ);
-     VirtIO9PNode.AddPropertyCells('interrupts-extended',@Cells,2);
-    finally
-     SoCNode.AddChild(VirtIO9PNode);
-    end;
-
-    VirtIONetNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIONetBase);
-    try
-     VirtIONetNode.AddPropertyString('compatible','virtio,mmio');
-     Cells[0]:=0;
-     Cells[1]:=fConfiguration.fVirtIONetBase;
-     Cells[2]:=0;
-     Cells[3]:=fConfiguration.fVirtIONetSize;
-     VirtIONetNode.AddPropertyCells('reg',@Cells,4);
-     Cells[0]:=PLIC0.GetPHandle;
-     Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIONetIRQ);
-     VirtIONetNode.AddPropertyCells('interrupts-extended',@Cells,2);
-    finally
-     SoCNode.AddChild(VirtIONetNode);
-    end;
-
-    VirtIORandomGeneratorNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIORandomGeneratorBase);
-    try
-     VirtIORandomGeneratorNode.AddPropertyString('compatible','virtio,mmio');
-     Cells[0]:=0;
-     Cells[1]:=fConfiguration.fVirtIORandomGeneratorBase;
-     Cells[2]:=0;
-     Cells[3]:=fConfiguration.fVirtIORandomGeneratorSize;
-     VirtIORandomGeneratorNode.AddPropertyCells('reg',@Cells,4);
-     Cells[0]:=PLIC0.GetPHandle;
-     Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIORandomGeneratorIRQ);
-     VirtIORandomGeneratorNode.AddPropertyCells('interrupts-extended',@Cells,2);
-    finally
-     SoCNode.AddChild(VirtIORandomGeneratorNode);
+     SoCNode.AddChild(VirtIOBlockNode);
     end;
 
    end;
 
+  finally
+   fFDT.fRoot.AddChild(SoCNode);
   end;
 
-  if false then begin
+ {FileStream:=TFileStream.Create('fdt.dtb',fmCreate);
+  try
+   fFDT.SerializeToStream(FileStream);
+  finally
+   FreeAndNil(FileStream);
+  end;//}
 
-   I2CClockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c_oc_osc');
-   try
-    I2CClockNode.AddPropertyString('compatible','fixed-clock');
-    I2CClockNode.AddPropertyU32('#clock-cells',0);
-    I2CClockNode.AddPropertyU32('clock-frequency',20000000);
-    I2CClockNode.AddPropertyString('clock-output-names','clk');
-   finally
-    SoCNode.AddChild(I2CClockNode);
-   end;
-
-   I2CNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',fConfiguration.fI2CBase);
-   try
-    Cells[0]:=0;
-    Cells[1]:=fConfiguration.fI2CBase;
-    Cells[2]:=0;
-    Cells[3]:=fConfiguration.fI2CSize;
-    I2CNode.AddPropertyCells('reg',@Cells,4);
-    I2CNode.AddPropertyString('compatible','opencores,i2c-ocores');
-    I2CNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
-    I2CNode.AddPropertyU32('interrupts',TI2CDevice.IRQ);
-    I2CNode.AddPropertyU32('clocks',I2CClockNode.GetPHandle);
-    I2CNode.AddPropertyString('clock-names','clk');
-    I2CNode.AddPropertyU32('reg-shift',2);
-    I2CNode.AddPropertyU32('reg-io-width',1);
-    I2CNode.AddPropertyU32('opencores,ip-clock-frequency',20000000);
-    I2CNode.AddPropertyU32('#address-cells',1);
-    I2CNode.AddPropertyU32('#size-cells',0);
-    I2CNode.AddPropertyString('status','okay');
-
-    I2CHIDKeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',TI2CHIDKeyboardBusDevice.Address);
-    try
-     I2CHIDKeyboardNode.AddPropertyString('compatible','hid-over-i2c');
-     I2CHIDKeyboardNode.AddPropertyU32('reg',TI2CHIDKeyboardBusDevice.Address);
-     I2CHIDKeyboardNode.AddPropertyU32('hid-descr-addr',TI2CHIDKeyboardBusDevice.DESC_REG);
-     I2CHIDKeyboardNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
-     I2CHIDKeyboardNode.AddPropertyU32('interrupts',TI2CHIDKeyboardBusDevice.IRQ);
-    finally
-     I2CNode.AddChild(I2CHIDKeyboardNode);
-    end;
-
-   finally
-    SoCNode.AddChild(I2CNode);
-   end;
-
-  end;
-
-  if true then begin
-
-   VirtIOBlockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOBlockBase);
-   try
-    VirtIOBlockNode.AddPropertyString('compatible','virtio,mmio');
-    Cells[0]:=0;
-    Cells[1]:=fConfiguration.fVirtIOBlockBase;
-    Cells[2]:=0;
-    Cells[3]:=fConfiguration.fVirtIOBlockSize;
-    VirtIOBlockNode.AddPropertyCells('reg',@Cells,4);
-    Cells[0]:=PLIC0.GetPHandle;
-    Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOBlockIRQ);
-    VirtIOBlockNode.AddPropertyCells('interrupts-extended',@Cells,2);
-   finally
-    SoCNode.AddChild(VirtIOBlockNode);
-   end;
-
-  end;
+  fFDTStream.Clear;
+  fFDT.SerializeToStream(fFDTStream);
 
  finally
-  fFDT.fRoot.AddChild(SoCNode);
+  CPUNodes:=nil;
  end;
-
-{FileStream:=TFileStream.Create('fdt.dtb',fmCreate);
- try
-  fFDT.SerializeToStream(FileStream);
- finally
-  FreeAndNil(FileStream);
- end;//}
-
- fFDTStream.Clear;
- fFDT.SerializeToStream(fFDTStream);
 
 end;
 
@@ -33709,7 +33967,15 @@ begin
  fStartStackPointer:=fConfiguration.fMemoryBase+fConfiguration.fMemorySize; // Initial startup stack starts below FDT at the end of the memory
 
  fACLINTDevice.Reset;
- fPLICDevice.Reset;
+ if assigned(fIMSICMachineDevice) then begin
+  fIMSICMachineDevice.Reset;
+ end;
+ if assigned(fIMSICSupervisorDevice) then begin
+  fIMSICSupervisorDevice.Reset;
+ end;
+ if assigned(fPLICDevice) then begin
+  fPLICDevice.Reset;
+ end;
  fSYSCONDevice.Reset;
  fVirtIOBlockDevice.Reset;
  fUARTDevice.Reset;
