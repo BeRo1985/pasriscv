@@ -14255,9 +14255,9 @@ var StartAddress,EndAddress,
     SupervisorBase,SupervisorSize:TPasRISCVUInt64;
 begin
  MachineBase:=aMachine.fConfiguration.fAPLICMachineBase;
- MachineSize:=aMachine.fCountHARTs shl 12;
+ MachineSize:=APLIC_REGION_SIZE;
  SupervisorBase:=aMachine.fConfiguration.fAPLICSupervisorBase;
- SupervisorSize:=aMachine.fCountHARTs shl 12;
+ SupervisorSize:=APLIC_REGION_SIZE;
  if MachineBase<SupervisorBase then begin
   StartAddress:=MachineBase;
   EndAddress:=SupervisorBase+SupervisorSize;
