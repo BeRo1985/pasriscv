@@ -33590,7 +33590,7 @@ var Index:TPasRISCVSizeInt;
     ChosenNode,CPUNode,CPUInterruptControllerNode,CPUsNode,CPUMap,CPUClusterNode,CoreNode,
     MemoryNode,SysConNode,PowerOffNode,RebootNode,
     SoCNode,IMSIC0,IMSICM0,IMSICS0,APLIC0,APLICM0,APLICS0,PLIC0,ACLINTNode,UART0,DS1742Node,
-    PCIBusNode,
+    INTC0,PCIBusNode,
     I2CClockNode,I2CNode,I2CHIDKeyboardNode,
     PS2KeyboardNode,PS2MouseNode,
     VirtIOBlockNode,
@@ -33879,6 +33879,8 @@ begin
 
     PLIC0:=nil;
 
+    INTC0:=nil;
+
    end else begin
 
     IMSICM0:=nil;
@@ -33917,6 +33919,7 @@ begin
 
     finally
      SoCNode.AddChild(PLIC0);
+     INTC0:=PLIC0;
     end;
 
    end;
@@ -33948,7 +33951,7 @@ begin
    try
 
     UART0.AddPropertyU32('interrupts',fConfiguration.fUARTIRQ);
-    UART0.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+    UART0.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
     UART0.AddPropertyU32('clock-frequency',$384000);
 
     Cells[0]:=0;
@@ -34029,7 +34032,7 @@ begin
      end;
 
      // Crossing-style IRQ routing for IRQ balancing
-     PLICHandle:=PLIC0.GetPHandle;
+     PLICHandle:=INTC0.GetPHandle;
      InterruptMap[0]:=$0000;  InterruptMap[1]:=0;  InterruptMap[2]:=0;  InterruptMap[3]:=1;  InterruptMap[4]:=PLICHandle;  InterruptMap[5]:=TPCI.PCI_IRQs[0];
      InterruptMap[6]:=$0000;  InterruptMap[7]:=0;  InterruptMap[8]:=0;  InterruptMap[9]:=2;  InterruptMap[10]:=PLICHandle; InterruptMap[11]:=TPCI.PCI_IRQs[1];
      InterruptMap[12]:=$0000; InterruptMap[13]:=0; InterruptMap[14]:=0; InterruptMap[15]:=3; InterruptMap[16]:=PLICHandle; InterruptMap[17]:=TPCI.PCI_IRQs[2];
@@ -34085,7 +34088,7 @@ begin
       Cells[3]:=TPasRISCVUInt32(TPasRISCV.TPS2KeyboardDevice.DefaultSize);
       PS2KeyboardNode.AddPropertyCells('reg',@Cells,4);
       PS2KeyboardNode.AddPropertyString('compatible','altr,ps2-1.0');
-      PS2KeyboardNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+      PS2KeyboardNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
       PS2KeyboardNode.AddPropertyU32('interrupts',fConfiguration.fPS2KeyboardIRQ);
      finally
       SoCNode.AddChild(PS2KeyboardNode);
@@ -34099,7 +34102,7 @@ begin
       Cells[3]:=TPasRISCVUInt32(TPasRISCV.TPS2MouseDevice.DefaultSize);
       PS2MouseNode.AddPropertyCells('reg',@Cells,4);
       PS2MouseNode.AddPropertyString('compatible','altr,ps2-1.0');
-      PS2MouseNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+      PS2MouseNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
       PS2MouseNode.AddPropertyU32('interrupts',fConfiguration.fPS2MouseIRQ);
      finally
       SoCNode.AddChild(PS2MouseNode);
@@ -34117,7 +34120,7 @@ begin
       Cells[2]:=0;
       Cells[3]:=fConfiguration.fVirtIOInputKeyboardSize;
       VirtIOInputKeyboardNode.AddPropertyCells('reg',@Cells,4);
-      Cells[0]:=PLIC0.GetPHandle;
+      Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputKeyboardIRQ);
       VirtIOInputKeyboardNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
@@ -34132,7 +34135,7 @@ begin
       Cells[2]:=0;
       Cells[3]:=fConfiguration.fVirtIOInputMouseSize;
       VirtIOInputMouseNode.AddPropertyCells('reg',@Cells,4);
-      Cells[0]:=PLIC0.GetPHandle;
+      Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputMouseIRQ);
       VirtIOInputMouseNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
@@ -34147,7 +34150,7 @@ begin
       Cells[2]:=0;
       Cells[3]:=fConfiguration.fVirtIOSoundSize;
       VirtIOSoundNode.AddPropertyCells('reg',@Cells,4);
-      Cells[0]:=PLIC0.GetPHandle;
+      Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOSoundIRQ);
       VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
@@ -34162,7 +34165,7 @@ begin
       Cells[2]:=0;
       Cells[3]:=fConfiguration.fVirtIO9PSize;
       VirtIO9PNode.AddPropertyCells('reg',@Cells,4);
-      Cells[0]:=PLIC0.GetPHandle;
+      Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIO9PIRQ);
       VirtIO9PNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
@@ -34177,7 +34180,7 @@ begin
       Cells[2]:=0;
       Cells[3]:=fConfiguration.fVirtIONetSize;
       VirtIONetNode.AddPropertyCells('reg',@Cells,4);
-      Cells[0]:=PLIC0.GetPHandle;
+      Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIONetIRQ);
       VirtIONetNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
@@ -34192,7 +34195,7 @@ begin
       Cells[2]:=0;
       Cells[3]:=fConfiguration.fVirtIORandomGeneratorSize;
       VirtIORandomGeneratorNode.AddPropertyCells('reg',@Cells,4);
-      Cells[0]:=PLIC0.GetPHandle;
+      Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIORandomGeneratorIRQ);
       VirtIORandomGeneratorNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
@@ -34223,7 +34226,7 @@ begin
      Cells[3]:=fConfiguration.fI2CSize;
      I2CNode.AddPropertyCells('reg',@Cells,4);
      I2CNode.AddPropertyString('compatible','opencores,i2c-ocores');
-     I2CNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+     I2CNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
      I2CNode.AddPropertyU32('interrupts',TI2CDevice.IRQ);
      I2CNode.AddPropertyU32('clocks',I2CClockNode.GetPHandle);
      I2CNode.AddPropertyString('clock-names','clk');
@@ -34239,7 +34242,7 @@ begin
       I2CHIDKeyboardNode.AddPropertyString('compatible','hid-over-i2c');
       I2CHIDKeyboardNode.AddPropertyU32('reg',TI2CHIDKeyboardBusDevice.Address);
       I2CHIDKeyboardNode.AddPropertyU32('hid-descr-addr',TI2CHIDKeyboardBusDevice.DESC_REG);
-      I2CHIDKeyboardNode.AddPropertyU32('interrupt-parent',PLIC0.GetPHandle);
+      I2CHIDKeyboardNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
       I2CHIDKeyboardNode.AddPropertyU32('interrupts',TI2CHIDKeyboardBusDevice.IRQ);
      finally
       I2CNode.AddChild(I2CHIDKeyboardNode);
@@ -34261,7 +34264,7 @@ begin
      Cells[2]:=0;
      Cells[3]:=fConfiguration.fVirtIOBlockSize;
      VirtIOBlockNode.AddPropertyCells('reg',@Cells,4);
-     Cells[0]:=PLIC0.GetPHandle;
+     Cells[0]:=INTC0.GetPHandle;
      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOBlockIRQ);
      VirtIOBlockNode.AddPropertyCells('interrupts-extended',@Cells,2);
     finally
