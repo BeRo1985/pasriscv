@@ -2109,7 +2109,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               const DefaultBaseAddressMachine=TPasRISCVUInt64($24000000);
                     DefaultBaseAddressSupervisor=TPasRISCVUInt64($28000000);
-                    DefaultSize=TPasRISCVUInt64($4000);
+                    DefaultSizePerHART=TPasRISCVUInt64($4000);
              private
               fAIARegFileMode:TAIARegFileMode;
              public
@@ -2133,7 +2133,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     DefaultSize=TPasRISCVUInt64($0);
                     DefaultDomainBaseAddressMachine=TPasRISCVUInt64($0c000000);
                     DefaultDomainBaseAddressSupervisor=TPasRISCVUInt64($0d000000);
-                    DefaultDomainSize=TPasRISCVUInt64($208000);
+                    DefaultDomainSize=TPasRISCVUInt64($4000);
                     APLIC_REGION_SIZE=$4000;
                     APLIC_REG_DOMAINCFG=$0000;
                     APLIC_REG_SOURCECFG_1=$0004;
@@ -5183,13 +5183,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCLINTSize:TPasRISCVUInt64;
 
               fIMSICMachineBase:TPasRISCVUInt64;
-              fIMSICMachineSize:TPasRISCVUInt64;
+              fIMSICMachineSizePerHART:TPasRISCVUInt64;
 
               fIMSICSupervisorBase:TPasRISCVUInt64;
-              fIMSICSupervisorSize:TPasRISCVUInt64;
+              fIMSICSupervisorSizePerHART:TPasRISCVUInt64;
 
               fAPLICMachineBase:TPasRISCVUInt64;
+              fAPLICMachineSize:TPasRISCVUInt64;
+
               fAPLICSupervisorBase:TPasRISCVUInt64;
+              fAPLICSupervisorSize:TPasRISCVUInt64;
 
               fPLICBase:TPasRISCVUInt64;
               fPLICSize:TPasRISCVUInt64;
@@ -5294,13 +5297,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property CLINTSize:TPasRISCVUInt64 read fCLINTSize write fCLINTSize;
 
               property IMSICMachineBase:TPasRISCVUInt64 read fIMSICMachineBase write fIMSICMachineBase;
-              property IMSICMachineSize:TPasRISCVUInt64 read fIMSICMachineSize write fIMSICMachineSize;
+              property IMSICMachineSizePerHART:TPasRISCVUInt64 read fIMSICMachineSizePerHART write fIMSICMachineSizePerHART;
 
               property IMSICSupervisorBase:TPasRISCVUInt64 read fIMSICSupervisorBase write fIMSICSupervisorBase;
-              property IMSICSupervisorSize:TPasRISCVUInt64 read fIMSICSupervisorSize write fIMSICSupervisorSize;
+              property IMSICSupervisorSizePerHART:TPasRISCVUInt64 read fIMSICSupervisorSizePerHART write fIMSICSupervisorSizePerHART;
 
               property APLICMachineBase:TPasRISCVUInt64 read fAPLICMachineBase write fAPLICMachineBase;
+              property APLICMachineSize:TPasRISCVUInt64 read fAPLICMachineSize write fAPLICMachineSize;
+
               property APLICSupervisorBase:TPasRISCVUInt64 read fAPLICSupervisorBase write fAPLICSupervisorBase;
+              property APLICSupervisorSize:TPasRISCVUInt64 read fAPLICSupervisorSize write fAPLICSupervisorSize;
 
               property PLICBase:TPasRISCVUInt64 read fPLICBase write fPLICBase;
               property PLICSize:TPasRISCVUInt64 read fPLICSize write fPLICSize;
@@ -13836,115 +13842,6 @@ begin
  end;     
 end;
 
-(*
-            { TAPLICDevice }
-            TAPLICDevice=class(TINTCDevice)
-             public
-              const DefaultBaseAddress=TPasRISCVUInt64($0cfffffc);
-                    DefaultSize=TPasRISCVUInt64($0);
-                    DefaultDomainBaseAddressMachine=TPasRISCVUInt64($0c000000);
-                    DefaultDomainBaseAddressSupervisor=TPasRISCVUInt64($0d000000);
-                    DefaultDomainSize=TPasRISCVUInt64($208000);
-                    APLIC_REGION_SIZE=$4000;
-                    APLIC_REG_DOMAINCFG=$0000;
-                    APLIC_REG_SOURCECFG_1=$0004;
-                    APLIC_REG_SOURCECFG_1023=$0ffc;
-                    APLIC_REG_MMSIADDRCFG=$1bc0;
-                    APLIC_REG_MMSIADDRCFGH=$1bc4;
-                    APLIC_REG_SMSIADDRCFG=$1bc8;
-                    APLIC_REG_SMSIADDRCFGH=$1bcc;
-                    APLIC_REG_SETIP_0=$1c00;
-                    APLIC_REG_SETIP_31=$1c7c;
-                    APLIC_REG_SETIPNUM=$1cdc;
-                    APLIC_REG_IN_CLRIP_0=$1d00;
-                    APLIC_REG_IN_CLRIP_31=$1d7c;
-                    APLIC_REG_CLRIPNUM=$1ddc;
-                    APLIC_REG_SETIE_0=$1e00;
-                    APLIC_REG_SETIE_31=$1e7c;
-                    APLIC_REG_SETIENUM=$1edc;
-                    APLIC_REG_CLRIE_0=$1f00;
-                    APLIC_REG_CLRIE_31=$1f7c;
-                    APLIC_REG_CLRIENUM=$1fdc;
-                    APLIC_REG_SETIPNUM_LE=$2000;
-                    APLIC_REG_SETIPNUM_BE=$2004;
-                    APLIC_REG_GENMSI=$3000;
-                    APLIC_REG_TARGET_1=$3004; 
-                    APLIC_REG_TARGET_1023=$3ffc;
-                    APLIC_DOMAINCFG_BE=1;
-                    APLIC_DOMAINCFG_DM=4;
-                    APLIC_DOMAINCFG_IE=256;
-                    APLIC_DOMAINCFG=$80000004;
-                    APLIC_SOURCECFG_DELEGATE=$400;
-                    APLIC_SOURCECFG_INACTIVE=$0;
-                    APLIC_SOURCECFG_DETACHED=$1;
-                    APLIC_SOURCECFG_EDGE_RISE=$4;
-                    APLIC_SOURCECFG_EDGE_FALL=$5;
-                    APLIC_SOURCECFG_LVL_HIGH=$6;
-                    APLIC_SOURCECFG_LVL_LOW=$7;
-                    APLIC_SOURCECFG_MASK=$7;
-                    APLIC_MSIADDRCFGH_L=TPasRISCVUInt32($80000000);
-                    APLIC_SRC_LIMIT=64;
-                    APLIC_SRC_REGS=APLIC_SRC_LIMIT shr 5; 
-              type TDomainDevice=class(TBusDevice)
-                    private
-                     fAPLICDevice:TAPLICDevice;
-                     fAIARegFileMode:TPasRISCV.TAIARegFileMode;
-                     fDelegationInvert:TPasRISCVUInt32;
-                     fRootDomain:Boolean;
-                     function ValidBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
-                     function ValidSrc(const aSrc:TPasRISCVUInt64):Boolean;
-                     function UngatedSrc(const aSrc:TPasRISCVUInt64):Boolean;
-                     function ReadIP(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
-                     function ReadIN(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
-                     function ReadIE(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
-                     procedure SetIPNum(const aSrc:TPasRISCVUInt64);
-                     procedure SetIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
-                     procedure ClearIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
-                     procedure ClearIPNum(const aSrc:TPasRISCVUInt64);
-                     procedure SetIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
-                     procedure SetIENum(const aSrc:TPasRISCVUInt64);
-                     procedure ClearIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
-                     procedure ClearIENum(const aSrc:TPasRISCVUInt64);              
-                    public
-                     constructor Create(const aAPLICDevice:TAPLICDevice;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aRootDomain:Boolean); reintroduce;
-                     destructor Destroy; override;
-                     procedure Reset; override;
-                     function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
-                     procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
-                   end;
-                   TDomainDevices=array[TPasRISCV.TAIARegFileMode] of TDomainDevice;
-                   TDomainCfg=array[Boolean] of TPasRISCVUInt32;
-                   TRegisters=array[0..APLIC_SRC_REGS-1] of TPasRISCVUInt32;
-             private
-              fDomainDevices:TDomainDevice;
-              fDomainCfg:TDomainCfg;
-              fDelegated:TRegisters;
-              fRaised:TRegisters;
-              fInvert:TRegisters;
-              fPending:TRegisters;
-              fEnabled:TRegisters;
-              fSource:TRegisters;
-              fTarget:TRegisters;
-              procedure GenerateMSI(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aTarget:TPasRISCVUInt32);
-              function RectifiedBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
-              function RectifiedSrc(const aSrc:TPasRISCVUInt64):Boolean;
-              function DetachedSrc(const aSrc:TPasRISCVUInt64):Boolean;
-              procedure NotifyInterrupt(const aSrc:TPasRISCVUInt64);
-              procedure EdgeInterrupt(const aSrc:TPasRISCVUInt64);
-              procedure UpdateInterrupt(const aSrc:TPasRISCVUInt64);
-             public 
-              function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
-              function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
-              function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
-             public
-              constructor Create(const aMachine:TPasRISCV); reintroduce;
-              destructor Destroy; override;
-              procedure Reset; override;
-              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
-              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
-            end;
-*)
-
 { TPasRISCV.TAPLICDevice.TDomainDevice }
 
 constructor TPasRISCV.TAPLICDevice.TDomainDevice.Create(const aAPLICDevice:TAPLICDevice;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aRootDomain:Boolean);
@@ -14255,9 +14152,9 @@ var StartAddress,EndAddress,
     SupervisorBase,SupervisorSize:TPasRISCVUInt64;
 begin
  MachineBase:=aMachine.fConfiguration.fAPLICMachineBase;
- MachineSize:=APLIC_REGION_SIZE;
+ MachineSize:=aMachine.fConfiguration.fAPLICMachineSize;
  SupervisorBase:=aMachine.fConfiguration.fAPLICSupervisorBase;
- SupervisorSize:=APLIC_REGION_SIZE;
+ SupervisorSize:=aMachine.fConfiguration.fAPLICSupervisorSize;
  if MachineBase<SupervisorBase then begin
   StartAddress:=MachineBase;
   EndAddress:=SupervisorBase+SupervisorSize;
@@ -32985,13 +32882,16 @@ begin
  fCLINTSize:=TPasRISCV.TACLINTDevice.DefaultSize;
 
  fIMSICMachineBase:=TPasRISCV.TIMSICDevice.DefaultBaseAddressMachine;
- fIMSICMachineSize:=TPasRISCV.TIMSICDevice.DefaultSize;
+ fIMSICMachineSizePerHART:=TPasRISCV.TIMSICDevice.DefaultSizePerHART;
 
  fIMSICSupervisorBase:=TPasRISCV.TIMSICDevice.DefaultBaseAddressSupervisor;
- fIMSICSupervisorSize:=TPasRISCV.TIMSICDevice.DefaultSize;
+ fIMSICSupervisorSizePerHART:=TPasRISCV.TIMSICDevice.DefaultSizePerHART;
 
  fAPLICMachineBase:=TPasRISCV.TAPLICDevice.DefaultDomainBaseAddressMachine;
+ fAPLICMachineSize:=TPasRISCV.TAPLICDevice.DefaultDomainSize;
+
  fAPLICSupervisorBase:=TPasRISCV.TAPLICDevice.DefaultDomainBaseAddressSupervisor;
+ fAPLICSupervisorSize:=TPasRISCV.TAPLICDevice.DefaultDomainSize;
 
  fPLICBase:=TPasRISCV.TPLICDevice.DefaultBaseAddress;
  fPLICSize:=TPasRISCV.TPLICDevice.DefaultSize;
@@ -33094,13 +32994,16 @@ begin
  fCLINTSize:=aConfiguration.fCLINTSize;
 
  fIMSICMachineBase:=aConfiguration.fIMSICMachineBase;
- fIMSICMachineSize:=aConfiguration.fIMSICMachineSize; 
+ fIMSICMachineSizePerHART:=aConfiguration.fIMSICMachineSizePerHART;
 
  fIMSICSupervisorBase:=aConfiguration.fIMSICSupervisorBase;
- fIMSICSupervisorSize:=aConfiguration.fIMSICSupervisorSize;
+ fIMSICSupervisorSizePerHART:=aConfiguration.fIMSICSupervisorSizePerHART;
 
  fAPLICMachineBase:=aConfiguration.fAPLICMachineBase;
+ fAPLICMachineSize:=aConfiguration.fAPLICMachineSize;
+
  fAPLICSupervisorBase:=aConfiguration.fAPLICSupervisorBase;
+ fAPLICSupervisorSize:=aConfiguration.fAPLICSupervisorSize;
 
  fPLICBase:=aConfiguration.fPLICBase;
  fPLICSize:=aConfiguration.fPLICSize;
@@ -33330,9 +33233,9 @@ begin
 
  if fConfiguration.fAIA then begin
 
-  fIMSICMachineDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICMachineBase,fConfiguration.fIMSICMachineSize,TPasRISCV.TAIARegFileMode.Machine);
+  fIMSICMachineDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICMachineBase,fConfiguration.fIMSICMachineSizePerHART*fConfiguration.CountHARTs,TPasRISCV.TAIARegFileMode.Machine);
 
-  fIMSICSupervisorDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICSupervisorBase,fConfiguration.fIMSICSupervisorSize,TPasRISCV.TAIARegFileMode.Supervisor);
+  fIMSICSupervisorDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICSupervisorBase,fConfiguration.fIMSICSupervisorSizePerHART*fConfiguration.CountHARTs,TPasRISCV.TAIARegFileMode.Supervisor);
 
   fPLICDevice:=nil;
 
@@ -33799,27 +33702,34 @@ begin
 
    if fConfiguration.fAIA then begin
 
-    // IMSIC
+    INTC0:=nil;
+
     for AIARegFileMode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
 
      case AIARegFileMode of
       TPasRISCV.TAIARegFileMode.Machine:begin
        IMSIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'imsics_m',fConfiguration.fIMSICMachineBase);
+       APLIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'aplics_m',fConfiguration.fAPLICMachineBase);
       end;
       TPasRISCV.TAIARegFileMode.Supervisor:begin
        IMSIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'imsics_s',fConfiguration.fIMSICSupervisorBase);
+       APLIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'aplics_s',fConfiguration.fAPLICSupervisorBase);
       end;
       else begin
       end;
      end;
      try
 
+      ///////////
+      // IMSIC //
+      ///////////
+
       IMSIC0.GetPHandle;
 
       Cells[0]:=0;
       Cells[1]:=fConfiguration.fIMSICMachineBase;
       Cells[2]:=0;
-      Cells[3]:=fConfiguration.fIMSICMachineSize;
+      Cells[3]:=fConfiguration.fIMSICMachineSizePerHART*fConfiguration.fCountHARTs;
       IMSIC0.AddPropertyCells('reg',@Cells,4);
 
       IMSIC0.AddPropertyString('compatible','riscv,imsics');
@@ -33856,14 +33766,48 @@ begin
        IRQExt:=nil;
       end;
 
+      ///////////
+      // APLIC //
+      ///////////
+
+      APLIC0.GetPHandle;
+
+      Cells[0]:=0;
+      Cells[2]:=0;
+      case AIARegFileMode of
+       TPasRISCV.TAIARegFileMode.Machine:begin
+        Cells[1]:=fConfiguration.fAPLICMachineBase;
+        Cells[3]:=fConfiguration.fAPLICMachineSize;
+       end;
+       TPasRISCV.TAIARegFileMode.Supervisor:begin
+        Cells[1]:=fConfiguration.fAPLICSupervisorBase;
+        Cells[3]:=fConfiguration.fAPLICSupervisorSize;
+       end;
+       else begin
+        Cells[1]:=0;
+        Cells[3]:=0;
+       end;
+      end;
+      APLIC0.AddPropertyCells('reg',@Cells,4);
+
+      APLIC0.AddPropertyString('compatible','riscv,aplic');
+      APLIC0.AddPropertyU32('msi-parent',IMSIC0.GetPHandle);
+      APLIC0.AddPropertyCells('interrupt-controller',nil,0);
+      APLIC0.AddPropertyU32('#interrupt-cells',2);
+      APLIC0.AddPropertyU32('#address-cells',0);
+      APLIC0.AddPropertyU32('riscv,num-sources',TPasRISCV.TAPLICDevice.APLIC_SRC_LIMIT-1);
+      
      finally
       SoCNode.AddChild(IMSIC0);
+      SoCNode.AddChild(APLIC0);
       case AIARegFileMode of
        TPasRISCV.TAIARegFileMode.Machine:begin
         IMSICM0:=IMSIC0;
+        APLICM0:=APLIC0;
        end;
        TPasRISCV.TAIARegFileMode.Supervisor:begin
         IMSICS0:=IMSIC0;
+        APLICS0:=APLIC0;
        end;
        else begin
        end;
@@ -33872,14 +33816,18 @@ begin
 
     end;
 
-    // APLIC
-    for AIARegFileMode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
-
-    end;
+    Cells[0]:=APLICS0.GetPHandle;
+    Cells[1]:=1;
+    Cells[2]:=TPasRISCV.TAPLICDevice.APLIC_SRC_LIMIT-1;
+    Cells[3]:=0;
+    APLICM0.AddPropertyU32('riscv,children',APLICS0.GetPHandle);
+    APLICM0.AddPropertyCells('riscv,delegate',@Cells,3);
+    APLICM0.AddPropertyCells('riscv,delegation',@Cells,3);
 
     PLIC0:=nil;
-
-    INTC0:=nil;
+     
+    // APLIC as interrupt controller for devices 
+    INTC0:=APLICS0;
 
    end else begin
 
@@ -33919,9 +33867,11 @@ begin
 
     finally
      SoCNode.AddChild(PLIC0);
-     INTC0:=PLIC0;
     end;
-
+    
+    // PLIC as interrupt controller for devices
+    INTC0:=PLIC0;
+    
    end;
 
    ACLINTNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'clint',fConfiguration.fCLINTBase);
