@@ -4,13 +4,18 @@
 These following devices are the base devices that are almost always present in a RISC-V system. They are the minimum set of devices that are 
 required to boot a RISC-V system.
 
-| What                  | Where     | Size      | IRQ(s)                    | Description                                 |
-|-----------------------|-----------|-----------|---------------------------|---------------------------------------------|
-| DS1742                | $00101000 | $8        |                           | Real-time clock                             |
-| ACLINT                | $02000000 | $10000    |                           | Core Local Interruptor                      |
-| PLIC                  | $0c000000 | $208000   |                           | Platform Level Interrupt Controller         |
-| UART                  | $10000000 | $100      | $0a                       | Universal Asynchronous Receiver/Transmitter | 
-| SYSCON                | $11100000 | $1000     |                           | System Controller (Reset, Power off, etc.)  |
+| What                  | Where     | Size      | IRQ(s)                    | Description                                                                          |
+|-----------------------|-----------|-----------|---------------------------|--------------------------------------------------------------------------------------|
+| DS1742                | $00101000 | $8        |                           | Real-time clock                                                                      |
+| ACLINT                | $02000000 | $10000    |                           | Core Local Interruptor                                                               |
+| PLIC                  | $0c000000 | $208000   |                           | Platform Level Interrupt Controller (if no AIA)                                      |
+| APLIC                 | $0cffffff | $0000     |                           | Advanced Platform Level Interrupt Controller (zero-sized internal device if AIA)     |
+| APLIC-M               | $0c000000 | $4000     |                           | Advanced Platform Level Interrupt Controller for Machine mode (if AIA)               |
+| APLIC-S               | $0d000000 | $4000     |                           | Advanced Platform Level Interrupt Controller for Supervisor mode (if AIA)            |
+| UART                  | $10000000 | $100      | $0a                       | Universal Asynchronous Receiver/Transmitter                                          | 
+| SYSCON                | $11100000 | $1000     |                           | System Controller (Reset, Power off, etc.)                                           |
+| IMSIC-M               | $24000000 | #HART<<12 |                           | Interrupt Message Signaled Interrupt Controller (IMSIC) for Machine mode (if AIA)    |
+| IMSIC-S               | $28000000 | #HART<<12 |                           | Interrupt Message Signaled Interrupt Controller (IMSIC) for Supervisor mode (if AIA) |
 
 # HID devices
 
