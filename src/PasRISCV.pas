@@ -33513,6 +33513,7 @@ var Index:TPasRISCVSizeInt;
     BootArguments:TPasRISCVRawByteString;
     FileStream:TFileStream;
     IRQExt:TPasRISCVUInt32DynamicArray;
+    ISA:TPasRISCVUTF8String;
 begin
 
  FreeAndNil(fFDT);
@@ -33527,6 +33528,12 @@ begin
 
   fFDT.fRoot.AddPropertyString('model','riscv-virtio,qemu,pasriscv');
   fFDT.fRoot.AddPropertyString('compatible','riscv-virtio'#0'pasriscv'#0);
+
+  ISA:='rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot';
+//ISA:=ISA+'_svpbmt';
+  if fConfiguration.AIA then begin
+   ISA:=ISA+'_smaia_ssaia';
+  end;
 
   ChosenNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'chosen');
   try
@@ -33601,10 +33608,13 @@ begin
        CPUNode.AddPropertyString('compatible','riscv');
        CPUNode.AddPropertyU32('riscv,cboz-block-size',64);
        CPUNode.AddPropertyU32('riscv,cbom-block-size',64);
-       CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot');
-    // CPUNode.AddPropertyString('riscv,isa','rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot_svpbmt');
+       CPUNode.AddPropertyString('riscv,isa',ISA);
        CPUNode.AddPropertyString('riscv,isa-base','rv64i');
-       CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot');
+       if fConfiguration.AIA then begin
+        CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot'#0'smaia'#0'ssaia');
+       end else begin
+        CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot');
+       end;
        CPUNode.AddPropertyString('mmu-type','riscv,sv39');
        CPUNode.AddPropertyU32('clock-frequency',3000000000);
 
