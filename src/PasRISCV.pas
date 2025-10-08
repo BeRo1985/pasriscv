@@ -2119,8 +2119,121 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
             end;
+            { TINTCDevice }
+            TINTCDevice=class(TBusDevice)
+             public
+              function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; virtual; abstract;
+              function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; virtual; abstract;
+              function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean; virtual; abstract;
+            end; 
+            { TAPLICDevice }
+            TAPLICDevice=class(TINTCDevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($0cfffffc);
+                    DefaultSize=TPasRISCVUInt64($0);
+                    DefaultDomainBaseAddressMachine=TPasRISCVUInt64($0c000000);
+                    DefaultDomainBaseAddressSupervisor=TPasRISCVUInt64($0d000000);
+                    DefaultDomainSize=TPasRISCVUInt64($208000);
+                    APLIC_REGION_SIZE=$4000;
+                    APLIC_REG_DOMAINCFG=$0000;
+                    APLIC_REG_SOURCECFG_1=$0004;
+                    APLIC_REG_SOURCECFG_1023=$0ffc;
+                    APLIC_REG_MMSIADDRCFG=$1bc0;
+                    APLIC_REG_MMSIADDRCFGH=$1bc4;
+                    APLIC_REG_SMSIADDRCFG=$1bc8;
+                    APLIC_REG_SMSIADDRCFGH=$1bcc;
+                    APLIC_REG_SETIP_0=$1c00;
+                    APLIC_REG_SETIP_31=$1c7c;
+                    APLIC_REG_SETIPNUM=$1cdc;
+                    APLIC_REG_IN_CLRIP_0=$1d00;
+                    APLIC_REG_IN_CLRIP_31=$1d7c;
+                    APLIC_REG_CLRIPNUM=$1ddc;
+                    APLIC_REG_SETIE_0=$1e00;
+                    APLIC_REG_SETIE_31=$1e7c;
+                    APLIC_REG_SETIENUM=$1edc;
+                    APLIC_REG_CLRIE_0=$1f00;
+                    APLIC_REG_CLRIE_31=$1f7c;
+                    APLIC_REG_CLRIENUM=$1fdc;
+                    APLIC_REG_SETIPNUM_LE=$2000;
+                    APLIC_REG_SETIPNUM_BE=$2004;
+                    APLIC_REG_GENMSI=$3000;
+                    APLIC_REG_TARGET_1=$3004; 
+                    APLIC_REG_TARGET_1023=$3ffc;
+                    APLIC_DOMAINCFG_BE=1;
+                    APLIC_DOMAINCFG_DM=4;
+                    APLIC_DOMAINCFG_IE=256;
+                    APLIC_DOMAINCFG=$80000004;
+                    APLIC_SOURCECFG_DELEGATE=$400;
+                    APLIC_SOURCECFG_INACTIVE=$0;
+                    APLIC_SOURCECFG_DETACHED=$1;
+                    APLIC_SOURCECFG_EDGE_RISE=$4;
+                    APLIC_SOURCECFG_EDGE_FALL=$5;
+                    APLIC_SOURCECFG_LVL_HIGH=$6;
+                    APLIC_SOURCECFG_LVL_LOW=$7;
+                    APLIC_SOURCECFG_MASK=$7;
+                    APLIC_MSIADDRCFGH_L=TPasRISCVUInt32($80000000);
+                    APLIC_SRC_LIMIT=64;
+                    APLIC_SRC_REGS=APLIC_SRC_LIMIT shr 5; 
+              type TDomainDevice=class(TBusDevice)
+                    private
+                     fAPLICDevice:TAPLICDevice;
+                     fAIARegFileMode:TPasRISCV.TAIARegFileMode;
+                     fDelegationInvert:TPasRISCVUInt32;
+                     fRootDomain:Boolean;
+                     function ValidBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     function ValidSrc(const aSrc:TPasRISCVUInt64):Boolean;
+                     function UngatedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+                     function ReadIP(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     function ReadIN(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     function ReadIE(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     procedure SetIPNum(const aSrc:TPasRISCVUInt64);
+                     procedure SetIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure ClearIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure ClearIPNum(const aSrc:TPasRISCVUInt64);
+                     procedure SetIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure SetIENum(const aSrc:TPasRISCVUInt64);
+                     procedure ClearIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure ClearIENum(const aSrc:TPasRISCVUInt64);              
+                    public
+                     constructor Create(const aAPLICDevice:TAPLICDevice;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aRootDomain:Boolean); reintroduce;
+                     destructor Destroy; override;
+                     procedure Reset; override;
+                     function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+                     procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+                   end;
+                   TDomainDevices=array[TPasRISCV.TAIARegFileMode] of TDomainDevice;
+                   TDomainCfg=array[TPasRISCV.TAIARegFileMode] of TPasRISCVUInt32;
+                   TRegisters=array[0..APLIC_SRC_REGS-1] of TPasRISCVUInt32;
+             private
+              fDomainDevices:TDomainDevices;
+              fDomainCfg:TDomainCfg;
+              fDelegated:TRegisters;
+              fRaised:TRegisters;
+              fInvert:TRegisters;
+              fPending:TRegisters;
+              fEnabled:TRegisters;
+              fSource:TRegisters;
+              fTarget:TRegisters;
+              procedure GenerateMSI(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aTarget:TPasRISCVUInt32);
+              function RectifiedBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+              function RectifiedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+              function DetachedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+              procedure NotifyInterrupt(const aSrc:TPasRISCVUInt64);
+              procedure EdgeInterrupt(const aSrc:TPasRISCVUInt64);
+              procedure UpdateInterrupt(const aSrc:TPasRISCVUInt64);
+             public 
+              function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+              function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+              function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+            end;
             { TPLICDevice }
-            TPLICDevice=class(TBusDevice)
+            TPLICDevice=class(TINTCDevice)
              public
               const DefaultBaseAddress=TPasRISCVUInt64($0c000000);
                     DefaultSize=TPasRISCVUInt64($208000);
@@ -2164,9 +2277,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CompleteIRQ(const aContext,aIRQ:TPasRISCVUInt32);
               function AllocateIRQ:TPasRISCVUInt32;
              public
-              function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
-              function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
-              function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+              function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+              function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+              function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               destructor Destroy; override;
@@ -5075,6 +5188,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fIMSICSupervisorBase:TPasRISCVUInt64;
               fIMSICSupervisorSize:TPasRISCVUInt64;
 
+              fAPLICMachineBase:TPasRISCVUInt64;
+              fAPLICSupervisorBase:TPasRISCVUInt64;
+
               fPLICBase:TPasRISCVUInt64;
               fPLICSize:TPasRISCVUInt64;
 
@@ -5182,6 +5298,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property IMSICSupervisorBase:TPasRISCVUInt64 read fIMSICSupervisorBase write fIMSICSupervisorBase;
               property IMSICSupervisorSize:TPasRISCVUInt64 read fIMSICSupervisorSize write fIMSICSupervisorSize;
+
+              property APLICMachineBase:TPasRISCVUInt64 read fAPLICMachineBase write fAPLICMachineBase;
+              property APLICSupervisorBase:TPasRISCVUInt64 read fAPLICSupervisorBase write fAPLICSupervisorBase;
 
               property PLICBase:TPasRISCVUInt64 read fPLICBase write fPLICBase;
               property PLICSize:TPasRISCVUInt64 read fPLICSize write fPLICSize;
@@ -5291,6 +5410,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fIMSICSupervisorDevice:TIMSICDevice;
 
        fPLICDevice:TPLICDevice;
+
+       fINTCDevice:TINTCDevice;
 
        fSYSCONDevice:TSYSCONDevice;
 
@@ -5427,6 +5548,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property IMSICSupervisorDevice:TIMSICDevice read fIMSICSupervisorDevice;
 
        property PLICDevice:TPLICDevice read fPLICDevice;
+
+       property INTCDevice:TINTCDevice read fINTCDevice;
 
        property MemoryDevice:TMemoryDevice read fMemoryDevice;
 
@@ -13516,17 +13639,17 @@ end;
 
 function TPasRISCV.TInterrupts.SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 begin
- result:=fMachine.fPLICDevice.SendIRQ(aIRQ);
+ result:=fMachine.fINTCDevice.SendIRQ(aIRQ);
 end;
 
 function TPasRISCV.TInterrupts.RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 begin
- result:=fMachine.fPLICDevice.RaiseIRQ(aIRQ);
+ result:=fMachine.fINTCDevice.RaiseIRQ(aIRQ);
 end;
 
 function TPasRISCV.TInterrupts.LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 begin
- result:=fMachine.fPLICDevice.LowerIRQ(aIRQ);
+ result:=fMachine.fINTCDevice.LowerIRQ(aIRQ);
 end;
 
 { TPasRISCV.TACLINTDevice.TCLINTMTimerSubDevice }
@@ -13711,6 +13834,600 @@ begin
    end;
   end;
  end;     
+end;
+
+(*
+            { TAPLICDevice }
+            TAPLICDevice=class(TINTCDevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($0cfffffc);
+                    DefaultSize=TPasRISCVUInt64($0);
+                    DefaultDomainBaseAddressMachine=TPasRISCVUInt64($0c000000);
+                    DefaultDomainBaseAddressSupervisor=TPasRISCVUInt64($0d000000);
+                    DefaultDomainSize=TPasRISCVUInt64($208000);
+                    APLIC_REGION_SIZE=$4000;
+                    APLIC_REG_DOMAINCFG=$0000;
+                    APLIC_REG_SOURCECFG_1=$0004;
+                    APLIC_REG_SOURCECFG_1023=$0ffc;
+                    APLIC_REG_MMSIADDRCFG=$1bc0;
+                    APLIC_REG_MMSIADDRCFGH=$1bc4;
+                    APLIC_REG_SMSIADDRCFG=$1bc8;
+                    APLIC_REG_SMSIADDRCFGH=$1bcc;
+                    APLIC_REG_SETIP_0=$1c00;
+                    APLIC_REG_SETIP_31=$1c7c;
+                    APLIC_REG_SETIPNUM=$1cdc;
+                    APLIC_REG_IN_CLRIP_0=$1d00;
+                    APLIC_REG_IN_CLRIP_31=$1d7c;
+                    APLIC_REG_CLRIPNUM=$1ddc;
+                    APLIC_REG_SETIE_0=$1e00;
+                    APLIC_REG_SETIE_31=$1e7c;
+                    APLIC_REG_SETIENUM=$1edc;
+                    APLIC_REG_CLRIE_0=$1f00;
+                    APLIC_REG_CLRIE_31=$1f7c;
+                    APLIC_REG_CLRIENUM=$1fdc;
+                    APLIC_REG_SETIPNUM_LE=$2000;
+                    APLIC_REG_SETIPNUM_BE=$2004;
+                    APLIC_REG_GENMSI=$3000;
+                    APLIC_REG_TARGET_1=$3004; 
+                    APLIC_REG_TARGET_1023=$3ffc;
+                    APLIC_DOMAINCFG_BE=1;
+                    APLIC_DOMAINCFG_DM=4;
+                    APLIC_DOMAINCFG_IE=256;
+                    APLIC_DOMAINCFG=$80000004;
+                    APLIC_SOURCECFG_DELEGATE=$400;
+                    APLIC_SOURCECFG_INACTIVE=$0;
+                    APLIC_SOURCECFG_DETACHED=$1;
+                    APLIC_SOURCECFG_EDGE_RISE=$4;
+                    APLIC_SOURCECFG_EDGE_FALL=$5;
+                    APLIC_SOURCECFG_LVL_HIGH=$6;
+                    APLIC_SOURCECFG_LVL_LOW=$7;
+                    APLIC_SOURCECFG_MASK=$7;
+                    APLIC_MSIADDRCFGH_L=TPasRISCVUInt32($80000000);
+                    APLIC_SRC_LIMIT=64;
+                    APLIC_SRC_REGS=APLIC_SRC_LIMIT shr 5; 
+              type TDomainDevice=class(TBusDevice)
+                    private
+                     fAPLICDevice:TAPLICDevice;
+                     fAIARegFileMode:TPasRISCV.TAIARegFileMode;
+                     fDelegationInvert:TPasRISCVUInt32;
+                     fRootDomain:Boolean;
+                     function ValidBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     function ValidSrc(const aSrc:TPasRISCVUInt64):Boolean;
+                     function UngatedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+                     function ReadIP(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     function ReadIN(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     function ReadIE(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+                     procedure SetIPNum(const aSrc:TPasRISCVUInt64);
+                     procedure SetIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure ClearIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure ClearIPNum(const aSrc:TPasRISCVUInt64);
+                     procedure SetIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure SetIENum(const aSrc:TPasRISCVUInt64);
+                     procedure ClearIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+                     procedure ClearIENum(const aSrc:TPasRISCVUInt64);              
+                    public
+                     constructor Create(const aAPLICDevice:TAPLICDevice;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aRootDomain:Boolean); reintroduce;
+                     destructor Destroy; override;
+                     procedure Reset; override;
+                     function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+                     procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+                   end;
+                   TDomainDevices=array[TPasRISCV.TAIARegFileMode] of TDomainDevice;
+                   TDomainCfg=array[Boolean] of TPasRISCVUInt32;
+                   TRegisters=array[0..APLIC_SRC_REGS-1] of TPasRISCVUInt32;
+             private
+              fDomainDevices:TDomainDevice;
+              fDomainCfg:TDomainCfg;
+              fDelegated:TRegisters;
+              fRaised:TRegisters;
+              fInvert:TRegisters;
+              fPending:TRegisters;
+              fEnabled:TRegisters;
+              fSource:TRegisters;
+              fTarget:TRegisters;
+              procedure GenerateMSI(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aTarget:TPasRISCVUInt32);
+              function RectifiedBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+              function RectifiedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+              function DetachedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+              procedure NotifyInterrupt(const aSrc:TPasRISCVUInt64);
+              procedure EdgeInterrupt(const aSrc:TPasRISCVUInt64);
+              procedure UpdateInterrupt(const aSrc:TPasRISCVUInt64);
+             public 
+              function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+              function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+              function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+            end;
+*)
+
+{ TPasRISCV.TAPLICDevice.TDomainDevice }
+
+constructor TPasRISCV.TAPLICDevice.TDomainDevice.Create(const aAPLICDevice:TAPLICDevice;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aRootDomain:Boolean);
+begin
+ inherited Create(aAPLICDevice.fMachine,aBase,aSize);
+ fAPLICDevice:=aAPLICDevice;
+ fAIARegFileMode:=aAIARegFileMode;
+ fRootDomain:=aRootDomain;
+ if fAIARegFileMode=TPasRISCV.TAIARegFileMode.Machine then begin
+  fDelegationInvert:=$ffffffff;
+ end else begin
+  fDelegationInvert:=0;
+ end;
+ fUnalignedAccessSupport:=false;
+ fMinOpSize:=4;
+ fMaxOpSize:=4;
+end;
+
+destructor TPasRISCV.TAPLICDevice.TDomainDevice.Destroy;
+begin
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.Reset;
+begin
+ inherited Reset;
+end;
+
+function TPasRISCV.TAPLICDevice.TDomainDevice.ValidBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  TPasMPMemoryBarrier.ReadDependency;
+  result:=fAPLICDevice.fDelegated[aReg] xor fDelegationInvert;
+ end else begin
+  result:=0;
+ end;
+end; 
+
+function TPasRISCV.TAPLICDevice.TDomainDevice.ValidSrc(const aSrc:TPasRISCVUInt64):Boolean;
+var Mask:TPasRISCVUInt32;
+begin
+ Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
+ result:=(ValidBits(aSrc shr 5) and Mask)<>0;
+end;
+
+function TPasRISCV.TAPLICDevice.TDomainDevice.UngatedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+begin
+ if ValidSrc(aSrc) then begin
+  result:=fAPLICDevice.RectifiedSrc(aSrc) or fAPLICDevice.DetachedSrc(aSrc);
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.TAPLICDevice.TDomainDevice.ReadIP(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  TPasMPMemoryBarrier.ReadDependency;
+  result:=fAPLICDevice.fPending[aReg] and ValidBits(aReg);
+ end else begin
+  result:=0;
+ end;
+end;
+
+function TPasRISCV.TAPLICDevice.TDomainDevice.ReadIN(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+begin
+ result:=fAPLICDevice.RectifiedBits(aReg) and ValidBits(aReg);
+end;
+
+function TPasRISCV.TAPLICDevice.TDomainDevice.ReadIE(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  TPasMPMemoryBarrier.ReadDependency;
+  result:=fAPLICDevice.fEnabled[aReg] and ValidBits(aReg);
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.SetIPNum(const aSrc:TPasRISCVUInt64);
+begin
+ if UngatedSrc(aSrc) then begin
+  fAPLICDevice.NotifyInterrupt(aSrc);
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.SetIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+var SetValue:TPasRISCVUInt32;
+    Index:TPasRISCVInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  SetValue:=aBits and ValidBits(aReg);
+  if SetValue<>0 then begin
+   for Index:=0 to 31 do begin
+    if (SetValue and (TPasRISCVUInt32(1) shl Index))<>0 then begin
+     SetIPNum((aReg shl 5) or TPasRISCVUInt64(Index));
+    end;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.ClearIP(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+var ClearValue:TPasRISCVUInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  ClearValue:=aBits and ValidBits(aReg);
+  if ClearValue<>0 then begin
+   TPasMPInterlocked.ExchangeBitwiseAnd(fAPLICDevice.fPending[aReg],not ClearValue);
+   TPasMPMemoryBarrier.Write;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.ClearIPNum(const aSrc:TPasRISCVUInt64);
+var Reg:TPasRISCVUInt64;
+    Mask:TPasRISCVUInt32;
+begin
+ Reg:=aSrc shr 5;
+ Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
+ ClearIP(Reg,Mask);
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.SetIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+var SetValue,Deliver:TPasRISCVUInt32;
+    Index:TPasRISCVInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  SetValue:=aBits and ValidBits(aReg);
+  SetValue:=SetValue and not TPasMPInterlocked.ExchangeBitwiseOr(fAPLICDevice.fEnabled[aReg],SetValue);
+  if SetValue<>0 then begin
+   Deliver:=TPasMPInterlocked.ExchangeBitwiseAnd(fAPLICDevice.fPending[aReg],not SetValue);
+   TPasMPMemoryBarrier.Write;
+   if Deliver<>0 then begin
+    for Index:=0 to 31 do begin
+     if (Deliver and (TPasRISCVUInt32(1) shl Index))<>0 then begin
+      fAPLICDevice.NotifyInterrupt((aReg shl 5) or TPasRISCVUInt64(Index));
+     end;
+    end;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.SetIENum(const aSrc:TPasRISCVUInt64);
+var Reg:TPasRISCVUInt64;
+    Mask:TPasRISCVUInt32; 
+begin
+ Reg:=aSrc shr 5;
+ Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
+ SetIE(Reg,Mask);
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.ClearIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
+var ClearValue:TPasRISCVUInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  ClearValue:=aBits and ValidBits(aReg);
+  if ClearValue<>0 then begin
+   TPasMPInterlocked.ExchangeBitwiseAnd(fAPLICDevice.fEnabled[aReg],not ClearValue);
+   TPasMPMemoryBarrier.Write;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.ClearIENum(const aSrc:TPasRISCVUInt64);
+var Reg:TPasRISCVUInt64;
+    Mask:TPasRISCVUInt32; 
+begin
+ Reg:=aSrc shr 5;
+ Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
+ ClearIE(Reg,Mask);
+end;
+ 
+function TPasRISCV.TAPLICDevice.TDomainDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address,Reg:TPasRISCVUInt64;
+begin
+ Address:=aAddress-fBase;
+ if (Address>=0) and (Address<Size) then begin
+  case Address of
+   APLIC_REG_DOMAINCFG:begin
+    result:=fAPLICDevice.fDomainCfg[fAIARegFileMode] or APLIC_DOMAINCFG;   
+   end;
+   APLIC_REG_MMSIADDRCFGH,APLIC_REG_SMSIADDRCFGH:begin
+    result:=APLIC_MSIADDRCFGH_L;
+   end;
+   APLIC_REG_SETIP_0..APLIC_REG_SETIP_31:begin
+    result:=ReadIP((Address-APLIC_REG_SETIP_0) shr 2);
+   end;
+   APLIC_REG_IN_CLRIP_0..APLIC_REG_IN_CLRIP_31:begin
+    result:=ReadIN((Address-APLIC_REG_IN_CLRIP_0) shr 2);
+   end;
+   APLIC_REG_SOURCECFG_1..APLIC_REG_SOURCECFG_1023:begin
+    Reg:=((Address-APLIC_REG_SOURCECFG_1) shr 2)+1;
+    if ValidSrc(Reg) then begin
+     TPasMPMemoryBarrier.ReadDependency;
+     result:=fAPLICDevice.fSource[Reg];
+    end else begin
+     if fRootDomain then begin
+      result:=APLIC_SOURCECFG_DETACHED;
+     end else begin
+      result:=0;
+     end;
+    end;
+   end;
+   APLIC_REG_TARGET_1..APLIC_REG_TARGET_1023:begin
+    Reg:=((Address-APLIC_REG_TARGET_1) shr 2)+1;
+    if ValidSrc(Reg) then begin
+     TPasMPMemoryBarrier.ReadDependency;
+     result:=fAPLICDevice.fTarget[Reg];
+    end else begin
+     result:=0;
+    end;
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.TDomainDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address,Reg:TPasRISCVUInt64;
+    Mask,Cfg:TPasRISCVUInt32;
+begin
+ Address:=aAddress-fBase;
+ if (Address>=0) and (Address<Size) then begin
+  case Address of
+   APLIC_REG_DOMAINCFG:begin
+    TPasMPMemoryBarrier.ReadWrite;
+    fAPLICDevice.fDomainCfg[fAIARegFileMode]:=TPasRISCVUInt32(aValue) and APLIC_DOMAINCFG_IE;
+    TPasMPMemoryBarrier.Write;
+   end;
+   APLIC_REG_SETIPNUM,APLIC_REG_SETIPNUM_LE:begin
+    SetIPNum(TPasRISCVUInt64(TPasRISCVUInt32(aValue)));
+   end; 
+   APLIC_REG_SETIPNUM_BE:begin
+    SetIPNum(TPasRISCVUInt64(ByteSwap32(TPasRISCVUInt32(aValue))));
+   end;
+   APLIC_REG_SETIENUM:begin
+    SetIENum(TPasRISCVUInt64(TPasRISCVUInt32(aValue)));
+   end;
+   APLIC_REG_CLRIENUM:begin
+    ClearIENum(TPasRISCVUInt64(TPasRISCVUInt32(aValue)));
+   end;
+   APLIC_REG_GENMSI:begin
+    fAPLICDevice.GenerateMSI(fAIARegFileMode,TPasRISCVUInt32(aValue));
+   end;
+   APLIC_REG_SETIP_0..APLIC_REG_SETIP_31:begin
+    SetIP((Address-APLIC_REG_SETIP_0) shr 2,TPasRISCVUInt32(aValue));
+   end;
+   APLIC_REG_IN_CLRIP_0..APLIC_REG_IN_CLRIP_31:begin
+    ClearIP((Address-APLIC_REG_IN_CLRIP_0) shr 2,TPasRISCVUInt32(aValue));
+   end;
+   APLIC_REG_SETIE_0..APLIC_REG_SETIE_31:begin
+    SetIE((Address-APLIC_REG_SETIE_0) shr 2,TPasRISCVUInt32(aValue));
+   end;
+   APLIC_REG_CLRIE_0..APLIC_REG_CLRIE_31:begin
+    ClearIE((Address-APLIC_REG_CLRIE_0) shr 2,TPasRISCVUInt32(aValue));
+   end;
+   APLIC_REG_SOURCECFG_1..APLIC_REG_SOURCECFG_1023:begin
+    Reg:=((Address-APLIC_REG_SOURCECFG_1) shr 2)+1;
+    if fRootDomain then begin
+     Mask:=TPasRISCVUInt32(1) shl (Reg and 31);
+     if (aValue and APLIC_SOURCECFG_DELEGATE)<>0 then begin
+      TPasMPInterlocked.ExchangeBitwiseOr(fAPLICDevice.fDelegated[Reg shr 5],Mask);
+     end else begin
+      TPasMPInterlocked.ExchangeBitwiseAnd(fAPLICDevice.fDelegated[Reg shr 5],not Mask);
+     end; 
+    end;
+    if ValidSrc(Reg) then begin
+     Cfg:=aValue and APLIC_SOURCECFG_MASK;
+     Mask:=TPasRISCVUInt32(1) shl (Reg and 31);
+     TPasMPMemoryBarrier.ReadWrite;
+     fAPLICDevice.fSource[Reg]:=Cfg;
+     TPasMPMemoryBarrier.Write;
+     case Cfg of
+      APLIC_SOURCECFG_LVL_LOW,APLIC_SOURCECFG_EDGE_FALL:begin
+       TPasMPInterlocked.ExchangeBitwiseOr(fAPLICDevice.fInvert[Reg shr 5],Mask);
+      end;
+      else begin
+       TPasMPInterlocked.ExchangeBitwiseAnd(fAPLICDevice.fInvert[Reg shr 5],not Mask);
+      end;
+     end;
+    end;
+   end;
+   APLIC_REG_TARGET_1..APLIC_REG_TARGET_1023:begin
+    Reg:=((Address-APLIC_REG_TARGET_1) shr 2)+1;
+    if ValidSrc(Reg) then begin
+     TPasMPMemoryBarrier.ReadWrite;
+     fAPLICDevice.fTarget[Reg]:=TPasRISCVUInt32(aValue);
+     TPasMPMemoryBarrier.Write;
+    end;
+   end;
+   else begin
+   end;
+  end;
+ end;
+end;
+
+{ TPasRISCV.TAPLICDevice }
+
+constructor TPasRISCV.TAPLICDevice.Create(const aMachine:TPasRISCV);
+var StartAddress,EndAddress,
+    MachineBase,MachineSize,
+    SupervisorBase,SupervisorSize:TPasRISCVUInt64;
+begin
+ MachineBase:=aMachine.fConfiguration.fAPLICMachineBase;
+ MachineSize:=aMachine.fCountHARTs shl 12;
+ SupervisorBase:=aMachine.fConfiguration.fAPLICSupervisorBase;
+ SupervisorSize:=aMachine.fCountHARTs shl 12;
+ if MachineBase<SupervisorBase then begin
+  StartAddress:=MachineBase;
+  EndAddress:=SupervisorBase+SupervisorSize;
+ end else begin
+  StartAddress:=SupervisorBase;
+  EndAddress:=MachineBase+MachineSize;
+ end;
+ inherited Create(aMachine,StartAddress,EndAddress-StartAddress);
+ fUnalignedAccessSupport:=false;
+ fMinOpSize:=4;
+ fMaxOpSize:=4;
+ fDomainDevices[TPasRISCV.TAIARegFileMode.Machine]:=TDomainDevice.Create(self,MachineBase,MachineSize,TPasRISCV.TAIARegFileMode.Machine,true);
+ fDomainDevices[TPasRISCV.TAIARegFileMode.Supervisor]:=TDomainDevice.Create(self,SupervisorBase,SupervisorSize,TPasRISCV.TAIARegFileMode.Supervisor,false);
+ AddSubBusDevice(fDomainDevices[TPasRISCV.TAIARegFileMode.Machine]);
+ AddSubBusDevice(fDomainDevices[TPasRISCV.TAIARegFileMode.Supervisor]);
+ Reset;
+end;
+
+destructor TPasRISCV.TAPLICDevice.Destroy;
+begin
+ inherited Destroy; // where each sub-device is also destroyed
+end;
+
+procedure TPasRISCV.TAPLICDevice.Reset;
+var Mode:TPasRISCV.TAIARegFileMode;
+begin
+ inherited Reset;
+ FillChar(fDomainCfg,SizeOf(TDomainCfg),#0);
+ FillChar(fDelegated,SizeOf(TRegisters),#$ff); // All sources delegated in root domain
+ FillChar(fRaised,SizeOf(TRegisters),#0);
+ FillChar(fInvert,SizeOf(TRegisters),#0);
+ FillChar(fPending,SizeOf(TRegisters),#0);
+ FillChar(fEnabled,SizeOf(TRegisters),#0);
+ FillChar(fSource,SizeOf(TRegisters),#0);
+ FillChar(fTarget,SizeOf(TRegisters),#0);
+ for Mode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
+  if assigned(fDomainDevices[Mode]) then begin
+   fDomainDevices[Mode].Reset;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.GenerateMSI(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aTarget:TPasRISCVUInt32);
+var HARTID:TPasRISCVUInt32;
+begin
+ HARTID:=aTarget shr 18;
+ if HARTID<length(fMachine.fHARTs) then begin
+  fMachine.fHARTs[HARTID].SendAIAIRQ(aAIARegFileMode,aTarget and $3ff);
+ end;
+end;
+
+function TPasRISCV.TAPLICDevice.RectifiedBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
+var Raised,Invert:TPasRISCVUInt32;
+begin
+ if aReg<APLIC_SRC_REGS then begin
+  TPasMPMemoryBarrier.ReadDependency;
+  Raised:=fRaised[aReg];
+  TPasMPMemoryBarrier.ReadDependency;
+  Invert:=fInvert[aReg];
+  result:=Raised xor Invert;
+ end else begin
+  result:=0;
+ end;
+end;
+
+function TPasRISCV.TAPLICDevice.RectifiedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+var Mask:TPasRISCVUInt32;
+begin
+ Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
+ result:=(RectifiedBits(aSrc shr 5) and Mask)<>0;
+end;
+
+function TPasRISCV.TAPLICDevice.DetachedSrc(const aSrc:TPasRISCVUInt64):Boolean;
+begin
+ if aSrc<APLIC_SRC_LIMIT then begin
+  TPasMPMemoryBarrier.ReadDependency;
+  result:=fSource[aSrc]<=APLIC_SOURCECFG_DETACHED;
+ end else begin
+  result:=true;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.NotifyInterrupt(const aSrc:TPasRISCVUInt64); 
+var Reg:TPasRISCVUInt64;
+    Mask,Enabled,DomainCfg,Target:TPasRISCVUInt32;
+    SMode:Boolean;
+    AIARegFileMode:TPasRISCV.TAIARegFileMode;
+begin
+ if aSrc<APLIC_SRC_LIMIT then begin
+  Reg:=aSrc shr 5;
+  Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
+  TPasMPMemoryBarrier.ReadDependency;
+  SMode:=(fDelegated[Reg] and Mask)<>0;
+  if SMode then begin
+   AIARegFileMode:=TPasRISCV.TAIARegFileMode.Supervisor;
+  end else begin
+   AIARegFileMode:=TPasRISCV.TAIARegFileMode.Machine;
+  end;
+  TPasMPMemoryBarrier.ReadDependency;
+  Enabled:=fEnabled[Reg] and Mask;
+  TPasMPMemoryBarrier.ReadDependency;
+  DomainCfg:=fDomainCfg[AIARegFileMode] or APLIC_DOMAINCFG; // Domain config
+  if ((Enabled and Mask)<>0) and ((DomainCfg and APLIC_DOMAINCFG_IE)<>0) then begin
+   TPasMPMemoryBarrier.ReadDependency;
+   Target:=fTarget[aSrc];
+   GenerateMSI(AIARegFileMode,Target);
+  end else begin
+   TPasMPInterlocked.ExchangeBitwiseOr(fPending[Reg],Mask);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.EdgeInterrupt(const aSrc:TPasRISCVUInt64);
+begin
+ if not DetachedSrc(aSrc) then begin
+  NotifyInterrupt(aSrc);
+ end;
+end;
+
+procedure TPasRISCV.TAPLICDevice.UpdateInterrupt(const aSrc:TPasRISCVUInt64);
+begin
+ if RectifiedSrc(aSrc) then begin
+  EdgeInterrupt(aSrc);
+ end;
+end; 
+
+function TPasRISCV.TAPLICDevice.SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+begin
+ if (aIRQ>0) and (aIRQ<APLIC_SRC_LIMIT) then begin
+  EdgeInterrupt(aIRQ);
+ end;
+ result:=false;
+end;
+
+function TPasRISCV.TAPLICDevice.RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+var Mask:TPasRISCVUInt32;
+begin
+ if (aIRQ>0) and (aIRQ<APLIC_SRC_LIMIT) then begin
+  Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
+  if ((not TPasMPInterlocked.ExchangeBitwiseOr(fRaised[aIRQ shr 5],Mask)) and Mask)<>0 then begin
+   UpdateInterrupt(aIRQ);
+  end; 
+  result:=true;
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.TAPLICDevice.LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
+var Mask:TPasRISCVUInt32;
+begin
+ if (aIRQ>0) and (aIRQ<APLIC_SRC_LIMIT) then begin
+  Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
+  if ((TPasMPInterlocked.ExchangeBitwiseAnd(fRaised[aIRQ shr 5],not Mask)) and not Mask)<>0 then begin
+   UpdateInterrupt(aIRQ);
+  end;
+  result:=true;
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.TAPLICDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=inherited Load(aAddress,aSize);
+end;
+
+procedure TPasRISCV.TAPLICDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+begin
+ inherited Store(aAddress,aValue,aSize);
 end;
 
 { TPasRISCV.TPLICDevice }
@@ -20961,7 +21678,7 @@ begin
  fReportID:=0;
  fIsReset:=not aIsInit;
  HIDReset;
- if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) and not aIsInit then begin
+ if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fINTCDevice) and not aIsInit then begin
   fI2CDevice.fMachine.fInterrupts.RaiseIRQ(fIRQ);
  end;
 end;
@@ -20972,7 +21689,7 @@ begin
  try
   if not fIsReset then begin
    fReportIDQueue.Insert(aReportID);
-   if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
+   if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fINTCDevice) then begin
     fI2CDevice.fMachine.fInterrupts.RaiseIRQ(fIRQ);
    end;
   end;
@@ -21000,11 +21717,11 @@ begin
   try
    fReportIDQueue.RemoveAt(aReportID);
    if fReportIDQueue.Get>=0 then begin
-    if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
+    if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fINTCDevice) then begin
      fI2CDevice.fMachine.fInterrupts.RaiseIRQ(fIRQ);
     end;
    end else begin
-    if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
+    if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fINTCDevice) then begin
      fI2CDevice.fMachine.fInterrupts.LowerIRQ(fIRQ);
     end;
    end;
@@ -21086,7 +21803,7 @@ begin
    try
     ReportID:=fReportIDQueue.Get;
     if ReportID<0 then begin
-     if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fPLICDevice) then begin
+     if assigned(fI2CDevice) and assigned(fI2CDevice.fMachine) and assigned(fI2CDevice.fMachine.fINTCDevice) then begin
       fI2CDevice.fMachine.fInterrupts.LowerIRQ(fIRQ);
      end;
      result:=0;
@@ -21657,7 +22374,7 @@ end;
 procedure TPasRISCV.TPS2Device.Notify(const aFlags:TPasRISCVUInt32);
 begin
  if assigned(fMachine) and
-    assigned(fMachine.fPLICDevice) and
+    assigned(fMachine.fINTCDevice) and
     ((aFlags and POLL_RX)<>0) and
     ((TPasMPInterlocked.ExchangeBitwiseOr(fControl,CTRL_RI) and CTRL_RE)<>0) then begin
   fMachine.fInterrupts.SendIRQ(fIRQ);
@@ -32273,6 +32990,9 @@ begin
  fIMSICSupervisorBase:=TPasRISCV.TIMSICDevice.DefaultBaseAddressSupervisor;
  fIMSICSupervisorSize:=TPasRISCV.TIMSICDevice.DefaultSize;
 
+ fAPLICMachineBase:=TPasRISCV.TAPLICDevice.DefaultDomainBaseAddressMachine;
+ fAPLICSupervisorBase:=TPasRISCV.TAPLICDevice.DefaultDomainBaseAddressSupervisor;
+
  fPLICBase:=TPasRISCV.TPLICDevice.DefaultBaseAddress;
  fPLICSize:=TPasRISCV.TPLICDevice.DefaultSize;
 
@@ -32378,6 +33098,9 @@ begin
 
  fIMSICSupervisorBase:=aConfiguration.fIMSICSupervisorBase;
  fIMSICSupervisorSize:=aConfiguration.fIMSICSupervisorSize;
+
+ fAPLICMachineBase:=aConfiguration.fAPLICMachineBase;
+ fAPLICSupervisorBase:=aConfiguration.fAPLICSupervisorBase;
 
  fPLICBase:=aConfiguration.fPLICBase;
  fPLICSize:=aConfiguration.fPLICSize;
@@ -32613,6 +33336,8 @@ begin
 
   fPLICDevice:=nil;
 
+  fINTCDevice:=nil;
+
  end else begin
 
   fIMSICMachineDevice:=nil;
@@ -32620,6 +33345,8 @@ begin
   fIMSICSupervisorDevice:=nil;
 
   fPLICDevice:=TPLICDevice.Create(self);
+
+  fINTCDevice:=fPLICDevice;
 
  end;
 

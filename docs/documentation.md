@@ -9,7 +9,7 @@ required to boot a RISC-V system.
 | DS1742                | $00101000 | $8        |                           | Real-time clock                                                                      |
 | ACLINT                | $02000000 | $10000    |                           | Core Local Interruptor                                                               |
 | PLIC                  | $0c000000 | $208000   |                           | Platform Level Interrupt Controller (if no AIA)                                      |
-| APLIC                 | $0cffffff | $0000     |                           | Advanced Platform Level Interrupt Controller (zero-sized internal device if AIA)     |
+| APLIC                 | $0cfffffc | $0004     |                           | Advanced Platform Level Interrupt Controller (internal ghost device if AIA)          |
 | APLIC-M               | $0c000000 | $4000     |                           | Advanced Platform Level Interrupt Controller for Machine mode (if AIA)               |
 | APLIC-S               | $0d000000 | $4000     |                           | Advanced Platform Level Interrupt Controller for Supervisor mode (if AIA)            |
 | UART                  | $10000000 | $100      | $0a                       | Universal Asynchronous Receiver/Transmitter                                          | 
