@@ -2511,6 +2511,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               destructor Destroy; override;
               procedure Reset; override;
               function GetFunc(const aBus,aDev,aFunc:TPasRISCVUInt32):TPCIFunc;
+              class function GetIRQID(const aDeviceID,aIRQPin:TPasRISCVUInt32):TPasRISCVUInt32; static;
               class function PCIFuncIRQPinID(const aFunc:TPCIFunc):TPasRISCVUInt32; static;
               procedure AddBusDevice(const aDevice:TPCIDevice);
               procedure RemoveBusDevice(const aDevice:TPCIDevice);
@@ -4718,14 +4719,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      CAS128Result:TPasMPInt128Record;
                    end;
                    PState=^TState;
-                   TCSROperationKind=
+                   TCSROperation=
                     (
                      Swap,
                      SetBits,
                      ClearBits
                     );
-                   TCSROperation=function(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64 of object;
-                   TCSRHandler=procedure(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind) of object;
+                   TCSRHandler=procedure(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation) of object;
                    TCSRHandlerMap=array[0..4095] of TCSRHandler;
                    { TMMU }
                    TMMU=class
@@ -5002,33 +5002,31 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function LoadEx(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               function StoreEx(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               function IsCSRENVCFGEnabled(const aMask:TPasRISCVUInt64):Boolean;
-              function CSROpSwap(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
-              function CSROpSetBits(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
-              function CSROpClearBits(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
-              procedure CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerFCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerFFLAGS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerFRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerMTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              procedure CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
-              function CSRAtomicHelper(var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind):Boolean;
-              function CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind):Boolean;
-              function CSRAIAPairHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aReg:TPasRISCVUInt32;const aValue:Pointer;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind):Boolean;
-              procedure CSRHandlerIndirect(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+              class function CSROperation(const aOperation:TCSROperation;const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64; static; inline;
+              procedure CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerFCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerFFLAGS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerFRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerMTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              class function CSRAtomicHelper(var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean; static;
+              function CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
+              function CSRAIAPairHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aReg:TPasRISCVUInt32;const aValue:Pointer;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
+              procedure CSRHandlerIndirect(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CheckTimers;
               procedure CheckInterrupts;
              public
@@ -14939,9 +14937,14 @@ begin
  end;
 end;
 
+class function TPasRISCV.TPCIBusDevice.GetIRQID(const aDeviceID,aIRQPin:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=(aDeviceID+aIRQPin+3) and 3;
+end;
+
 class function TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(const aFunc:TPasRISCV.TPCIFunc):TPasRISCVUInt32;
 begin
- result:=(aFunc.fDeviceID+aFunc.fIRQPin+3) and 3;
+ result:=GetIRQID(aFunc.fDeviceID,aFunc.fIRQPin);
 end;
 
 procedure TPasRISCV.TPCIBusDevice.AddBusDevice(const aDevice:TPasRISCV.TPCIDevice);
@@ -25974,34 +25977,37 @@ begin
  result:=Mask<>0;
 end;
 
-function TPasRISCV.THART.CSROpSwap(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
+class function TPasRISCV.THART.CSROperation(const aOperation:TCSROperation;const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
- result:=aRHS;
+ case aOperation of
+  TCSROperation.Swap:begin
+   result:=aRHS;
+  end;
+  TCSROperation.SetBits:begin
+   result:=aCSR or aRHS;
+  end;
+  TCSROperation.ClearBits:begin
+   result:=aCSR and not aRHS;
+  end;
+  else begin
+   result:=aCSR;
+  end;
+ end;
 end;
 
-function TPasRISCV.THART.CSROpSetBits(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
-begin
- result:=aCSR or aRHS;
-end;
-
-function TPasRISCV.THART.CSROpClearBits(const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64;
-begin
- result:=aCSR and not aRHS;
-end;
-
-procedure TPasRISCV.THART.CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
- fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
+ fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue;
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -26012,7 +26018,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -26021,14 +26027,14 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   CSRValue:=fState.CSR.Load(aCSR);
-  fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
+  fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -26043,19 +26049,19 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 begin
 //writeln(aCSR);
  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
 end;
 
-procedure TPasRISCV.THART.CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue:TPasRISCVUInt64;
 begin
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
- OperationValue:=aOperation(CSRValue,aRHS);
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS);
  if CSRValue<>OperationValue then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
@@ -26065,14 +26071,14 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerFCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerFCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue,FExceptions:TPasRISCVUInt64;
 begin
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
  FExceptions:=fState.CSR.fData[THART.TCSR.TAddress.FFLAGS] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask);
- OperationValue:=aOperation(CSRValue or FExceptions,aRHS);
+ OperationValue:=CSROperation(aOperation,CSRValue or FExceptions,aRHS);
  fState.CSR.SetFPURM(OperationValue and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask));
  fState.CSR.ClearFPUExceptions;
  fState.CSR.SetFPUException(OperationValue and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
@@ -26082,14 +26088,14 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerFFLAGS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerFFLAGS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue,FExceptions:TPasRISCVUInt64;
 begin
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
  FExceptions:=CSRValue and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask);
- OperationValue:=aOperation(FExceptions,aRHS);
+ OperationValue:=CSROperation(aOperation,FExceptions,aRHS);
 
  fState.CSR.ClearFPUExceptions;
  fState.CSR.SetFPUException(OperationValue and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
@@ -26102,14 +26108,14 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.CSRHandlerFRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerFRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue,OperationValue:TPasRISCVUInt64;
 begin
 
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.fData[THART.TCSR.TAddress.FCSR] shr 5;
- OperationValue:=aOperation(CSRValue,aRHS);
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS);
 
  fState.CSR.ClearFPURM;
  fState.CSR.SetFPURM(OperationValue and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask));
@@ -26122,7 +26128,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -26131,7 +26137,7 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   CSRValue:=fState.CSR.Load(aCSR);
-  fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
+  fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
@@ -26139,7 +26145,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     Status,OldStatus,OutStatus,fs,vs,xs,Mask:TPasRISCVUInt64;
 begin
@@ -26172,7 +26178,7 @@ begin
 
   OutStatus:=Status and Mask;
 
-  Status:=(Status and not Mask) or (aOperation(Status,aRHS) and Mask);
+  Status:=(Status and not Mask) or (CSROperation(aOperation,Status,aRHS) and Mask);
 
   if xs=TCSR.TFS.Dirty then begin
    // XS is dirty, set SD bit
@@ -26209,7 +26215,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
@@ -26219,7 +26225,7 @@ begin
   if IsCSRENVCFGEnabled(TCSR.ENVCFG_STCE) then begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    CSRValue:=fState.CSR.Load(aCSR);
-   fState.CSR.Store(aCSR,aOperation(CSRValue,aRHS));
+   fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
    if fMachine.fACLINTDevice.GetTime>=fSTIMECMP then begin
     RaiseInterrupt(TInterruptValue.SupervisorTimer);
    end else begin
@@ -26234,7 +26240,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     Value,CSRValue:TPasRISCVUInt64;
 begin
@@ -26243,7 +26249,7 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.fData[TCSR.TAddress.MIE];
-  CSRValue:=aOperation(Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
+  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
   fState.CSR.fData[TCSR.TAddress.MIE]:=(CSRValue and TCSR.CSR_MEIP_MASK) or (Value and not TCSR.CSR_MEIP_MASK);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -26252,7 +26258,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     Value,CSRValue:TPasRISCVUInt64;
 begin
@@ -26261,7 +26267,7 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.fData[TCSR.TAddress.MIE];
-  CSRValue:=aOperation(Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
+  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
   fState.CSR.fData[TCSR.TAddress.MIE]:=(CSRValue and TCSR.CSR_SEIP_MASK) or (Value and not TCSR.CSR_SEIP_MASK);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -26270,7 +26276,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     Value,CSRValue:TPasRISCVUInt64;
 begin
@@ -26279,7 +26285,7 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.fData[TCSR.TAddress.MIP];
-  CSRValue:=aOperation(Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
+  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
   fState.CSR.fData[TCSR.TAddress.MIP]:=(CSRValue and TCSR.CSR_MEIP_MASK) or (Value and not TCSR.CSR_MEIP_MASK);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_MEIP_MASK);
@@ -26289,7 +26295,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     Value,CSRValue:TPasRISCVUInt64;
 begin
@@ -26298,7 +26304,7 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.fData[TCSR.TAddress.MIP];
-  CSRValue:=aOperation(Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
+  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
   fState.CSR.fData[TCSR.TAddress.MIP]:=(CSRValue and TCSR.CSR_SEIP_MASK) or (Value and not TCSR.CSR_SEIP_MASK);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_SEIP_MASK);
@@ -26308,7 +26314,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerMTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerMTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     PendingValue,CSRValue,IRQ:TPasRISCVUInt64;
 begin
@@ -26329,7 +26335,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     PendingValue,CSRValue,IRQ:TPasRISCVUInt64;
 begin
@@ -26350,7 +26356,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     IRQ,CSRValue:TPasRISCVUInt64;
     IsWrite:Boolean;
@@ -26359,7 +26365,7 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  IsWrite:=(rd<>TRegister.Zero) or (aOperationKind=TCSROperationKind.Swap);
+  IsWrite:=(rd<>TRegister.Zero) or (aOperation=TCSROperation.Swap);
   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Machine,IsWrite);
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -26368,7 +26374,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     IRQ,CSRValue:TPasRISCVUInt64;
     IsWrite:Boolean;
@@ -26377,7 +26383,7 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  IsWrite:=(rd<>TRegister.Zero) or (aOperationKind=TCSROperationKind.Swap);
+  IsWrite:=(rd<>TRegister.Zero) or (aOperation=TCSROperation.Swap);
   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -26386,14 +26392,14 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.CSRAtomicHelper(var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind):Boolean;
+class function TPasRISCV.THART.CSRAtomicHelper(var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
 begin
- case aOperationKind of
-  TCSROperationKind.Swap:begin
+ case aOperation of
+  TCSROperation.Swap:begin
    aDest:=TPasRISCVUInt32(TPasMPInterlocked.Exchange(aValue,TPasRISCVUInt32(aRHS)));
    result:=true;
   end;
-  TCSROperationKind.SetBits:begin
+  TCSROperation.SetBits:begin
    if aDest<>0 then begin
     aDest:=TPasRISCVUInt32(TPasMPInterlocked.ExchangeBitwiseOr(aValue,TPasRISCVUInt32(aRHS)));
     result:=true;
@@ -26402,7 +26408,7 @@ begin
     result:=false;
    end;
   end;
-  TCSROperationKind.ClearBits:begin
+  TCSROperation.ClearBits:begin
    if aDest<>0 then begin
     aDest:=TPasRISCVUInt32(TPasMPInterlocked.ExchangeBitwiseAnd(aValue,not TPasRISCVUInt32(aRHS)));
     result:=true;
@@ -26417,21 +26423,21 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind):Boolean;
+function TPasRISCV.THART.CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
 begin
- if CSRAtomicHelper(aValue,aRHS,aDest,aOperation,aOperationKind) then begin
+ if CSRAtomicHelper(aValue,aRHS,aDest,aOperation) then begin
   UpdateAIAState(aAIARegFileMode);
  end;
  result:=true;
 end;
 
-function TPasRISCV.THART.CSRAIAPairHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aReg:TPasRISCVUInt32;const aValue:Pointer;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind):Boolean;
+function TPasRISCV.THART.CSRAIAPairHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aReg:TPasRISCVUInt32;const aValue:Pointer;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
 var Top:TPasRISCVUInt64;
 begin
  if (aReg and 1)=0 then begin
   if (aReg+1)<TAIARegFile.ARRAY_LENGTH then begin
-   CSRAIAHelper(aMode,aAIARegFileMode,PPasRISCVUInt32Array(aValue)^[aReg],TPasRISCVUInt32(aRHS),aDest,aOperation,aOperationKind);
-   CSRAIAHelper(aMode,aAIARegFileMode,PPasRISCVUInt32Array(aValue)^[aReg+1],TPasRISCVUInt32(TPasRISCVUInt64(aRHS shr 32)),Top,aOperation,aOperationKind);
+   CSRAIAHelper(aMode,aAIARegFileMode,PPasRISCVUInt32Array(aValue)^[aReg],TPasRISCVUInt32(aRHS),aDest,aOperation);
+   CSRAIAHelper(aMode,aAIARegFileMode,PPasRISCVUInt32Array(aValue)^[aReg+1],TPasRISCVUInt32(TPasRISCVUInt64(aRHS shr 32)),Top,aOperation);
    aDest:=aDest or (Top shl 32);
    result:=true;
   end else begin
@@ -26442,7 +26448,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.CSRHandlerIndirect(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation;const aOperationKind:TCSROperationKind);
+procedure TPasRISCV.THART.CSRHandlerIndirect(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     OK:Boolean;
     ISelect,CSRValue,Reg:TPasRISCVUInt64;
@@ -26475,7 +26481,7 @@ begin
    case ISelect of
     TCSR.CSRI_EIDELIVERY:begin
      if fMachine.fConfiguration.fAIA then begin
-      OK:=CSRAIAHelper(Mode,AIARegFileMode,fAIARegFiles[TAIARegFileMode.Machine].fEIDelivery,aRHS,CSRValue,aOperation,aOperationKind);
+      OK:=CSRAIAHelper(Mode,AIARegFileMode,fAIARegFiles[TAIARegFileMode.Machine].fEIDelivery,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -26485,7 +26491,7 @@ begin
     end;
     TCSR.CSRI_EITHRESHOLD:begin
      if fMachine.fConfiguration.fAIA then begin
-      OK:=CSRAIAHelper(Mode,AIARegFileMode,fAIARegFiles[TAIARegFileMode.Machine].fEIThreshold,aRHS,CSRValue,aOperation,aOperationKind);
+      OK:=CSRAIAHelper(Mode,AIARegFileMode,fAIARegFiles[TAIARegFileMode.Machine].fEIThreshold,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -26505,7 +26511,7 @@ begin
     TCSR.CSRI_EIP0..TCSR.CSRI_EIP63:begin
      if fMachine.fConfiguration.fAIA then begin
       Reg:=aCSR-TCSR.CSRI_EIP0;
-      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[TAIARegFileMode.Machine].fEIP,aRHS,CSRValue,aOperation,aOperationKind);
+      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[TAIARegFileMode.Machine].fEIP,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -26517,7 +26523,7 @@ begin
      if fMachine.fConfiguration.fAIA then begin
       Reg:=aCSR-TCSR.CSRI_EIE0;
       CSRValue:=aRHS;
-      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[TAIARegFileMode.Machine].fEIE,aRHS,CSRValue,aOperation,aOperationKind);
+      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[TAIARegFileMode.Machine].fEIE,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -29064,7 +29070,7 @@ begin
        // csrrw
        Address:=aInstruction shr 20;
        rs1:=TRegister((aInstruction shr 15) and $1f);
-       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],CSROpSwap,TCSROperationKind.Swap);
+       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],TCSROperation.Swap);
        result:=4;
        exit;
       end;
@@ -29072,7 +29078,7 @@ begin
        // csrrs
        Address:=aInstruction shr 20;
        rs1:=TRegister((aInstruction shr 15) and $1f);
-       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],CSROpSetBits,TCSROperationKind.SetBits);
+       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],TCSROperation.SetBits);
        result:=4;
        exit;
       end;
@@ -29080,28 +29086,28 @@ begin
        // csrrc
        Address:=aInstruction shr 20;
        rs1:=TRegister((aInstruction shr 15) and $1f);
-       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],CSROpClearBits,TCSROperationKind.ClearBits);
+       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],TCSROperation.ClearBits);
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
        // csrrwi
        Address:=aInstruction shr 20;
-       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,(aInstruction shr 15) and $1f,CSROpSwap,TCSROperationKind.Swap);
+       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,(aInstruction shr 15) and $1f,TCSROperation.Swap);
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$6:{$else}$06,$0e,$16,$1e,$26,$2e,$36,$3e,$46,$4e,$56,$5e,$66,$6e,$76,$7e,$86,$8e,$96,$9e,$a6,$ae,$b6,$be,$c6,$ce,$d6,$de,$e6,$ee,$f6,$fe:{$endif}begin
        // csrrsi
        Address:=aInstruction shr 20;
-       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,(aInstruction shr 15) and $1f,CSROpSetBits,TCSROperationKind.SetBits);
+       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,(aInstruction shr 15) and $1f,TCSROperation.SetBits);
        result:=4;
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$7:{$else}$07,$0f,$17,$1f,$27,$2f,$37,$3f,$47,$4f,$57,$5f,$67,$6f,$77,$7f,$87,$8f,$97,$9f,$a7,$af,$b7,$bf,$c7,$cf,$d7,$df,$e7,$ef,$f7,$ff:{$endif}begin
        // csrrci
        Address:=aInstruction shr 20;
-       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,(aInstruction shr 15) and $1f,CSROpClearBits,TCSROperationKind.ClearBits);
+       fCSRHandlerMap[Address](fState.PC,aInstruction,Address,(aInstruction shr 15) and $1f,TCSROperation.ClearBits);
        result:=4;
        exit;
       end;
@@ -33489,7 +33495,7 @@ begin
 end;
 
 procedure TPasRISCV.InitializeFDT;
-var Index:TPasRISCVSizeInt;
+var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     ChosenNode,CPUNode,CPUInterruptControllerNode,CPUsNode,CPUMap,CPUClusterNode,CoreNode,
     MemoryNode,SysConNode,PowerOffNode,RebootNode,
     SoCNode,IMSIC0,IMSICM0,IMSICS0,APLIC0,APLICM0,APLICS0,PLIC0,ACLINTNode,UART0,DS1742Node,
@@ -33503,12 +33509,12 @@ var Index:TPasRISCVSizeInt;
     AIARegFileMode:TPasRISCV.TAIARegFileMode;
     CPUInterruptControllerNodes:array[0..15] of TPasRISCV.TFDT.TFDTNode;
     CPUNodes:array of TPasRISCV.TFDT.TFDTNode;
-    PLICHandle:TPasRISCVUInt32;
+    InterruptControllerHandle:TPasRISCVUInt32;
     RandomBuffer:array[0..15] of TPasRISCVUInt32;
     Cells:array[0..3] of TPasRISCVUInt32;
     Ranges:array[0..20] of TPasRISCVUInt32;
     InterruptExtCells:array[0..(4*16)-1] of TPasRISCVUInt32;
-    InterruptMap:array[0..95] of TPasRISCVUInt32;
+    InterruptMap:TPasRISCVUInt32DynamicArray;
     InterrurtMask:array[0..3] of TPasRISCVUInt32;
     BootArguments:TPasRISCVRawByteString;
     FileStream:TFileStream;
@@ -33992,26 +33998,67 @@ begin
      end;
 
      // Crossing-style IRQ routing for IRQ balancing
-     PLICHandle:=INTC0.GetPHandle;
-     InterruptMap[0]:=$0000;  InterruptMap[1]:=0;  InterruptMap[2]:=0;  InterruptMap[3]:=1;  InterruptMap[4]:=PLICHandle;  InterruptMap[5]:=TPCI.PCI_IRQs[0];
-     InterruptMap[6]:=$0000;  InterruptMap[7]:=0;  InterruptMap[8]:=0;  InterruptMap[9]:=2;  InterruptMap[10]:=PLICHandle; InterruptMap[11]:=TPCI.PCI_IRQs[1];
-     InterruptMap[12]:=$0000; InterruptMap[13]:=0; InterruptMap[14]:=0; InterruptMap[15]:=3; InterruptMap[16]:=PLICHandle; InterruptMap[17]:=TPCI.PCI_IRQs[2];
-     InterruptMap[18]:=$0000; InterruptMap[19]:=0; InterruptMap[20]:=0; InterruptMap[21]:=4; InterruptMap[22]:=PLICHandle; InterruptMap[23]:=TPCI.PCI_IRQs[3];
-     InterruptMap[24]:=$0800; InterruptMap[25]:=0; InterruptMap[26]:=0; InterruptMap[27]:=1; InterruptMap[28]:=PLICHandle; InterruptMap[29]:=TPCI.PCI_IRQs[1];
-     InterruptMap[30]:=$0800; InterruptMap[31]:=0; InterruptMap[32]:=0; InterruptMap[33]:=2; InterruptMap[34]:=PLICHandle; InterruptMap[35]:=TPCI.PCI_IRQs[2];
-     InterruptMap[36]:=$0800; InterruptMap[37]:=0; InterruptMap[38]:=0; InterruptMap[39]:=3; InterruptMap[40]:=PLICHandle; InterruptMap[41]:=TPCI.PCI_IRQs[3];
-     InterruptMap[42]:=$0800; InterruptMap[43]:=0; InterruptMap[44]:=0; InterruptMap[45]:=4; InterruptMap[46]:=PLICHandle; InterruptMap[47]:=TPCI.PCI_IRQs[0];
-     InterruptMap[48]:=$1000; InterruptMap[49]:=0; InterruptMap[50]:=0; InterruptMap[51]:=1; InterruptMap[52]:=PLICHandle; InterruptMap[53]:=TPCI.PCI_IRQs[2];
-     InterruptMap[54]:=$1000; InterruptMap[55]:=0; InterruptMap[56]:=0; InterruptMap[57]:=2; InterruptMap[58]:=PLICHandle; InterruptMap[59]:=TPCI.PCI_IRQs[3];
-     InterruptMap[60]:=$1000; InterruptMap[61]:=0; InterruptMap[62]:=0; InterruptMap[63]:=3; InterruptMap[64]:=PLICHandle; InterruptMap[65]:=TPCI.PCI_IRQs[0];
-     InterruptMap[66]:=$1000; InterruptMap[67]:=0; InterruptMap[68]:=0; InterruptMap[69]:=4; InterruptMap[70]:=PLICHandle; InterruptMap[71]:=TPCI.PCI_IRQs[1];
-     InterruptMap[72]:=$1800; InterruptMap[73]:=0; InterruptMap[74]:=0; InterruptMap[75]:=1; InterruptMap[76]:=PLICHandle; InterruptMap[77]:=TPCI.PCI_IRQs[3];
-     InterruptMap[78]:=$1800; InterruptMap[79]:=0; InterruptMap[80]:=0; InterruptMap[81]:=2; InterruptMap[82]:=PLICHandle; InterruptMap[83]:=TPCI.PCI_IRQs[0];
-     InterruptMap[84]:=$1800; InterruptMap[85]:=0; InterruptMap[86]:=0; InterruptMap[87]:=3; InterruptMap[88]:=PLICHandle; InterruptMap[89]:=TPCI.PCI_IRQs[2];
-     InterruptMap[90]:=$1800; InterruptMap[91]:=0; InterruptMap[92]:=0; InterruptMap[93]:=4; InterruptMap[94]:=PLICHandle; InterruptMap[95]:=TPCI.PCI_IRQs[1];
-     PCIBusNode.AddPropertyCells('interrupt-map',@InterruptMap,96);
+     InterruptControllerHandle:=INTC0.GetPHandle;
 
-     InterrurtMask[0]:=$1800; InterrurtMask[1]:=0; InterrurtMask[2]:=0; InterrurtMask[3]:=7;
+     InterruptMap:=nil;
+     try
+      SetLength(InterruptMap,TPCI.PCI_BUS_IRQS*TPCI.PCI_BUS_IRQS*6);
+      Index:=0;
+      for DeviceID:=0 to TPCI.PCI_BUS_IRQS-1 do begin
+       for IRQPin:=1 to TPCI.PCI_BUS_IRQS do begin
+
+        // PCIe address
+        InterruptMap[Index+0]:=DeviceID shl 11;
+        InterruptMap[Index+1]:=0;
+        InterruptMap[Index+2]:=0;
+
+        // PCIe irq pin
+        InterruptMap[Index+3]:=IRQPin;
+
+        // Interrupt controller handle
+        InterruptMap[Index+4]:=InterruptControllerHandle;
+
+        // Interrupt cell(s)
+        InterruptMap[Index+5]:=TPCI.PCI_IRQs[TPasRISCV.TPCIBusDevice.GetIRQID(DeviceID,IRQPin)];
+
+        inc(Index,6);
+       end;
+      end;
+
+      PCIBusNode.AddPropertyCells('interrupt-map',@InterruptMap[0],length(InterruptMap));
+
+     finally
+      InterruptMap:=nil;
+     end;
+
+{    InterruptMap:=nil;
+     try
+      SetLength(InterruptMap,96);
+      InterruptMap[0]:=$0000;  InterruptMap[1]:=0;  InterruptMap[2]:=0;  InterruptMap[3]:=1;  InterruptMap[4]:=InterruptControllerHandle;  InterruptMap[5]:=TPCI.PCI_IRQs[0];
+      InterruptMap[6]:=$0000;  InterruptMap[7]:=0;  InterruptMap[8]:=0;  InterruptMap[9]:=2;  InterruptMap[10]:=InterruptControllerHandle; InterruptMap[11]:=TPCI.PCI_IRQs[1];
+      InterruptMap[12]:=$0000; InterruptMap[13]:=0; InterruptMap[14]:=0; InterruptMap[15]:=3; InterruptMap[16]:=InterruptControllerHandle; InterruptMap[17]:=TPCI.PCI_IRQs[2];
+      InterruptMap[18]:=$0000; InterruptMap[19]:=0; InterruptMap[20]:=0; InterruptMap[21]:=4; InterruptMap[22]:=InterruptControllerHandle; InterruptMap[23]:=TPCI.PCI_IRQs[3];
+      InterruptMap[24]:=$0800; InterruptMap[25]:=0; InterruptMap[26]:=0; InterruptMap[27]:=1; InterruptMap[28]:=InterruptControllerHandle; InterruptMap[29]:=TPCI.PCI_IRQs[1];
+      InterruptMap[30]:=$0800; InterruptMap[31]:=0; InterruptMap[32]:=0; InterruptMap[33]:=2; InterruptMap[34]:=InterruptControllerHandle; InterruptMap[35]:=TPCI.PCI_IRQs[2];
+      InterruptMap[36]:=$0800; InterruptMap[37]:=0; InterruptMap[38]:=0; InterruptMap[39]:=3; InterruptMap[40]:=InterruptControllerHandle; InterruptMap[41]:=TPCI.PCI_IRQs[3];
+      InterruptMap[42]:=$0800; InterruptMap[43]:=0; InterruptMap[44]:=0; InterruptMap[45]:=4; InterruptMap[46]:=InterruptControllerHandle; InterruptMap[47]:=TPCI.PCI_IRQs[0];
+      InterruptMap[48]:=$1000; InterruptMap[49]:=0; InterruptMap[50]:=0; InterruptMap[51]:=1; InterruptMap[52]:=InterruptControllerHandle; InterruptMap[53]:=TPCI.PCI_IRQs[2];
+      InterruptMap[54]:=$1000; InterruptMap[55]:=0; InterruptMap[56]:=0; InterruptMap[57]:=2; InterruptMap[58]:=InterruptControllerHandle; InterruptMap[59]:=TPCI.PCI_IRQs[3];
+      InterruptMap[60]:=$1000; InterruptMap[61]:=0; InterruptMap[62]:=0; InterruptMap[63]:=3; InterruptMap[64]:=InterruptControllerHandle; InterruptMap[65]:=TPCI.PCI_IRQs[0];
+      InterruptMap[66]:=$1000; InterruptMap[67]:=0; InterruptMap[68]:=0; InterruptMap[69]:=4; InterruptMap[70]:=InterruptControllerHandle; InterruptMap[71]:=TPCI.PCI_IRQs[1];
+      InterruptMap[72]:=$1800; InterruptMap[73]:=0; InterruptMap[74]:=0; InterruptMap[75]:=1; InterruptMap[76]:=InterruptControllerHandle; InterruptMap[77]:=TPCI.PCI_IRQs[3];
+      InterruptMap[78]:=$1800; InterruptMap[79]:=0; InterruptMap[80]:=0; InterruptMap[81]:=2; InterruptMap[82]:=InterruptControllerHandle; InterruptMap[83]:=TPCI.PCI_IRQs[0];
+      InterruptMap[84]:=$1800; InterruptMap[85]:=0; InterruptMap[86]:=0; InterruptMap[87]:=3; InterruptMap[88]:=InterruptControllerHandle; InterruptMap[89]:=TPCI.PCI_IRQs[2];
+      InterruptMap[90]:=$1800; InterruptMap[91]:=0; InterruptMap[92]:=0; InterruptMap[93]:=4; InterruptMap[94]:=InterruptControllerHandle; InterruptMap[95]:=TPCI.PCI_IRQs[1];
+      PCIBusNode.AddPropertyCells('interrupt-map',@InterruptMap[0],96);
+     finally
+      InterruptMap:=nil;
+     end;}
+
+     InterrurtMask[0]:=$1800;
+     InterrurtMask[1]:=0;
+     InterrurtMask[2]:=0;
+     InterrurtMask[3]:=7;
      PCIBusNode.AddPropertyCells('interrupt-map-mask',@InterrurtMask,4);
 
     finally
