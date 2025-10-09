@@ -5023,8 +5023,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
-              class function CSRAtomicHelper(var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean; static;
-              function CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
+              class function CSRAtomicHelper(const aValue:PPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean; static;
+              function CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aValue:PPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
               function CSRAIAPairHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aReg:TPasRISCVUInt32;const aValue:Pointer;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
               procedure CSRHandlerIndirect(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CheckTimers;
@@ -26396,28 +26396,28 @@ begin
  end;
 end;
 
-class function TPasRISCV.THART.CSRAtomicHelper(var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
+class function TPasRISCV.THART.CSRAtomicHelper(const aValue:PPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
 begin
  case aOperation of
   TCSROperation.Swap:begin
-   aDest:=TPasRISCVUInt32(TPasMPInterlocked.Exchange(aValue,TPasRISCVUInt32(aRHS)));
+   aDest:=TPasRISCVUInt32(TPasMPInterlocked.Exchange(aValue^,TPasRISCVUInt32(aRHS)));
    result:=true;
   end;
   TCSROperation.SetBits:begin
-   if aDest<>0 then begin
-    aDest:=TPasRISCVUInt32(TPasMPInterlocked.ExchangeBitwiseOr(aValue,TPasRISCVUInt32(aRHS)));
+   if aRHS<>0 then begin
+    aDest:=TPasRISCVUInt32(TPasMPInterlocked.ExchangeBitwiseOr(aValue^,TPasRISCVUInt32(aRHS)));
     result:=true;
    end else begin
-    aDest:=TPasRISCVUInt32(TPasMPInterlocked.Read(aValue));
+    aDest:=TPasRISCVUInt32(TPasMPInterlocked.Read(aValue^));
     result:=false;
    end;
   end;
   TCSROperation.ClearBits:begin
-   if aDest<>0 then begin
-    aDest:=TPasRISCVUInt32(TPasMPInterlocked.ExchangeBitwiseAnd(aValue,not TPasRISCVUInt32(aRHS)));
+   if aRHS<>0 then begin
+    aDest:=TPasRISCVUInt32(TPasMPInterlocked.ExchangeBitwiseAnd(aValue^,not TPasRISCVUInt32(aRHS)));
     result:=true;
    end else begin
-    aDest:=TPasRISCVUInt32(TPasMPInterlocked.Read(aValue));
+    aDest:=TPasRISCVUInt32(TPasMPInterlocked.Read(aValue^));
     result:=false;
    end;
   end;
@@ -26427,7 +26427,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;var aValue:TPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
+function TPasRISCV.THART.CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aValue:PPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
 begin
  if CSRAtomicHelper(aValue,aRHS,aDest,aOperation) then begin
   UpdateAIAState(aAIARegFileMode);
@@ -26440,8 +26440,8 @@ var Top:TPasRISCVUInt64;
 begin
  if (aReg and 1)=0 then begin
   if (aReg+1)<TAIARegFile.ARRAY_LENGTH then begin
-   CSRAIAHelper(aMode,aAIARegFileMode,PPasRISCVUInt32Array(aValue)^[aReg],TPasRISCVUInt32(aRHS),aDest,aOperation);
-   CSRAIAHelper(aMode,aAIARegFileMode,PPasRISCVUInt32Array(aValue)^[aReg+1],TPasRISCVUInt32(TPasRISCVUInt64(aRHS shr 32)),Top,aOperation);
+   CSRAIAHelper(aMode,aAIARegFileMode,@PPasRISCVUInt32Array(aValue)^[aReg],TPasRISCVUInt32(aRHS),aDest,aOperation);
+   CSRAIAHelper(aMode,aAIARegFileMode,@PPasRISCVUInt32Array(aValue)^[aReg+1],TPasRISCVUInt32(TPasRISCVUInt64(aRHS shr 32)),Top,aOperation);
    aDest:=aDest or (Top shl 32);
    result:=true;
   end else begin
@@ -26485,7 +26485,7 @@ begin
    case ISelect of
     TCSR.CSRI_EIDELIVERY:begin
      if fMachine.fConfiguration.fAIA then begin
-      OK:=CSRAIAHelper(Mode,AIARegFileMode,fAIARegFiles[TAIARegFileMode.Machine].fEIDelivery,aRHS,CSRValue,aOperation);
+      OK:=CSRAIAHelper(Mode,AIARegFileMode,@fAIARegFiles[AIARegFileMode].fEIDelivery,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -26495,7 +26495,7 @@ begin
     end;
     TCSR.CSRI_EITHRESHOLD:begin
      if fMachine.fConfiguration.fAIA then begin
-      OK:=CSRAIAHelper(Mode,AIARegFileMode,fAIARegFiles[TAIARegFileMode.Machine].fEIThreshold,aRHS,CSRValue,aOperation);
+      OK:=CSRAIAHelper(Mode,AIARegFileMode,@fAIARegFiles[AIARegFileMode].fEIThreshold,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -26515,7 +26515,7 @@ begin
     TCSR.CSRI_EIP0..TCSR.CSRI_EIP63:begin
      if fMachine.fConfiguration.fAIA then begin
       Reg:=aCSR-TCSR.CSRI_EIP0;
-      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[TAIARegFileMode.Machine].fEIP,aRHS,CSRValue,aOperation);
+      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[AIARegFileMode].fEIP,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -26527,7 +26527,7 @@ begin
      if fMachine.fConfiguration.fAIA then begin
       Reg:=aCSR-TCSR.CSRI_EIE0;
       CSRValue:=aRHS;
-      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[TAIARegFileMode.Machine].fEIE,aRHS,CSRValue,aOperation);
+      OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[AIARegFileMode].fEIE,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -31165,7 +31165,7 @@ begin
    Value:=TPasRISCVUInt32(1) shl (aIRQ and $1f);
    TPasMPMemoryBarrier.ReadDependency;
    EIE:=AIARegFile.fEIE[Reg];
-   Previous:=TPasMPInterlocked.ExchangeBitwiseOr(AIARegFile.fEIE[Reg],Value);
+   Previous:=TPasMPInterlocked.ExchangeBitwiseOr(AIARegFile.fEIP[Reg],Value);
    if (aIRQ<Threshold) and ((Value and EIE)<>0) and ((Value and Previous)=0) then begin
     RaiseInterrupt(MSIP);
    end;
