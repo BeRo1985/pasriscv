@@ -5413,6 +5413,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fIMSICSupervisorDevice:TIMSICDevice;
 
+       fAPLICDevice:TAPLICDevice;
+
        fPLICDevice:TPLICDevice;
 
        fINTCDevice:TINTCDevice;
@@ -5550,6 +5552,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property IMSICMachineDevice:TIMSICDevice read fIMSICMachineDevice;
 
        property IMSICSupervisorDevice:TIMSICDevice read fIMSICSupervisorDevice;
+
+       property APLICDevice:TAPLICDevice read fAPLICDevice;
 
        property PLICDevice:TPLICDevice read fPLICDevice;
 
@@ -31172,7 +31176,7 @@ end;
 function TPasRISCV.THART.UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
 var AIARegFile:TPasRISCV.THART.TAIARegFile;
     MSIP:THART.TInterruptValue;
-    Threshold,Reg,EIE,EIP,Bits,Bit,IRQ,Mask:TPasRISCVUInt32;
+    Threshold,EIE,EIP,Bits,Bit,IRQ,Mask:TPasRISCVUInt32;
     Index:TPasRISCVInt32;
 begin
  result:=0;
@@ -31198,9 +31202,9 @@ begin
   if AIARegFile.fEIDelivery<>0 then begin
    for Index:=0 to TPasRISCV.THART.TAIARegFile.ARRAY_LENGTH-1 do begin
     TPasMPMemoryBarrier.ReadDependency;
-    EIE:=AIARegFile.fEIE[Reg];
+    EIE:=AIARegFile.fEIE[Index];
     TPasMPMemoryBarrier.ReadDependency;
-    EIP:=AIARegFile.fEIP[Reg];
+    EIP:=AIARegFile.fEIP[Index];
     Bits:=EIE and EIP;
     if Bits<>0 then begin
      if result<>0 then begin
@@ -33245,9 +33249,11 @@ begin
 
   fIMSICSupervisorDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICSupervisorBase,fConfiguration.fIMSICSupervisorSizePerHART*fConfiguration.CountHARTs,TPasRISCV.TAIARegFileMode.Supervisor);
 
+  fAPLICDevice:=TAPLICDevice.Create(self);
+
   fPLICDevice:=nil;
 
-  fINTCDevice:=nil;
+  fINTCDevice:=fAPLICDevice;
 
  end else begin
 
