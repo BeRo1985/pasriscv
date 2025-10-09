@@ -33312,6 +33312,9 @@ begin
  if assigned(fIMSICSupervisorDevice) then begin
   fBus.AddBusDevice(fIMSICSupervisorDevice);
  end;
+ if assigned(fAPLICDevice) then begin
+  fBus.AddBusDevice(fAPLICDevice);
+ end;
  if assigned(fPLICDevice) then begin
   fBus.AddBusDevice(fPLICDevice);
  end;
