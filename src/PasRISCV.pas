@@ -5043,7 +5043,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Breakpoint(const aInstruction:TPasRISCVUInt32);
               function FetchInstruction(const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32):Boolean; //inline;
               function GetInstructionSize(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64; inline;
-              function ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+              function ExecuteInstruction(aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
               function InterruptsRaised:TPasRISCVUInt64; inline;
               function InterruptsPending:TPasRISCVUInt64; inline;
               function InterruptsNotPending:TPasRISCVUInt64; inline;
@@ -14121,6 +14121,7 @@ begin
      Cfg:=aValue and APLIC_SOURCECFG_MASK;
      Mask:=TPasRISCVUInt32(1) shl (Reg and 31);
      TPasMPMemoryBarrier.ReadWrite;
+//   writeln(Reg,' ',Cfg,' ',aValue);
      fAPLICDevice.fSource[Reg]:=Cfg;
      TPasMPMemoryBarrier.Write;
      case Cfg of
@@ -26664,7 +26665,7 @@ end;
  {$codealign loop=16}
  {$codealign proc=16}
 {$endif}
-function TPasRISCV.THART.ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+function TPasRISCV.THART.ExecuteInstruction(aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
 // This function decodes and executes a single RISC-V instruction by using a simple but effective
 // switch-based interpreter. This approach is chosen for its simplicity, portability, and ease of
 // maintenance. The function is designed to be easily extensible to support additional instruction
@@ -26728,6 +26729,7 @@ begin
    $00:
   {$endif}begin
    // Compressed quandrant 0
+   aInstruction:=aInstruction and $ffff;
 // case TPasRISCVUInt8((aInstruction shr 13) and {$ifdef TryToForceCaseJumpTableOnCompressedLevel2}$ff{$else}7{$endif}) of
    case {$ifdef TryToForceCaseJumpTableOnCompressedLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 13) and 7) of
     {$ifndef TryToForceCaseJumpTableOnCompressedLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
@@ -26934,6 +26936,7 @@ begin
    $01:
   {$endif}begin
    // Compressed quandrant 1
+   aInstruction:=aInstruction and $ffff;
 // case TPasRISCVUInt8((aInstruction shr 13) and {$ifdef TryToForceCaseJumpTableOnCompressedLevel2}$ff{$else}7{$endif}) of
    case {$ifdef TryToForceCaseJumpTableOnCompressedLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 13) and 7) of
     {$ifndef TryToForceCaseJumpTableOnCompressedLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
@@ -27235,6 +27238,7 @@ begin
    $02:
   {$endif}begin
    // Compressed quandrant 2
+   aInstruction:=aInstruction and $ffff;
 // case TPasRISCVUInt8((aInstruction shr 13) and {$ifdef TryToForceCaseJumpTableOnCompressedLevel2}$ff{$else}7{$endif}) of
    case {$ifdef TryToForceCaseJumpTableOnCompressedLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 13) and 7) of
     {$ifndef TryToForceCaseJumpTableOnCompressedLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
