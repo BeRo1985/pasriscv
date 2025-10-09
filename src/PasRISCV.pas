@@ -2204,6 +2204,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    TDomainDevices=array[TPasRISCV.TAIARegFileMode] of TDomainDevice;
                    TDomainCfg=array[TPasRISCV.TAIARegFileMode] of TPasRISCVUInt32;
                    TRegisters=array[0..APLIC_SRC_REGS-1] of TPasRISCVUInt32;
+                   TSources=array[0..APLIC_SRC_LIMIT-1] of TPasRISCVUInt32;
              private
               fDomainDevices:TDomainDevices;
               fDomainCfg:TDomainCfg;
@@ -2212,8 +2213,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fInvert:TRegisters;
               fPending:TRegisters;
               fEnabled:TRegisters;
-              fSource:TRegisters;
-              fTarget:TRegisters;
+              fSource:TSources;
+              fTarget:TSources;
               procedure GenerateMSI(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aTarget:TPasRISCVUInt32);
               function RectifiedBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
               function RectifiedSrc(const aSrc:TPasRISCVUInt64):Boolean;
@@ -14190,8 +14191,8 @@ begin
  FillChar(fInvert,SizeOf(TRegisters),#0);
  FillChar(fPending,SizeOf(TRegisters),#0);
  FillChar(fEnabled,SizeOf(TRegisters),#0);
- FillChar(fSource,SizeOf(TRegisters),#0);
- FillChar(fTarget,SizeOf(TRegisters),#0);
+ FillChar(fSource,SizeOf(TSources),#0);
+ FillChar(fTarget,SizeOf(TSources),#0);
  for Mode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
   if assigned(fDomainDevices[Mode]) then begin
    fDomainDevices[Mode].Reset;
