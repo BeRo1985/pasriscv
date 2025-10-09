@@ -26485,7 +26485,7 @@ begin
    case ISelect of
     TCSR.CSRI_EIDELIVERY:begin
      if fMachine.fConfiguration.fAIA then begin
-      OK:=CSRAIAHelper(Mode,AIARegFileMode,@fAIARegFiles[AIARegFileMode].fEIDelivery,aRHS,CSRValue,aOperation);
+      OK:=CSRAIAHelper(Mode,AIARegFileMode,@fAIARegFiles[AIARegFileMode].fEIDelivery,aRHS and 1,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
         fState.Registers[rd]:=CSRValue;
@@ -26514,7 +26514,7 @@ begin
     end;
     TCSR.CSRI_EIP0..TCSR.CSRI_EIP63:begin
      if fMachine.fConfiguration.fAIA then begin
-      Reg:=aCSR-TCSR.CSRI_EIP0;
+      Reg:=ISelect-TCSR.CSRI_EIP0;
       OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[AIARegFileMode].fEIP,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -26525,7 +26525,7 @@ begin
     end;
     TCSR.CSRI_EIE0..TCSR.CSRI_EIE63:begin
      if fMachine.fConfiguration.fAIA then begin
-      Reg:=aCSR-TCSR.CSRI_EIE0;
+      Reg:=ISelect-TCSR.CSRI_EIE0;
       CSRValue:=aRHS;
       OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[AIARegFileMode].fEIE,aRHS,CSRValue,aOperation);
       if OK then begin
