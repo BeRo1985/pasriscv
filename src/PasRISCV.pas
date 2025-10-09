@@ -33074,6 +33074,8 @@ begin
  fVirtIORandomGeneratorSize:=aConfiguration.fVirtIORandomGeneratorSize;
  fVirtIORandomGeneratorIRQ:=aConfiguration.fVirtIORandomGeneratorIRQ;
 
+ fAIA:=aConfiguration.fAIA;
+
  fBIOS.Clear;
  if aConfiguration.fBIOS.Size>0 then begin
   aConfiguration.fBIOS.Seek(0,soBeginning);
