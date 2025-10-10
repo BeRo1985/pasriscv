@@ -24575,7 +24575,7 @@ var Index:TPasRISCVSizeInt;
     PageTableEntryShift,PageTableEntryAccessDirty,PhysicalAddress,PPN,
     NAPOTBits,NAPOTMask:TPasRISCVUInt64;
     PageTableEntryPointer:Pointer;
-    PBMTE,ADUE,SVANPOT:boolean;
+    PBMTE,ADUE,NAPOT:boolean;
 begin
 
  CPUMode:=fState.Mode;
@@ -24586,7 +24586,7 @@ begin
 
  ADUE:=IsCSRENVCFGEnabled(THART.TCSR.ENVCFG_ADUE);
 
- SVANPOT:=true;
+ NAPOT:=true;
 
  EffectiveAccessType:=aAccessType;
 
@@ -24673,8 +24673,8 @@ begin
       exit;
      end;
 
-     if (not SVANPOT) and ((PageTableEntry and TMMU.TPTEMasks.N)<>0) then begin
-      // Reserved without Svanpot
+     if (not NAPOT) and ((PageTableEntry and TMMU.TPTEMasks.N)<>0) then begin
+      // Reserved without Svnapot
       if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
        RaisePageFault(aVirtualAddress,aAccessType);
       end;
@@ -24745,7 +24745,7 @@ begin
          end;
         end;
 
-        if SVANPOT and ((PageTableEntry and TMMU.TPTEMasks.N)<>0) then begin
+        if NAPOT and ((PageTableEntry and TMMU.TPTEMasks.N)<>0) then begin
 
          PPN:=(PageTableEntry and TMMU.TPTEMasks.PPN_MASK) shr TMMU.PPN_BITS;
 
@@ -33532,7 +33532,7 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     BootArguments:TPasRISCVRawByteString;
     FileStream:TFileStream;
     IRQExt:TPasRISCVUInt32DynamicArray;
-    ISA:TPasRISCVUTF8String;
+    ISA,ISAExtensions:TPasRISCVRawByteString;
 begin
 
  FreeAndNil(fFDT);
@@ -33550,8 +33550,11 @@ begin
 
   ISA:='rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot';
 //ISA:=ISA+'_svpbmt';
+  ISAExtensions:='i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0+
+                  'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot';
   if fConfiguration.AIA then begin
    ISA:=ISA+'_smaia_ssaia';
+   ISAExtensions:=ISAExtensions+#0'smaia'#0'ssaia';
   end;
 
   ChosenNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'chosen');
@@ -33629,11 +33632,7 @@ begin
        CPUNode.AddPropertyU32('riscv,cbom-block-size',64);
        CPUNode.AddPropertyString('riscv,isa',ISA);
        CPUNode.AddPropertyString('riscv,isa-base','rv64i');
-       if fConfiguration.AIA then begin
-        CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot'#0'smaia'#0'ssaia');
-       end else begin
-        CPUNode.AddPropertyString('riscv,isa-extensions','i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot');
-       end;
+       CPUNode.AddPropertyString('riscv,isa-extensions',ISAExtensions);
        CPUNode.AddPropertyString('mmu-type','riscv,sv39');
        CPUNode.AddPropertyU32('clock-frequency',3000000000);
 
