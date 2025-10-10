@@ -26814,8 +26814,8 @@ begin
        LoadRegisterU8(TRegister(((aInstruction shr 2) and $7)+8),fState.Registers[rs1]+Offset);
 {$else}
        Temporary:=Load8(fState.Registers[rs1]+Offset);
+       rd:=TRegister(((aInstruction shr 2) and $7)+8);
        if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
-        rd:=TRegister(((aInstruction shr 2) and $7)+8);
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -26845,8 +26845,8 @@ begin
 {$endif}
        end;
 {$ifndef UseSpecializedRegisterLoadStores}
+       rd:=TRegister(((aInstruction shr 2) and $7)+8);
        if (fState.ExceptionValue=TPasRISCV.THART.TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (rd<>TRegister.Zero){$endif}then begin
-        rd:=TRegister(((aInstruction shr 2) and $7)+8);
         fState.Registers[rd]:=Temporary;
        end;
 {$endif}
@@ -27184,14 +27184,14 @@ begin
     end;
     {$ifndef TryToForceCaseJumpTableOnCompressedLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
      // c.j
-     Immediate:=SignExtend(((aInstruction shr 1) and $800) or
-                           ((aInstruction shl 2) and $400) or
-                           ((aInstruction shr 1) and $300) or
-                           ((aInstruction shl 1) and $80) or
-                           ((aInstruction shr 1) and $40) or
-                           ((aInstruction shl 3) and $20) or
-                           ((aInstruction shr 7) and $10) or
-                           ((aInstruction shr 2) and $0e),12);
+     Immediate:=SignExtend(((aInstruction shr 1) and $800) or  //  bit [12] -> [11]
+                           ((aInstruction shl 2) and $400) or  //  bit [8] -> [10]
+                           ((aInstruction shr 1) and $300) or  //  bits [10:9] -> [9:8]
+                           ((aInstruction shl 1) and $80) or   //  bit [6] -> [7]
+                           ((aInstruction shr 1) and $40) or   //  bit [7] -> [6]
+                           ((aInstruction shl 3) and $20) or   //  bit [2] -> [5]
+                           ((aInstruction shr 7) and $10) or   //  bit [11] -> [4]
+                           ((aInstruction shr 2) and $0e),12); //  bits [5:3] -> [3:1]
      inc(fState.PC,TPasRISCVUInt64(Immediate)-2);
      result:=2;
      exit;
