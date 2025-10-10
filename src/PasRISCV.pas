@@ -293,6 +293,8 @@ unit PasRISCV;
 
 {$define NVMELevelTriggeredPCIEInterrupts}
 
+//{$define PasRISCVCPUFileDumpDebug}
+
 interface
 
 uses {$if defined(Posix) and not defined(fpc)}
@@ -26749,6 +26751,9 @@ begin
       end else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
        result:=2;
+{$ifdef PasRISCVCPUFileDumpDebug}
+       halt(0);
+{$endif}
        exit;
       end;
      end;
@@ -31583,6 +31588,10 @@ begin
  end;
 end;
 
+{$if defined(PasRISCVCPUFileDumpDebug)}
+var DumpFile:^Text=nil;
+{$ifend}
+
 procedure TPasRISCV.THART.Execute;
 type PDirectAccessTLBEntry=TMMU.PDirectAccessTLBEntry;
 var Instruction:TPasRISCVUInt32;
@@ -31638,7 +31647,7 @@ begin
 
    end;
 
- {$if defined(PasRISCVCPUDumpDebug)}
+{$if defined(PasRISCVCPUDumpDebug)}
    if DumpDebug then begin
     write('PC=',LowerCase(IntToHex(fState.PC,16)),' ');
     if (Instruction and 3)=3 then begin
@@ -31648,7 +31657,25 @@ begin
     end;
     writeln;
    end;
- {$ifend}
+{$ifend}
+
+{$if defined(PasRISCVCPUFileDumpDebug)}
+   begin
+    if not assigned(DumpFile) then begin
+     New(DumpFile);
+     Assign(DumpFile^,'pasriscv_trace.txt');
+     Rewrite(DumpFile^);
+    end;
+    write(DumpFile^,'PC=',LowerCase(IntToHex(fState.PC,16)),' ');
+    if (Instruction and 3)=3 then begin
+     write(DumpFile^,'Inst=',LowerCase(IntToHex(Instruction,8)),' ');
+    end else begin
+     write(DumpFile^,'Inst=',LowerCase(IntToHex(Instruction and $ffff,4)),' ');
+    end;
+    writeln(DumpFile^);
+    Flush(DumpFile^);
+  end;
+{$ifend}
 
    inc(fState.PC,ExecuteInstruction(Instruction));
 
