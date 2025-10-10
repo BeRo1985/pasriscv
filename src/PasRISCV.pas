@@ -26858,7 +26858,7 @@ begin
        rd:=TRegister(((aInstruction shr 2) and $7)+8);
        rs1:=TRegister(((aInstruction shr 7) and $7)+8);
        Offset:=((aInstruction and $20) shr 4) or ((aInstruction and $40) shr 6);
-       Store8(fState.Registers[rs1]+Offset,TPasRISCVUInt8(rd));
+       Store8(fState.Registers[rs1]+Offset,TPasRISCVUInt8(fState.Registers[rd]));
        result:=2;
        exit;
       end;
@@ -26868,7 +26868,7 @@ begin
         rd:=TRegister(((aInstruction shr 2) and $7)+8);
         rs1:=TRegister(((aInstruction shr 7) and $7)+8);
         Offset:=((aInstruction and $20) shr 4) or ((aInstruction and $40) shr 6);
-        Store16(fState.Registers[rs1]+Offset,TPasRISCVUInt16(rd));
+        Store16(fState.Registers[rs1]+Offset,TPasRISCVUInt16(fState.Registers[rd]));
         result:=2;
         exit;
        end else begin
@@ -27116,7 +27116,7 @@ begin
           rd:=TRegister(((aInstruction shr 7) and $7)+8);
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            rs2:=TRegister(((aInstruction shr 2) and $7)+8);
-           fState.Registers[rd]:=State.Registers[rd]*fState.Registers[rs2];
+           fState.Registers[rd]:=fState.Registers[rd]*fState.Registers[rs2];
           end;
           result:=2;
           exit;
@@ -27148,7 +27148,7 @@ begin
             // c.sext.w (Zcb + Zbb)
             rd:=TRegister(((aInstruction shr 7) and $7)+8);
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(fState.Registers[rd])));
+             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(fState.Registers[rd])));
             end;
            end;
            $4:begin
