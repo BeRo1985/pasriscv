@@ -15879,6 +15879,7 @@ begin
     Move(fSerial,PPasRISCVUInt8Array(Ptr)^[4],SizeOf(fSerial)); // Serial Number
     Move(NVMeStr[1],PPasRISCVUInt8Array(Ptr)^[24],Length(NVMeStr)); // Model Number
     Move(R947Str[1],PPasRISCVUInt8Array(Ptr)^[64],Length(R947Str)); // Firmware Revision
+    PPasRISCVUInt8Array(Ptr)^[77]:=9; // MDTS
     PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)^[80])^:=NVME_VERSION; // Version
     PPasRISCVUInt8Array(Ptr)^[111]:=$1; // Controller Type: I/O Controller
     PPasRISCVUInt8Array(Ptr)^[512]:=$66; // Submission Queue Max/Cur Entry Size
