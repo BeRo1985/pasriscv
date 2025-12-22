@@ -24404,7 +24404,7 @@ begin
   end;
 
  end;
- 
+
 end;
 
 procedure TPasRISCV.THART.SetException(const aExceptionValue:TExceptionValue;
@@ -31432,6 +31432,10 @@ begin
  // all production implementations (QEMU, hardware) and operating systems (Linux, BSD) expect
  // that exceptions/traps invalidate LR/SC reservations. This prevents spurious SC success
  // after page faults, interrupts, or context switches that occur between LR and SC.
+ // Note: This is more conservative than QEMU, which only clears reservations on privilege
+ // mode changes (in riscv_cpu_set_mode). We clear on every trap entry to ensure correctness
+ // even for traps that don't change the privilege mode (e.g., page fault in S-mode handled
+ // by S-mode). The SetMode() function also clears reservations on mode change for consistency.
  if fState.LRSC then begin
   TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
   fState.LRSC:=false;
