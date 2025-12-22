@@ -25686,7 +25686,7 @@ begin
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=nil;
   end else begin
-   result:=fBus.GetDirectMemoryAccessPointer(TranslatedAddress,aSize,true,aBounce);
+   result:=fBus.GetDirectMemoryAccessPointer(TranslatedAddress,aSize,not aReadOnly,aBounce);
    if result=@aBounce then begin
     case aSize of
      4:begin
