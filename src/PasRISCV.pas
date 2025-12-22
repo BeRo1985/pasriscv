@@ -15568,19 +15568,21 @@ end;
 { TPasRISCV.TNVMeDevice.TNVMeQueue }
 
 class function TPasRISCV.TNVMeDevice.TNVMeQueue.GetNext(var aHeadOrTail:TPasRISCVUInt32;const aSize:TPasRISCVUInt32):TPasRISCVUInt32;
-var Next:TPasRISCVUInt32;
+var Next,Current:TPasRISCVUInt32;
 begin
  result:=0;
  Next:=0;
+ TPasMPMemoryBarrier.ReadDependency;
+ Current:=TPasMPInterlocked.Read(aHeadOrTail);
  repeat
-  TPasMPMemoryBarrier.ReadDependency;
-  result:=TPasMPInterlocked.Read(aHeadOrTail);
+  result:=Current;
   if result>=aSize then begin
    Next:=0;
   end else begin
    Next:=result+1;
   end;
- until TPasMPInterlocked.CompareExchange(aHeadOrTail,Next,result)=result;
+  Current:=TPasMPInterlocked.CompareExchange(aHeadOrTail,Next,result);
+ until Current=result;
 end;
 
 function TPasRISCV.TNVMeDevice.TNVMeQueue.GetAddress:TPasRISCVUInt64;
