@@ -2525,6 +2525,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TPCIDevice=class
              public
              private
+              fMachine:TPasRISCV;
               fBus:TPCIBusDevice;
               fDeviceID:TPasRISCVUInt16;
               fFuncs:array[0..TPCI.PCI_DEV_FUNCS-1] of TPCIFunc;
@@ -4713,9 +4714,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      ExceptionData:TPasRISCVUInt64;
                      ExceptionPC:TPasRISCVUInt64;
                      Cycle:TPasRISCVUInt64;
-                     LSRC:TPasMPBool32;
-                     LSRCAddress:TPasRISCVUInt64;
-                     LSRCCAS:TPasRISCVUInt64;
+                     LRSC:TPasMPBool32;
+                     LRSCAddress:TPasRISCVUInt64;
+                     LRSCCAS:TPasRISCVUInt64;
+                     LRSCSavedVersion:TPasRISCVUInt32;
                      Bounce:TBounce;
                      CAS128OldValue:TPasMPInt128Record;
                      CAS128NewValue:TPasMPInt128Record;
@@ -5473,6 +5475,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fAllHARTMask:TPasRISCVUInt32;
 
+       fActiveHARTLRSCMask:TPasMPUInt32;
+       fDMAInFlight:TPasMPUInt32;
+       fGlobalReservationVersion:TPasMPUInt32;
+
        fHARTWakeUpConditionVariableLock:TPasMPConditionVariableLock;
        fHARTWakeUpConditionVariable:TPasMPConditionVariable;
 
@@ -5505,6 +5511,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure ShutdownCPUs;
 
        procedure InitializeFDT;
+
+       procedure ParallelDMAMemoryAccessInvalidationBegin;
+       procedure ParallelDMAMemoryAccessInvalidationEnd;
 
       public
 
@@ -15237,6 +15246,7 @@ end;
 constructor TPasRISCV.TPCIDevice.Create(const aBus:TPasRISCV.TPCIBusDevice);
 begin
  inherited Create;
+ fMachine:=aBus.fMachine;
  fBus:=aBus;
 end;
 
@@ -15842,7 +15852,9 @@ begin
  while aCommand^.PRP.Current<aCommand^.PRP.Size do begin
   Dest:=GetPRPChunk(aCommand,Size);
   if assigned(Dest) then begin
+   fMachine.ParallelDMAMemoryAccessInvalidationBegin;
    Move(Src^,Dest^,Size);
+   fMachine.ParallelDMAMemoryAccessInvalidationEnd;
    inc(Src,Size);
   end else begin
    result:=false;
@@ -16677,7 +16689,9 @@ begin
   end;
   p:=GetGlobalDirectMemoryAccessPointer(PhysicalAddress,Len,true,nil);
   if assigned(p) then begin
+   fMachine.ParallelDMAMemoryAccessInvalidationBegin;
    Move(Buf^,p^,Len);
+   fMachine.ParallelDMAMemoryAccessInvalidationEnd;
    inc(PhysicalAddress,Len);
    inc(Buf,Len);
    dec(Count,Len);
@@ -24354,9 +24368,9 @@ begin
  fState.ExceptionValue:=TExceptionValue.None;
  fState.ExceptionData:=0;
  fState.ExceptionPC:=0;
- fState.LSRC:=false;
- fState.LSRCAddress:=0;
- fState.LSRCCAS:=0;
+ fState.LRSC:=false;
+ fState.LRSCAddress:=0;
+ fState.LRSCCAS:=0;
 
  fMTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
 
@@ -24380,8 +24394,8 @@ begin
 end;
 
 procedure TPasRISCV.THART.SetException(const aExceptionValue:TExceptionValue;
-                                          const aExceptionData:TPasRISCVUInt64;
-                                          const aExceptionPC:TPasRISCVUInt64);
+                                       const aExceptionData:TPasRISCVUInt64;
+                                       const aExceptionPC:TPasRISCVUInt64);
 begin
  if not (assigned(fMachine.fOnCPUException) and fMachine.fOnCPUException(self,aExceptionValue,aExceptionData,aExceptionPC)) then begin
   fState.ExceptionValue:=aExceptionValue;
@@ -30583,11 +30597,16 @@ begin
           // lr.w
           Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           fState.LSRC:=true;
-           fState.LSRCAddress:=fState.Registers[rs1];
-           fState.LSRCCAS:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+           TPasMPInterlocked.BitwiseOr(fMachine.fActiveHARTLRSCMask,fHARTMask);
+           fState.LRSCSavedVersion:=TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion);
+           fState.LRSC:=true;
+           fState.LRSCAddress:=fState.Registers[rs1];
+           fState.LRSCCAS:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(fState.LSRCCAS)));
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(fState.LRSCCAS)));
+           end;
+           if TPasMPInterlocked.Read(fMachine.fDMAInFlight)<>0 then begin
+            fState.LRSCSavedVersion:=TPasMPInterlocked.Increment(fMachine.fGlobalReservationVersion);
            end;
           end;
           result:=4;
@@ -30597,9 +30616,10 @@ begin
           // sc.w
           Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           if fState.LSRC and
-              (fState.LSRCAddress=fState.Registers[rs1]) and
-              (TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.LSRCCAS))=TPasMPUInt32(fState.LSRCCAS)) then begin
+           if fState.LRSC and
+              (TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion)=fState.LRSCSavedVersion) and
+              (fState.LRSCAddress=fState.Registers[rs1]) and
+              (TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.LRSCCAS))=TPasMPUInt32(fState.LRSCCAS)) then begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=0;
             end;
@@ -30611,7 +30631,8 @@ begin
              fState.Registers[rd]:=1;
             end;
            end;
-           fState.LSRC:=false;
+           fState.LRSC:=false;
+           TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
           end;
           result:=4;
           exit;
@@ -30833,11 +30854,16 @@ begin
           // lr.d
           Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           fState.LSRC:=true;
-           fState.LSRCAddress:=fState.Registers[rs1];
-           fState.LSRCCAS:=TPasMPInterlocked.Read(PPasMPUInt64(Ptr)^);
+           TPasMPInterlocked.BitwiseOr(fMachine.fActiveHARTLRSCMask,fHARTMask);
+           fState.LRSCSavedVersion:=TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion);
+           fState.LRSC:=true;
+           fState.LRSCAddress:=fState.Registers[rs1];
+           fState.LRSCCAS:=TPasMPInterlocked.Read(PPasMPUInt64(Ptr)^);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(fState.LSRCCAS)));
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(fState.LRSCCAS)));
+           end;
+           if TPasMPInterlocked.Read(fMachine.fDMAInFlight)<>0 then begin
+            fState.LRSCSavedVersion:=TPasMPInterlocked.Increment(fMachine.fGlobalReservationVersion);
            end;
           end;
           result:=4;
@@ -30847,9 +30873,10 @@ begin
           // sc.d
           Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           if fState.LSRC and
-              (fState.LSRCAddress=fState.Registers[rs1]) and
-              (TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.LSRCCAS))=TPasMPUInt64(fState.LSRCCAS)) then begin
+           if fState.LRSC and
+              (TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion)=fState.LRSCSavedVersion) and
+              (fState.LRSCAddress=fState.Registers[rs1]) and
+              (TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.LRSCCAS))=TPasMPUInt64(fState.LRSCCAS)) then begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=0;
             end;
@@ -30861,7 +30888,8 @@ begin
              fState.Registers[rd]:=1;
             end;
            end;
-           fState.LSRC:=false;
+           fState.LRSC:=false;
+           TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
           end;
           result:=4;
           exit;
@@ -31686,6 +31714,8 @@ begin
         ((fState.Cycle and TPasRISCVUInt32($ffff))=0);
 
   TPasMPInterlocked.BitwiseAnd(RunState^,TPasRISCVUInt32(TPasRISCVUInt32(not TPasRISCVUInt32(fHARTMask)) or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)));
+
+  TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
    ExecuteException;
@@ -33249,6 +33279,10 @@ begin
 
  fAllHARTMask:=0;
 
+ fActiveHARTLRSCMask:=0;
+ fDMAInFlight:=0;
+ fGlobalReservationVersion:=0;
+
  fHARTWakeUpConditionVariableLock:=TPasMPConditionVariableLock.Create;
  fHARTWakeUpConditionVariable:=TPasMPConditionVariable.Create;
 
@@ -34772,6 +34806,10 @@ begin
  fVirtIONetDevice.Reset;
  fVirtIORandomGeneratorDevice.Reset;
 
+ fActiveHARTLRSCMask:=0;
+ fDMAInFlight:=0;
+ fGlobalReservationVersion:=0;
+
  fNVMeDevice.Reset;
 
  for Index:=0 to length(fHARTs)-1 do begin
@@ -34904,6 +34942,22 @@ end;
 procedure TPasRISCV.Interrupt;
 begin
  TPasMPInterlocked.BitwiseOr(fRunState,fAllHARTMask);
+end;
+
+procedure TPasRISCV.ParallelDMAMemoryAccessInvalidationBegin;
+begin
+ TPasMPInterlocked.Increment(fDMAInFlight);
+ if TPasMPInterlocked.Read(fActiveHARTLRSCMask)<>0 then begin
+  TPasMPInterlocked.Increment(fGlobalReservationVersion);
+ end;
+end;
+
+procedure TPasRISCV.ParallelDMAMemoryAccessInvalidationEnd;
+begin
+ if TPasMPInterlocked.Read(fActiveHARTLRSCMask)<>0 then begin
+  TPasMPInterlocked.Increment(fGlobalReservationVersion);
+ end;
+ TPasMPInterlocked.Decrement(fDMAInFlight);
 end;
 
 procedure TPasRISCV.WakeUp;
