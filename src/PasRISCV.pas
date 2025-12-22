@@ -25686,13 +25686,21 @@ begin
       PPasMPInt128Record(aBounce)^.Hi:=fBus.Load(self,aAddress+8,8);
      end;
      else begin
-      SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
+      if aReadOnly then begin
+       SetException(TExceptionValue.LoadAddressMisaligned,aAddress,fState.PC);
+      end else begin
+       SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
+      end;
      end;
     end;
    end;
   end;
  end else begin
-  SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
+  if aReadOnly then begin
+   SetException(TExceptionValue.LoadAddressMisaligned,aAddress,fState.PC);
+  end else begin
+   SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
+  end;
   result:=nil;
  end;
 
@@ -30595,7 +30603,7 @@ begin
          end;
          $02:begin
           // lr.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            TPasMPInterlocked.BitwiseOr(fMachine.fActiveHARTLRSCMask,fHARTMask);
            fState.LRSCSavedVersion:=TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion);
@@ -30852,7 +30860,7 @@ begin
          end;
          $02:begin
           // lr.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            TPasMPInterlocked.BitwiseOr(fMachine.fActiveHARTLRSCMask,fHARTMask);
            fState.LRSCSavedVersion:=TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion);
@@ -31093,7 +31101,7 @@ begin
             end;
            end;
            if Ptr=@fState.Bounce.ui128 then begin
-            RMWStore(fState.Registers[rs1],16,@fState.Bounce.ui64);
+            RMWStore(fState.Registers[rs1],16,@fState.Bounce.ui128);
            end;
           end;
           result:=4;
