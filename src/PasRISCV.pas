@@ -1,4 +1,4 @@
-﻿(******************************************************************************
+(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
  *                        Version 2025-06-23-17-44-0000                       *
@@ -5000,7 +5000,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Store64(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64); //inline;
               procedure StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
               procedure StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
-              function RMWTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer; //inline;
+              function MemoryPointerTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer; //inline;
               procedure RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer); //inline;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
@@ -24387,10 +24387,24 @@ end;
 
 procedure TPasRISCV.THART.SetMode(const aMode:TMode);
 begin
+ 
+ // Check if the privilege mode is changing
  if fState.Mode<>aMode then begin
+
+  // Update the current privilege mode
   fState.Mode:=aMode;
+
+  // Flush the Translation Lookaside Buffer (TLB) to ensure memory access consistency after mode change
   FlushTLB(true);
+
+  // Clear LR/SC reservation on privilege mode change (like QEMU's riscv_cpu_set_mode)
+  if fState.LRSC then begin
+   fState.LRSC:=false;
+   TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
+  end;
+
  end;
+ 
 end;
 
 procedure TPasRISCV.THART.SetException(const aExceptionValue:TExceptionValue;
@@ -25644,7 +25658,7 @@ begin
 
 end;
 
-function TPasRISCV.THART.RMWTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer;
+function TPasRISCV.THART.MemoryPointerTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -27628,7 +27642,7 @@ begin
          // cbo.zero
          if (((aInstruction shr 7) and 15)=0) and IsCSRENVCFGEnabled(TCSR.ENVCFG_CBZE) then begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
-          Ptr:=RMWTranslate(fState.Registers[rs1] and TPasRISCVUInt64($ffffffffffffffc0),64,nil,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1] and TPasRISCVUInt64($ffffffffffffffc0),64,nil,false);
           if assigned(Ptr) then begin
            FillChar(Ptr^,64,#0);
           end;
@@ -30573,7 +30587,7 @@ begin
         case ((aInstruction shr 25) and $7c) shr 2 of
          $00:begin
           // amoadd.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Add(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30588,7 +30602,7 @@ begin
          end;
          $01:begin
           // amoswap.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30603,7 +30617,7 @@ begin
          end;
          $02:begin
           // lr.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,true);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            TPasMPInterlocked.BitwiseOr(fMachine.fActiveHARTLRSCMask,fHARTMask);
            fState.LRSCSavedVersion:=TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion);
@@ -30622,32 +30636,41 @@ begin
          end;
          $03:begin
           // sc.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
-          if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           if fState.LRSC and
-              (TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion)=fState.LRSCSavedVersion) and
-              (fState.LRSCAddress=fState.Registers[rs1]) and
-              (TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.LRSCCAS))=TPasMPUInt32(fState.LRSCCAS)) then begin
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=0;
-            end;
-            if Ptr=@fState.Bounce.ui32 then begin
-             RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
-            end;
-           end else begin
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=1;
+          // QEMU checks LRSC address match first, then memory translation.
+          // While RVVM does memory translation first, then checks LRSC state.
+          // We follow QEMU here for better compatibility, since RVVM's
+          // approach may lead to unnecessary page faults when the reservation
+          // address doesn't match, which is inefficient in some scenarios.
+          if fState.LRSC and (fState.LRSCAddress=fState.Registers[rs1]) then begin
+           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+            if (TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion)=fState.LRSCSavedVersion) and
+               (TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.LRSCCAS))=TPasMPUInt32(fState.LRSCCAS)) then begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=0;
+             end;
+             if Ptr=@fState.Bounce.ui32 then begin
+              RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+             end;
+            end else begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=1;
+             end;
             end;
            end;
-           fState.LRSC:=false;
-           TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
-          end;
+          end else begin
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=1;
+           end;
+          end; 
+          fState.LRSC:=false;
+          TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
           result:=4;
           exit;
          end;
          $04:begin
           // amoxor.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseXor(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30662,7 +30685,7 @@ begin
          end;
          $05:begin
           // amocas.w (Zacas)
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPUInt32(TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.Registers[rd])));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30677,7 +30700,7 @@ begin
          end;
          $08:begin
           // amoor.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseOr(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30692,7 +30715,7 @@ begin
          end;
          $0c:begin
           // amoand.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseAnd(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30707,7 +30730,7 @@ begin
          end;
          $10:begin
           // amomin.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPInt64(TPasMPInt32(TPasMPInterlocked.Read(PPasMPInt32(Ptr)^))));
@@ -30733,7 +30756,7 @@ begin
          end;
          $14:begin
           // amomax.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPInt64(TPasMPInt32(TPasMPInterlocked.Read(PPasMPInt32(Ptr)^))));
@@ -30759,7 +30782,7 @@ begin
          end;
          $18:begin
           // amominu.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPUInt32(TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^)));
@@ -30785,7 +30808,7 @@ begin
          end;
          $1c:begin
           // amomaxu.w
-          Ptr:=RMWTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPUInt32(TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^)));
@@ -30830,7 +30853,7 @@ begin
         case ((aInstruction shr 25) and $7c) shr 2 of
          $00:begin
           // amoadd.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Add(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30845,7 +30868,7 @@ begin
          end;
          $01:begin
           // amoswap.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30860,7 +30883,7 @@ begin
          end;
          $02:begin
           // lr.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,true);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            TPasMPInterlocked.BitwiseOr(fMachine.fActiveHARTLRSCMask,fHARTMask);
            fState.LRSCSavedVersion:=TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion);
@@ -30879,32 +30902,41 @@ begin
          end;
          $03:begin
           // sc.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
-          if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           if fState.LRSC and
-              (TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion)=fState.LRSCSavedVersion) and
-              (fState.LRSCAddress=fState.Registers[rs1]) and
-              (TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.LRSCCAS))=TPasMPUInt64(fState.LRSCCAS)) then begin
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=0;
-            end;
-            if Ptr=@fState.Bounce.ui64 then begin
-             RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
-            end;
-           end else begin
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=1;
+          // QEMU checks LRSC address match first, then memory translation.
+          // While RVVM does memory translation first, then checks LRSC state.
+          // We follow QEMU here for better compatibility, since RVVM's
+          // approach may lead to unnecessary page faults when the reservation
+          // address doesn't match, which is inefficient in some scenarios.
+          if fState.LRSC and (fState.LRSCAddress=fState.Registers[rs1]) then begin
+           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+            if (TPasMPInterlocked.Read(fMachine.fGlobalReservationVersion)=fState.LRSCSavedVersion) and
+               (TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.LRSCCAS))=TPasMPUInt64(fState.LRSCCAS)) then begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=0;
+             end;
+             if Ptr=@fState.Bounce.ui64 then begin
+              RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+             end;
+            end else begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=1;
+             end;
             end;
            end;
-           fState.LRSC:=false;
-           TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
-          end;
+          end else begin
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=1;
+           end;
+          end; 
+          fState.LRSC:=false;
+          TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
           result:=4;
           exit;
          end;
          $04:begin
           // amoxor.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseXor(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30919,7 +30951,7 @@ begin
          end;
          $05:begin
           // amocas.d (Zacas)
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPUInt64(TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.Registers[rd])));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30934,7 +30966,7 @@ begin
          end;
          $08:begin
           // amoor.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseOr(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30949,7 +30981,7 @@ begin
          end;
          $0c:begin
           // amoand.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseAnd(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30964,7 +30996,7 @@ begin
          end;
          $10:begin
           // amomin.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPInt64(TPasMPInt64(TPasMPInterlocked.Read(PPasMPInt64(Ptr)^))));
@@ -30990,7 +31022,7 @@ begin
          end;
          $14:begin
           // amomax.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPInt64(TPasMPInt64(TPasMPInterlocked.Read(PPasMPInt64(Ptr)^))));
@@ -31016,7 +31048,7 @@ begin
          end;
          $18:begin
           // amominu.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPUInt64(TPasMPInterlocked.Read(PPasMPUInt64(Ptr)^)));
@@ -31042,7 +31074,7 @@ begin
          end;
          $1c:begin
           // amomaxu.d
-          Ptr:=RMWTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
             Temporary:=TPasMPUInt64(TPasMPUInt64(TPasMPInterlocked.Read(PPasMPUInt64(Ptr)^)));
@@ -31087,7 +31119,7 @@ begin
         case ((aInstruction shr 25) and $7c) shr 2 of
          $05:begin
           // amocas.q (Zacas)
-          Ptr:=RMWTranslate(fState.Registers[rs1],16,@fState.Bounce.ui128,false);
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],16,@fState.Bounce.ui128,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            fState.CAS128OldValue.Lo:=TPasMPUInt64(fState.Registers[rd]);
            fState.CAS128OldValue.Hi:=TPasMPUInt64(fState.Registers[TRegister((TPasRISCVUInt32(rd)+1) and $1f)]);
@@ -31393,6 +31425,16 @@ begin
   fState.ExceptionValue:=TExceptionValue.None;
   fState.PC:=fState.ExceptionPC;
   exit;
+ end;
+
+ // Clear any pending LR/SC reservation on trap entry, as recommended by the RISC-V Privileged
+ // Specification (Volume II, Section 3.1.6). While the spec uses "may" rather than "must",
+ // all production implementations (QEMU, hardware) and operating systems (Linux, BSD) expect
+ // that exceptions/traps invalidate LR/SC reservations. This prevents spurious SC success
+ // after page faults, interrupts, or context switches that occur between LR and SC.
+ if fState.LRSC then begin
+  TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
+  fState.LRSC:=false;
  end;
 
  // No TMode.User here, since User-level interrupts are optional for implementation were part of the
@@ -31722,8 +31764,6 @@ begin
         ((fState.Cycle and TPasRISCVUInt32($ffff))=0);
 
   TPasMPInterlocked.BitwiseAnd(RunState^,TPasRISCVUInt32(TPasRISCVUInt32(not TPasRISCVUInt32(fHARTMask)) or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)));
-
-  TPasMPInterlocked.BitwiseAnd(fMachine.fActiveHARTLRSCMask,not TPasMPUInt32(fHARTMask));
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
    ExecuteException;
