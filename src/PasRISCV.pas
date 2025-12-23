@@ -2127,7 +2127,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; virtual; abstract;
               function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; virtual; abstract;
               function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean; virtual; abstract;
-            end; 
+            end;
             { TAPLICDevice }
             TAPLICDevice=class(TINTCDevice)
              public
@@ -2159,7 +2159,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     APLIC_REG_SETIPNUM_LE=$2000;
                     APLIC_REG_SETIPNUM_BE=$2004;
                     APLIC_REG_GENMSI=$3000;
-                    APLIC_REG_TARGET_1=$3004; 
+                    APLIC_REG_TARGET_1=$3004;
                     APLIC_REG_TARGET_1023=$3ffc;
                     APLIC_DOMAINCFG_BE=1;
                     APLIC_DOMAINCFG_DM=4;
@@ -2175,7 +2175,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     APLIC_SOURCECFG_MASK=$7;
                     APLIC_MSIADDRCFGH_L=TPasRISCVUInt32($80000000);
                     APLIC_SRC_LIMIT=64;
-                    APLIC_SRC_REGS=APLIC_SRC_LIMIT shr 5; 
+                    APLIC_SRC_REGS=APLIC_SRC_LIMIT shr 5;
               type TDomainDevice=class(TBusDevice)
                     private
                      fAPLICDevice:TAPLICDevice;
@@ -2195,7 +2195,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure SetIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
                      procedure SetIENum(const aSrc:TPasRISCVUInt64);
                      procedure ClearIE(const aReg:TPasRISCVUInt64;const aBits:TPasRISCVUInt32);
-                     procedure ClearIENum(const aSrc:TPasRISCVUInt64);              
+                     procedure ClearIENum(const aSrc:TPasRISCVUInt64);
                     public
                      constructor Create(const aAPLICDevice:TAPLICDevice;const aBase,aSize:TPasRISCVUInt64;const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aRootDomain:Boolean); reintroduce;
                      destructor Destroy; override;
@@ -2224,7 +2224,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure NotifyInterrupt(const aSrc:TPasRISCVUInt64);
               procedure EdgeInterrupt(const aSrc:TPasRISCVUInt64);
               procedure UpdateInterrupt(const aSrc:TPasRISCVUInt64);
-             public 
+             public
               function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
               function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
               function LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
@@ -13807,7 +13807,7 @@ begin
  fUnalignedAccessSupport:=false;
  fMinOpSize:=4;
  fMaxOpSize:=4;
-end; 
+end;
 
 destructor TPasRISCV.TIMSICDevice.Destroy;
 begin
@@ -13838,15 +13838,15 @@ begin
    case Address and $ffc of
     IMSIC_REG_SETEIPNUM_LE:begin
      HART.SendAIAIRQ(fAIARegFileMode,TPasRISCVUInt32(aValue));
-    end; 
+    end;
     IMSIC_REG_SETEIPNUM_BE:begin
      HART.SendAIAIRQ(fAIARegFileMode,ByteSwap32(TPasRISCVUInt32(aValue)));
-    end; 
+    end;
     else begin
     end;
    end;
   end;
- end;     
+ end;
 end;
 
 { TPasRISCV.TAPLICDevice.TDomainDevice }
@@ -13885,7 +13885,7 @@ begin
  end else begin
   result:=0;
  end;
-end; 
+end;
 
 function TPasRISCV.TAPLICDevice.TDomainDevice.ValidSrc(const aSrc:TPasRISCVUInt64):Boolean;
 var Mask:TPasRISCVUInt32;
@@ -13995,7 +13995,7 @@ end;
 
 procedure TPasRISCV.TAPLICDevice.TDomainDevice.SetIENum(const aSrc:TPasRISCVUInt64);
 var Reg:TPasRISCVUInt64;
-    Mask:TPasRISCVUInt32; 
+    Mask:TPasRISCVUInt32;
 begin
  Reg:=aSrc shr 5;
  Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
@@ -14016,13 +14016,13 @@ end;
 
 procedure TPasRISCV.TAPLICDevice.TDomainDevice.ClearIENum(const aSrc:TPasRISCVUInt64);
 var Reg:TPasRISCVUInt64;
-    Mask:TPasRISCVUInt32; 
+    Mask:TPasRISCVUInt32;
 begin
  Reg:=aSrc shr 5;
  Mask:=TPasRISCVUInt32(1) shl (aSrc and 31);
  ClearIE(Reg,Mask);
 end;
- 
+
 function TPasRISCV.TAPLICDevice.TDomainDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var Address,Reg:TPasRISCVUInt64;
 begin
@@ -14030,7 +14030,7 @@ begin
  if (Address>=0) and (Address<Size) then begin
   case Address of
    APLIC_REG_DOMAINCFG:begin
-    result:=fAPLICDevice.fDomainCfg[fAIARegFileMode] or APLIC_DOMAINCFG;   
+    result:=fAPLICDevice.fDomainCfg[fAIARegFileMode] or APLIC_DOMAINCFG;
    end;
    APLIC_REG_MMSIADDRCFGH,APLIC_REG_SMSIADDRCFGH:begin
     result:=APLIC_MSIADDRCFGH_L;
@@ -14086,7 +14086,7 @@ begin
    end;
    APLIC_REG_SETIPNUM,APLIC_REG_SETIPNUM_LE:begin
     SetIPNum(TPasRISCVUInt64(TPasRISCVUInt32(aValue)));
-   end; 
+   end;
    APLIC_REG_SETIPNUM_BE:begin
     SetIPNum(TPasRISCVUInt64(ByteSwap32(TPasRISCVUInt32(aValue))));
    end;
@@ -14119,7 +14119,7 @@ begin
       TPasMPInterlocked.ExchangeBitwiseOr(fAPLICDevice.fDelegated[Reg shr 5],Mask);
      end else begin
       TPasMPInterlocked.ExchangeBitwiseAnd(fAPLICDevice.fDelegated[Reg shr 5],not Mask);
-     end; 
+     end;
     end;
     if ValidSrc(Reg) then begin
      Cfg:=aValue and APLIC_SOURCECFG_MASK;
@@ -14245,7 +14245,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TAPLICDevice.NotifyInterrupt(const aSrc:TPasRISCVUInt64); 
+procedure TPasRISCV.TAPLICDevice.NotifyInterrupt(const aSrc:TPasRISCVUInt64);
 var Reg:TPasRISCVUInt64;
     Mask,Enabled,DomainCfg,Target:TPasRISCVUInt32;
     SMode:Boolean;
@@ -14287,7 +14287,7 @@ begin
  if RectifiedSrc(aSrc) then begin
   EdgeInterrupt(aSrc);
  end;
-end; 
+end;
 
 function TPasRISCV.TAPLICDevice.SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 begin
@@ -14304,7 +14304,7 @@ begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
   if ((not TPasMPInterlocked.ExchangeBitwiseOr(fRaised[aIRQ shr 5],Mask)) and Mask)<>0 then begin
    UpdateInterrupt(aIRQ);
-  end; 
+  end;
   result:=true;
  end else begin
   result:=false;
@@ -15701,7 +15701,7 @@ end;
 
 procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;const aStatusField:TPasRISCVUInt32);
 var Queue:PNVMeQueue;
-    QueueSize,QueueTail,Phase{$ifndef NVMELevelTriggeredPCIEInterrupts},IRQVector,IRQMask{$endif}:TPasRISCVUInt32;
+    QueueSize,QueueTail{$ifndef NVMELevelTriggeredPCIEInterrupts},IRQVector,IRQMask{$endif}:TPasRISCVUInt32;
     Address:TPasRISCVUInt64;
     Ptr:PPasRISCVUInt8;
 begin
@@ -15721,8 +15721,6 @@ begin
 
  Ptr:=GetGlobalDirectMemoryAccessPointer(Address,16,true,nil);
  if assigned(Ptr) then begin
-//Phase:=(not PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[12])^) and $10000;
-//Phase:=(Queue^.Phase and 1) shl 16;
   PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[0])^:=aCommand^.CommandSpecificStatus;
   PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[4])^:=0;
   PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[8])^:=aCommand^.SqHeadID;
@@ -24380,7 +24378,7 @@ end;
 
 procedure TPasRISCV.THART.SetMode(const aMode:TMode);
 begin
- 
+
  // Check if the privilege mode is changing
  if fState.Mode<>aMode then begin
 
@@ -30565,7 +30563,7 @@ begin
      // RV64A: "A" standard extension for atomic instructions
      // Alignment check first, before any memory translation or LRSC check.
      // This is spec-compliant (RISC-V allows either order) and matches RVVM's
-     // approach and QEMU's implementation in the legacy code path. It's more 
+     // approach and QEMU's implementation in the legacy code path. It's more
      // efficient as it avoids unnecessary TLB lookups for misaligned addresses.
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
@@ -30650,7 +30648,7 @@ begin
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=1;
            end;
-          end; 
+          end;
           fState.LRSC:=false;
           result:=4;
           exit;
@@ -30909,7 +30907,7 @@ begin
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=1;
            end;
-          end; 
+          end;
           fState.LRSC:=false;
           result:=4;
           exit;
@@ -33913,7 +33911,7 @@ begin
       APLIC0.AddPropertyU32('#interrupt-cells',2);
       APLIC0.AddPropertyU32('#address-cells',0);
       APLIC0.AddPropertyU32('riscv,num-sources',TPasRISCV.TAPLICDevice.APLIC_SRC_LIMIT-1);
-      
+
      finally
       SoCNode.AddChild(IMSIC0);
       SoCNode.AddChild(APLIC0);
@@ -33942,8 +33940,8 @@ begin
     APLICM0.AddPropertyCells('riscv,delegation',@Cells,3);
 
     PLIC0:=nil;
-     
-    // APLIC as interrupt controller for devices 
+
+    // APLIC as interrupt controller for devices
     INTC0:=APLICS0;
 
    end else begin
@@ -33985,10 +33983,10 @@ begin
     finally
      SoCNode.AddChild(PLIC0);
     end;
-    
+
     // PLIC as interrupt controller for devices
     INTC0:=PLIC0;
-    
+
    end;
 
    ACLINTNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'clint',fConfiguration.fCLINTBase);
