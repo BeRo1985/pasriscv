@@ -4716,6 +4716,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      ExceptionPC:TPasRISCVUInt64;
                      Cycle:TPasRISCVUInt64;
                      LRSC:TPasMPBool32;
+                     LRSCCycle:TPasRISCVUInt64;
                      LRSCAddress:TPasRISCVUInt64;
                      LRSCCAS:TPasRISCVUInt64;
                      Bounce:TBounce;
@@ -5268,6 +5269,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fAIA:Boolean;
 
+              fLRSCMaximumCycles:TPasRISCVUInt64;
+
              public
               constructor Create;
               destructor Destroy; override;
@@ -5382,6 +5385,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property AIA:Boolean read fAIA write fAIA;
 
+              property LRSCMaximumCycles:TPasRISCVUInt64 read fLRSCMaximumCycles write fLRSCMaximumCycles;
+
             end;
             TOnReboot=procedure of object;
             TOnNewFrame=procedure of object;
@@ -5474,6 +5479,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fHARTRunningMask:TPasMPUInt32;
 
        fAllHARTMask:TPasRISCVUInt32;
+
+       fLRSCMaximumCycles:TPasRISCVUInt64;
 
        fHARTWakeUpConditionVariableLock:TPasMPConditionVariableLock;
        fHARTWakeUpConditionVariable:TPasMPConditionVariable;
@@ -24360,6 +24367,7 @@ begin
  fState.ExceptionData:=0;
  fState.ExceptionPC:=0;
  fState.LRSC:=false;
+ fState.LRSCCycle:=0;
  fState.LRSCAddress:=0;
  fState.LRSCCAS:=0;
 
@@ -30613,6 +30621,7 @@ begin
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            fState.LRSC:=true;
+           fState.LRSCCycle:=fState.Cycle;
            fState.LRSCAddress:=fState.Registers[rs1];
            fState.LRSCCAS:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30872,6 +30881,7 @@ begin
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            fState.LRSC:=true;
+           fState.LRSCCycle:=fState.Cycle;
            fState.LRSCAddress:=fState.Registers[rs1];
            fState.LRSCCAS:=TPasMPInterlocked.Read(PPasMPUInt64(Ptr)^);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -31744,6 +31754,16 @@ begin
         ((fState.Cycle and TPasRISCVUInt32($ffff))=0);
 
   TPasMPInterlocked.BitwiseAnd(RunState^,TPasRISCVUInt32(TPasRISCVUInt32(not TPasRISCVUInt32(fHARTMask)) or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)));
+
+  // Clear LR/SC reservation after a certain number of cycles to prevent, what some real RISC-V SoCs are
+  // known to do, i.e. holding on to reservations indefinitely in case of busy-wait loops.
+  if fState.LRSC and ((fState.Cycle-fState.LRSCCycle)>=fMachine.fLRSCMaximumCycles) then begin
+   fState.LRSC:=false;
+  end;
+
+  {$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
+   CheckInterrupts;
+  end;
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
    ExecuteException;
@@ -33064,6 +33084,8 @@ begin
 
  fAIA:=false;
 
+ fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
+
 end;
 
 destructor TPasRISCV.TConfiguration.Destroy;
@@ -33169,6 +33191,8 @@ begin
  fVirtIORandomGeneratorIRQ:=aConfiguration.fVirtIORandomGeneratorIRQ;
 
  fAIA:=aConfiguration.fAIA;
+
+ fLRSCMaximumCycles:=aConfiguration.fLRSCMaximumCycles;
 
  fBIOS.Clear;
  if aConfiguration.fBIOS.Size>0 then begin
@@ -33306,6 +33330,8 @@ begin
  fHARTRunningMask:=0;
 
  fAllHARTMask:=0;
+
+ fLRSCMaximumCycles:=fConfiguration.fLRSCMaximumCycles;
 
  fHARTWakeUpConditionVariableLock:=TPasMPConditionVariableLock.Create;
  fHARTWakeUpConditionVariable:=TPasMPConditionVariable.Create;
@@ -33640,7 +33666,7 @@ begin
 //ISA:=ISA+'_svpbmt';
   ISAExtensions:='i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0+
                   'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot';
-  if fConfiguration.AIA then begin
+  if fConfiguration.fAIA then begin
    ISA:=ISA+'_smaia_ssaia';
    ISAExtensions:=ISAExtensions+#0'smaia'#0'ssaia';
   end;
