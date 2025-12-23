@@ -28935,6 +28935,7 @@ begin
           end else begin
            FlushTLB(true);
           end;
+          State.LRSC:=false;
          end else begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          end;
