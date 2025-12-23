@@ -2641,6 +2641,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      Size:TPasRISCVUInt32;
                      Head:TPasRISCVUInt32;
                      Tail:TPasRISCVUInt32;
+                     Phase:TPasRISCVUInt32;
                      CompletionQueueID:TPasRISCVUInt32;
                      IRQ:TPasRISCVUInt32;
                      class function GetNext(var aHeadOrTail:TPasRISCVUInt32;const aSize:TPasRISCVUInt32):TPasRISCVUInt32; static;
@@ -15573,14 +15574,12 @@ class function TPasRISCV.TNVMeDevice.TNVMeQueue.GetNext(var aHeadOrTail:TPasRISC
 var Next:TPasRISCVUInt32;
 begin
  result:=0;
- Next:=0;
  repeat
   TPasMPMemoryBarrier.ReadDependency;
   result:=TPasMPInterlocked.Read(aHeadOrTail);
-  if result>=aSize then begin
+  Next:=result+1;
+  if Next>aSize then begin // or >=(aSize+1)
    Next:=0;
-  end else begin
-   Next:=result+1;
   end;
  until TPasMPInterlocked.CompareExchange(aHeadOrTail,Next,result)=result;
 end;
@@ -15616,6 +15615,7 @@ procedure TPasRISCV.TNVMeDevice.TNVMeQueue.Setup(const aNVMEDevice:TNVMEDevice;c
 begin
  TPasMPInterlocked.Write(Head,0);
  TPasMPInterlocked.Write(Tail,0);
+ TPasMPInterlocked.Write(Phase,0); // gets 1 initial, because Tail is initally also 0 (0=overflow flip indicator)
  TPasMPInterlocked.Write(AddressLow,TPasRISCVUInt32(aAddress and not NVME_PAGE_MASK));
  TPasMPInterlocked.Write(AddressHigh,TPasRISCVUInt32(aAddress shr 32));
  TPasMPInterlocked.Write(Size,aSize);
@@ -15713,15 +15713,22 @@ begin
 
  QueueTail:=TNVMeQueue.GetNext(Queue^.Tail,QueueSize);
 
+ if QueueTail=0 then begin
+  Queue^.Phase:=Queue^.Phase xor 1;
+ end;
+
  Address:=Queue^.GetAddress+(QueueTail shl 4);
 
  Ptr:=GetGlobalDirectMemoryAccessPointer(Address,16,true,nil);
  if assigned(Ptr) then begin
-  Phase:=(not PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[12])^) and $10000;
+//Phase:=(not PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[12])^) and $10000;
+//Phase:=(Queue^.Phase and 1) shl 16;
   PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[0])^:=aCommand^.CommandSpecificStatus;
   PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[4])^:=0;
   PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[8])^:=aCommand^.SqHeadID;
-  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[12])^:=aCommand^.CmdID or (aStatusField shl 17) or Phase;
+  TPasMPMemoryBarrier.Write;
+  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[12])^:=aCommand^.CmdID or (aStatusField shl 17) or ((Queue^.Phase and 1) shl 16);
+  TPasMPMemoryBarrier.Write;
  end;
 
 {$ifdef NVMELevelTriggeredPCIEInterrupts}
