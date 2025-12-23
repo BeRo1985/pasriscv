@@ -4762,7 +4762,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                             NoTrap,                       // Do not trap
                             IgnoreMMUProtection,          // Ignore MMU protection (for debugging, so that the emulator-level debugger can access all memory)
                             TranslateIntoPhysicalAddress, // Translate into physical address
-                            ReadModifyWrite               // Read-Modify-Write (for example for atomic operations)
+                            DirectMemoryPointer           // Direct Memory Pointer (for example for atomic operations)
                            );
                           PAccessFlag=^TAccessFlag;
                           TAccessFlags=set of TAccessFlag;
@@ -5001,7 +5001,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure StoreRegisterU64(const aAddress:TPasRISCVUInt64;const aRegister:TRegister); inline;
               procedure StoreRegisterF64(const aAddress:TPasRISCVUInt64;const aRegister:TFPURegister); inline;
               function MemoryPointerTranslate(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer;const aReadOnly:Boolean):Pointer; //inline;
-              procedure RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer); //inline;
+              procedure RMWCommit(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer); //inline;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               function LoadEx(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
@@ -25667,9 +25667,9 @@ begin
 
  if ((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE then begin
   if aReadOnly then begin
-   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.ReadModifyWrite]);
+   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.DirectMemoryPointer]);
   end else begin
-   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.ReadModifyWrite]);
+   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.DirectMemoryPointer]);
   end;
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=nil;
@@ -25708,7 +25708,7 @@ begin
 
 end;
 
-procedure TPasRISCV.THART.RMWStore(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer);
+procedure TPasRISCV.THART.RMWCommit(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
@@ -25736,7 +25736,7 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE then begin
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.NoTrap,TMMU.TAccessFlag.ReadModifyWrite]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.NoTrap,TMMU.TAccessFlag.DirectMemoryPointer]);
   if (fState.ExceptionValue=TExceptionValue.None) and assigned(aBounce) then begin
    case aSize of
     1,2,4,8:begin
@@ -30587,7 +30587,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30602,7 +30602,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30637,7 +30637,7 @@ begin
               fState.Registers[rd]:=0;
              end;
              if Ptr=@fState.Bounce.ui32 then begin
-              RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+              RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
              end;
             end else begin
              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30663,7 +30663,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30678,7 +30678,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30693,7 +30693,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30708,7 +30708,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30734,7 +30734,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30760,7 +30760,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30786,7 +30786,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30812,7 +30812,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
-            RMWStore(fState.Registers[rs1],4,@fState.Bounce.ui32);
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
           result:=4;
@@ -30846,7 +30846,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -30861,7 +30861,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -30896,7 +30896,7 @@ begin
               fState.Registers[rd]:=0;
              end;
              if Ptr=@fState.Bounce.ui64 then begin
-              RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+              RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
              end;
             end else begin
              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -30922,7 +30922,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -30937,7 +30937,7 @@ begin
             fState.Registers[rd]:=Temporary;
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -30952,7 +30952,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -30967,7 +30967,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -30993,7 +30993,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -31019,7 +31019,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -31045,7 +31045,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -31071,7 +31071,7 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
-            RMWStore(fState.Registers[rs1],8,@fState.Bounce.ui64);
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
           result:=4;
@@ -31112,7 +31112,7 @@ begin
             end;
            end;
            if Ptr=@fState.Bounce.ui128 then begin
-            RMWStore(fState.Registers[rs1],16,@fState.Bounce.ui128);
+            RMWCommit(fState.Registers[rs1],16,@fState.Bounce.ui128);
            end;
           end;
           result:=4;
