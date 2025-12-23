@@ -30638,25 +30638,22 @@ begin
           // We follow QEMU here for better compatibility, since RVVM's
           // approach may lead to unnecessary page faults when the reservation
           // address doesn't match, which is inefficient in some scenarios.
-          if fState.LRSC then begin
-           if (fMachine.fLRSCMaximumCycles>0) and ((fState.Cycle-fState.LRSCCycle)>=fMachine.fLRSCMaximumCycles) then begin
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=1;
-            end;
-           end else if fState.LRSCAddress=fState.Registers[rs1] then begin 
-            Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
-            if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-             if (TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.LRSCCAS))=TPasMPUInt32(fState.LRSCCAS)) then begin
-              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-               fState.Registers[rd]:=0;
-              end;
-              if Ptr=@fState.Bounce.ui32 then begin
-               RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
-              end;
-             end else begin
-              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-               fState.Registers[rd]:=1;
-              end;
+          if fState.LRSC and
+             ((fMachine.fLRSCMaximumCycles=0) or 
+              ((fState.Cycle-fState.LRSCCycle)<fMachine.fLRSCMaximumCycles)) and
+             (fState.LRSCAddress=fState.Registers[rs1]) then begin 
+           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+            if (TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.LRSCCAS))=TPasMPUInt32(fState.LRSCCAS)) then begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=0;
+             end;
+             if Ptr=@fState.Bounce.ui32 then begin
+              RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
+             end;
+            end else begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=1;
              end;
             end;
            end;
@@ -30904,25 +30901,22 @@ begin
           // We follow QEMU here for better compatibility, since RVVM's
           // approach may lead to unnecessary page faults when the reservation
           // address doesn't match, which is inefficient in some scenarios.
-          if fState.LRSC then begin
-           if (fMachine.fLRSCMaximumCycles>0) and ((fState.Cycle-fState.LRSCCycle)>=fMachine.fLRSCMaximumCycles) then begin
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=1;
-            end;
-           end else if fState.LRSCAddress=fState.Registers[rs1] then begin 
-            Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
-            if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-             if (TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.LRSCCAS))=TPasMPUInt64(fState.LRSCCAS)) then begin
-              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-               fState.Registers[rd]:=0;
-              end;
-              if Ptr=@fState.Bounce.ui64 then begin
-               RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
-              end;
-             end else begin
-              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-               fState.Registers[rd]:=1;
-              end;
+          if fState.LRSC and
+             ((fMachine.fLRSCMaximumCycles=0) or 
+              ((fState.Cycle-fState.LRSCCycle)<fMachine.fLRSCMaximumCycles)) and
+             (fState.LRSCAddress=fState.Registers[rs1]) then begin 
+           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+            if (TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.LRSCCAS))=TPasMPUInt64(fState.LRSCCAS)) then begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=0;
+             end;
+             if Ptr=@fState.Bounce.ui64 then begin
+              RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
+             end;
+            end else begin
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=1;
              end;
             end;
            end;
