@@ -15788,30 +15788,37 @@ begin
    end;
   end;
 
+  // Process all PRP items until the end of the transfer
   while (PRP^.Current+Size)<PRP^.Size do begin
+
    if not assigned(PRP^.PRP2DMA) then begin
     PRP^.PRP2DMA:=GetGlobalDirectMemoryAccessPointer(PRP^.PRP2,NVME_PAGE_SIZE,true,nil);
+    if not assigned(PRP^.PRP2DMA) then begin
+     // DMA error
+     CompleteCommand(aCommand,SC_DATA_ERR);
+     result:=0;
+     exit;
+    end;
    end;
-   if assigned(PRP^.PRP2DMA) then begin
+
+   if PRP^.PRP2Offset>=NVME_PRP2_END then begin
+    // Fetch the next PRP chain item
+    PRP^.PRP2:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PRP^.PRP2DMA)+NVME_PRP2_END))^;
+    PRP^.PRP2Offset:=0;
+    PRP^.PRP2DMA:=nil;
+   end else begin
+    // Process the next PRP item
     PRP^.PRP1:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PRP^.PRP2DMA)+PRP^.PRP2Offset))^;
     inc(PRP^.PRP2Offset,8);
-    if PRP^.PRP2Offset>=NVME_PRP2_END then begin
-     PRP^.PRP2:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PRP^.PRP2DMA)+NVME_PRP2_END))^;
-     PRP^.PRP2Offset:=0;
-     PRP^.PRP2DMA:=GetGlobalDirectMemoryAccessPointer(PRP^.PRP2,NVME_PAGE_SIZE,true,nil);
-    end;
-   end else begin
-    // DMA error
-    CompleteCommand(aCommand,SC_DATA_ERR);
-    result:=0;
-    exit;
    end;
 
    // Non-continuous page, split the chunk
    if PRP^.PRP1<>(Address+Size) then begin
     break;
    end;
+
    inc(Size,NVME_PAGE_SIZE);
+
   end;
 
   if (PRP^.Current+Size)>PRP^.Size then begin
