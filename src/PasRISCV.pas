@@ -294,7 +294,10 @@ unit PasRISCV;
 {$define NVMELevelTriggeredPCIEInterrupts}
 
 //{$define PasRISCVCPUFileDumpDebug}
-//{$define PasRISCVSingleStepCounter}
+
+//{$define PasRISCVStepDebugOutput}
+
+{$define PasRISCVSingleStepCounter}
 //{$define PasRISCVSingleStepRunStateWait}
 {$if defined(PasRISCVSingleStepCounter) and defined(PasRISCVSingleStepRunStateWait)}
  {$error Choose only one of PasRISCVSingleStepCounter or PasRISCVSingleStepRunStateWait}
@@ -35339,7 +35342,11 @@ end;
 
 function TPasRISCV.TDebugger.Halt:Boolean;
 begin
+
+{$ifdef PasRISCVStepDebugOutput}
  WriteLn('DBG Debugger.Halt enter');
+{$endif}
+
  fLock.Acquire;
  try
   if (fCountClientThreads>0) or (TOption.LocalDebugger in fOptions) then begin
@@ -35350,7 +35357,11 @@ begin
  finally
   fLock.Release;
  end;
+
+{$ifdef PasRISCVStepDebugOutput}
  WriteLn('DBG Debugger.Halt exit result='+IntToStr(Ord(result)));
+{$endif}
+
 end;
 
 procedure TPasRISCV.TDebugger.Pause;
@@ -37427,8 +37438,10 @@ procedure TPasRISCV.Execute(const aSingleStep:Boolean);
 var Index:TPasRISCVSizeInt;
     RunStateUntilMask:TPasRISCVUInt32;
     SingleStepExecuted:Boolean;
+{$ifdef PasRISCVStepDebugOutput}
     DebugActive:Boolean;
     RunStateValue,RunningMaskValue:TPasRISCVUInt32;
+{$endif}
 begin
 
  RunStateUntilMask:=RUNSTATE_POWEROFF;
@@ -37445,7 +37458,9 @@ begin
   repeat
 
    if (fRunState and RUNSTATE_PAUSING)=RUNSTATE_PAUSING then begin
+
     TPasMPInterlocked.ExchangeBitwiseAndOr(fRunState,TPasMPUInt32(not TPasMPUInt32(RUNSTATE_PAUSING)),TPasMPUInt32(RUNSTATE_PAUSED));
+
 {$if defined(PasRISCVSingleStepRunStateWait)}
     fHARTStatusChangeConditionVariableLock.Acquire;
     try
@@ -37454,6 +37469,8 @@ begin
      fHARTStatusChangeConditionVariableLock.Release;
     end;
 {$ifend}
+
+{$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
     if DebugActive then begin
@@ -37461,12 +37478,17 @@ begin
      WriteLn('DBG Execute pausing->paused runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
              ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     end;
+{$endif}
+    
     if assigned(fDebugger) then begin
      fDebugger.NotifyPaused;
     end;
+
    end;
 
    if (fRunState and (RUNSTATE_RUNNING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=(RUNSTATE_RUNNING or RUNSTATE_PAUSED) then begin
+
+{$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
     if DebugActive then begin
@@ -37474,6 +37496,8 @@ begin
      WriteLn('DBG Execute pause wait start runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
              ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     end;
+{$endif}
+
     fWakeUpConditionVariableLock.Acquire;
     try
      while (fRunState and (RUNSTATE_RUNNING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=(RUNSTATE_RUNNING or RUNSTATE_PAUSED) do begin
@@ -37482,6 +37506,8 @@ begin
     finally
      fWakeUpConditionVariableLock.Release;
     end;
+
+{$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
     if DebugActive then begin
@@ -37489,9 +37515,12 @@ begin
      WriteLn('DBG Execute pause wait done runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
              ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     end;
+{$endif}
+
     if (fRunState and RUNSTATE_POWEROFF)<>0 then begin
      break;
     end;
+
    end;
 
    if (fRunState and RUNSTATE_REBOOT)<>0 then begin
@@ -37514,6 +37543,7 @@ begin
 
     SingleStepExecuted:=(fRunState and RUNSTATE_SINGLESTEP)<>0;
 
+{$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
     if DebugActive then begin
@@ -37521,6 +37551,8 @@ begin
      WriteLn('DBG Execute activate harts runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
              ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     end;
+{$endif}
+
     fHARTWakeUpConditionVariableLock.Acquire;
     try
      TPasMPInterlocked.BitwiseOr(fHARTActiveMask,fAllHARTMask);
@@ -37537,6 +37569,8 @@ begin
     finally
      fHARTStatusChangeConditionVariableLock.Release;
     end;
+
+{$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
     if DebugActive then begin
@@ -37544,11 +37578,15 @@ begin
      WriteLn('DBG Execute harts done runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
              ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     end;
+{$endif}
 
    end;
 
    if SingleStepExecuted and ((fRunState and RUNSTATE_SINGLESTEP)<>0) and not aSingleStep then begin
+    
     SingleStepExecuted:=false;
+
+{$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
     if DebugActive then begin
@@ -37556,6 +37594,8 @@ begin
      WriteLn('DBG Execute step done->pausing runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
              ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     end;
+{$endif}
+
 {$ifdef PasRISCVSingleStepCounter}
     fHARTStatusChangeConditionVariableLock.Acquire;
     try
@@ -37565,7 +37605,9 @@ begin
      fHARTStatusChangeConditionVariableLock.Release;
     end;
 {$endif}
+
     TPasMPInterlocked.ExchangeBitwiseAndOr(fRunState,TPasMPUInt32(not TPasMPUInt32(RUNSTATE_SINGLESTEP)),TPasMPUInt32(RUNSTATE_PAUSING));
+
 {$if defined(PasRISCVSingleStepRunStateWait)}
     fHARTStatusChangeConditionVariableLock.Acquire;
     try
@@ -37574,6 +37616,7 @@ begin
      fHARTStatusChangeConditionVariableLock.Release;
     end;
 {$ifend}
+
    end;
 
   until (fRunState and RunStateUntilMask)<>0;
@@ -37630,37 +37673,54 @@ begin
 end;
 
 function TPasRISCV.QueuePause(const aWaitUntilHalted:Boolean):Boolean;
+{$ifdef PasRISCVStepDebugOutput}
 var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
+{$endif}
 begin
 
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG QueuePause enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
          ' wait='+IntToStr(Ord(aWaitUntilHalted)));
+{$endif}
+
  if (TPasMPInterlocked.Read(fRunState) and (RUNSTATE_PAUSING or RUNSTATE_PAUSED))=0 then begin
 
   result:=(TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_PAUSING)) and RUNSTATE_PAUSING)=0;
 
   if result then begin
 
+{$ifdef PasRISCVStepDebugOutput}
    WriteLn('DBG QueuePause pausing set');
+{$endif}
+
    Interrupt;
    WakeUp;
 
    if aWaitUntilHalted then begin
     fHARTStatusChangeConditionVariableLock.Acquire;
     try
+
+{$ifdef PasRISCVStepDebugOutput}
      RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
      WriteLn('DBG QueuePause wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
+
      while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
       fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
      end;
+
+{$ifdef PasRISCVStepDebugOutput}
      RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
-     WriteLn('DBG QueuePause wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+     WriteLn('DBG QueuePause wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));     
+{$endif}
+
     finally
      fHARTStatusChangeConditionVariableLock.Release;
     end;
+
    end;
 
   end;
@@ -37671,53 +37731,78 @@ begin
 
  end;
 
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG QueuePause exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
          ' result='+IntToStr(Ord(result)));
+{$endif}
+
 end;
 
 procedure TPasRISCV.Pause(const aWaitUntilHalted:Boolean);
+{$ifdef PasRISCVStepDebugOutput}
 var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
+{$endif}
 begin
 
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG Pause enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
          ' wait='+IntToStr(Ord(aWaitUntilHalted)));
+{$endif}
+
  if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)=0 then begin
 
   Interrupt;
   WakeUp;
 
   if aWaitUntilHalted then begin
+   
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
+
+{$ifdef PasRISCVStepDebugOutput}
     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
     WriteLn('DBG Pause wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
+
     while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
+
+{$ifdef PasRISCVStepDebugOutput}
     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
     WriteLn('DBG Pause wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
+
    finally
     fHARTStatusChangeConditionVariableLock.Release;
    end;
+
   end;
 
  end;
 
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG Pause exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
+
 end;
 
 procedure TPasRISCV.Resume(const aWaitUntilRunning:Boolean);
+{$ifdef PasRISCVStepDebugOutput}
 var RunStateValue,RunningMaskValue,AllMaskValue:TPasRISCVUInt32;
+{$endif}
 begin
+
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  AllMaskValue:=fAllHARTMask;
@@ -37725,58 +37810,76 @@ begin
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
          ' all=0x'+LowerCase(IntToHex(AllMaskValue,8))+
          ' wait='+IntToStr(Ord(aWaitUntilRunning)));
+{$endif}
+
  if (TPasMPInterlocked.ExchangeBitwiseAnd(fRunState,not TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)<>0 then begin
 
   Interrupt;
   WakeUp;
 
-  if aWaitUntilRunning then begin
-{$if defined(PasRISCVSingleStepRunStateWait)}
-   if (TPasMPInterlocked.Read(fRunState) and RUNSTATE_SINGLESTEP)=0 then begin
-{$ifend}
-    fHARTStatusChangeConditionVariableLock.Acquire;
-    try
-     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
-     AllMaskValue:=fAllHARTMask;
-     WriteLn('DBG Resume wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
-             ' all=0x'+LowerCase(IntToHex(AllMaskValue,8)));
-     while (TPasMPInterlocked.Read(fHARTRunningMask) and fAllHARTMask)<>fAllHARTMask do begin
-      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
-     end;
-     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
-     WriteLn('DBG Resume wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
-    finally
-     fHARTStatusChangeConditionVariableLock.Release;
+  if aWaitUntilRunning {$if defined(PasRISCVSingleStepRunStateWait)}and ((TPasMPInterlocked.Read(fRunState) and RUNSTATE_SINGLESTEP)=0){$ifend} then begin
+
+   fHARTStatusChangeConditionVariableLock.Acquire;
+   try
+
+{$ifdef PasRISCVStepDebugOutput}
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    AllMaskValue:=fAllHARTMask;
+    WriteLn('DBG Resume wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
+            ' all=0x'+LowerCase(IntToHex(AllMaskValue,8)));
+{$endif}
+
+    while (TPasMPInterlocked.Read(fHARTRunningMask) and fAllHARTMask)<>fAllHARTMask do begin
+     fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
-{$if defined(PasRISCVSingleStepRunStateWait)}
+
+{$ifdef PasRISCVStepDebugOutput}
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    WriteLn('DBG Resume wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
+
+   finally
+    fHARTStatusChangeConditionVariableLock.Release;
    end;
-{$ifend}
+
   end;
 
  end;
+
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG Resume exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
+
 end;
 
 procedure TPasRISCV.SingleStep(const aWaitUntilDone:Boolean);
-var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 {$ifdef PasRISCVSingleStepCounter}
-    StepCounter:TPasRISCVUInt32;
+var StepCounter:TPasRISCVUInt32;
+{$endif}
+{$ifdef PasRISCVStepDebugOutput}
+var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 {$endif}
 begin
+
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG SingleStep enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
          ' wait='+IntToStr(Ord(aWaitUntilDone)));
+{$endif}
+
 {$ifdef PasRISCVSingleStepCounter}
  StepCounter:=TPasMPInterlocked.Read(fSingleStepCounter);
 {$endif}
+
  if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_SINGLESTEP)) and RUNSTATE_SINGLESTEP)=0 then begin
 
 {$ifdef PasRISCVSingleStepCounter}
+
   Resume(false);
 
   if aWaitUntilDone then begin
@@ -37789,41 +37892,63 @@ begin
     fHARTStatusChangeConditionVariableLock.Release;
    end;
   end;
+
 {$else}
+  
   Resume(aWaitUntilDone);
 
   if aWaitUntilDone then begin
+
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
+
 {$if defined(PasRISCVSingleStepRunStateWait)}
+
+{$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     WriteLn('DBG SingleStep wait start runstate=0x'+LowerCase(IntToHex(RunStateValue,8)));
-    while ((RunStateValue and RUNSTATE_SINGLESTEP)<>0) and ((RunStateValue and RUNSTATE_PAUSED)=0) do begin
+{$endif}
+    while (TPasMPInterlocked.Read(fRunState) and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED))=RUNSTATE_SINGLESTEP do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock,100);
-     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     end;
+{$ifdef PasRISCVStepDebugOutput}
+    RunStateValue:=TPasMPInterlocked.Read(fRunState);
     WriteLn('DBG SingleStep wait done runstate=0x'+LowerCase(IntToHex(RunStateValue,8)));
+{$endif}
+
 {$else}
+
+{$ifdef PasRISCVStepDebugOutput}
     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
     WriteLn('DBG SingleStep wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
     while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
+{$ifdef PasRISCVStepDebugOutput}
     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
     WriteLn('DBG SingleStep wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+{$endif}
+
 {$ifend}
+
    finally
     fHARTStatusChangeConditionVariableLock.Release;
    end;
   end;
+
 {$endif}
+
  end;
+
+{$ifdef PasRISCVStepDebugOutput}
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG SingleStep exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
-end;
+{$endif}
 
+end;
 
 initialization
 {$ifdef windows}
