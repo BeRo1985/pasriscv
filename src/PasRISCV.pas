@@ -35330,6 +35330,7 @@ end;
 
 function TPasRISCV.TDebugger.Halt:Boolean;
 begin
+ WriteLn('DBG Debugger.Halt enter');
  fLock.Acquire;
  try
   if (fCountClientThreads>0) or (TOption.LocalDebugger in fOptions) then begin
@@ -35340,6 +35341,7 @@ begin
  finally
   fLock.Release;
  end;
+ WriteLn('DBG Debugger.Halt exit result='+IntToStr(Ord(result)));
 end;
 
 procedure TPasRISCV.TDebugger.Pause;
@@ -37546,23 +37548,34 @@ begin
 end;
 
 function TPasRISCV.QueuePause(const aWaitUntilHalted:Boolean):Boolean;
+var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 begin
 
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ WriteLn('DBG QueuePause enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
+         ' wait='+IntToStr(Ord(aWaitUntilHalted)));
  if (TPasMPInterlocked.Read(fRunState) and (RUNSTATE_PAUSING or RUNSTATE_PAUSED))=0 then begin
 
   result:=(TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_PAUSING)) and RUNSTATE_PAUSING)=0;
 
   if result then begin
 
+   WriteLn('DBG QueuePause pausing set');
    Interrupt;
    WakeUp;
 
    if aWaitUntilHalted then begin
     fHARTStatusChangeConditionVariableLock.Acquire;
     try
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG QueuePause wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
      while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
       fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
      end;
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG QueuePause wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     finally
      fHARTStatusChangeConditionVariableLock.Release;
     end;
@@ -37576,11 +37589,22 @@ begin
 
  end;
 
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ WriteLn('DBG QueuePause exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
+         ' result='+IntToStr(Ord(result)));
 end;
 
 procedure TPasRISCV.Pause(const aWaitUntilHalted:Boolean);
+var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 begin
 
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ WriteLn('DBG Pause enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
+         ' wait='+IntToStr(Ord(aWaitUntilHalted)));
  if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)=0 then begin
 
   Interrupt;
@@ -37589,9 +37613,13 @@ begin
   if aWaitUntilHalted then begin
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    WriteLn('DBG Pause wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    WriteLn('DBG Pause wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
    finally
     fHARTStatusChangeConditionVariableLock.Release;
    end;
@@ -37599,13 +37627,23 @@ begin
 
  end;
 
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ WriteLn('DBG Pause exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
 end;
 
 procedure TPasRISCV.Resume(const aWaitUntilRunning:Boolean);
-var OldRunState:TPasRISCVUInt32;
+var RunStateValue,RunningMaskValue,AllMaskValue:TPasRISCVUInt32;
 begin
- OldRunState:=TPasMPInterlocked.ExchangeBitwiseAnd(fRunState,not TPasMPUInt32(RUNSTATE_PAUSED or RUNSTATE_PAUSING));
- if (OldRunState and (RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0 then begin
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ AllMaskValue:=fAllHARTMask;
+ WriteLn('DBG Resume enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
+         ' all=0x'+LowerCase(IntToHex(AllMaskValue,8))+
+         ' wait='+IntToStr(Ord(aWaitUntilRunning)));
+ if (TPasMPInterlocked.ExchangeBitwiseAnd(fRunState,not TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)<>0 then begin
 
   Interrupt;
   WakeUp;
@@ -37613,19 +37651,35 @@ begin
   if aWaitUntilRunning then begin
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    AllMaskValue:=fAllHARTMask;
+    WriteLn('DBG Resume wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
+            ' all=0x'+LowerCase(IntToHex(AllMaskValue,8)));
     while (TPasMPInterlocked.Read(fHARTRunningMask) and fAllHARTMask)<>fAllHARTMask do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    WriteLn('DBG Resume wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
    finally
     fHARTStatusChangeConditionVariableLock.Release;
    end;
   end;
 
  end;
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ WriteLn('DBG Resume exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
 end;
 
 procedure TPasRISCV.SingleStep(const aWaitUntilDone:Boolean);
+var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 begin
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ WriteLn('DBG SingleStep enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
+         ' wait='+IntToStr(Ord(aWaitUntilDone)));
  if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_SINGLESTEP)) and RUNSTATE_SINGLESTEP)=0 then begin
 
   Resume(aWaitUntilDone);
@@ -37633,15 +37687,23 @@ begin
   if aWaitUntilDone then begin
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    WriteLn('DBG SingleStep wait start running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
+    RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+    WriteLn('DBG SingleStep wait done running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
    finally
     fHARTStatusChangeConditionVariableLock.Release;
    end;
   end;
 
  end;
+ RunStateValue:=TPasMPInterlocked.Read(fRunState);
+ RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+ WriteLn('DBG SingleStep exit runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+         ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
 end;
 
 
