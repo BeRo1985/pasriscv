@@ -5398,7 +5398,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               destructor Destroy; override;
               procedure Interrupt;
               procedure NotifyPaused;
-              function Halt:Boolean;
+              function Halt(const aPC:TPasRISCVUInt64):Boolean;
               procedure Pause;
               procedure SingleStep(const aWaitUntilDone:Boolean=false);
               procedure Continue_;
@@ -27460,7 +27460,7 @@ end;
 
 procedure TPasRISCV.THART.Breakpoint(const aInstruction:TPasRISCVUInt32);
 begin
- if assigned(fMachine.fDebugger) and fMachine.fDebugger.Halt then begin
+ if assigned(fMachine.fDebugger) and fMachine.fDebugger.Halt(fState.PC) then begin
   SetException(TExceptionValue.DebuggerBreakpoint,aInstruction,fState.PC);
  end else begin
   SetException(TExceptionValue.Breakpoint,aInstruction,fState.PC);
@@ -35340,11 +35340,11 @@ begin
  end;
 end;
 
-function TPasRISCV.TDebugger.Halt:Boolean;
+function TPasRISCV.TDebugger.Halt(const aPC:TPasRISCVUInt64):Boolean;
 begin
 
 {$ifdef PasRISCVStepDebugOutput}
- WriteLn('DBG Debugger.Halt enter');
+ WriteLn('DBG Debugger.Halt enter at PC 0x'+LowerCase(IntToHex(aPC,16)));
 {$endif}
 
  fLock.Acquire;
