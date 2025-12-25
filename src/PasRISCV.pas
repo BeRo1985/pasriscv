@@ -37602,8 +37602,10 @@ begin
 end;
 
 procedure TPasRISCV.Resume(const aWaitUntilRunning:Boolean);
+var OldRunState:TPasRISCVUInt32;
 begin
- if (TPasMPInterlocked.ExchangeBitwiseAnd(fRunState,not TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)<>0 then begin
+ OldRunState:=TPasMPInterlocked.ExchangeBitwiseAnd(fRunState,not TPasMPUInt32(RUNSTATE_PAUSED or RUNSTATE_PAUSING));
+ if (OldRunState and (RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0 then begin
 
   Interrupt;
   WakeUp;
@@ -37626,14 +37628,11 @@ procedure TPasRISCV.SingleStep(const aWaitUntilDone:Boolean);
 begin
  if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_SINGLESTEP)) and RUNSTATE_SINGLESTEP)=0 then begin
 
-  Resume(false);
+  Resume(aWaitUntilDone);
 
   if aWaitUntilDone then begin
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
-    while (TPasMPInterlocked.Read(fHARTRunningMask) and fAllHARTMask)=0 do begin
-     fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
-    end;
     while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
