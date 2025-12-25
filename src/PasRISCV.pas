@@ -35160,7 +35160,7 @@ begin
   result:=false;
   exit;
  end else if (Command='help') or (Command='?') then begin
-  Output('commands: regs (r), mem (m), memw (mw), step (s), stepi (si), cont (c), pause (p), hart (h), info (i), disasm (d), break (b), reboot, shutdown, quit (q)');
+  Output('commands: regs (r), mem (m), memw (mw), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
   exit;
  end;
  if (Command='cont') or (Command='c') then begin
