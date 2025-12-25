@@ -1,7 +1,7 @@
 (******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-12-25-02-04-0000                       *
+ *                        Version 2025-12-25-07-03-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -5384,7 +5384,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function StepOverBreakpointsIfNeeded(const aSuppressNotify:Boolean):Boolean;
               function ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
              public
-              constructor Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16;const aLocal:Boolean=false);
+              constructor Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16;const aOptions:TOptions=[TOption.GDBServer]);
               destructor Destroy; override;
               procedure Interrupt;
               procedure NotifyPaused;
@@ -34504,14 +34504,15 @@ end;
 
 { TPasRISCV.TDebugger }
 
-constructor TPasRISCV.TDebugger.Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16;const aLocal:Boolean);
+constructor TPasRISCV.TDebugger.Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16;const aOptions:TOptions);
 var DefaultBreakpoint:TBreakpoint;
 begin
  inherited Create;
  fMachine:=aMachine;
- fOptions:=[TOption.GDBServer];
- if aLocal then begin
-  fOptions:=fOptions+[TOption.LocalDebugger,TOption.LocalCLI,TOption.LocalThreaded];
+ if ([TOption.GDBServer,TOption.LocalDebugger]*aOptions)<>[] then begin
+  fOptions:=aOptions;
+ end else begin
+  fOptions:=[TOption.GDBServer];
  end;
  fOnInput:=nil;
  fOnOutput:=nil;
