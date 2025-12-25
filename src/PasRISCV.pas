@@ -34592,6 +34592,7 @@ end;
 
 function TPasRISCV.TDebugger.DefaultOnInput(var aString:TPasRISCVRawByteString):Boolean;
 begin
+ Write('>');
  ReadLn(aString);
  result:=true;
 {if not Eof then begin
