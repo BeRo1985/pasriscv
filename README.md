@@ -18,13 +18,14 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Zicbom (Cache-Block Management Instructions)
   - Svadu (Hardware Updating of PTE A/D Bits) 
   - Sstc (RISC-V "stimecmp / vstimecmp" Extension)
-  - Snapot (“NAPOT Translation Continuity)
+  - Svnapot ("NAPOT Translation" Continuity)
   - Zbb/Zcb/Zbs/Zba (Bit Manipulations)
   - Zacas (Atomic Compare-And-Swap)
 - Multi-core SMP support
 - Emulated peripherals
   - ACLINT
   - PLIC when AIA is not enabled (default), otherwise APLIC and IMSIC if AIA is enabled
+  - AIA (Advanced Interrupt Architecture) support with APLIC and IMSIC devices (disabled by default, because not fully tested yet, enable at your own risk)
   - UART NS16550A
   - SysCon   
   - VirtIO MMIO with following devices support
@@ -44,8 +45,33 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - I2C bus (disabled for now, due to IRQ issues, will be either fixed, removed, or replaced with virtio-i2c later)
     - HID devices
       - Keyboard
-- GDB remote debugging support (partially implemented)
-  - Own GDB server implementation
+- Full MMU support with Sv39, Sv48 and Sv57 page table modes, including support for Svnapot and Svadu extensions
+- Disassembler
+  - RV64GC instruction set support
+  - Supports disassembling code with or without compressed instructions
+  - Supports disassembling code with or without floating-point instructions
+  - Provides human-readable assembly code output
+- Debugger
+  - Internal debugger
+    - Command line interface
+    - Debugger GUI backend API support
+    - Breakpoint support
+    - Memory and register inspection/modification
+    - Step, Continue, Pause execution control
+    - Reboot, Reset, PowerOff/Shutdown control
+  - GDB remote debugging support (partially implemented)
+    - Own GDB server implementation
+  - Multiple debugger client support 
+    - GDB, internal CLI, custom GUI backends, all simultaneously at the same time
+- ELF loader
+- Linux kernel boot support
+- Untested support for other OS images (FreeBSD, NetBSD, OpenBSD, Haiku, etc.), may require additional fixes or tweaks
+- Device Tree Blob (DTB) support
+- Initrd support
+- Command line support for the guest OS
+- Simple test suite with various test cases for different parts of the emulator
+- Cross-platform (Windows, Linux, macOS)
+- Written in Object Pascal (Free Pascal / Lazarus)
 
 ## Why 64-bit only?
 
