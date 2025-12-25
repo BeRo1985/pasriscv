@@ -37626,11 +37626,14 @@ procedure TPasRISCV.SingleStep(const aWaitUntilDone:Boolean);
 begin
  if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_SINGLESTEP)) and RUNSTATE_SINGLESTEP)=0 then begin
 
-  Resume(aWaitUntilDone);
+  Resume(false);
 
   if aWaitUntilDone then begin
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
+    while (TPasMPInterlocked.Read(fHARTRunningMask) and fAllHARTMask)=0 do begin
+     fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
+    end;
     while TPasMPInterlocked.Read(fHARTRunningMask)<>0 do begin
      fHARTStatusChangeConditionVariable.Wait(fHARTStatusChangeConditionVariableLock);
     end;
