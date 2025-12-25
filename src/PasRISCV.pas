@@ -34817,6 +34817,7 @@ begin
   OutputError('E.Invalid CPU');
   exit;
  end;
+ Output('HART #'+IntToStr(aHART.fHARTID)+': ');
  Output('Registers:');
  for Register:=Low(TRegister) to High(TRegister) do begin
   Output(TInstructionSetArchitecture.RegisterABINames[Register]+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register],16)));
@@ -34826,6 +34827,11 @@ begin
  for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
   s:=FloatToStr(aHART.fState.FPURegisters[FPURegister].f64);
   Output(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+s+' (0x'+LowerCase(IntToHex(aHART.fState.FPURegisters[FPURegister].ui64,16))+')');
+ end;
+ if aHART.fState.Sleep then begin
+  Output('wfi: true');
+ end else begin
+  Output('wfi: false');
  end;
 end;
 
@@ -35154,7 +35160,7 @@ begin
   result:=false;
   exit;
  end else if (Command='help') or (Command='?') then begin
-  Output('commands: regs (r), mem (m), memw (mw), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
+  Output('commands: regs (r), mem (m), memw (mw), step (s), stepi (si), cont (c), pause (p), hart (h), info (i), disasm (d), break (b), reboot, shutdown, quit (q)');
   exit;
  end;
  if (Command='cont') or (Command='c') then begin
@@ -35235,24 +35241,33 @@ begin
  end else if (Command='hart') or (Command='h') then begin
   Token:=NextToken(aLine,Index);
   if length(Token)=0 then begin
-   Output('hart '+IntToStr(fLocalHARTIndex));
+   if assigned(HART) then begin
+    Output('hart '+IntToStr(HART.fHARTID)+'');
+   end else begin
+    Output('hart '+IntToStr(fLocalHARTIndex));
+   end;
   end else if ParseUInt64(Token,Address) then begin
    if assigned(fMachine) and (Address<fMachine.fCountHARTs) then begin
     SetLocalHARTIndex(Address);
-    Output('hart '+IntToStr(fLocalHARTIndex));
+    HART:=GetLocalHART;
+    if assigned(HART) then begin
+     Output('hart '+IntToStr(HART.fHARTID)+'');
+    end else begin
+     Output('hart '+IntToStr(fLocalHARTIndex));
+    end;
    end else begin
     OutputError('E.Invalid HART');
    end;
   end else begin
    OutputError('E.Invalid HART');
   end;
-end else if (Command='break') or (Command='b') then begin
- Token:=NextToken(aLine,Index);
- Token:=LowerCase(Token);
- if length(Token)=0 then begin
-  ListBreakpoints;
- end else if Token='list' then begin
-  ListBreakpoints;
+ end else if (Command='break') or (Command='b') then begin
+  Token:=NextToken(aLine,Index);
+  Token:=LowerCase(Token);
+  if length(Token)=0 then begin
+   ListBreakpoints;
+  end else if Token='list' then begin
+   ListBreakpoints;
   end else if Token='clear' then begin
    ClearBreakpoints;
   end else if Token='-' then begin
