@@ -5366,6 +5366,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fLastHaltHART:THART;
               fLastHaltPC:TPasRISCVUInt64;
               fLastHaltCycle:TPasRISCVUInt64;
+              fLastHaltInstruction:TPasRISCVUInt32;
               fBreakpoints:TBreakpointMap;
               fDisassembler:TDisassembler;
 //            fSWBreakState:TPasRISCVInt32;
@@ -5401,7 +5402,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               destructor Destroy; override;
               procedure Interrupt;
               procedure NotifyPaused;
-              function Halt(const aHART:THART;const aPC:TPasRISCVUInt64):Boolean;
+              function Halt(const aHART:THART;const aPC:TPasRISCVUInt64;const aInstruction:TPasRISCVUInt32):Boolean;
               procedure Pause;
               procedure SingleStep(const aWaitUntilDone:Boolean=false);
               procedure Continue_;
@@ -27463,7 +27464,7 @@ end;
 
 procedure TPasRISCV.THART.Breakpoint(const aInstruction:TPasRISCVUInt32);
 begin
- if assigned(fMachine.fDebugger) and fMachine.fDebugger.Halt(fState.PC) then begin
+ if assigned(fMachine.fDebugger) and fMachine.fDebugger.Halt(self,fState.PC,aInstruction) then begin
   SetException(TExceptionValue.DebuggerBreakpoint,aInstruction,fState.PC);
  end else begin
   SetException(TExceptionValue.Breakpoint,aInstruction,fState.PC);
@@ -34568,7 +34569,8 @@ begin
  fLocalHARTIndex:=0;
  fLastHaltHART:=nil;
  fLastHaltPC:=0; 
- fLastHaltCycle:=0;
+ fLastHaltCycle:=High(TPasRISCVUInt64);
+ fLastHaltInstruction:=0;
  FillChar(DefaultBreakpoint,SizeOf(TBreakpoint),#0);
  fBreakpoints:=TBreakpointMap.Create(DefaultBreakpoint);
  fDisassembler:=TDisassembler.Create(fMachine);
@@ -35346,7 +35348,7 @@ begin
  end;
 end;
 
-function TPasRISCV.TDebugger.Halt(const aHART:THART;const aPC:TPasRISCVUInt64):Boolean;
+function TPasRISCV.TDebugger.Halt(const aHART:THART;const aPC:TPasRISCVUInt64;const aInstruction:TPasRISCVUInt32):Boolean;
 begin
 
 {$ifdef PasRISCVStepDebugOutput}
@@ -35355,19 +35357,32 @@ begin
 
  fLock.Acquire;
  try
-  if assigned(aHART) and (fLastHaltHART=aHART) and (fLastHaltPC=aPC) and (fLastHaltCycle<=(aHART.fState.Cycle)) then begin
-   fLastHaltHART:=nil;
-   fLastHaltPC:=0;
-   fLastHaltCycle:=0;
-   result:=false; 
-  end else begin 
+  if fCountClientThreads>0 then begin
    fLastHaltHART:=aHART;
    fLastHaltPC:=aPC;
-   if (fCountClientThreads>0) or (TOption.LocalDebugger in fOptions) then begin
-    result:=fMachine.QueuePause(false);//TPasMPInterlocked.CompareExchange(fSWBreakState,SWBREAK_TRIGGERED,SWBREAK_NONE)=SWBREAK_NONE;
-   end else begin
+   fLastHaltCycle:=aHART.fState.Cycle;
+   fLastHaltInstruction:=aInstruction;
+   result:=fMachine.QueuePause(false);//TPasMPInterlocked.CompareExchange(fSWBreakState,SWBREAK_TRIGGERED,SWBREAK_NONE)=SWBREAK_NONE;
+  end else if TOption.LocalDebugger in fOptions then begin
+   if assigned(aHART) and (fLastHaltHART=aHART) and (fLastHaltPC=aPC) and (fLastHaltCycle<=(aHART.fState.Cycle)) then begin
+    fLastHaltHART:=nil;
+    fLastHaltPC:=0;
+    fLastHaltCycle:=High(TPasRISCVUInt64);
+    fLastHaltInstruction:=0;
     result:=false;
+   end else begin
+    fLastHaltHART:=aHART;
+    fLastHaltPC:=aPC;
+    fLastHaltCycle:=aHART.fState.Cycle;
+    fLastHaltInstruction:=aInstruction;
+    result:=fMachine.QueuePause(false);//TPasMPInterlocked.CompareExchange(fSWBreakState,SWBREAK_TRIGGERED,SWBREAK_NONE)=SWBREAK_NONE;
    end;
+  end else begin
+   fLastHaltHART:=aHART;
+   fLastHaltPC:=aPC;
+   fLastHaltCycle:=aHART.fState.Cycle;
+   fLastHaltInstruction:=aInstruction;
+   result:=false;
   end;
  finally
   fLock.Release;
@@ -35400,33 +35415,37 @@ begin
 end;
 
 procedure TPasRISCV.TDebugger.Continue_;
-{var DidStep:Boolean;
+var DidStep:Boolean;
     HART:THART;
-    HaltPC:TPasRISCVUInt64;
-    Instruction:TPasRISCVUInt32;
-    InstructionSize:TPasRISCVUInt64;}
+    HaltPC,HaltCycle,InstructionSize:TPasRISCVUInt64;
+    HaltInstruction:TPasRISCVUInt32;
 begin
 //fSWBreakState:=SWBREAK_NONE;
  StepOverBreakpointsIfNeeded(true);
-{DidStep:=StepOverBreakpointsIfNeeded(true);
+ DidStep:=StepOverBreakpointsIfNeeded(true);
  if not DidStep then begin
   fLock.Acquire;
   try
    HART:=fLastHaltHART;
    HaltPC:=fLastHaltPC;
+   HaltCycle:=fLastHaltCycle;
+   HaltInstruction:=fLastHaltInstruction;
+   fLastHaltHART:=nil;
+   fLastHaltPC:=0;
+   fLastHaltCycle:=High(TPasRISCVUInt64);
+   fLastHaltInstruction:=0;
   finally
    fLock.Release;
   end;
-  if assigned(HART) and (HART.fState.PC=HaltPC) then begin
-   Instruction:=TPasRISCVUInt32(HART.fState.ExceptionData);
-   if (Instruction=TPasRISCVUInt32($00100073)) or (Instruction=TPasRISCVUInt32($9002)) then begin
-    InstructionSize:=HART.GetInstructionSize(Instruction);
+  if assigned(HART) and (HART.fState.PC=HaltPC) and (HaltCycle<=(HART.fState.Cycle+1)) then begin
+   if (HaltInstruction=TPasRISCVUInt32($00100073)) or (HaltInstruction=TPasRISCVUInt32($9002)) then begin
+    InstructionSize:=HART.GetInstructionSize(HaltInstruction);
     if InstructionSize>0 then begin
      HART.fState.PC:=HART.fState.PC+InstructionSize;
     end;
    end;
   end;
- end;}
+ end;
  fMachine.Resume(true);
  if (TOption.LocalDebugger in fOptions) and assigned(fOnResumed) then begin
   fOnResumed;
