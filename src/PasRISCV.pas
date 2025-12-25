@@ -5413,6 +5413,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              private
 
               fDebugger:Boolean;
+              fDebuggerLocal:Boolean;
               fDebuggerPort:TPasRISCVUInt16;
 
               fCountHARTs:TPasRISCVUInt64;
@@ -5529,6 +5530,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
 
               property Debugger:Boolean read fDebugger write fDebugger;
+              property DebuggerLocal:Boolean read fDebuggerLocal write fDebuggerLocal;
               property DebuggerPort:TPasRISCVUInt16 read fDebuggerPort write fDebuggerPort;
 
               property CountHARTs:TPasRISCVUInt64 read fCountHARTs write fCountHARTs;
@@ -35476,6 +35478,7 @@ begin
  inherited Create;
 
  fDebugger:=false;
+ fDebuggerLocal:=false;
  fDebuggerPort:=1234;
 
  fCountHARTs:=1;
@@ -35590,6 +35593,7 @@ procedure TPasRISCV.TConfiguration.Assign(const aConfiguration:TConfiguration);
 begin
 
  fDebugger:=aConfiguration.fDebugger;
+ fDebuggerLocal:=aConfiguration.fDebuggerLocal;
  fDebuggerPort:=aConfiguration.fDebuggerPort;
 
  fCountHARTs:=aConfiguration.fCountHARTs;
@@ -35778,6 +35782,7 @@ end;
 constructor TPasRISCV.Create(const aConfiguration:TConfiguration);
 var Index:TPasRISCVSizeInt;
     HART:THART;
+    DebuggerOptions:TPasRISCV.TDebugger.TOptions;
 begin
  inherited Create;
 
@@ -35958,7 +35963,18 @@ begin
 
  if fConfiguration.fDebugger then begin
 
-  fDebugger:=TDebugger.Create(self,fConfiguration.fDebuggerPort);
+  DebuggerOptions:=[];
+  if fConfiguration.fDebuggerLocal then begin
+   DebuggerOptions:=DebuggerOptions+[TPasRISCV.TDebugger.TOption.LocalDebugger,
+                                     TPasRISCV.TDebugger.TOption.LocalCLI, 
+                                     TPasRISCV.TDebugger.TOption.LocalThreaded,
+                                     TPasRISCV.TDebugger.TOption.LocalInputPolling];
+  end;
+  if fConfiguration.fDebuggerPort>0 then begin
+   Include(DebuggerOptions,TPasRISCV.TDebugger.TOption.GDBServer);
+  end;
+
+  fDebugger:=TDebugger.Create(self,fConfiguration.fDebuggerPort,DebuggerOptions);
 
   fDebugger.Start;
 
