@@ -1,7 +1,7 @@
 (******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-12-25-07-03-0000                       *
+ *                        Version 2025-12-25-14-15-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -35349,6 +35349,8 @@ begin
 end;
 
 function TPasRISCV.TDebugger.Halt(const aHART:THART;const aPC:TPasRISCVUInt64;const aInstruction:TPasRISCVUInt32):Boolean;
+var OK:Boolean;
+    Breakpoint:TBreakpoint;
 begin
 
 {$ifdef PasRISCVStepDebugOutput}
@@ -35357,14 +35359,19 @@ begin
 
  fLock.Acquire;
  try
-  if fCountClientThreads>0 then begin
-   fLastHaltHART:=aHART;
-   fLastHaltPC:=aPC;
-   fLastHaltCycle:=aHART.fState.Cycle;
-   fLastHaltInstruction:=aInstruction;
-   result:=fMachine.QueuePause(false);//TPasMPInterlocked.CompareExchange(fSWBreakState,SWBREAK_TRIGGERED,SWBREAK_NONE)=SWBREAK_NONE;
-  end else if TOption.LocalDebugger in fOptions then begin
-   if assigned(aHART) and (fLastHaltHART=aHART) and (fLastHaltPC=aPC) and (fLastHaltCycle<=(aHART.fState.Cycle)) then begin
+  if (fCountClientThreads>0) or (TOption.LocalDebugger in fOptions) then begin
+   OK:=true;
+   if TOption.LocalDebugger in fOptions then begin
+    fBreakpointsLock.Acquire;
+    try
+     if not (fBreakpoints.TryGet(aPC,Breakpoint) and Breakpoint.Enabled) then begin
+      OK:=false;
+     end;
+    finally
+     fBreakpointsLock.Release;
+    end;
+   end;
+   if (not OK) or (assigned(aHART) and (fLastHaltHART=aHART) and (fLastHaltPC=aPC) and (fLastHaltCycle<=(aHART.fState.Cycle))) then begin
     fLastHaltHART:=nil;
     fLastHaltPC:=0;
     fLastHaltCycle:=High(TPasRISCVUInt64);
@@ -35415,14 +35422,14 @@ begin
 end;
 
 procedure TPasRISCV.TDebugger.Continue_;
-var DidStep:Boolean;
+{var DidStep:Boolean;
     HART:THART;
     HaltPC,HaltCycle,InstructionSize:TPasRISCVUInt64;
-    HaltInstruction:TPasRISCVUInt32;
+    HaltInstruction:TPasRISCVUInt32;}
 begin
 //fSWBreakState:=SWBREAK_NONE;
  StepOverBreakpointsIfNeeded(true);
- DidStep:=StepOverBreakpointsIfNeeded(true);
+{DidStep:=StepOverBreakpointsIfNeeded(true);
  if not DidStep then begin
   fLock.Acquire;
   try
@@ -35445,7 +35452,7 @@ begin
     end;
    end;
   end;
- end;
+ end;}
  fMachine.Resume(true);
  if (TOption.LocalDebugger in fOptions) and assigned(fOnResumed) then begin
   fOnResumed;
