@@ -32599,9 +32599,9 @@ begin
    fState.LRSC:=false;
   end;
 
-  {$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
+(*{$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
    CheckInterrupts;
-  end;
+  end;*)
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
    ExecuteException;
@@ -35975,7 +35975,7 @@ begin
   end;
 
   fDebugger:=TDebugger.Create(self,fConfiguration.fDebuggerPort,DebuggerOptions);
-
+ 
   fDebugger.Start;
 
  end else begin
