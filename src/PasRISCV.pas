@@ -13228,355 +13228,355 @@ begin
  //////////////////////////////////////////////////////////////////////////////
  // Integer Base                                                             //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction32('lui',TInstructionSetArchitecture.TInstructionFormat.U,MaskOpcode,OpcodeLui);
- AddInstruction32('auipc',TInstructionSetArchitecture.TInstructionFormat.U,MaskOpcode,OpcodeAuipc);
- AddInstruction32('jal',TInstructionSetArchitecture.TInstructionFormat.J,MaskOpcode,OpcodeJal);
- AddInstruction32('jalr',TInstructionSetArchitecture.TInstructionFormat.Jalr,MaskOpcodeFunct3,ValueI(OpcodeJalr,0));
+ AddInstruction32('lui',TInstructionFormat.U,MaskOpcode,OpcodeLui);
+ AddInstruction32('auipc',TInstructionFormat.U,MaskOpcode,OpcodeAuipc);
+ AddInstruction32('jal',TInstructionFormat.J,MaskOpcode,OpcodeJal);
+ AddInstruction32('jalr',TInstructionFormat.Jalr,MaskOpcodeFunct3,ValueI(OpcodeJalr,0));
 
- AddInstruction32('beq',TInstructionSetArchitecture.TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,0));
- AddInstruction32('bne',TInstructionSetArchitecture.TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,1));
- AddInstruction32('blt',TInstructionSetArchitecture.TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,4));
- AddInstruction32('bge',TInstructionSetArchitecture.TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,5));
- AddInstruction32('bltu',TInstructionSetArchitecture.TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,6));
- AddInstruction32('bgeu',TInstructionSetArchitecture.TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,7));
+ AddInstruction32('beq',TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,0));
+ AddInstruction32('bne',TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,1));
+ AddInstruction32('blt',TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,4));
+ AddInstruction32('bge',TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,5));
+ AddInstruction32('bltu',TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,6));
+ AddInstruction32('bgeu',TInstructionFormat.Branch,MaskOpcodeFunct3,ValueI(OpcodeBranch,7));
 
- AddInstruction32('lb',TInstructionSetArchitecture.TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,0));
- AddInstruction32('lh',TInstructionSetArchitecture.TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,1));
- AddInstruction32('lw',TInstructionSetArchitecture.TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,2));
- AddInstruction32('ld',TInstructionSetArchitecture.TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,3));
- AddInstruction32('lbu',TInstructionSetArchitecture.TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,4));
- AddInstruction32('lhu',TInstructionSetArchitecture.TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,5));
- AddInstruction32('lwu',TInstructionSetArchitecture.TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,6));
+ AddInstruction32('lb',TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,0));
+ AddInstruction32('lh',TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,1));
+ AddInstruction32('lw',TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,2));
+ AddInstruction32('ld',TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,3));
+ AddInstruction32('lbu',TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,4));
+ AddInstruction32('lhu',TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,5));
+ AddInstruction32('lwu',TInstructionFormat.Load,MaskOpcodeFunct3,ValueI(OpcodeLoad,6));
 
- AddInstruction32('sb',TInstructionSetArchitecture.TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,0));
- AddInstruction32('sh',TInstructionSetArchitecture.TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,1));
- AddInstruction32('sw',TInstructionSetArchitecture.TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,2));
- AddInstruction32('sd',TInstructionSetArchitecture.TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,3));
+ AddInstruction32('sb',TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,0));
+ AddInstruction32('sh',TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,1));
+ AddInstruction32('sw',TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,2));
+ AddInstruction32('sd',TInstructionFormat.Store,MaskOpcodeFunct3,ValueI(OpcodeStore,3));
 
- AddInstruction32('addi',TInstructionSetArchitecture.TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,0));
- AddInstruction32('slti',TInstructionSetArchitecture.TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,2));
- AddInstruction32('sltiu',TInstructionSetArchitecture.TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,3));
- AddInstruction32('xori',TInstructionSetArchitecture.TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,4));
- AddInstruction32('ori',TInstructionSetArchitecture.TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,6));
- AddInstruction32('andi',TInstructionSetArchitecture.TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,7));
+ AddInstruction32('addi',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,0));
+ AddInstruction32('slti',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,2));
+ AddInstruction32('sltiu',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,3));
+ AddInstruction32('xori',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,4));
+ AddInstruction32('ori',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,6));
+ AddInstruction32('andi',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,7));
 
- AddInstruction32('slli',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$00));
- AddInstruction32('bseti',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$14));
- AddInstruction32('bclri',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$24));
- AddInstruction32('binvi',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$34));
- AddInstruction32('clz',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$00));
- AddInstruction32('ctz',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$01));
- AddInstruction32('cpop',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$02));
- AddInstruction32('sext.b',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$04));
- AddInstruction32('sext.h',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$05));
+ AddInstruction32('slli',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$00));
+ AddInstruction32('bseti',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$14));
+ AddInstruction32('bclri',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$24));
+ AddInstruction32('binvi',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$34));
+ AddInstruction32('clz',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$00));
+ AddInstruction32('ctz',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$01));
+ AddInstruction32('cpop',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$02));
+ AddInstruction32('sext.b',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$04));
+ AddInstruction32('sext.h',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,1,$30,$05));
 
- AddInstruction32('srli',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$00));
- AddInstruction32('srai',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$10));
- AddInstruction32('orc.b',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,5,$14,$07));
- AddInstruction32('bexti',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$24));
- AddInstruction32('rori',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$30));
- AddInstruction32('rev8',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,5,$34,$38));
+ AddInstruction32('srli',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$00));
+ AddInstruction32('srai',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$10));
+ AddInstruction32('orc.b',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,5,$14,$07));
+ AddInstruction32('bexti',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$24));
+ AddInstruction32('rori',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$30));
+ AddInstruction32('rev8',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,5,$34,$38));
 
- AddInstruction32('addiw',TInstructionSetArchitecture.TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm32,0));
- AddInstruction32('slliw',TInstructionSetArchitecture.TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,1,$00));
- AddInstruction32('slli.uw',TInstructionSetArchitecture.TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm32,1,$02));
- AddInstruction32('clzw',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed5(OpcodeOpImm32,1,$30,$00));
- AddInstruction32('ctzw',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed5(OpcodeOpImm32,1,$30,$01));
- AddInstruction32('cpopw',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed5(OpcodeOpImm32,1,$30,$02));
- AddInstruction32('srliw',TInstructionSetArchitecture.TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,5,$00));
- AddInstruction32('sraiw',TInstructionSetArchitecture.TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,5,$20));
- AddInstruction32('roriw',TInstructionSetArchitecture.TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,5,$30));
+ AddInstruction32('addiw',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm32,0));
+ AddInstruction32('slliw',TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,1,$00));
+ AddInstruction32('slli.uw',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm32,1,$02));
+ AddInstruction32('clzw',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed5(OpcodeOpImm32,1,$30,$00));
+ AddInstruction32('ctzw',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed5(OpcodeOpImm32,1,$30,$01));
+ AddInstruction32('cpopw',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed5(OpcodeOpImm32,1,$30,$02));
+ AddInstruction32('srliw',TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,5,$00));
+ AddInstruction32('sraiw',TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,5,$20));
+ AddInstruction32('roriw',TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,5,$30));
 
- AddInstruction32('add',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$00));
- AddInstruction32('mul',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$01));
- AddInstruction32('sub',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$20));
+ AddInstruction32('add',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$00));
+ AddInstruction32('mul',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$01));
+ AddInstruction32('sub',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$20));
 
- AddInstruction32('sll',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$00));
- AddInstruction32('mulh',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$01));
- AddInstruction32('clmul',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$05));
- AddInstruction32('bset',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$14));
- AddInstruction32('bclr',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$24));
- AddInstruction32('rol',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$30));
- AddInstruction32('binv',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$34));
+ AddInstruction32('sll',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$00));
+ AddInstruction32('mulh',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$01));
+ AddInstruction32('clmul',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$05));
+ AddInstruction32('bset',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$14));
+ AddInstruction32('bclr',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$24));
+ AddInstruction32('rol',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$30));
+ AddInstruction32('binv',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,1,$34));
 
- AddInstruction32('slt',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$00));
- AddInstruction32('mulhsu',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$01));
- AddInstruction32('clmulr',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$05));
- AddInstruction32('sh1add',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$10));
+ AddInstruction32('slt',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$00));
+ AddInstruction32('mulhsu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$01));
+ AddInstruction32('clmulr',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$05));
+ AddInstruction32('sh1add',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$10));
 
- AddInstruction32('sltu',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$00));
- AddInstruction32('mulhu',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$01));
- AddInstruction32('clmulh',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$05));
+ AddInstruction32('sltu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$00));
+ AddInstruction32('mulhu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$01));
+ AddInstruction32('clmulh',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$05));
 
- AddInstruction32('xor',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$00));
- AddInstruction32('div',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$01));
- AddInstruction32('min',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$05));
- AddInstruction32('sh2add',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$10));
- AddInstruction32('xnor',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$20));
+ AddInstruction32('xor',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$00));
+ AddInstruction32('div',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$01));
+ AddInstruction32('min',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$05));
+ AddInstruction32('sh2add',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$10));
+ AddInstruction32('xnor',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$20));
 
- AddInstruction32('srl',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$00));
- AddInstruction32('divu',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$01));
- AddInstruction32('minu',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$05));
- AddInstruction32('czero.eqz',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$07));
- AddInstruction32('sra',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$20));
- AddInstruction32('bext',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$24));
- AddInstruction32('ror',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$30));
+ AddInstruction32('srl',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$00));
+ AddInstruction32('divu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$01));
+ AddInstruction32('minu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$05));
+ AddInstruction32('czero.eqz',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$07));
+ AddInstruction32('sra',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$20));
+ AddInstruction32('bext',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$24));
+ AddInstruction32('ror',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$30));
 
- AddInstruction32('or',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$00));
- AddInstruction32('rem',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$01));
- AddInstruction32('max',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$05));
- AddInstruction32('sh3add',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$10));
- AddInstruction32('orn',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$20));
+ AddInstruction32('or',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$00));
+ AddInstruction32('rem',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$01));
+ AddInstruction32('max',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$05));
+ AddInstruction32('sh3add',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$10));
+ AddInstruction32('orn',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,6,$20));
 
- AddInstruction32('and',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$00));
- AddInstruction32('remu',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$01));
- AddInstruction32('maxu',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$05));
- AddInstruction32('czero.nez',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$07));
- AddInstruction32('andn',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$20));
+ AddInstruction32('and',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$00));
+ AddInstruction32('remu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$01));
+ AddInstruction32('maxu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$05));
+ AddInstruction32('czero.nez',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$07));
+ AddInstruction32('andn',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$20));
 
- AddInstruction32('addw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$00));
- AddInstruction32('mulw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$01));
- AddInstruction32('add.uw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$04));
- AddInstruction32('subw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$20));
+ AddInstruction32('addw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$00));
+ AddInstruction32('mulw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$01));
+ AddInstruction32('add.uw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$04));
+ AddInstruction32('subw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,0,$20));
 
- AddInstruction32('sllw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,1,$00));
- AddInstruction32('rolw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,1,$30));
+ AddInstruction32('sllw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,1,$00));
+ AddInstruction32('rolw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,1,$30));
 
- AddInstruction32('sh1add.uw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,2,$10));
+ AddInstruction32('sh1add.uw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,2,$10));
 
- AddInstruction32('divw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,4,$01));
- AddInstruction32('zext.h',TInstructionSetArchitecture.TInstructionFormat.RUnary,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOp32,$04,4,0));
- AddInstruction32('sh2add.uw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,4,$10));
+ AddInstruction32('divw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,4,$01));
+ AddInstruction32('zext.h',TInstructionFormat.RUnary,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOp32,$04,4,0));
+ AddInstruction32('sh2add.uw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,4,$10));
 
- AddInstruction32('srlw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$00));
- AddInstruction32('divuw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$01));
- AddInstruction32('sraw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$20));
- AddInstruction32('rorw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$30));
+ AddInstruction32('srlw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$00));
+ AddInstruction32('divuw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$01));
+ AddInstruction32('sraw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$20));
+ AddInstruction32('rorw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$30));
 
- AddInstruction32('remw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,6,$01));
- AddInstruction32('sh3add.uw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,6,$10));
+ AddInstruction32('remw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,6,$01));
+ AddInstruction32('sh3add.uw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,6,$10));
 
- AddInstruction32('remuw',TInstructionSetArchitecture.TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,7,$01));
+ AddInstruction32('remuw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,7,$01));
 
  //////////////////////////////////////////////////////////////////////////////
  // Misc. Mem                                                                //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction32('pause',TInstructionSetArchitecture.TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($0100000f));
- AddInstruction32('fence',TInstructionSetArchitecture.TInstructionFormat.Fence,MaskOpcodeFunct3,ValueI(OpcodeMiscMem,0));
- AddInstruction32('fence.i',TInstructionSetArchitecture.TInstructionFormat.None,MaskOpcodeFunct3,ValueI(OpcodeMiscMem,1));
- AddInstruction32('cbo.inval',TInstructionSetArchitecture.TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($00) shl 20) or ValueI(OpcodeMiscMem,2));
- AddInstruction32('cbo.clean',TInstructionSetArchitecture.TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($01) shl 20) or ValueI(OpcodeMiscMem,2));
- AddInstruction32('cbo.flush',TInstructionSetArchitecture.TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($02) shl 20) or ValueI(OpcodeMiscMem,2));
- AddInstruction32('cbo.zero',TInstructionSetArchitecture.TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($04) shl 20) or ValueI(OpcodeMiscMem,2));
+ AddInstruction32('pause',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($0100000f));
+ AddInstruction32('fence',TInstructionFormat.Fence,MaskOpcodeFunct3,ValueI(OpcodeMiscMem,0));
+ AddInstruction32('fence.i',TInstructionFormat.None,MaskOpcodeFunct3,ValueI(OpcodeMiscMem,1));
+ AddInstruction32('cbo.inval',TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($00) shl 20) or ValueI(OpcodeMiscMem,2));
+ AddInstruction32('cbo.clean',TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($01) shl 20) or ValueI(OpcodeMiscMem,2));
+ AddInstruction32('cbo.flush',TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($02) shl 20) or ValueI(OpcodeMiscMem,2));
+ AddInstruction32('cbo.zero',TInstructionFormat.Cbo,MaskCbo,(TPasRISCVUInt32($04) shl 20) or ValueI(OpcodeMiscMem,2));
 
  //////////////////////////////////////////////////////////////////////////////
  // System                                                                   //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction32('ecall',TInstructionSetArchitecture.TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00000073));
- AddInstruction32('ebreak',TInstructionSetArchitecture.TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00100073));
- AddInstruction32('uret',TInstructionSetArchitecture.TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00200073));
- AddInstruction32('sret',TInstructionSetArchitecture.TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($10200073));
- AddInstruction32('mret',TInstructionSetArchitecture.TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($30200073));
- AddInstruction32('wfi',TInstructionSetArchitecture.TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($10500073));
- AddInstruction32('sfence.vma',TInstructionSetArchitecture.TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$09));
- AddInstruction32('hfence.bvma',TInstructionSetArchitecture.TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$11));
- AddInstruction32('hfence.gvma',TInstructionSetArchitecture.TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$51));
- AddInstruction32('csrrw',TInstructionSetArchitecture.TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,1));
- AddInstruction32('csrrs',TInstructionSetArchitecture.TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,2));
- AddInstruction32('csrrc',TInstructionSetArchitecture.TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,3));
- AddInstruction32('csrrwi',TInstructionSetArchitecture.TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,5));
- AddInstruction32('csrrsi',TInstructionSetArchitecture.TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,6));
- AddInstruction32('csrrci',TInstructionSetArchitecture.TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,7));
+ AddInstruction32('ecall',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00000073));
+ AddInstruction32('ebreak',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00100073));
+ AddInstruction32('uret',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00200073));
+ AddInstruction32('sret',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($10200073));
+ AddInstruction32('mret',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($30200073));
+ AddInstruction32('wfi',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($10500073));
+ AddInstruction32('sfence.vma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$09));
+ AddInstruction32('hfence.bvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$11));
+ AddInstruction32('hfence.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$51));
+ AddInstruction32('csrrw',TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,1));
+ AddInstruction32('csrrs',TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,2));
+ AddInstruction32('csrrc',TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,3));
+ AddInstruction32('csrrwi',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,5));
+ AddInstruction32('csrrsi',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,6));
+ AddInstruction32('csrrci',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,7));
 
  //////////////////////////////////////////////////////////////////////////////
  // AMO                                                                      //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction32('lr.w',TInstructionSetArchitecture.TInstructionFormat.LR,MaskAmo,ValueAmo(OpcodeAmo,2,$02));
- AddInstruction32('sc.w',TInstructionSetArchitecture.TInstructionFormat.SC,MaskAmo,ValueAmo(OpcodeAmo,2,$03));
- AddInstruction32('amoswap.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$01));
- AddInstruction32('amoadd.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$00));
- AddInstruction32('amoxor.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$04));
- AddInstruction32('amoand.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$0c));
- AddInstruction32('amoor.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$08));
- AddInstruction32('amomin.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$10));
- AddInstruction32('amomax.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$14));
- AddInstruction32('amominu.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$18));
- AddInstruction32('amomaxu.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$1c));
- AddInstruction32('amocas.w',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$05));
+ AddInstruction32('lr.w',TInstructionFormat.LR,MaskAmo,ValueAmo(OpcodeAmo,2,$02));
+ AddInstruction32('sc.w',TInstructionFormat.SC,MaskAmo,ValueAmo(OpcodeAmo,2,$03));
+ AddInstruction32('amoswap.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$01));
+ AddInstruction32('amoadd.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$00));
+ AddInstruction32('amoxor.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$04));
+ AddInstruction32('amoand.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$0c));
+ AddInstruction32('amoor.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$08));
+ AddInstruction32('amomin.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$10));
+ AddInstruction32('amomax.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$14));
+ AddInstruction32('amominu.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$18));
+ AddInstruction32('amomaxu.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$1c));
+ AddInstruction32('amocas.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$05));
 
- AddInstruction32('lr.d',TInstructionSetArchitecture.TInstructionFormat.LR,MaskAmo,ValueAmo(OpcodeAmo,3,$02));
- AddInstruction32('sc.d',TInstructionSetArchitecture.TInstructionFormat.SC,MaskAmo,ValueAmo(OpcodeAmo,3,$03));
- AddInstruction32('amoswap.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$01));
- AddInstruction32('amoadd.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$00));
- AddInstruction32('amoxor.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$04));
- AddInstruction32('amoand.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$0c));
- AddInstruction32('amoor.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$08));
- AddInstruction32('amomin.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$10));
- AddInstruction32('amomax.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$14));
- AddInstruction32('amominu.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$18));
- AddInstruction32('amomaxu.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$1c));
- AddInstruction32('amocas.d',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$05));
+ AddInstruction32('lr.d',TInstructionFormat.LR,MaskAmo,ValueAmo(OpcodeAmo,3,$02));
+ AddInstruction32('sc.d',TInstructionFormat.SC,MaskAmo,ValueAmo(OpcodeAmo,3,$03));
+ AddInstruction32('amoswap.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$01));
+ AddInstruction32('amoadd.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$00));
+ AddInstruction32('amoxor.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$04));
+ AddInstruction32('amoand.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$0c));
+ AddInstruction32('amoor.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$08));
+ AddInstruction32('amomin.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$10));
+ AddInstruction32('amomax.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$14));
+ AddInstruction32('amominu.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$18));
+ AddInstruction32('amomaxu.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$1c));
+ AddInstruction32('amocas.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$05));
 
- AddInstruction32('amocas.q',TInstructionSetArchitecture.TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,4,$05));
+ AddInstruction32('amocas.q',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,4,$05));
 
  //////////////////////////////////////////////////////////////////////////////
  // Floating-Point Load/Store                                                //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction32('flw',TInstructionSetArchitecture.TInstructionFormat.FLoad,MaskOpcodeFunct3,ValueI(OpcodeLoadFP,2));
- AddInstruction32('fld',TInstructionSetArchitecture.TInstructionFormat.FLoad,MaskOpcodeFunct3,ValueI(OpcodeLoadFP,3));
- AddInstruction32('fsw',TInstructionSetArchitecture.TInstructionFormat.FStore,MaskOpcodeFunct3,ValueI(OpcodeStoreFP,2));
- AddInstruction32('fsd',TInstructionSetArchitecture.TInstructionFormat.FStore,MaskOpcodeFunct3,ValueI(OpcodeStoreFP,3));
+ AddInstruction32('flw',TInstructionFormat.FLoad,MaskOpcodeFunct3,ValueI(OpcodeLoadFP,2));
+ AddInstruction32('fld',TInstructionFormat.FLoad,MaskOpcodeFunct3,ValueI(OpcodeLoadFP,3));
+ AddInstruction32('fsw',TInstructionFormat.FStore,MaskOpcodeFunct3,ValueI(OpcodeStoreFP,2));
+ AddInstruction32('fsd',TInstructionFormat.FStore,MaskOpcodeFunct3,ValueI(OpcodeStoreFP,3));
 
  //////////////////////////////////////////////////////////////////////////////
  // Floating-Point FMA                                                       //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction32('fmadd.s',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMadd,0));
- AddInstruction32('fmadd.d',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMadd,1));
- AddInstruction32('fmsub.s',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMsub,0));
- AddInstruction32('fmsub.d',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMsub,1));
- AddInstruction32('fnmadd.s',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmadd,0));
- AddInstruction32('fnmadd.d',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmadd,1));
- AddInstruction32('fnmsub.s',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmsub,0));
- AddInstruction32('fnmsub.d',TInstructionSetArchitecture.TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmsub,1));
+ AddInstruction32('fmadd.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMadd,0));
+ AddInstruction32('fmadd.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMadd,1));
+ AddInstruction32('fmsub.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMsub,0));
+ AddInstruction32('fmsub.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMsub,1));
+ AddInstruction32('fnmadd.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmadd,0));
+ AddInstruction32('fnmadd.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmadd,1));
+ AddInstruction32('fnmsub.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmsub,0));
+ AddInstruction32('fnmsub.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmsub,1));
 
  //////////////////////////////////////////////////////////////////////////////
  // Floating-Point OP                                                        //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction32('fadd.s',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$00));
- AddInstruction32('fadd.d',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$01));
- AddInstruction32('fsub.s',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$04));
- AddInstruction32('fsub.d',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$05));
- AddInstruction32('fmul.s',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$08));
- AddInstruction32('fmul.d',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$09));
- AddInstruction32('fdiv.s',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0c));
- AddInstruction32('fdiv.d',TInstructionSetArchitecture.TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0d));
+ AddInstruction32('fadd.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$00));
+ AddInstruction32('fadd.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$01));
+ AddInstruction32('fsub.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$04));
+ AddInstruction32('fsub.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$05));
+ AddInstruction32('fmul.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$08));
+ AddInstruction32('fmul.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$09));
+ AddInstruction32('fdiv.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0c));
+ AddInstruction32('fdiv.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0d));
 
- AddInstruction32('fsgnj.s',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,0));
- AddInstruction32('fsgnjn.s',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,1));
- AddInstruction32('fsgnjx.s',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,2));
- AddInstruction32('fsgnj.d',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,0));
- AddInstruction32('fsgnjn.d',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,1));
- AddInstruction32('fsgnjx.d',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,2));
+ AddInstruction32('fsgnj.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,0));
+ AddInstruction32('fsgnjn.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,1));
+ AddInstruction32('fsgnjx.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,2));
+ AddInstruction32('fsgnj.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,0));
+ AddInstruction32('fsgnjn.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,1));
+ AddInstruction32('fsgnjx.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,2));
 
- AddInstruction32('fmin.s',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$14,0));
- AddInstruction32('fmax.s',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$14,1));
- AddInstruction32('fmin.d',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$15,0));
- AddInstruction32('fmax.d',TInstructionSetArchitecture.TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$15,1));
+ AddInstruction32('fmin.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$14,0));
+ AddInstruction32('fmax.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$14,1));
+ AddInstruction32('fmin.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$15,0));
+ AddInstruction32('fmax.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$15,1));
 
- AddInstruction32('fcvt.s.d',TInstructionSetArchitecture.TInstructionFormat.FPCvtFP,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$20));
- AddInstruction32('fcvt.d.s',TInstructionSetArchitecture.TInstructionFormat.FPCvtFP,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$21));
- AddInstruction32('fsqrt.s',TInstructionSetArchitecture.TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$2c));
- AddInstruction32('fsqrt.d',TInstructionSetArchitecture.TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$2d));
+ AddInstruction32('fcvt.s.d',TInstructionFormat.FPCvtFP,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$20));
+ AddInstruction32('fcvt.d.s',TInstructionFormat.FPCvtFP,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$21));
+ AddInstruction32('fsqrt.s',TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$2c));
+ AddInstruction32('fsqrt.d',TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$2d));
 
- AddInstruction32('fle.s',TInstructionSetArchitecture.TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,0));
- AddInstruction32('flt.s',TInstructionSetArchitecture.TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,1));
- AddInstruction32('feq.s',TInstructionSetArchitecture.TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,2));
- AddInstruction32('fle.d',TInstructionSetArchitecture.TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,0));
- AddInstruction32('flt.d',TInstructionSetArchitecture.TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,1));
- AddInstruction32('feq.d',TInstructionSetArchitecture.TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,2));
+ AddInstruction32('fle.s',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,0));
+ AddInstruction32('flt.s',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,1));
+ AddInstruction32('feq.s',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,2));
+ AddInstruction32('fle.d',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,0));
+ AddInstruction32('flt.d',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,1));
+ AddInstruction32('feq.d',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,2));
 
- AddInstruction32('fcvt.w.s',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,0));
- AddInstruction32('fcvt.wu.s',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,1));
- AddInstruction32('fcvt.l.s',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,2));
- AddInstruction32('fcvt.lu.s',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,3));
+ AddInstruction32('fcvt.w.s',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,0));
+ AddInstruction32('fcvt.wu.s',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,1));
+ AddInstruction32('fcvt.l.s',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,2));
+ AddInstruction32('fcvt.lu.s',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,3));
 
- AddInstruction32('fcvt.w.d',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,0));
- AddInstruction32('fcvt.wu.d',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,1));
- AddInstruction32('fcvt.l.d',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,2));
- AddInstruction32('fcvt.lu.d',TInstructionSetArchitecture.TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,3));
+ AddInstruction32('fcvt.w.d',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,0));
+ AddInstruction32('fcvt.wu.d',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,1));
+ AddInstruction32('fcvt.l.d',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,2));
+ AddInstruction32('fcvt.lu.d',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,3));
 
- AddInstruction32('fcvt.s.w',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,0));
- AddInstruction32('fcvt.s.wu',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,1));
- AddInstruction32('fcvt.s.l',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,2));
- AddInstruction32('fcvt.s.lu',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,3));
+ AddInstruction32('fcvt.s.w',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,0));
+ AddInstruction32('fcvt.s.wu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,1));
+ AddInstruction32('fcvt.s.l',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,2));
+ AddInstruction32('fcvt.s.lu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,3));
 
- AddInstruction32('fcvt.d.w',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,0));
- AddInstruction32('fcvt.d.wu',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,1));
- AddInstruction32('fcvt.d.l',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,2));
- AddInstruction32('fcvt.d.lu',TInstructionSetArchitecture.TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,3));
+ AddInstruction32('fcvt.d.w',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,0));
+ AddInstruction32('fcvt.d.wu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,1));
+ AddInstruction32('fcvt.d.l',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,2));
+ AddInstruction32('fcvt.d.lu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,3));
 
- AddInstruction32('fmv.x.w',TInstructionSetArchitecture.TInstructionFormat.FPMoveToInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$70,0,0));
- AddInstruction32('fclass.s',TInstructionSetArchitecture.TInstructionFormat.FPClass,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$70,1,0));
- AddInstruction32('fmv.x.d',TInstructionSetArchitecture.TInstructionFormat.FPMoveToInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$71,0,0));
- AddInstruction32('fclass.d',TInstructionSetArchitecture.TInstructionFormat.FPClass,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$71,1,0));
+ AddInstruction32('fmv.x.w',TInstructionFormat.FPMoveToInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$70,0,0));
+ AddInstruction32('fclass.s',TInstructionFormat.FPClass,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$70,1,0));
+ AddInstruction32('fmv.x.d',TInstructionFormat.FPMoveToInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$71,0,0));
+ AddInstruction32('fclass.d',TInstructionFormat.FPClass,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$71,1,0));
 
- AddInstruction32('fmv.w.x',TInstructionSetArchitecture.TInstructionFormat.FPMoveFromInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$78,0,0));
- AddInstruction32('fmv.d.x',TInstructionSetArchitecture.TInstructionFormat.FPMoveFromInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$79,0,0));
+ AddInstruction32('fmv.w.x',TInstructionFormat.FPMoveFromInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$78,0,0));
+ AddInstruction32('fmv.d.x',TInstructionFormat.FPMoveFromInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$79,0,0));
 
  //////////////////////////////////////////////////////////////////////////////
  // Compressed                                                               //
  //////////////////////////////////////////////////////////////////////////////
- AddInstruction16('c.addi4spn',TInstructionSetArchitecture.TCompressedFormat.CIW,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(0,0));
- AddInstruction16('c.fld',TInstructionSetArchitecture.TCompressedFormat.CLD,TInstructionSetArchitecture.TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(1,0));
- AddInstruction16('c.lw',TInstructionSetArchitecture.TCompressedFormat.CLW,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,0));
- AddInstruction16('c.ld',TInstructionSetArchitecture.TCompressedFormat.CLD,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,0));
+ AddInstruction16('c.addi4spn',TCompressedFormat.CIW,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(0,0));
+ AddInstruction16('c.fld',TCompressedFormat.CLD,TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(1,0));
+ AddInstruction16('c.lw',TCompressedFormat.CLW,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,0));
+ AddInstruction16('c.ld',TCompressedFormat.CLD,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,0));
 
  Mask:=MaskCompressedBase or $1c00;
  Value:=ValueCompressedBase(4,0);
- AddInstruction16('c.lbu',TInstructionSetArchitecture.TCompressedFormat.ZcbLbu,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value);
- AddInstruction16('c.lh',TInstructionSetArchitecture.TCompressedFormat.ZcbLh,TInstructionSetArchitecture.TRegisterKind.Integer,Mask or $0040,Value or (TPasRISCVUInt32(1) shl 10) or $0040);
- AddInstruction16('c.lhu',TInstructionSetArchitecture.TCompressedFormat.ZcbLhu,TInstructionSetArchitecture.TRegisterKind.Integer,Mask or $0040,Value or (TPasRISCVUInt32(1) shl 10));
- AddInstruction16('c.sbu',TInstructionSetArchitecture.TCompressedFormat.ZcbSbu,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 10));
- AddInstruction16('c.sh',TInstructionSetArchitecture.TCompressedFormat.ZcbSh,TInstructionSetArchitecture.TRegisterKind.Integer,Mask or $0040,Value or (TPasRISCVUInt32(3) shl 10));
+ AddInstruction16('c.lbu',TCompressedFormat.ZcbLbu,TRegisterKind.Integer,Mask,Value);
+ AddInstruction16('c.lh',TCompressedFormat.ZcbLh,TRegisterKind.Integer,Mask or $0040,Value or (TPasRISCVUInt32(1) shl 10) or $0040);
+ AddInstruction16('c.lhu',TCompressedFormat.ZcbLhu,TRegisterKind.Integer,Mask or $0040,Value or (TPasRISCVUInt32(1) shl 10));
+ AddInstruction16('c.sbu',TCompressedFormat.ZcbSbu,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 10));
+ AddInstruction16('c.sh',TCompressedFormat.ZcbSh,TRegisterKind.Integer,Mask or $0040,Value or (TPasRISCVUInt32(3) shl 10));
 
- AddInstruction16('c.fsd',TInstructionSetArchitecture.TCompressedFormat.CSD,TInstructionSetArchitecture.TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(5,0));
- AddInstruction16('c.sw',TInstructionSetArchitecture.TCompressedFormat.CSW,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,0));
- AddInstruction16('c.sd',TInstructionSetArchitecture.TCompressedFormat.CSD,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(7,0));
+ AddInstruction16('c.fsd',TCompressedFormat.CSD,TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(5,0));
+ AddInstruction16('c.sw',TCompressedFormat.CSW,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,0));
+ AddInstruction16('c.sd',TCompressedFormat.CSD,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(7,0));
 
- AddInstruction16('c.nop',TInstructionSetArchitecture.TCompressedFormat.None,TInstructionSetArchitecture.TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($0001));
- AddInstruction16('c.addi',TInstructionSetArchitecture.TCompressedFormat.CI,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(0,1));
- AddInstruction16('c.addiw',TInstructionSetArchitecture.TCompressedFormat.CI,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(1,1));
- AddInstruction16('c.li',TInstructionSetArchitecture.TCompressedFormat.CI,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,1));
- AddInstruction16('c.addi16sp',TInstructionSetArchitecture.TCompressedFormat.CIAddi16sp,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase or MaskCompressedRd,ValueCompressedBase(3,1) or (TPasRISCVUInt32(2) shl 7));
- AddInstruction16('c.lui',TInstructionSetArchitecture.TCompressedFormat.CILui,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,1));
+ AddInstruction16('c.nop',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($0001));
+ AddInstruction16('c.addi',TCompressedFormat.CI,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(0,1));
+ AddInstruction16('c.addiw',TCompressedFormat.CI,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(1,1));
+ AddInstruction16('c.li',TCompressedFormat.CI,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,1));
+ AddInstruction16('c.addi16sp',TCompressedFormat.CIAddi16sp,TRegisterKind.Integer,MaskCompressedBase or MaskCompressedRd,ValueCompressedBase(3,1) or (TPasRISCVUInt32(2) shl 7));
+ AddInstruction16('c.lui',TCompressedFormat.CILui,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,1));
 
  Mask:=MaskCompressedBase or MaskCompressedFunct2;
  Value:=ValueCompressedBase(4,1);
- AddInstruction16('c.srli',TInstructionSetArchitecture.TCompressedFormat.CIShiftPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value);
- AddInstruction16('c.srai',TInstructionSetArchitecture.TCompressedFormat.CIShiftPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 10));
- AddInstruction16('c.andi',TInstructionSetArchitecture.TCompressedFormat.CIPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 10));
+ AddInstruction16('c.srli',TCompressedFormat.CIShiftPrime,TRegisterKind.Integer,Mask,Value);
+ AddInstruction16('c.srai',TCompressedFormat.CIShiftPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 10));
+ AddInstruction16('c.andi',TCompressedFormat.CIPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 10));
 
  Mask:=MaskCompressedBase or MaskCompressedFunct2 or MaskCompressedBit12 or MaskCompressedBits6_5;
  Value:=ValueCompressedBase(4,1) or (TPasRISCVUInt32(3) shl 10);
- AddInstruction16('c.sub',TInstructionSetArchitecture.TCompressedFormat.CA,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value);
- AddInstruction16('c.xor',TInstructionSetArchitecture.TCompressedFormat.CA,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 5));
- AddInstruction16('c.or',TInstructionSetArchitecture.TCompressedFormat.CA,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 5));
- AddInstruction16('c.and',TInstructionSetArchitecture.TCompressedFormat.CA,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(3) shl 5));
+ AddInstruction16('c.sub',TCompressedFormat.CA,TRegisterKind.Integer,Mask,Value);
+ AddInstruction16('c.xor',TCompressedFormat.CA,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 5));
+ AddInstruction16('c.or',TCompressedFormat.CA,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 5));
+ AddInstruction16('c.and',TCompressedFormat.CA,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(3) shl 5));
 
  Value:=Value or MaskCompressedBit12;
- AddInstruction16('c.subw',TInstructionSetArchitecture.TCompressedFormat.CA,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value);
- AddInstruction16('c.addw',TInstructionSetArchitecture.TCompressedFormat.CA,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 5));
- AddInstruction16('c.mul',TInstructionSetArchitecture.TCompressedFormat.CA,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 5));
+ AddInstruction16('c.subw',TCompressedFormat.CA,TRegisterKind.Integer,Mask,Value);
+ AddInstruction16('c.addw',TCompressedFormat.CA,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 5));
+ AddInstruction16('c.mul',TCompressedFormat.CA,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 5));
 
  Mask:=MaskCompressedBase or MaskCompressedFunct2 or MaskCompressedBit12 or MaskCompressedBits6_5 or MaskCompressedBits4_2;
  Value:=ValueCompressedBase(4,1) or (TPasRISCVUInt32(3) shl 10) or MaskCompressedBit12 or (TPasRISCVUInt32(3) shl 5);
- AddInstruction16('c.zext.b',TInstructionSetArchitecture.TCompressedFormat.RDPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(0) shl 2));
- AddInstruction16('c.sext.b',TInstructionSetArchitecture.TCompressedFormat.RDPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 2));
- AddInstruction16('c.zext.h',TInstructionSetArchitecture.TCompressedFormat.RDPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 2));
- AddInstruction16('c.sext.w',TInstructionSetArchitecture.TCompressedFormat.RDPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(3) shl 2));
- AddInstruction16('c.zext.w',TInstructionSetArchitecture.TCompressedFormat.RDPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(4) shl 2));
- AddInstruction16('c.not',TInstructionSetArchitecture.TCompressedFormat.RDPrime,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(5) shl 2));
+ AddInstruction16('c.zext.b',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(0) shl 2));
+ AddInstruction16('c.sext.b',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 2));
+ AddInstruction16('c.zext.h',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 2));
+ AddInstruction16('c.sext.w',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(3) shl 2));
+ AddInstruction16('c.zext.w',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(4) shl 2));
+ AddInstruction16('c.not',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(5) shl 2));
 
- AddInstruction16('c.j',TInstructionSetArchitecture.TCompressedFormat.CJ,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(5,1));
- AddInstruction16('c.beqz',TInstructionSetArchitecture.TCompressedFormat.CB,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,1));
- AddInstruction16('c.bnez',TInstructionSetArchitecture.TCompressedFormat.CB,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(7,1));
+ AddInstruction16('c.j',TCompressedFormat.CJ,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(5,1));
+ AddInstruction16('c.beqz',TCompressedFormat.CB,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,1));
+ AddInstruction16('c.bnez',TCompressedFormat.CB,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(7,1));
 
- AddInstruction16('c.slli',TInstructionSetArchitecture.TCompressedFormat.CIShift,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(0,2));
- AddInstruction16('c.fldsp',TInstructionSetArchitecture.TCompressedFormat.CLDSP,TInstructionSetArchitecture.TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(1,2));
- AddInstruction16('c.lwsp',TInstructionSetArchitecture.TCompressedFormat.CLWSP,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,2));
- AddInstruction16('c.ldsp',TInstructionSetArchitecture.TCompressedFormat.CLDSP,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,2));
+ AddInstruction16('c.slli',TCompressedFormat.CIShift,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(0,2));
+ AddInstruction16('c.fldsp',TCompressedFormat.CLDSP,TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(1,2));
+ AddInstruction16('c.lwsp',TCompressedFormat.CLWSP,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,2));
+ AddInstruction16('c.ldsp',TCompressedFormat.CLDSP,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,2));
 
- AddInstruction16('c.ebreak',TInstructionSetArchitecture.TCompressedFormat.None,TInstructionSetArchitecture.TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($9002));
+ AddInstruction16('c.ebreak',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($9002));
  Mask:=MaskCompressedBase or MaskCompressedBit12 or MaskCompressedRs2;
  Value:=ValueCompressedBase(4,2);
- AddInstruction16('c.jr',TInstructionSetArchitecture.TCompressedFormat.CJR,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value);
- AddInstruction16('c.mv',TInstructionSetArchitecture.TCompressedFormat.CR,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase or MaskCompressedBit12,ValueCompressedBase(4,2));
- AddInstruction16('c.jalr',TInstructionSetArchitecture.TCompressedFormat.CJR,TInstructionSetArchitecture.TRegisterKind.Integer,Mask,Value or MaskCompressedBit12);
- AddInstruction16('c.add',TInstructionSetArchitecture.TCompressedFormat.CR,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase or MaskCompressedBit12,ValueCompressedBase(4,2) or MaskCompressedBit12);
+ AddInstruction16('c.jr',TCompressedFormat.CJR,TRegisterKind.Integer,Mask,Value);
+ AddInstruction16('c.mv',TCompressedFormat.CR,TRegisterKind.Integer,MaskCompressedBase or MaskCompressedBit12,ValueCompressedBase(4,2));
+ AddInstruction16('c.jalr',TCompressedFormat.CJR,TRegisterKind.Integer,Mask,Value or MaskCompressedBit12);
+ AddInstruction16('c.add',TCompressedFormat.CR,TRegisterKind.Integer,MaskCompressedBase or MaskCompressedBit12,ValueCompressedBase(4,2) or MaskCompressedBit12);
 
- AddInstruction16('c.fsdsp',TInstructionSetArchitecture.TCompressedFormat.CSDSP,TInstructionSetArchitecture.TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(5,2));
- AddInstruction16('c.swsp',TInstructionSetArchitecture.TCompressedFormat.CSWSP,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,2));
- AddInstruction16('c.sdsp',TInstructionSetArchitecture.TCompressedFormat.CSDSP,TInstructionSetArchitecture.TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(7,2));
+ AddInstruction16('c.fsdsp',TCompressedFormat.CSDSP,TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(5,2));
+ AddInstruction16('c.swsp',TCompressedFormat.CSWSP,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,2));
+ AddInstruction16('c.sdsp',TCompressedFormat.CSDSP,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(7,2));
 
  SetLength(fInstructions32,fCountInstructions32);
  SetLength(fInstructions16,fCountInstructions16);
