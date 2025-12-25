@@ -5238,7 +5238,29 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     SWBREAK_TRIGGERED=1;
                     SWBREAK_ACTIVE=2;
                     SWBREAK_PAUSED=3;
-              type TPacketBuffer=array[0..GDB_MAX_PACKET_SIZE-1] of TPasRISCVUInt8;
+              type TOption=
+                    (
+                     GDBServer,
+                     LocalDebugger,
+                     LocalCLI,
+                     LocalThreaded,
+                     LocalInputPolling
+                    );
+                   TOptions=set of TOption;
+                   TOnInput=function(var aString:TPasRISCVRawByteString):Boolean of object;
+                   TOnOutput=procedure(const aString:TPasRISCVRawByteString) of object;
+                   TOnStopped=procedure(const aReason:TPasRISCVRawByteString;const aHART:TPasRISCVUInt64;const aPC:TPasRISCVUInt64) of object;
+                   TOnNotify=procedure of object;
+                   TOnError=procedure(const aString:TPasRISCVRawByteString) of object;
+                   TBreakpoint=record
+                    Address:TPasRISCVUInt64;
+                    Size:TPasRISCVUInt64;
+                    Original:array[0..3] of TPasRISCVUInt8;
+                    Enabled:Boolean;
+                   end;
+                   TBreakpointMap=TPasRISCVHashMap<TPasRISCVUInt64,TBreakpoint>;
+                   TLocalCommandQueue=TPasRISCVThreadSafeDynamicQueue<TPasRISCVRawByteString>;
+                   TPacketBuffer=array[0..GDB_MAX_PACKET_SIZE-1] of TPasRISCVUInt8;
                    { TClientThread }
                    TClientThread=class(TPasMPThread)
                     private
@@ -5298,31 +5320,93 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      destructor Destroy; override;
                      procedure Shutdown;
                    end;
+                   { TLocalThread }
+                   TLocalThread=class(TPasMPThread)
+                    private
+                     fDebugger:TDebugger;
+                    protected
+                     procedure Execute; override;
+                    public
+                     constructor Create(const aDebugger:TDebugger); reintroduce;
+                     destructor Destroy; override;
+                     procedure Shutdown;
+                   end;
              private
               fMachine:TPasRISCV;
+              fOptions:TOptions;
+              fOnInput:TOnInput;
+              fOnOutput:TOnOutput;
+              fOnStopped:TOnStopped;
+              fOnResumed:TOnNotify;
+              fOnStepDone:TOnNotify;
+              fOnReset:TOnNotify;
+              fOnShutdown:TOnNotify;
+              fOnError:TOnError;
               fRNLInstance:TRNLInstance;
               fRNLNetwork:TRNLNetwork;
               fRNLNetworkEvent:TRNLNetworkEvent;
               fClientsInvertedSemaphore:TPasMPInvertedSemaphore;
               fServerAddress:TRNLAddress;
               fLock:TPasMPCriticalSection;
+              fBreakpointsLock:TPasMPCriticalSection;
               fClientThreads:TClientThreadDynamicArray;
               fCountClientThreads:TPasRISCVSizeInt;
               fServerThread:TServerThread;
+              fLocalThread:TLocalThread;
+              fLocalCommandQueue:TLocalCommandQueue;
+              fLocalHARTIndex:TPasRISCVUInt64;
+              fBreakpoints:TBreakpointMap;
+              fDisassembler:TDisassembler;
 //            fSWBreakState:TPasRISCVInt32;
+              fSuppressNotifyPaused:TPasMPInt32;
               fTerminated:Boolean;
+              procedure Output(const aString:TPasRISCVRawByteString);
+              procedure OutputError(const aString:TPasRISCVRawByteString);
+              function GetHARTByIndex(const aIndex:TPasRISCVUInt64):THART;
+              function GetLocalHART:THART;
+              procedure SetLocalHARTIndex(const aIndex:TPasRISCVUInt64);
+              class function HexNibble(const aDigit:TPasRISCVRawByteChar;out aValue:TPasRISCVUInt8):Boolean; static;
+              class function ByteToHex(const aValue:TPasRISCVUInt8):TPasRISCVRawByteString; static;
+              function ParseUInt64(const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
+              function NextToken(const aLine:TPasRISCVRawByteString;var aIndex:TPasRISCVSizeInt):TPasRISCVRawByteString;
+              function ReadMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt8):Boolean;
+              function WriteMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8):Boolean;
+              function ReadInstruction(const aHART:THART;const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32;out aSize:TPasRISCVUInt64):Boolean;
+              procedure DumpRegisters(const aHART:THART);
+              procedure DumpMemory(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              procedure DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
+              procedure ListBreakpoints;
+              function AddBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+              function RemoveBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+              procedure ClearBreakpoints;
+              function EnableBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+              function DisableBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+              function StepOverBreakpointsIfNeeded(const aSuppressNotify:Boolean):Boolean;
+              function ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
              public
-              constructor Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16);
+              constructor Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16;const aLocal:Boolean=false);
               destructor Destroy; override;
               procedure Interrupt;
               procedure NotifyPaused;
               function Halt:Boolean;
               procedure Pause;
-              procedure SingleStep;
+              procedure SingleStep(const aWaitUntilDone:Boolean=false);
               procedure Continue_;
               procedure Reset;
               procedure Start;
               procedure Stop;
+              function PollLocal:Boolean;
+              procedure EnqueueLocalCommand(const aCommand:TPasRISCVRawByteString);
+              property Options:TOptions read fOptions write fOptions;
+              property OnInput:TOnInput read fOnInput write fOnInput;
+              property OnOutput:TOnOutput read fOnOutput write fOnOutput;
+              property OnStopped:TOnStopped read fOnStopped write fOnStopped;
+              property OnResumed:TOnNotify read fOnResumed write fOnResumed;
+              property OnStepDone:TOnNotify read fOnStepDone write fOnStepDone;
+              property OnReset:TOnNotify read fOnReset write fOnReset;
+              property OnShutdown:TOnNotify read fOnShutdown write fOnShutdown;
+              property OnError:TOnError read fOnError write fOnError;
+              property LocalHARTIndex:TPasRISCVUInt64 read fLocalHARTIndex write SetLocalHARTIndex;
             end;
             { TConfiguration }
             TConfiguration=class
@@ -34383,28 +34467,96 @@ begin
  end;
 end;
 
+{ TPasRISCV.TDebugger.TLocalThread }
+
+constructor TPasRISCV.TDebugger.TLocalThread.Create(const aDebugger:TDebugger);
+begin
+ fDebugger:=aDebugger;
+ inherited Create(false);
+end;
+
+destructor TPasRISCV.TDebugger.TLocalThread.Destroy;
+begin
+ Shutdown;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TDebugger.TLocalThread.Shutdown;
+begin
+ if not Finished then begin
+  Terminate;
+  WaitFor;
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.TLocalThread.Execute;
+var ContinueLoop:Boolean;
+begin
+ NameThreadForDebugging('TPasRISCV.TDebugger.TLocalThread');
+ ContinueLoop:=true;
+ while ContinueLoop and not (Terminated or fDebugger.fTerminated) do begin
+  ContinueLoop:=fDebugger.PollLocal;
+  if ContinueLoop and (TDebugger.TOption.LocalInputPolling in fDebugger.fOptions) then begin
+   Sleep(1);
+  end;
+ end;
+end;
+
 { TPasRISCV.TDebugger }
 
-constructor TPasRISCV.TDebugger.Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16);
+constructor TPasRISCV.TDebugger.Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16;const aLocal:Boolean);
+var DefaultBreakpoint:TBreakpoint;
 begin
  inherited Create;
  fMachine:=aMachine;
- fRNLInstance:=TRNLInstance.Create;
- fRNLNetwork:=TRNLRealNetwork.Create(fRNLInstance);
- fRNLNetworkEvent:=TRNLNetworkEvent.Create;
- fClientsInvertedSemaphore:=TPasMPInvertedSemaphore.Create(0,$7ffffffe);
- fServerAddress:=TRNLAddress.CreateFromString('0.0.0.0:'+IntToStr(aPort));
+ fOptions:=[TOption.GDBServer];
+ if aLocal then begin
+  fOptions:=fOptions+[TOption.LocalDebugger,TOption.LocalCLI,TOption.LocalThreaded];
+ end;
+ fOnInput:=nil;
+ fOnOutput:=nil;
+ fOnStopped:=nil;
+ fOnResumed:=nil;
+ fOnStepDone:=nil;
+ fOnReset:=nil;
+ fOnShutdown:=nil;
+ fOnError:=nil;
+ if TOption.GDBServer in fOptions then begin
+  fRNLInstance:=TRNLInstance.Create;
+  fRNLNetwork:=TRNLRealNetwork.Create(fRNLInstance);
+  fRNLNetworkEvent:=TRNLNetworkEvent.Create;
+  fClientsInvertedSemaphore:=TPasMPInvertedSemaphore.Create(0,$7ffffffe);
+  fServerAddress:=TRNLAddress.CreateFromString('0.0.0.0:'+IntToStr(aPort));
+ end else begin
+  fRNLInstance:=nil;
+  fRNLNetwork:=nil;
+  fRNLNetworkEvent:=nil;
+  fClientsInvertedSemaphore:=nil;
+  fServerAddress:=TRNLAddress.CreateFromString('0.0.0.0:0');
+ end;
  fLock:=TPasMPCriticalSection.Create;
+ fBreakpointsLock:=TPasMPCriticalSection.Create;
  fClientThreads:=nil;
  fCountClientThreads:=0;
  fServerThread:=nil;
+ fLocalThread:=nil;
+ fLocalCommandQueue:=TLocalCommandQueue.Create;
+ fLocalHARTIndex:=0;
+ FillChar(DefaultBreakpoint,SizeOf(TBreakpoint),#0);
+ fBreakpoints:=TBreakpointMap.Create(DefaultBreakpoint);
+ fDisassembler:=TDisassembler.Create(fMachine);
 //fSWBreakState:=SWBREAK_NONE;
+ fSuppressNotifyPaused:=0;
  fTerminated:=false;
 end;
 
 destructor TPasRISCV.TDebugger.Destroy;
 begin
  Stop;
+ FreeAndNil(fLocalCommandQueue);
+ FreeAndNil(fBreakpoints);
+ FreeAndNil(fDisassembler);
+ FreeAndNil(fBreakpointsLock);
  FreeAndNil(fLock);
  FreeAndNil(fRNLNetworkEvent);
  FreeAndNil(fRNLNetwork);
@@ -34413,9 +34565,680 @@ begin
  inherited Destroy;
 end;
 
+procedure TPasRISCV.TDebugger.Output(const aString:TPasRISCVRawByteString);
+begin
+ if assigned(fOnOutput) then begin
+  fOnOutput(aString);
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.OutputError(const aString:TPasRISCVRawByteString);
+begin
+ if assigned(fOnError) then begin
+  fOnError(aString);
+ end else begin
+  Output(aString);
+ end;
+end;
+
+function TPasRISCV.TDebugger.GetHARTByIndex(const aIndex:TPasRISCVUInt64):THART;
+begin
+ if assigned(fMachine) and (aIndex<fMachine.fCountHARTs) then begin
+  result:=fMachine.fHARTs[aIndex];
+ end else begin
+  result:=nil;
+ end;
+end;
+
+function TPasRISCV.TDebugger.GetLocalHART:THART;
+begin
+ result:=GetHARTByIndex(fLocalHARTIndex);
+ if not assigned(result) then begin
+  result:=GetHARTByIndex(0);
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.SetLocalHARTIndex(const aIndex:TPasRISCVUInt64);
+begin
+ if assigned(fMachine) and (aIndex<fMachine.fCountHARTs) then begin
+  fLocalHARTIndex:=aIndex;
+ end else begin
+  fLocalHARTIndex:=0;
+ end;
+end;
+
+class function TPasRISCV.TDebugger.HexNibble(const aDigit:TPasRISCVRawByteChar;out aValue:TPasRISCVUInt8):Boolean;
+begin
+ case aDigit of
+  '0'..'9':begin
+   aValue:=TPasRISCVUInt8(aDigit)-TPasRISCVUInt8(TPasRISCVRawByteChar('0'));
+   result:=true;
+  end;
+  'a'..'f':begin
+   aValue:=TPasRISCVUInt8(aDigit)-TPasRISCVUInt8(TPasRISCVRawByteChar('a'))+10;
+   result:=true;
+  end;
+  'A'..'F':begin
+   aValue:=TPasRISCVUInt8(aDigit)-TPasRISCVUInt8(TPasRISCVRawByteChar('A'))+10;
+   result:=true;
+  end;
+  else begin
+   aValue:=0;
+   result:=false;
+  end;
+ end;
+end;
+
+class function TPasRISCV.TDebugger.ByteToHex(const aValue:TPasRISCVUInt8):TPasRISCVRawByteString;
+const HexChars:array[0..15] of TPasRISCVRawByteChar=('0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f');
+begin
+ result:=HexChars[(aValue shr 4) and $f]+HexChars[aValue and $f];
+end;
+
+function TPasRISCV.TDebugger.ParseUInt64(const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
+var Index:TPasRISCVSizeInt;
+    Base:TPasRISCVUInt64;
+    Digit:TPasRISCVUInt8;
+    DigitValue:TPasRISCVUInt64;
+begin
+ result:=false;
+ aValue:=0;
+ Base:=10;
+ Index:=1;
+ if length(aToken)=0 then begin
+  exit;
+ end;
+ if aToken[Index]=TPasRISCVRawByteChar('$') then begin
+  Base:=16;
+  inc(Index);
+ end else if (length(aToken)>=2) and (aToken[Index]=TPasRISCVRawByteChar('0')) then begin
+  case aToken[Index+1] of
+   'x','X':begin
+    Base:=16;
+    inc(Index,2);
+   end;
+   'o','O':begin
+    Base:=8;
+    inc(Index,2);
+   end;
+   'b','B':begin
+    Base:=2;
+    inc(Index,2);
+   end;
+   else begin
+   end;
+  end;
+ end;
+ if Index>length(aToken) then begin
+  exit;
+ end;
+ while Index<=length(aToken) do begin
+  case aToken[Index] of
+   '0'..'9':begin
+    Digit:=TPasRISCVUInt8(aToken[Index])-TPasRISCVUInt8(TPasRISCVRawByteChar('0'));
+   end;
+   'a'..'f':begin
+    Digit:=TPasRISCVUInt8(aToken[Index])-TPasRISCVUInt8(TPasRISCVRawByteChar('a'))+10;
+   end;
+   'A'..'F':begin
+    Digit:=TPasRISCVUInt8(aToken[Index])-TPasRISCVUInt8(TPasRISCVRawByteChar('A'))+10;
+   end;
+   else begin
+    exit;
+   end;
+  end;
+  DigitValue:=Digit;
+  if DigitValue>=Base then begin
+   exit;
+  end;
+  aValue:=(aValue*Base)+DigitValue;
+  inc(Index);
+ end;
+ result:=true;
+end;
+
+function TPasRISCV.TDebugger.NextToken(const aLine:TPasRISCVRawByteString;var aIndex:TPasRISCVSizeInt):TPasRISCVRawByteString;
+var Start:TPasRISCVSizeInt;
+begin
+ result:='';
+ while (aIndex<=length(aLine)) and (aLine[aIndex]<=TPasRISCVRawByteChar(' ')) do begin
+  inc(aIndex);
+ end;
+ Start:=aIndex;
+ while (aIndex<=length(aLine)) and (aLine[aIndex]>TPasRISCVRawByteChar(' ')) do begin
+  inc(aIndex);
+ end;
+ if Start<=length(aLine) then begin
+  result:=Copy(aLine,Start,aIndex-Start);
+ end;
+end;
+
+function TPasRISCV.TDebugger.ReadMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt8):Boolean;
+var Value:TPasRISCVUInt64;
+begin
+ if assigned(aHART) and aHART.LoadEx(aAddress,Value,1) then begin
+  aValue:=TPasRISCVUInt8(Value and $ff);
+  result:=true;
+ end else begin
+  aValue:=0;
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.TDebugger.WriteMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8):Boolean;
+begin
+ if assigned(aHART) and aHART.StoreEx(aAddress,aValue,1) then begin
+  result:=true;
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.TDebugger.ReadInstruction(const aHART:THART;const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32;out aSize:TPasRISCVUInt64):Boolean;
+var Value:TPasRISCVUInt64;
+begin
+ if assigned(aHART) and aHART.LoadEx(aAddress,Value,2) then begin
+  aInstruction:=TPasRISCVUInt32(Value and $ffff);
+  if (aInstruction and 3)=3 then begin
+   if aHART.LoadEx(aAddress,Value,4) then begin
+    aInstruction:=TPasRISCVUInt32(Value and $ffffffff);
+    aSize:=4;
+    result:=true;
+   end else begin
+    aInstruction:=0;
+    aSize:=0;
+    result:=false;
+   end;
+  end else begin
+   aSize:=2;
+   result:=true;
+  end;
+ end else begin
+  aInstruction:=0;
+  aSize:=0;
+  result:=false;
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.DumpRegisters(const aHART:THART);
+var Register:TRegister;
+    FPURegister:TFPURegister;
+    s:TPasRISCVRawByteString;
+begin
+ if not assigned(aHART) then begin
+  OutputError('E.Invalid CPU');
+  exit;
+ end;
+ Output('Registers:');
+ for Register:=Low(TRegister) to High(TRegister) do begin
+  Output(TInstructionSetArchitecture.RegisterABINames[Register]+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register],16)));
+ end;
+ Output('pc: 0x'+LowerCase(IntToHex(aHART.fState.PC,16)));
+ Output('FPU Registers:');
+ for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+  s:=FloatToStr(aHART.fState.FPURegisters[FPURegister].f64);
+  Output(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+s+' (0x'+LowerCase(IntToHex(aHART.fState.FPURegisters[FPURegister].ui64,16))+')');
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.DumpMemory(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Offset,LineBytes:TPasRISCVUInt64;
+    Index:TPasRISCVSizeInt;
+    ByteValue:TPasRISCVUInt8;
+    LineHex,LineASCII,Line:TPasRISCVRawByteString;
+    LineAddress:TPasRISCVUInt64;
+begin
+ if not assigned(aHART) then begin
+  OutputError('E.Invalid CPU');
+  exit;
+ end;
+ Offset:=0;
+ while Offset<aSize do begin
+  LineAddress:=aAddress+Offset;
+  LineBytes:=aSize-Offset;
+  if LineBytes>16 then begin
+   LineBytes:=16;
+  end;
+  LineHex:='';
+  LineASCII:='';
+  for Index:=0 to LineBytes-1 do begin
+   if ReadMemoryByte(aHART,LineAddress+TPasRISCVUInt64(Index),ByteValue) then begin
+    LineHex:=LineHex+ByteToHex(ByteValue)+' ';
+    if (ByteValue>=32) and (ByteValue<127) then begin
+     LineASCII:=LineASCII+TPasRISCVRawByteChar(ByteValue);
+    end else begin
+     LineASCII:=LineASCII+'.';
+    end;
+   end else begin
+    OutputError('E00');
+    exit;
+   end;
+  end;
+  for Index:=LineBytes to 15 do begin
+   LineHex:=LineHex+'   ';
+  end;
+  Line:=LowerCase(IntToHex(LineAddress,16))+': '+LineHex+' '+LineASCII;
+  Output(Line);
+  inc(Offset,LineBytes);
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
+var Index:TPasRISCVUInt64;
+    Address:TPasRISCVUInt64;
+    Instruction:TPasRISCVUInt32;
+    Size:TPasRISCVUInt64;
+    HexValue:TPasRISCVRawByteString;
+    Line:TPasRISCVRawByteString;
+begin
+ if not assigned(aHART) then begin
+  OutputError('E.Invalid CPU');
+  exit;
+ end;
+ Address:=aAddress;
+ for Index:=0 to aCount-1 do begin
+  if ReadInstruction(aHART,Address,Instruction,Size) then begin
+   if Size=2 then begin
+    HexValue:=LowerCase(IntToHex(Instruction and $ffff,4));
+   end else begin
+    HexValue:=LowerCase(IntToHex(Instruction,8));
+   end;
+   Line:=LowerCase(IntToHex(Address,16))+': '+HexValue+' '+TPasRISCVRawByteString(fDisassembler.DisassembleInstruction(Address,Instruction));
+   Output(Line);
+   inc(Address,Size);
+  end else begin
+   OutputError('E00');
+   exit;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.ListBreakpoints;
+var Entity:TBreakpointMap.TEntity;
+    Count:TPasRISCVSizeInt;
+begin
+ Count:=0;
+ fBreakpointsLock.Acquire;
+ try
+  for Entity in fBreakpoints.Entities do begin
+   if Entity.State=TBreakpointMap.TEntity.Used then begin
+    inc(Count);
+    if Entity.Value.Enabled then begin
+     Output('b '+LowerCase(IntToHex(Entity.Value.Address,16)));
+    end else begin
+     Output('b '+LowerCase(IntToHex(Entity.Value.Address,16))+' (disabled)');
+    end;
+   end;
+  end;
+ finally
+  fBreakpointsLock.Release;
+ end;
+ if Count=0 then begin
+  Output('no breakpoints');
+ end;
+end;
+
+function TPasRISCV.TDebugger.AddBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+var Breakpoint:TBreakpoint;
+    Instruction:TPasRISCVUInt32;
+    Size:TPasRISCVUInt64;
+    Index:TPasRISCVSizeInt;
+begin
+ result:=false;
+ if not assigned(aHART) then begin
+  OutputError('E.Invalid CPU');
+  exit;
+ end;
+ fBreakpointsLock.Acquire;
+ try
+  if fBreakpoints.TryGet(aAddress,Breakpoint) then begin
+   if Breakpoint.Enabled then begin
+    Output('breakpoint already exists');
+    result:=true;
+   end else begin
+    if EnableBreakpoint(aHART,aAddress) then begin
+     Output('breakpoint enabled');
+     result:=true;
+    end else begin
+     OutputError('E00');
+    end;
+   end;
+   exit;
+  end;
+ finally
+  fBreakpointsLock.Release;
+ end;
+ if ReadInstruction(aHART,aAddress,Instruction,Size) then begin
+  FillChar(Breakpoint,SizeOf(TBreakpoint),#0);
+  Breakpoint.Address:=aAddress;
+  Breakpoint.Size:=Size;
+  for Index:=0 to TPasRISCVSizeInt(Size)-1 do begin
+   if ReadMemoryByte(aHART,aAddress+TPasRISCVUInt64(Index),Breakpoint.Original[Index]) then begin
+   end else begin
+    OutputError('E00');
+    exit;
+   end;
+  end;
+  Breakpoint.Enabled:=false;
+  fBreakpointsLock.Acquire;
+  try
+   fBreakpoints.Add(aAddress,Breakpoint);
+  finally
+   fBreakpointsLock.Release;
+  end;
+  if EnableBreakpoint(aHART,aAddress) then begin
+   Output('breakpoint set');
+   result:=true;
+  end else begin
+   OutputError('E00');
+  end;
+ end else begin
+  OutputError('E00');
+ end;
+end;
+
+function TPasRISCV.TDebugger.RemoveBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+begin
+ result:=false;
+ if not assigned(aHART) then begin
+  OutputError('E.Invalid CPU');
+  exit;
+ end;
+ if DisableBreakpoint(aHART,aAddress) then begin
+  fBreakpointsLock.Acquire;
+  try
+   if fBreakpoints.Delete(aAddress) then begin
+    Output('breakpoint removed');
+    result:=true;
+   end else begin
+    OutputError('E00');
+   end;
+  finally
+   fBreakpointsLock.Release;
+  end;
+ end else begin
+  OutputError('E00');
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.ClearBreakpoints;
+var Entity:TBreakpointMap.TEntity;
+    HART:THART;
+    Index:TPasRISCVSizeInt;
+begin
+ HART:=GetLocalHART;
+ fBreakpointsLock.Acquire;
+ try
+  for Entity in fBreakpoints.Entities do begin
+   if Entity.State=TBreakpointMap.TEntity.Used then begin
+    if Entity.Value.Enabled then begin
+     for Index:=0 to TPasRISCVSizeInt(Entity.Value.Size)-1 do begin
+      if not WriteMemoryByte(HART,Entity.Value.Address+TPasRISCVUInt64(Index),Entity.Value.Original[Index]) then begin
+       OutputError('E00');
+       exit;
+      end;
+     end;
+    end;
+   end;
+  end;
+  fBreakpoints.Clear;
+ finally
+  fBreakpointsLock.Release;
+ end;
+ Output('breakpoints cleared');
+end;
+
+function TPasRISCV.TDebugger.EnableBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+var Breakpoint:TBreakpoint;
+    Value:TPasRISCVUInt64;
+begin
+ result:=false;
+ if not assigned(aHART) then begin
+  exit;
+ end;
+ fBreakpointsLock.Acquire;
+ try
+  if fBreakpoints.TryGet(aAddress,Breakpoint) then begin
+   if Breakpoint.Enabled then begin
+    result:=true;
+   end else begin
+    if Breakpoint.Size=2 then begin
+     Value:=TPasRISCVUInt64($9002);
+    end else begin
+     Value:=TPasRISCVUInt64($00100073);
+    end;
+    if aHART.StoreEx(aAddress,Value,Breakpoint.Size) then begin
+     Breakpoint.Enabled:=true;
+     fBreakpoints.EntityValues[aAddress]:=Breakpoint;
+     result:=true;
+    end;
+   end;
+  end;
+ finally
+  fBreakpointsLock.Release;
+ end;
+end;
+
+function TPasRISCV.TDebugger.DisableBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
+var Breakpoint:TBreakpoint;
+    Index:TPasRISCVSizeInt;
+begin
+ result:=false;
+ if not assigned(aHART) then begin
+  exit;
+ end;
+ fBreakpointsLock.Acquire;
+ try
+  if fBreakpoints.TryGet(aAddress,Breakpoint) then begin
+   if not Breakpoint.Enabled then begin
+    result:=true;
+   end else begin
+    for Index:=0 to TPasRISCVSizeInt(Breakpoint.Size)-1 do begin
+     if not WriteMemoryByte(aHART,aAddress+TPasRISCVUInt64(Index),Breakpoint.Original[Index]) then begin
+      exit;
+     end;
+    end;
+    Breakpoint.Enabled:=false;
+    fBreakpoints.EntityValues[aAddress]:=Breakpoint;
+    result:=true;
+   end;
+  end;
+ finally
+  fBreakpointsLock.Release;
+ end;
+end;
+
+function TPasRISCV.TDebugger.StepOverBreakpointsIfNeeded(const aSuppressNotify:Boolean):Boolean;
+var HART:THART;
+    Breakpoint:TBreakpoint;
+    PC:TPasRISCVUInt64;
+    HasBreakpoint:Boolean;
+begin
+ result:=false;
+ HART:=GetLocalHART;
+ if not assigned(HART) then begin
+  exit;
+ end;
+ PC:=HART.fState.PC;
+ HasBreakpoint:=false;
+ fBreakpointsLock.Acquire;
+ try
+  if fBreakpoints.TryGet(PC,Breakpoint) then begin
+   HasBreakpoint:=Breakpoint.Enabled;
+  end;
+ finally
+  fBreakpointsLock.Release;
+ end;
+ if HasBreakpoint then begin
+  if DisableBreakpoint(HART,PC) then begin
+   if aSuppressNotify then begin
+    TPasMPInterlocked.Increment(fSuppressNotifyPaused);
+   end;
+   try
+    fMachine.SingleStep(true);
+   finally
+    if aSuppressNotify then begin
+     TPasMPInterlocked.Decrement(fSuppressNotifyPaused);
+    end;
+   end;
+   EnableBreakpoint(HART,PC);
+   result:=true;
+  end;
+ end;
+end;
+
+function TPasRISCV.TDebugger.ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
+var Index:TPasRISCVSizeInt;
+    Command,Token:TPasRISCVRawByteString;
+    Address,Size,Count:TPasRISCVUInt64;
+    HART:THART;
+    HexString:TPasRISCVRawByteString;
+    HexIndex:TPasRISCVSizeInt;
+    ByteHigh,ByteLow:TPasRISCVUInt8;
+begin
+ result:=true;
+ Index:=1;
+ Command:=LowerCase(NextToken(aLine,Index));
+ if length(Command)=0 then begin
+  exit;
+ end;
+ if (Command='quit') or (Command='q') then begin
+  result:=false;
+  exit;
+ end else if (Command='help') or (Command='?') then begin
+  Output('commands: regs (r), mem (m), memw (mw), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
+  exit;
+ end;
+ if (Command='cont') or (Command='c') then begin
+  Continue_;
+  exit;
+ end else if (Command='pause') or (Command='p') then begin
+  Interrupt;
+  exit;
+ end;
+ Pause;
+ HART:=GetLocalHART;
+ if (Command='regs') or (Command='r') then begin
+  DumpRegisters(HART);
+ end else if (Command='mem') or (Command='m') then begin
+  Token:=NextToken(aLine,Index);
+  if ParseUInt64(Token,Address) then begin
+   Token:=NextToken(aLine,Index);
+   if ParseUInt64(Token,Size) then begin
+    DumpMemory(HART,Address,Size);
+   end else begin
+    OutputError('E.Invalid size');
+   end;
+  end else begin
+   OutputError('E.Invalid address');
+  end;
+ end else if (Command='memw') or (Command='mw') then begin
+  Token:=NextToken(aLine,Index);
+  if ParseUInt64(Token,Address) then begin
+   HexString:=NextToken(aLine,Index);
+   if (length(HexString)>=2) and (HexString[1]='0') and ((HexString[2]='x') or (HexString[2]='X')) then begin
+    HexString:=Copy(HexString,3,length(HexString)-2);
+   end;
+   if (length(HexString)>0) and ((length(HexString) and 1)=0) then begin
+    HexIndex:=1;
+    while HexIndex<length(HexString) do begin
+     if HexNibble(HexString[HexIndex],ByteHigh) and HexNibble(HexString[HexIndex+1],ByteLow) then begin
+      if WriteMemoryByte(HART,Address,TPasRISCVUInt8((ByteHigh shl 4) or ByteLow)) then begin
+       inc(Address);
+       inc(HexIndex,2);
+      end else begin
+       OutputError('E00');
+       exit;
+      end;
+     end else begin
+      OutputError('E.Invalid hex');
+      exit;
+     end;
+    end;
+    Output('ok');
+   end else begin
+    OutputError('E.Invalid hex');
+   end;
+  end else begin
+   OutputError('E.Invalid address');
+  end;
+ end else if (Command='step') or (Command='s') or (Command='stepi') or (Command='si') then begin
+  SingleStep(true);
+ end else if (Command='disasm') or (Command='d') then begin
+  Token:=NextToken(aLine,Index);
+  if length(Token)>0 then begin
+   if ParseUInt64(Token,Address) then begin
+    Token:=NextToken(aLine,Index);
+    if ParseUInt64(Token,Count) then begin
+     DumpDisassembler(HART,Address,Count);
+    end else begin
+     DumpDisassembler(HART,Address,16);
+    end;
+   end else begin
+    OutputError('E.Invalid address');
+   end;
+  end else begin
+   if assigned(HART) then begin
+    DumpDisassembler(HART,HART.fState.PC,16);
+   end else begin
+    OutputError('E.Invalid CPU');
+   end;
+  end;
+ end else if (Command='hart') or (Command='h') then begin
+  Token:=NextToken(aLine,Index);
+  if length(Token)=0 then begin
+   Output('hart '+IntToStr(fLocalHARTIndex));
+  end else if ParseUInt64(Token,Address) then begin
+   if assigned(fMachine) and (Address<fMachine.fCountHARTs) then begin
+    SetLocalHARTIndex(Address);
+    Output('hart '+IntToStr(fLocalHARTIndex));
+   end else begin
+    OutputError('E.Invalid HART');
+   end;
+  end else begin
+   OutputError('E.Invalid HART');
+  end;
+end else if (Command='break') or (Command='b') then begin
+ Token:=NextToken(aLine,Index);
+ Token:=LowerCase(Token);
+ if length(Token)=0 then begin
+  ListBreakpoints;
+ end else if Token='list' then begin
+  ListBreakpoints;
+  end else if Token='clear' then begin
+   ClearBreakpoints;
+  end else if Token='-' then begin
+   Token:=NextToken(aLine,Index);
+   if ParseUInt64(Token,Address) then begin
+    RemoveBreakpoint(HART,Address);
+   end else begin
+    OutputError('E.Invalid address');
+   end;
+  end else begin
+   if ParseUInt64(Token,Address) then begin
+    AddBreakpoint(HART,Address);
+   end else begin
+    OutputError('E.Invalid address');
+   end;
+  end;
+ end else if Command='reboot' then begin
+  Reset;
+ end else if Command='shutdown' then begin
+  if assigned(fMachine) then begin
+   fMachine.PowerOff;
+   if assigned(fOnShutdown) then begin
+    fOnShutdown;
+   end;
+  end;
+ end else begin
+  OutputError('E.Unknown command');
+ end;
+end;
+
 procedure TPasRISCV.TDebugger.Interrupt;
 var ClientIndex:TPasRISCVSizeInt;
     ClientThread:TClientThread;
+    HART:THART;
 begin
  fMachine.Pause(true);
  fLock.Acquire;
@@ -34429,12 +35252,24 @@ begin
  finally
   fLock.Release;
  end;
+ if (TOption.LocalDebugger in fOptions) and assigned(fOnStopped) then begin
+  HART:=GetLocalHART;
+  if assigned(HART) then begin
+   fOnStopped('interrupt',HART.fHARTID,HART.fState.PC);
+  end;
+ end;
 end;
 
 procedure TPasRISCV.TDebugger.NotifyPaused;
 var ClientIndex:TPasRISCVSizeInt;
     ClientThread:TClientThread;
+    HART:THART;
+    Reason:TPasRISCVRawByteString;
+    Breakpoint:TBreakpoint;
 begin
+ if TPasMPInterlocked.Read(fSuppressNotifyPaused)<>0 then begin
+  exit;
+ end;
  fLock.Acquire;
  try
 {if TPasMPInterlocked.CompareExchange(fSWBreakState,SWBREAK_ACTIVE,SWBREAK_TRIGGERED)=SWBREAK_TRIGGERED then begin
@@ -34448,13 +35283,28 @@ begin
  finally
   fLock.Release;
  end;
+ if (TOption.LocalDebugger in fOptions) and assigned(fOnStopped) then begin
+  HART:=GetLocalHART;
+  if assigned(HART) then begin
+   Reason:='paused';
+   fBreakpointsLock.Acquire;
+   try
+    if fBreakpoints.TryGet(HART.fState.PC,Breakpoint) and Breakpoint.Enabled then begin
+     Reason:='breakpoint';
+    end;
+   finally
+    fBreakpointsLock.Release;
+   end;
+   fOnStopped(Reason,HART.fHARTID,HART.fState.PC);
+  end;
+ end;
 end;
 
 function TPasRISCV.TDebugger.Halt:Boolean;
 begin
  fLock.Acquire;
  try
-  if fCountClientThreads>0 then begin
+  if (fCountClientThreads>0) or (TOption.LocalDebugger in fOptions) then begin
    result:=fMachine.QueuePause(false);//TPasMPInterlocked.CompareExchange(fSWBreakState,SWBREAK_TRIGGERED,SWBREAK_NONE)=SWBREAK_NONE;
   end else begin
    result:=false;
@@ -34471,16 +35321,27 @@ begin
  end;}
 end;
 
-procedure TPasRISCV.TDebugger.SingleStep;
+procedure TPasRISCV.TDebugger.SingleStep(const aWaitUntilDone:Boolean=false);
+var DidStep:Boolean;
 begin
 //fSWBreakState:=SWBREAK_NONE;
- fMachine.SingleStep(false);
+ DidStep:=StepOverBreakpointsIfNeeded(false);
+ if not DidStep then begin
+  fMachine.SingleStep(aWaitUntilDone);
+ end;
+ if aWaitUntilDone and (TOption.LocalDebugger in fOptions) and assigned(fOnStepDone) then begin
+  fOnStepDone;
+ end;
 end;
 
 procedure TPasRISCV.TDebugger.Continue_;
 begin
 //fSWBreakState:=SWBREAK_NONE;
+ StepOverBreakpointsIfNeeded(true);
  fMachine.Resume(true);
+ if (TOption.LocalDebugger in fOptions) and assigned(fOnResumed) then begin
+  fOnResumed;
+ end;
 end;
 
 procedure TPasRISCV.TDebugger.Reset;
@@ -34489,12 +35350,18 @@ begin
  TPasMPInterlocked.BitwiseOr(fMachine.fRunState,TPasMPUInt32(RUNSTATE_REBOOT));
  fMachine.Interrupt;
  fMachine.WakeUp;
+ if (TOption.LocalDebugger in fOptions) and assigned(fOnReset) then begin
+  fOnReset;
+ end;
 end;
 
 procedure TPasRISCV.TDebugger.Start;
 begin
- if not assigned(fServerThread) then begin
+ if (TOption.GDBServer in fOptions) and not assigned(fServerThread) then begin
   fServerThread:=TServerThread.Create(self);
+ end;
+ if (TOption.LocalCLI in fOptions) and (TOption.LocalThreaded in fOptions) and not assigned(fLocalThread) then begin
+  fLocalThread:=TLocalThread.Create(self);
  end;
 end;
 
@@ -34503,49 +35370,102 @@ var //ClientIndex:TPasRISCVSizeInt;
     ClientThread:TClientThread;
 begin
 
- if assigned(fServerThread) then begin
+ if assigned(fServerThread) or assigned(fLocalThread) then begin
 
   fTerminated:=true;
 
-  // Shutdown server thread first, so that no new clients can connect anymore while we are shutting down
-  try
-   fServerThread.Shutdown;
-  finally
-   FreeAndNil(fServerThread);
+  if assigned(fLocalThread) then begin
+   try
+    fLocalThread.Shutdown;
+   finally
+    FreeAndNil(fLocalThread);
+   end;
   end;
 
-  // Shutdown all client threads, after the server thread has been shut down
-  fLock.Acquire;
-  try
+  if assigned(fServerThread) then begin
 
-   while fCountClientThreads>0 do begin
-
-    dec(fCountClientThreads);
-
-    ClientThread:=fClientThreads[fCountClientThreads];
-    if assigned(ClientThread) then begin
-
-     // Unlock the client thread list lock before shutting down the client thread, so that the client thread can remove itself from the list
-     fLock.Release;
-     try
-      try
-       ClientThread.Shutdown;
-      finally
-       FreeAndNil(ClientThread);
-      end;
-     finally
-      fLock.Acquire;
-     end;
-
-    end;
+   // Shutdown server thread first, so that no new clients can connect anymore while we are shutting down
+   try
+    fServerThread.Shutdown;
+   finally
+    FreeAndNil(fServerThread);
    end;
 
-  finally
-   fLock.Release;
+   // Shutdown all client threads, after the server thread has been shut down
+   fLock.Acquire;
+   try
+
+    while fCountClientThreads>0 do begin
+
+     dec(fCountClientThreads);
+
+     ClientThread:=fClientThreads[fCountClientThreads];
+     if assigned(ClientThread) then begin
+
+      // Unlock the client thread list lock before shutting down the client thread, so that the client thread can remove itself from the list
+      fLock.Release;
+      try
+       try
+        ClientThread.Shutdown;
+       finally
+        FreeAndNil(ClientThread);
+       end;
+      finally
+       fLock.Acquire;
+      end;
+
+     end;
+    end;
+
+   finally
+    fLock.Release;
+   end;
+
   end;
 
  end;
 
+end;
+
+function TPasRISCV.TDebugger.PollLocal:Boolean;
+var Line:TPasRISCVRawByteString;
+begin
+ if not (TOption.LocalCLI in fOptions) then begin
+  result:=false;
+  exit;
+ end;
+ if fTerminated then begin
+  result:=false;
+  exit;
+ end;
+ if assigned(fLocalCommandQueue) and fLocalCommandQueue.TryDequeue(Line) then begin
+  result:=ProcessLocalCommand(Line);
+  exit;
+ end;
+ if assigned(fOnInput) then begin
+  if fOnInput(Line) then begin
+   result:=ProcessLocalCommand(Line);
+  end else begin
+   if TOption.LocalInputPolling in fOptions then begin
+    result:=true;
+   end else begin
+    result:=false;
+   end;
+  end;
+ end else begin
+  if TOption.LocalInputPolling in fOptions then begin
+   result:=true;
+  end else begin
+   result:=false;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.EnqueueLocalCommand(const aCommand:TPasRISCVRawByteString);
+begin
+ if assigned(fLocalCommandQueue) then begin
+  fLocalCommandQueue.Enqueue(aCommand);
+ end;
 end;
 
 { TPasRISCV.TConfiguration }
