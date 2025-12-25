@@ -37414,6 +37414,8 @@ procedure TPasRISCV.Execute(const aSingleStep:Boolean);
 var Index:TPasRISCVSizeInt;
     RunStateUntilMask:TPasRISCVUInt32;
     SingleStepExecuted:Boolean;
+    DebugActive:Boolean;
+    RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 begin
 
  RunStateUntilMask:=RUNSTATE_POWEROFF;
@@ -37431,12 +37433,26 @@ begin
 
    if (fRunState and RUNSTATE_PAUSING)=RUNSTATE_PAUSING then begin
     TPasMPInterlocked.ExchangeBitwiseAndOr(fRunState,TPasMPUInt32(not TPasMPUInt32(RUNSTATE_PAUSING)),TPasMPUInt32(RUNSTATE_PAUSED));
+    RunStateValue:=TPasMPInterlocked.Read(fRunState);
+    DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
+    if DebugActive then begin
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG Execute pausing->paused runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+             ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+    end;
     if assigned(fDebugger) then begin
      fDebugger.NotifyPaused;
     end;
    end;
 
    if (fRunState and (RUNSTATE_RUNNING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=(RUNSTATE_RUNNING or RUNSTATE_PAUSED) then begin
+    RunStateValue:=TPasMPInterlocked.Read(fRunState);
+    DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
+    if DebugActive then begin
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG Execute pause wait start runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+             ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+    end;
     fWakeUpConditionVariableLock.Acquire;
     try
      while (fRunState and (RUNSTATE_RUNNING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=(RUNSTATE_RUNNING or RUNSTATE_PAUSED) do begin
@@ -37444,6 +37460,13 @@ begin
      end;
     finally
      fWakeUpConditionVariableLock.Release;
+    end;
+    RunStateValue:=TPasMPInterlocked.Read(fRunState);
+    DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
+    if DebugActive then begin
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG Execute pause wait done runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+             ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
     end;
     if (fRunState and RUNSTATE_POWEROFF)<>0 then begin
      break;
@@ -37470,6 +37493,13 @@ begin
 
     SingleStepExecuted:=(fRunState and RUNSTATE_SINGLESTEP)<>0;
 
+    RunStateValue:=TPasMPInterlocked.Read(fRunState);
+    DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
+    if DebugActive then begin
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG Execute activate harts runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+             ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+    end;
     fHARTWakeUpConditionVariableLock.Acquire;
     try
      TPasMPInterlocked.BitwiseOr(fHARTActiveMask,fAllHARTMask);
@@ -37486,11 +37516,25 @@ begin
     finally
      fHARTStatusChangeConditionVariableLock.Release;
     end;
+    RunStateValue:=TPasMPInterlocked.Read(fRunState);
+    DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
+    if DebugActive then begin
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG Execute harts done runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+             ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+    end;
 
    end;
 
    if SingleStepExecuted and ((fRunState and RUNSTATE_SINGLESTEP)<>0) and not aSingleStep then begin
     SingleStepExecuted:=false;
+    RunStateValue:=TPasMPInterlocked.Read(fRunState);
+    DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
+    if DebugActive then begin
+     RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
+     WriteLn('DBG Execute step done->pausing runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
+             ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8)));
+    end;
     TPasMPInterlocked.ExchangeBitwiseAndOr(fRunState,TPasMPUInt32(not TPasMPUInt32(RUNSTATE_SINGLESTEP)),TPasMPUInt32(RUNSTATE_PAUSING));
    end;
 
