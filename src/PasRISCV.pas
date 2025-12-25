@@ -37761,21 +37761,22 @@ begin
 end;
 
 procedure TPasRISCV.SingleStep(const aWaitUntilDone:Boolean);
-var
+var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 {$ifdef PasRISCVSingleStepCounter}
     StepCounter:TPasRISCVUInt32;
 {$endif}
-    RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 begin
  RunStateValue:=TPasMPInterlocked.Read(fRunState);
  RunningMaskValue:=TPasMPInterlocked.Read(fHARTRunningMask);
  WriteLn('DBG SingleStep enter runstate=0x'+LowerCase(IntToHex(RunStateValue,8))+
          ' running=0x'+LowerCase(IntToHex(RunningMaskValue,8))+
          ' wait='+IntToStr(Ord(aWaitUntilDone)));
+{$ifdef PasRISCVSingleStepCounter}
+ StepCounter:=TPasMPInterlocked.Read(fSingleStepCounter);
+{$endif}
  if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_SINGLESTEP)) and RUNSTATE_SINGLESTEP)=0 then begin
 
 {$ifdef PasRISCVSingleStepCounter}
-  StepCounter:=TPasMPInterlocked.Read(fSingleStepCounter);
   Resume(false);
 
   if aWaitUntilDone then begin
