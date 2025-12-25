@@ -84,8 +84,8 @@ begin
   TPasRISCV.THART.TExceptionValue.ECallSMode,
   TPasRISCV.THART.TExceptionValue.ECallHMode,
   TPasRISCV.THART.TExceptionValue.ECallMMode:begin
-   if Machine.HART.State^.Registers[TPasRISCV.THART.TRegister.A7]=93 then begin // Exit syscall
-    TestErrorCode:=Machine.HART.State^.Registers[TPasRISCV.THART.TRegister.A0];
+   if Machine.HART.State^.Registers[TPasRISCV.TRegister.A7]=93 then begin // Exit syscall
+    TestErrorCode:=Machine.HART.State^.Registers[TPasRISCV.TRegister.A0];
     result:=true;
    end else begin
     result:=false;
@@ -286,7 +286,7 @@ begin
      HTIF_SYSTEM_CMD_SYSCALL:begin
       if (Payload and 1)<>0 then begin
        HTIFExitCode:=Payload shr 1;
-       TestErrorCode:=Machine.HART.State^.Registers[TPasRISCV.THART.TRegister.A0];
+       TestErrorCode:=Machine.HART.State^.Registers[TPasRISCV.TRegister.A0];
       end else begin
        SysCall[0]:=Machine.Bus.Load(nil,Payload+(0*SizeOf(TPasRISCVUInt64)),8);
        SysCall[1]:=Machine.Bus.Load(nil,Payload+(1*SizeOf(TPasRISCVUInt64)),8);
