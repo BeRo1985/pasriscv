@@ -5362,6 +5362,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fTerminated:Boolean;
               procedure Output(const aString:TPasRISCVRawByteString);
               procedure OutputError(const aString:TPasRISCVRawByteString);
+              function DefaultOnInput(var aString:TPasRISCVRawByteString):Boolean;
+              procedure DefaultOnOutput(const aString:TPasRISCVRawByteString);
               function GetHARTByIndex(const aIndex:TPasRISCVUInt64):THART;
               function GetLocalHART:THART;
               procedure SetLocalHARTIndex(const aIndex:TPasRISCVUInt64);
@@ -34524,6 +34526,10 @@ begin
  fOnReset:=nil;
  fOnShutdown:=nil;
  fOnError:=nil;
+ if TOption.LocalCLI in fOptions then begin
+  fOnInput:=DefaultOnInput;
+  fOnOutput:=DefaultOnOutput;
+ end;
  if TOption.GDBServer in fOptions then begin
   fRNLInstance:=TRNLInstance.Create;
   fRNLNetwork:=TRNLRealNetwork.Create(fRNLInstance);
@@ -34582,6 +34588,24 @@ begin
  end else begin
   Output(aString);
  end;
+end;
+
+function TPasRISCV.TDebugger.DefaultOnInput(var aString:TPasRISCVRawByteString):Boolean;
+begin
+ ReadLn(aString);
+ result:=true;
+{if not Eof then begin
+  ReadLn(aString);
+  result:=true;
+ end else begin
+  aString:='';
+  result:=false;
+ end;}
+end;
+
+procedure TPasRISCV.TDebugger.DefaultOnOutput(const aString:TPasRISCVRawByteString);
+begin
+ WriteLn(aString);
 end;
 
 function TPasRISCV.TDebugger.GetHARTByIndex(const aIndex:TPasRISCVUInt64):THART;
@@ -35360,6 +35384,14 @@ end;
 
 procedure TPasRISCV.TDebugger.Start;
 begin
+ if TOption.LocalCLI in fOptions then begin
+  if not assigned(fOnInput) then begin
+   fOnInput:=DefaultOnInput;
+  end;
+  if not assigned(fOnOutput) then begin
+   fOnOutput:=DefaultOnOutput;
+  end;
+ end;
  if (TOption.GDBServer in fOptions) and not assigned(fServerThread) then begin
   fServerThread:=TServerThread.Create(self);
  end;
