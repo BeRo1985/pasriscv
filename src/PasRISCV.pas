@@ -35093,7 +35093,7 @@ begin
  for Index:=0 to aCount-1 do begin
   if ReadInstruction(aHART,Address,Instruction,Size) then begin
    if Size=2 then begin
-    HexValue:=LowerCase(IntToHex(Instruction and $ffff,4));
+    HexValue:='    '+LowerCase(IntToHex(Instruction and $ffff,4));
    end else begin
     HexValue:=LowerCase(IntToHex(Instruction,8));
    end;
