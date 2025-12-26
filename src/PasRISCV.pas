@@ -5388,6 +5388,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               class function ByteToHex(const aValue:TPasRISCVUInt8):TPasRISCVRawByteString; static;
               function ParseUInt64(const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
               function ParseAddressToken(const aHART:THART;const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
+              function FormatFPURegisterValue(const aValue:TFPURegisterValue):TPasRISCVRawByteString;
               function NextToken(const aLine:TPasRISCVRawByteString;var aIndex:TPasRISCVSizeInt):TPasRISCVRawByteString;
               function ReadMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt8):Boolean;
               function WriteMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8):Boolean;
@@ -34819,7 +34820,7 @@ begin
 end;
 
 function TPasRISCV.TDebugger.ParseAddressToken(const aHART:THART;const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
-var Register:TRegister;
+var Register_:TRegister;
     TokenLower:TPasRISCVRawByteString;
 begin
  result:=false;
@@ -34844,14 +34845,24 @@ begin
   result:=true;
   exit;
  end;
- for Register:=Low(TRegister) to High(TRegister) do begin
-  if (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterRawNames[Register])) or
-     (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterABINames[Register])) then begin
-   aValue:=aHART.fState.Registers[Register];
+ for Register_:=Low(TRegister) to High(TRegister) do begin
+  if (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterRawNames[Register_])) or
+     (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterABINames[Register_])) then begin
+   aValue:=aHART.fState.Registers[Register_];
    result:=true;
    exit;
   end;
  end;
+end;
+
+function TPasRISCV.TDebugger.FormatFPURegisterValue(const aValue:TFPURegisterValue):TPasRISCVRawByteString;
+begin
+ if (aValue.ui64 shr 32)=TPasRISCVUInt64($ffffffff) then begin
+  result:='f32='+FloatToStr(aValue.f32);
+ end else begin
+  result:='f64='+FloatToStr(aValue.f64);
+ end;
+ result:=result+' (0x'+LowerCase(IntToHex(aValue.ui64,16))+')';
 end;
 
 function TPasRISCV.TDebugger.NextToken(const aLine:TPasRISCVRawByteString;var aIndex:TPasRISCVSizeInt):TPasRISCVRawByteString;
@@ -34923,7 +34934,7 @@ begin
 end;
 
 procedure TPasRISCV.TDebugger.DumpRegistersTo(const aHART:THART;const aOnOutput:TOnOutput;const aOnError:TOnError);
-var Register:TRegister;
+var Register_:TRegister;
     FPURegister:TFPURegister;
     s:TPasRISCVRawByteString;
  procedure Emit(const aString:TPasRISCVRawByteString);
@@ -34947,14 +34958,14 @@ begin
  end;
  Emit('HART #'+IntToStr(aHART.fHARTID)+': ');
  Emit('Registers:');
- for Register:=Low(TRegister) to High(TRegister) do begin
-  Emit(TInstructionSetArchitecture.RegisterABINames[Register]+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register],16)));
+ for Register_:=Low(TRegister) to High(TRegister) do begin
+  Emit(TInstructionSetArchitecture.RegisterABINames[Register_]+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register_],16)));
  end;
  Emit('pc: 0x'+LowerCase(IntToHex(aHART.fState.PC,16)));
  Emit('FPU Registers:');
  for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
-  s:=FloatToStr(aHART.fState.FPURegisters[FPURegister].f64);
-  Emit(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+s+' (0x'+LowerCase(IntToHex(aHART.fState.FPURegisters[FPURegister].ui64,16))+')');
+  s:=FormatFPURegisterValue(aHART.fState.FPURegisters[FPURegister]);
+  Emit(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+s);
  end;
  if aHART.fState.Sleep then begin
   Emit('wfi: true');
@@ -35410,6 +35421,10 @@ var Index:TPasRISCVSizeInt;
     Command,Token,Token2:TPasRISCVRawByteString;
     Address,Size,Count:TPasRISCVUInt64;
     HART:THART;
+    Register_:TRegister;
+    FPURegister:TFPURegister;
+    TokenLower:TPasRISCVRawByteString;
+    Found:Boolean;
     HexString:TPasRISCVRawByteString;
     HexIndex:TPasRISCVSizeInt;
     ByteHigh,ByteLow:TPasRISCVUInt8;
@@ -35438,7 +35453,7 @@ begin
   result:=false;
   exit;
  end else if (Command='help') or (Command='?') then begin
-  Emit('commands: regs (r), mem (m), memw (mw), stack (st), backtrace (bt), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
+  Emit('commands: regs (r), print, mem (m), memw (mw), stack (st), backtrace (bt), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
   exit;
  end;
  if (Command='cont') or (Command='c') then begin
@@ -35452,6 +35467,51 @@ begin
  HART:=GetLocalHART;
  if (Command='regs') or (Command='r') then begin
   DumpRegistersTo(HART,aOnOutput,aOnError);
+ end else if Command='print' then begin
+  if not assigned(HART) then begin
+   EmitError('E.Invalid CPU');
+   exit;
+  end;
+  Token:=NextToken(aLine,Index);
+  if length(Token)=0 then begin
+   EmitError('E.Missing register');
+   exit;
+  end;
+  while length(Token)>0 do begin
+   TokenLower:=LowerCase(Token);
+   Found:=false;
+   if TokenLower='pc' then begin
+    Emit('pc: 0x'+LowerCase(IntToHex(HART.fState.PC,16)));
+    Found:=true;
+   end else if TokenLower='fp' then begin
+    Emit('fp: 0x'+LowerCase(IntToHex(HART.fState.Registers[TRegister.S0],16)));
+    Found:=true;
+   end else begin
+    for Register_:=Low(TRegister) to High(TRegister) do begin
+     if (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterRawNames[Register_])) or
+        (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterABINames[Register_])) then begin
+      Emit(TInstructionSetArchitecture.RegisterABINames[Register_]+': 0x'+LowerCase(IntToHex(HART.fState.Registers[Register_],16)));
+      Found:=true;
+      break;
+     end;
+    end;
+   end;
+   if not Found then begin
+    for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+     if (TokenLower=LowerCase(TInstructionSetArchitecture.FPURegisterRawNames[FPURegister])) or
+        (TokenLower=LowerCase(TInstructionSetArchitecture.FPURegisterABINames[FPURegister])) then begin
+      Emit(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+FormatFPURegisterValue(HART.fState.FPURegisters[FPURegister]));
+      Found:=true;
+      break;
+     end;
+    end;
+   end;
+   if not Found then begin
+    EmitError('E.Invalid register');
+    exit;
+   end;
+   Token:=NextToken(aLine,Index);
+  end;
  end else if (Command='mem') or (Command='m') then begin
   Token:=NextToken(aLine,Index);
   if ParseAddressToken(HART,Token,Address) then begin
