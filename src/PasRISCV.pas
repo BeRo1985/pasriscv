@@ -1,7 +1,7 @@
 (******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-12-26-02-40-0000                       *
+ *                        Version 2025-12-26-02-44-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -32743,7 +32743,7 @@ begin
  fMachine:=aMachine;
  fInstructionSet:=TPasRISCV.TInstructionSetArchitecture.Create(aMachine);
  fOptions.Style:=TStyle.ABI;
- fOptions.Flags:=[TFlag.HexImmediate];
+ fOptions.Flags:=[TFlag.HexImmediate,TFlag.CSRNames];
 end;
 
 destructor TPasRISCV.TDisassembler.Destroy;
