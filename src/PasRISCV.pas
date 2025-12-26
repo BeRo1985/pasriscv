@@ -35438,7 +35438,7 @@ begin
   result:=false;
   exit;
  end else if (Command='help') or (Command='?') then begin
-  Emit('commands: regs (r), mem (m), memw (mw), stack (st), bt, step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
+  Emit('commands: regs (r), mem (m), memw (mw), stack (st), backtrace (bt), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
   exit;
  end;
  if (Command='cont') or (Command='c') then begin
@@ -35526,7 +35526,7 @@ begin
   end else begin
    DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
   end;
- end else if (Command='bt') or (Command='backtrace') then begin
+ end else if (Command='backtrace') or (Command='bt') then begin
   if not assigned(HART) then begin
    EmitError('E.Invalid CPU');
    exit;
@@ -35619,6 +35619,7 @@ begin
     fOnShutdown;
    end;
   end;
+  result:=false;
  end else begin
   EmitError('E.Unknown command');
  end;
