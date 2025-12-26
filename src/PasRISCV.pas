@@ -5382,12 +5382,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               class function HexNibble(const aDigit:TPasRISCVRawByteChar;out aValue:TPasRISCVUInt8):Boolean; static;
               class function ByteToHex(const aValue:TPasRISCVUInt8):TPasRISCVRawByteString; static;
               function ParseUInt64(const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
+              function ParseAddressToken(const aHART:THART;const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
               function NextToken(const aLine:TPasRISCVRawByteString;var aIndex:TPasRISCVSizeInt):TPasRISCVRawByteString;
               function ReadMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt8):Boolean;
               function WriteMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8):Boolean;
               function ReadInstruction(const aHART:THART;const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32;out aSize:TPasRISCVUInt64):Boolean;
               procedure DumpRegisters(const aHART:THART);
               procedure DumpMemory(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              procedure DumpStack(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               procedure DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
               procedure ListBreakpoints;
               function AddBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
@@ -34745,6 +34747,42 @@ begin
  result:=true;
 end;
 
+function TPasRISCV.TDebugger.ParseAddressToken(const aHART:THART;const aToken:TPasRISCVRawByteString;out aValue:TPasRISCVUInt64):Boolean;
+var Register:TRegister;
+    TokenLower:TPasRISCVRawByteString;
+begin
+ result:=false;
+ aValue:=0;
+ if length(aToken)=0 then begin
+  exit;
+ end;
+ if ParseUInt64(aToken,aValue) then begin
+  result:=true;
+  exit;
+ end;
+ if not assigned(aHART) then begin
+  exit;
+ end;
+ TokenLower:=LowerCase(aToken);
+ if TokenLower='pc' then begin
+  aValue:=aHART.fState.PC;
+  result:=true;
+  exit;
+ end else if TokenLower='fp' then begin
+  aValue:=aHART.fState.Registers[TRegister.S0];
+  result:=true;
+  exit;
+ end;
+ for Register:=Low(TRegister) to High(TRegister) do begin
+  if (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterRawNames[Register])) or
+     (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterABINames[Register])) then begin
+   aValue:=aHART.fState.Registers[Register];
+   result:=true;
+   exit;
+  end;
+ end;
+end;
+
 function TPasRISCV.TDebugger.NextToken(const aLine:TPasRISCVRawByteString;var aIndex:TPasRISCVSizeInt):TPasRISCVRawByteString;
 var Start:TPasRISCVSizeInt;
 begin
@@ -34875,6 +34913,21 @@ begin
   Output(Line);
   inc(Offset,LineBytes);
  end;
+end;
+
+procedure TPasRISCV.TDebugger.DumpStack(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var SP,FP:TPasRISCVUInt64;
+begin
+ if not assigned(aHART) then begin
+  OutputError('E.Invalid CPU');
+  exit;
+ end;
+ SP:=aHART.fState.Registers[TRegister.SP];
+ FP:=aHART.fState.Registers[TRegister.S0];
+ Output('stack @ 0x'+LowerCase(IntToHex(aAddress,16))+
+        ' (sp=0x'+LowerCase(IntToHex(SP,16))+
+        ' fp=0x'+LowerCase(IntToHex(FP,16))+')');
+ DumpMemory(aHART,aAddress,aSize);
 end;
 
 procedure TPasRISCV.TDebugger.DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
@@ -35143,7 +35196,7 @@ end;
 
 function TPasRISCV.TDebugger.ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
 var Index:TPasRISCVSizeInt;
-    Command,Token:TPasRISCVRawByteString;
+    Command,Token,Token2:TPasRISCVRawByteString;
     Address,Size,Count:TPasRISCVUInt64;
     HART:THART;
     HexString:TPasRISCVRawByteString;
@@ -35157,10 +35210,10 @@ begin
   exit;
  end;
  if (Command='quit') or (Command='q') then begin
-  result:=false;
-  exit;
- end else if (Command='help') or (Command='?') then begin
-  Output('commands: regs (r), mem (m), memw (mw), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
+ result:=false;
+ exit;
+end else if (Command='help') or (Command='?') then begin
+  Output('commands: regs (r), mem (m), memw (mw), stack (st), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
   exit;
  end;
  if (Command='cont') or (Command='c') then begin
@@ -35176,7 +35229,7 @@ begin
   DumpRegisters(HART);
  end else if (Command='mem') or (Command='m') then begin
   Token:=NextToken(aLine,Index);
-  if ParseUInt64(Token,Address) then begin
+  if ParseAddressToken(HART,Token,Address) then begin
    Token:=NextToken(aLine,Index);
    if ParseUInt64(Token,Size) then begin
     DumpMemory(HART,Address,Size);
@@ -35188,7 +35241,7 @@ begin
   end;
  end else if (Command='memw') or (Command='mw') then begin
   Token:=NextToken(aLine,Index);
-  if ParseUInt64(Token,Address) then begin
+  if ParseAddressToken(HART,Token,Address) then begin
    HexString:=NextToken(aLine,Index);
    if (length(HexString)>=2) and (HexString[1]='0') and ((HexString[2]='x') or (HexString[2]='X')) then begin
     HexString:=Copy(HexString,3,length(HexString)-2);
@@ -35216,12 +35269,44 @@ begin
   end else begin
    OutputError('E.Invalid address');
   end;
+ end else if (Command='stack') or (Command='st') then begin
+  if not assigned(HART) then begin
+   OutputError('E.Invalid CPU');
+   exit;
+  end;
+  Address:=HART.fState.Registers[TRegister.SP];
+  Size:=128;
+  Token:=NextToken(aLine,Index);
+  if length(Token)>0 then begin
+   Token2:=NextToken(aLine,Index);
+   if length(Token2)>0 then begin
+    if ParseAddressToken(HART,Token,Address) then begin
+     if ParseUInt64(Token2,Size) then begin
+      DumpStack(HART,Address,Size);
+     end else begin
+      OutputError('E.Invalid size');
+     end;
+    end else begin
+     OutputError('E.Invalid address');
+    end;
+   end else begin
+    if ParseUInt64(Token,Size) then begin
+     DumpStack(HART,Address,Size);
+    end else if ParseAddressToken(HART,Token,Address) then begin
+     DumpStack(HART,Address,Size);
+    end else begin
+     OutputError('E.Invalid argument');
+    end;
+   end;
+  end else begin
+   DumpStack(HART,Address,Size);
+  end;
  end else if (Command='step') or (Command='s') or (Command='stepi') or (Command='si') then begin
   SingleStep(true);
  end else if (Command='disasm') or (Command='d') then begin
   Token:=NextToken(aLine,Index);
   if length(Token)>0 then begin
-   if ParseUInt64(Token,Address) then begin
+   if ParseAddressToken(HART,Token,Address) then begin
     Token:=NextToken(aLine,Index);
     if ParseUInt64(Token,Count) then begin
      DumpDisassembler(HART,Address,Count);
