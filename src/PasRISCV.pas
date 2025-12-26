@@ -1,7 +1,7 @@
-(******************************************************************************
+﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2025-12-26-02-56-0000                       *
+ *                        Version 2025-12-26-08-25-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -34934,9 +34934,12 @@ begin
 end;
 
 procedure TPasRISCV.TDebugger.DumpRegistersTo(const aHART:THART;const aOnOutput:TOnOutput;const aOnError:TOnError);
-var Register_:TRegister;
+type TStringLines=array of TPasRISCVRawByteString;
+var Count:TPasRISCVSizeInt;
+    Register_:TRegister;
     FPURegister:TFPURegister;
-    s:TPasRISCVRawByteString;
+    s,r:TPasRISCVRawByteString;
+    StringLines:TStringLines;
  procedure Emit(const aString:TPasRISCVRawByteString);
  begin
   if assigned(aOnOutput) then begin
@@ -34951,26 +34954,82 @@ var Register_:TRegister;
    Emit(aString);
   end;
  end;
+ procedure EmitLines(var aCount:TPasRISCVSizeInt);
+ var Index,MaxLength,Rows,ColumnWidth,Columns,Row,Column,ItemIndex,PadCount,PadIndex:TPasRISCVSizeInt;
+ begin
+  MaxLength:=1;
+  for Index:=0 to aCount-1 do begin
+   MaxLength:=Max(MaxLength,Length(StringLines[Index])+3);
+  end;
+  ColumnWidth:=80;
+  Columns:=ColumnWidth div MaxLength;
+  if Columns<1 then begin
+   Columns:=1;
+  end else if Columns>aCount then begin
+   Columns:=aCount;
+  end;
+  Rows:=((aCount+Columns)-1) div Columns;
+  for Row:=0 to Rows-1 do begin
+   s:='';
+   for Column:=0 to Columns-1 do begin
+    ItemIndex:=(Row*Columns)+Column;
+    if ItemIndex<aCount then begin
+     r:=StringLines[ItemIndex];
+     if (Column<Columns-1) and (Length(r)<MaxLength) then begin
+      PadCount:=MaxLength-Length(r);
+      for PadIndex:=1 to PadCount do begin
+       r:=r+' ';
+      end;
+     end;
+     s:=s+r;
+    end else begin
+     break;
+    end;
+   end;
+   Emit(s);
+  end;
+ end;
 begin
  if not assigned(aHART) then begin
   EmitError('E.Invalid CPU');
   exit;
  end;
- Emit('HART #'+IntToStr(aHART.fHARTID)+': ');
- Emit('Registers:');
- for Register_:=Low(TRegister) to High(TRegister) do begin
-  Emit(TInstructionSetArchitecture.RegisterABINames[Register_]+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register_],16)));
- end;
- Emit('pc: 0x'+LowerCase(IntToHex(aHART.fState.PC,16)));
- Emit('FPU Registers:');
- for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
-  s:=FormatFPURegisterValue(aHART.fState.FPURegisters[FPURegister]);
-  Emit(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+s);
- end;
- if aHART.fState.Sleep then begin
-  Emit('wfi: true');
- end else begin
-  Emit('wfi: false');
+ StringLines:=nil;
+ try
+  Emit('HART #'+IntToStr(aHART.fHARTID)+': ');
+  Emit('Registers:');
+  SetLength(StringLines,Max((Ord(High(TRegister))-Ord(Low(TRegister)))+1,(Ord(High(TFPURegister))-Ord(Low(TFPURegister)))+1)+1);
+  Count:=0;
+  for Register_:=Low(TRegister) to High(TRegister) do begin
+   r:=TInstructionSetArchitecture.RegisterABINames[Register_];
+   while length(r)<5 do begin
+    r:=' '+r;
+   end;
+   StringLines[Count]:=r+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register_],16));
+   inc(Count);
+  end;
+  StringLines[Count]:='   pc: 0x'+LowerCase(IntToHex(aHART.fState.PC,16));
+  inc(Count);
+  EmitLines(Count);
+  Emit('FPU Registers:');
+  Count:=0;
+  for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+   r:=TInstructionSetArchitecture.FPURegisterABINames[FPURegister];
+   while length(r)<5 do begin
+    r:=' '+r;
+   end;
+   s:=FormatFPURegisterValue(aHART.fState.FPURegisters[FPURegister]);
+   StringLines[Count]:=r+': '+s;
+   inc(Count);
+  end;
+  EmitLines(Count);
+  if aHART.fState.Sleep then begin
+   Emit('wfi: true');
+  end else begin
+   Emit('wfi: false');
+  end;
+ finally
+  StringLines:=nil;
  end;
 end;
 
