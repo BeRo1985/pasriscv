@@ -5294,6 +5294,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure ResendReply;
                      procedure SendBufferAppend(const aString:TPasRISCVRawByteString);
                      procedure ReplyString(const aString:TPasRISCVRawByteString);
+                     procedure ReplyConsole(const aString:TPasRISCVRawByteString);
+                     function DecodeHexString(const aHex:TPasRISCVRawByteString;out aDecoded:TPasRISCVRawByteString):Boolean;
+                     procedure MonitorOutput(const aString:TPasRISCVRawByteString);
+                     procedure MonitorError(const aString:TPasRISCVRawByteString);
+                     procedure ProcessMonitorCommand(const aCommand:TPasRISCVRawByteString);
                      procedure ConsumeBytes(const aBytes:TPasRISCVSizeInt);
                      procedure ProcessStep;
                      procedure ProcessContinue;
@@ -5388,9 +5393,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function WriteMemoryByte(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8):Boolean;
               function ReadInstruction(const aHART:THART;const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32;out aSize:TPasRISCVUInt64):Boolean;
               procedure DumpRegisters(const aHART:THART);
+              procedure DumpRegistersTo(const aHART:THART;const aOnOutput:TOnOutput;const aOnError:TOnError);
               procedure DumpMemory(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              procedure DumpMemoryTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
               procedure DumpStack(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              procedure DumpStackTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
               procedure DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
+              procedure DumpDisassemblerTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
+              procedure DumpBacktrace(const aHART:THART;const aMaxDepth:TPasRISCVUInt64);
+              procedure DumpBacktraceTo(const aHART:THART;const aMaxDepth:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
               procedure ListBreakpoints;
               function AddBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
               function RemoveBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
@@ -5398,6 +5409,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function EnableBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
               function DisableBreakpoint(const aHART:THART;const aAddress:TPasRISCVUInt64):Boolean;
               function StepOverBreakpointsIfNeeded(const aSuppressNotify:Boolean):Boolean;
+              function ProcessCommand(const aLine:TPasRISCVRawByteString;const aOnOutput:TOnOutput;const aOnError:TOnError):Boolean;
               function ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
              public
               constructor Create(const aMachine:TPasRISCV;const aPort:TPasRISCVUInt16;const aOptions:TOptions=[TOption.GDBServer]);
@@ -33777,6 +33789,55 @@ begin
  ResendReply;
 end;
 
+procedure TPasRISCV.TDebugger.TClientThread.ReplyConsole(const aString:TPasRISCVRawByteString);
+var Index:TPasRISCVSizeInt;
+    HexString:TPasRISCVRawByteString;
+begin
+ HexString:='';
+ for Index:=1 to length(aString) do begin
+  HexString:=HexString+ByteToHex(TPasRISCVUInt8(aString[Index]));
+ end;
+ ReplyString('O'+HexString);
+end;
+
+function TPasRISCV.TDebugger.TClientThread.DecodeHexString(const aHex:TPasRISCVRawByteString;out aDecoded:TPasRISCVRawByteString):Boolean;
+var Index:TPasRISCVSizeInt;
+    ByteValue:TPasRISCVUInt8;
+begin
+ aDecoded:='';
+ if (length(aHex) and 1)<>0 then begin
+  result:=false;
+  exit;
+ end;
+ Index:=1;
+ while Index<=length(aHex) do begin
+  ByteValue:=HexToByte(aHex,Index);
+  aDecoded:=aDecoded+TPasRISCVRawByteChar(ByteValue);
+ end;
+ result:=true;
+end;
+
+procedure TPasRISCV.TDebugger.TClientThread.MonitorOutput(const aString:TPasRISCVRawByteString);
+begin
+ if (length(aString)>0) and ((aString[length(aString)]=#10) or (aString[length(aString)]=#13)) then begin
+  ReplyConsole(aString);
+ end else begin
+  ReplyConsole(aString+#10);
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.TClientThread.MonitorError(const aString:TPasRISCVRawByteString);
+begin
+ MonitorOutput(aString);
+end;
+
+procedure TPasRISCV.TDebugger.TClientThread.ProcessMonitorCommand(const aCommand:TPasRISCVRawByteString);
+begin
+ if assigned(fDebugger) then begin
+  fDebugger.ProcessCommand(aCommand,MonitorOutput,MonitorError);
+ end;
+end;
+
 procedure TPasRISCV.TDebugger.TClientThread.ConsumeBytes(const aBytes:TPasRISCVSizeInt);
 var Amount:TPasRISCVSizeInt;
 begin
@@ -34165,10 +34226,20 @@ end;
 
 procedure TPasRISCV.TDebugger.TClientThread.ProcessQuery(const aPacketString:TPasRISCVRawByteString);
 var HARTIndex,Index:TPasRISCVSizeInt;
-    QueryCommand,QueryPayload,Feature,s:TPasRISCVRawByteString;
+    QueryCommand,QueryPayload,Feature,s,CommandHex,Command:TPasRISCVRawByteString;
 begin
  QueryCommand:='';
  QueryPayload:='';
+ if (length(aPacketString)>=6) and (Copy(aPacketString,2,5)='Rcmd,') then begin
+  CommandHex:=Copy(aPacketString,7,length(aPacketString)-6);
+  if DecodeHexString(CommandHex,Command) then begin
+   ProcessMonitorCommand(Command);
+   ReplyString('OK');
+  end else begin
+   ReplyString('E00');
+  end;
+  exit;
+ end;
  if length(aPacketString)>=2 then begin
   for Index:=2 to length(aPacketString) do begin
    if aPacketString[Index]=TPasRISCVRawByteChar(':') then begin
@@ -34847,41 +34918,79 @@ begin
 end;
 
 procedure TPasRISCV.TDebugger.DumpRegisters(const aHART:THART);
+begin
+ DumpRegistersTo(aHART,Output,OutputError);
+end;
+
+procedure TPasRISCV.TDebugger.DumpRegistersTo(const aHART:THART;const aOnOutput:TOnOutput;const aOnError:TOnError);
 var Register:TRegister;
     FPURegister:TFPURegister;
     s:TPasRISCVRawByteString;
+ procedure Emit(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnOutput) then begin
+   aOnOutput(aString);
+  end;
+ end;
+ procedure EmitError(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnError) then begin
+   aOnError(aString);
+  end else begin
+   Emit(aString);
+  end;
+ end;
 begin
  if not assigned(aHART) then begin
-  OutputError('E.Invalid CPU');
+  EmitError('E.Invalid CPU');
   exit;
  end;
- Output('HART #'+IntToStr(aHART.fHARTID)+': ');
- Output('Registers:');
+ Emit('HART #'+IntToStr(aHART.fHARTID)+': ');
+ Emit('Registers:');
  for Register:=Low(TRegister) to High(TRegister) do begin
-  Output(TInstructionSetArchitecture.RegisterABINames[Register]+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register],16)));
+  Emit(TInstructionSetArchitecture.RegisterABINames[Register]+': 0x'+LowerCase(IntToHex(aHART.fState.Registers[Register],16)));
  end;
- Output('pc: 0x'+LowerCase(IntToHex(aHART.fState.PC,16)));
- Output('FPU Registers:');
+ Emit('pc: 0x'+LowerCase(IntToHex(aHART.fState.PC,16)));
+ Emit('FPU Registers:');
  for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
   s:=FloatToStr(aHART.fState.FPURegisters[FPURegister].f64);
-  Output(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+s+' (0x'+LowerCase(IntToHex(aHART.fState.FPURegisters[FPURegister].ui64,16))+')');
+  Emit(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+s+' (0x'+LowerCase(IntToHex(aHART.fState.FPURegisters[FPURegister].ui64,16))+')');
  end;
  if aHART.fState.Sleep then begin
-  Output('wfi: true');
+  Emit('wfi: true');
  end else begin
-  Output('wfi: false');
+  Emit('wfi: false');
  end;
 end;
 
 procedure TPasRISCV.TDebugger.DumpMemory(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+begin
+ DumpMemoryTo(aHART,aAddress,aSize,Output,OutputError);
+end;
+
+procedure TPasRISCV.TDebugger.DumpMemoryTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
 var Offset,LineBytes:TPasRISCVUInt64;
     Index:TPasRISCVSizeInt;
     ByteValue:TPasRISCVUInt8;
     LineHex,LineASCII,Line:TPasRISCVRawByteString;
     LineAddress:TPasRISCVUInt64;
+ procedure Emit(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnOutput) then begin
+   aOnOutput(aString);
+  end;
+ end;
+ procedure EmitError(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnError) then begin
+   aOnError(aString);
+  end else begin
+   Emit(aString);
+  end;
+ end;
 begin
  if not assigned(aHART) then begin
-  OutputError('E.Invalid CPU');
+  EmitError('E.Invalid CPU');
   exit;
  end;
  Offset:=0;
@@ -34902,7 +35011,7 @@ begin
      LineASCII:=LineASCII+'.';
     end;
    end else begin
-    OutputError('E00');
+    EmitError('E00');
     exit;
    end;
   end;
@@ -34910,36 +35019,74 @@ begin
    LineHex:=LineHex+'   ';
   end;
   Line:=LowerCase(IntToHex(LineAddress,16))+': '+LineHex+' '+LineASCII;
-  Output(Line);
+  Emit(Line);
   inc(Offset,LineBytes);
  end;
 end;
 
 procedure TPasRISCV.TDebugger.DumpStack(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+begin
+ DumpStackTo(aHART,aAddress,aSize,Output,OutputError);
+end;
+
+procedure TPasRISCV.TDebugger.DumpStackTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
 var SP,FP:TPasRISCVUInt64;
+ procedure Emit(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnOutput) then begin
+   aOnOutput(aString);
+  end;
+ end;
+ procedure EmitError(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnError) then begin
+   aOnError(aString);
+  end else begin
+   Emit(aString);
+  end;
+ end;
 begin
  if not assigned(aHART) then begin
-  OutputError('E.Invalid CPU');
+  EmitError('E.Invalid CPU');
   exit;
  end;
  SP:=aHART.fState.Registers[TRegister.SP];
  FP:=aHART.fState.Registers[TRegister.S0];
- Output('stack @ 0x'+LowerCase(IntToHex(aAddress,16))+
-        ' (sp=0x'+LowerCase(IntToHex(SP,16))+
-        ' fp=0x'+LowerCase(IntToHex(FP,16))+')');
- DumpMemory(aHART,aAddress,aSize);
+ Emit('stack @ 0x'+LowerCase(IntToHex(aAddress,16))+
+      ' (sp=0x'+LowerCase(IntToHex(SP,16))+
+      ' fp=0x'+LowerCase(IntToHex(FP,16))+')');
+ DumpMemoryTo(aHART,aAddress,aSize,aOnOutput,aOnError);
 end;
 
 procedure TPasRISCV.TDebugger.DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
+begin
+ DumpDisassemblerTo(aHART,aAddress,aCount,Output,OutputError);
+end;
+
+procedure TPasRISCV.TDebugger.DumpDisassemblerTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
 var Index:TPasRISCVUInt64;
     Address:TPasRISCVUInt64;
     Instruction:TPasRISCVUInt32;
     Size:TPasRISCVUInt64;
     HexValue:TPasRISCVRawByteString;
     Line:TPasRISCVRawByteString;
+ procedure Emit(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnOutput) then begin
+   aOnOutput(aString);
+  end;
+ end;
+ procedure EmitError(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnError) then begin
+   aOnError(aString);
+  end else begin
+   Emit(aString);
+  end;
+ end;
 begin
  if not assigned(aHART) then begin
-  OutputError('E.Invalid CPU');
+  EmitError('E.Invalid CPU');
   exit;
  end;
  Address:=aAddress;
@@ -34951,12 +35098,76 @@ begin
     HexValue:=LowerCase(IntToHex(Instruction,8));
    end;
    Line:=LowerCase(IntToHex(Address,16))+': '+HexValue+' '+TPasRISCVRawByteString(fDisassembler.DisassembleInstruction(Address,Instruction));
-   Output(Line);
+   Emit(Line);
    inc(Address,Size);
   end else begin
-   OutputError('E00');
+   EmitError('E00');
    exit;
   end;
+ end;
+end;
+
+procedure TPasRISCV.TDebugger.DumpBacktrace(const aHART:THART;const aMaxDepth:TPasRISCVUInt64);
+begin
+ DumpBacktraceTo(aHART,aMaxDepth,Output,OutputError);
+end;
+
+procedure TPasRISCV.TDebugger.DumpBacktraceTo(const aHART:THART;const aMaxDepth:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
+var Depth:TPasRISCVUInt64;
+    FP,NextFP,RA:TPasRISCVUInt64;
+    Line:TPasRISCVRawByteString;
+ procedure Emit(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnOutput) then begin
+   aOnOutput(aString);
+  end;
+ end;
+ procedure EmitError(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnError) then begin
+   aOnError(aString);
+  end else begin
+   Emit(aString);
+  end;
+ end;
+ function ReadUInt64(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64):Boolean;
+ begin
+  if assigned(aHART) then begin
+   result:=aHART.LoadEx(aAddress,aValue,8);
+  end else begin
+   aValue:=0;
+   result:=false;
+  end;
+ end;
+begin
+ if not assigned(aHART) then begin
+  EmitError('E.Invalid CPU');
+  exit;
+ end;
+ FP:=aHART.fState.Registers[TRegister.S0];
+ if FP=0 then begin
+  Emit('bt: no frame pointer');
+  exit;
+ end;
+ Emit('bt: fp=0x'+LowerCase(IntToHex(FP,16))+' pc=0x'+LowerCase(IntToHex(aHART.fState.PC,16)));
+ Depth:=0;
+ while Depth<aMaxDepth do begin
+  // Best-effort frame chain: [fp]=prev_fp, [fp+8]=ra.
+  if not ReadUInt64(FP,NextFP) then begin
+   EmitError('bt: failed to read fp @ 0x'+LowerCase(IntToHex(FP,16)));
+   exit;
+  end;
+  if not ReadUInt64(FP+8,RA) then begin
+   EmitError('bt: failed to read ra @ 0x'+LowerCase(IntToHex(FP+8,16)));
+   exit;
+  end;
+  Line:='#'+IntToStr(Depth)+' fp=0x'+LowerCase(IntToHex(FP,16))+' ra=0x'+LowerCase(IntToHex(RA,16));
+  Emit(Line);
+  if (NextFP=0) or (NextFP<=FP) then begin
+   break;
+  end;
+  FP:=NextFP;
+  inc(Depth);
  end;
 end;
 
@@ -35194,7 +35405,7 @@ begin
  end;
 end;
 
-function TPasRISCV.TDebugger.ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
+function TPasRISCV.TDebugger.ProcessCommand(const aLine:TPasRISCVRawByteString;const aOnOutput:TOnOutput;const aOnError:TOnError):Boolean;
 var Index:TPasRISCVSizeInt;
     Command,Token,Token2:TPasRISCVRawByteString;
     Address,Size,Count:TPasRISCVUInt64;
@@ -35202,6 +35413,20 @@ var Index:TPasRISCVSizeInt;
     HexString:TPasRISCVRawByteString;
     HexIndex:TPasRISCVSizeInt;
     ByteHigh,ByteLow:TPasRISCVUInt8;
+ procedure Emit(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnOutput) then begin
+   aOnOutput(aString);
+  end;
+ end;
+ procedure EmitError(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(aOnError) then begin
+   aOnError(aString);
+  end else begin
+   Emit(aString);
+  end;
+ end;
 begin
  result:=true;
  Index:=1;
@@ -35210,10 +35435,10 @@ begin
   exit;
  end;
  if (Command='quit') or (Command='q') then begin
- result:=false;
- exit;
-end else if (Command='help') or (Command='?') then begin
-  Output('commands: regs (r), mem (m), memw (mw), stack (st), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
+  result:=false;
+  exit;
+ end else if (Command='help') or (Command='?') then begin
+  Emit('commands: regs (r), mem (m), memw (mw), stack (st), bt, step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), reboot, shutdown, quit (q)');
   exit;
  end;
  if (Command='cont') or (Command='c') then begin
@@ -35226,18 +35451,18 @@ end else if (Command='help') or (Command='?') then begin
  Pause;
  HART:=GetLocalHART;
  if (Command='regs') or (Command='r') then begin
-  DumpRegisters(HART);
+  DumpRegistersTo(HART,aOnOutput,aOnError);
  end else if (Command='mem') or (Command='m') then begin
   Token:=NextToken(aLine,Index);
   if ParseAddressToken(HART,Token,Address) then begin
    Token:=NextToken(aLine,Index);
    if ParseUInt64(Token,Size) then begin
-    DumpMemory(HART,Address,Size);
+    DumpMemoryTo(HART,Address,Size,aOnOutput,aOnError);
    end else begin
-    OutputError('E.Invalid size');
+    EmitError('E.Invalid size');
    end;
   end else begin
-   OutputError('E.Invalid address');
+   EmitError('E.Invalid address');
   end;
  end else if (Command='memw') or (Command='mw') then begin
   Token:=NextToken(aLine,Index);
@@ -35254,24 +35479,24 @@ end else if (Command='help') or (Command='?') then begin
        inc(Address);
        inc(HexIndex,2);
       end else begin
-       OutputError('E00');
+       EmitError('E00');
        exit;
       end;
      end else begin
-      OutputError('E.Invalid hex');
+      EmitError('E.Invalid hex');
       exit;
      end;
     end;
-    Output('ok');
+    Emit('ok');
    end else begin
-    OutputError('E.Invalid hex');
+    EmitError('E.Invalid hex');
    end;
   end else begin
-   OutputError('E.Invalid address');
+   EmitError('E.Invalid address');
   end;
  end else if (Command='stack') or (Command='st') then begin
   if not assigned(HART) then begin
-   OutputError('E.Invalid CPU');
+   EmitError('E.Invalid CPU');
    exit;
   end;
   Address:=HART.fState.Registers[TRegister.SP];
@@ -35282,24 +35507,40 @@ end else if (Command='help') or (Command='?') then begin
    if length(Token2)>0 then begin
     if ParseAddressToken(HART,Token,Address) then begin
      if ParseUInt64(Token2,Size) then begin
-      DumpStack(HART,Address,Size);
+      DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
      end else begin
-      OutputError('E.Invalid size');
+      EmitError('E.Invalid size');
      end;
     end else begin
-     OutputError('E.Invalid address');
+     EmitError('E.Invalid address');
     end;
    end else begin
     if ParseUInt64(Token,Size) then begin
-     DumpStack(HART,Address,Size);
+     DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
     end else if ParseAddressToken(HART,Token,Address) then begin
-     DumpStack(HART,Address,Size);
+     DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
     end else begin
-     OutputError('E.Invalid argument');
+     EmitError('E.Invalid argument');
     end;
    end;
   end else begin
-   DumpStack(HART,Address,Size);
+   DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
+  end;
+ end else if (Command='bt') or (Command='backtrace') then begin
+  if not assigned(HART) then begin
+   EmitError('E.Invalid CPU');
+   exit;
+  end;
+  Count:=16;
+  Token:=NextToken(aLine,Index);
+  if length(Token)>0 then begin
+   if ParseUInt64(Token,Count) then begin
+    DumpBacktraceTo(HART,Count,aOnOutput,aOnError);
+   end else begin
+    EmitError('E.Invalid depth');
+   end;
+  end else begin
+   DumpBacktraceTo(HART,Count,aOnOutput,aOnError);
   end;
  end else if (Command='step') or (Command='s') or (Command='stepi') or (Command='si') then begin
   SingleStep(true);
@@ -35309,42 +35550,42 @@ end else if (Command='help') or (Command='?') then begin
    if ParseAddressToken(HART,Token,Address) then begin
     Token:=NextToken(aLine,Index);
     if ParseUInt64(Token,Count) then begin
-     DumpDisassembler(HART,Address,Count);
+     DumpDisassemblerTo(HART,Address,Count,aOnOutput,aOnError);
     end else begin
-     DumpDisassembler(HART,Address,16);
+     DumpDisassemblerTo(HART,Address,16,aOnOutput,aOnError);
     end;
    end else begin
-    OutputError('E.Invalid address');
+    EmitError('E.Invalid address');
    end;
   end else begin
    if assigned(HART) then begin
-    DumpDisassembler(HART,HART.fState.PC,16);
+    DumpDisassemblerTo(HART,HART.fState.PC,16,aOnOutput,aOnError);
    end else begin
-    OutputError('E.Invalid CPU');
+    EmitError('E.Invalid CPU');
    end;
   end;
  end else if (Command='hart') or (Command='h') then begin
   Token:=NextToken(aLine,Index);
   if length(Token)=0 then begin
    if assigned(HART) then begin
-    Output('hart '+IntToStr(HART.fHARTID)+'');
+    Emit('hart '+IntToStr(HART.fHARTID)+'');
    end else begin
-    Output('hart '+IntToStr(fLocalHARTIndex));
+    Emit('hart '+IntToStr(fLocalHARTIndex));
    end;
   end else if ParseUInt64(Token,Address) then begin
    if assigned(fMachine) and (Address<fMachine.fCountHARTs) then begin
     SetLocalHARTIndex(Address);
     HART:=GetLocalHART;
     if assigned(HART) then begin
-     Output('hart '+IntToStr(HART.fHARTID)+'');
+     Emit('hart '+IntToStr(HART.fHARTID)+'');
     end else begin
-     Output('hart '+IntToStr(fLocalHARTIndex));
+     Emit('hart '+IntToStr(fLocalHARTIndex));
     end;
    end else begin
-    OutputError('E.Invalid HART');
+    EmitError('E.Invalid HART');
    end;
   end else begin
-   OutputError('E.Invalid HART');
+   EmitError('E.Invalid HART');
   end;
  end else if (Command='break') or (Command='b') then begin
   Token:=NextToken(aLine,Index);
@@ -35360,13 +35601,13 @@ end else if (Command='help') or (Command='?') then begin
    if ParseUInt64(Token,Address) then begin
     RemoveBreakpoint(HART,Address);
    end else begin
-    OutputError('E.Invalid address');
+    EmitError('E.Invalid address');
    end;
   end else begin
    if ParseUInt64(Token,Address) then begin
     AddBreakpoint(HART,Address);
    end else begin
-    OutputError('E.Invalid address');
+    EmitError('E.Invalid address');
    end;
   end;
  end else if Command='reboot' then begin
@@ -35379,8 +35620,13 @@ end else if (Command='help') or (Command='?') then begin
    end;
   end;
  end else begin
-  OutputError('E.Unknown command');
+  EmitError('E.Unknown command');
  end;
+end;
+
+function TPasRISCV.TDebugger.ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
+begin
+ result:=ProcessCommand(aLine,Output,OutputError);
 end;
 
 procedure TPasRISCV.TDebugger.Interrupt;
