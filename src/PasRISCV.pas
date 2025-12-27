@@ -28473,7 +28473,7 @@ begin
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
-       // cbo
+       // cbo (Zicbom)
        case aInstruction shr 20 of
         $00:begin
          // cbo.inval
