@@ -28801,7 +28801,7 @@ begin
          // slli.uw
          {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $3f;
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-          fState.Registers[rd]:=TPasRISCVUInt32(fState.Registers[rs1]) shl TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
+          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1])) shl TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
          result:=4;
          exit;
