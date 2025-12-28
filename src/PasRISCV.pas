@@ -36743,6 +36743,11 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     FileStream:TFileStream;
     IRQExt:TPasRISCVUInt32DynamicArray;
     ISA,ISAExtensions:TPasRISCVRawByteString;
+ procedure AddISAExtension(const aExtension:TPasRISCVRawByteString);
+ begin
+  ISA:=ISA+'_'+aExtension;
+  ISAExtensions:=ISAExtensions+#0+aExtension;
+ end;
 begin
 
  FreeAndNil(fFDT);
@@ -36758,14 +36763,183 @@ begin
   fFDT.fRoot.AddPropertyString('model','riscv-virtio,qemu,pasriscv');
   fFDT.fRoot.AddPropertyString('compatible','riscv-virtio'#0'pasriscv'#0);
 
-  ISA:='rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot';
+  ISA:='rv64imafdcb';
+  ISAExtensions:='i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b';
+
+(*
+ * Here are the ordering rules of extension naming defined by RISC-V
+ * specification :
+ * 1. All extensions should be separated from other multi-letter extensions
+ *    by an underscore.
+ * 2. The first letter following the 'Z' conventionally indicates the most
+ *    closely related alphabetical extension category, IMAFDQLCBKJTPVH.
+ *    If multiple 'Z' extensions are named, they should be ordered first
+ *    by category, then alphabetically within a category.
+ * 3. Standard supervisor-level extensions (starts with 'S') should be
+ *    listed after standard unprivileged extensions.  If multiple
+ *    supervisor-level extensions are listed, they should be ordered
+ *    alphabetically.
+ * 4. Non-standard extensions (starts with 'X') must be listed after all
+ *    standard extensions. They must be separated from other multi-letter
+ *    extensions by an underscore.
+ *
+ * Not yet implemented and non-implemented ones are commented out
+ *
+ *)
+//AddISAExtension('zic64b');
+  AddISAExtension('zicbom');
+//AddISAExtension('zicbop');
+  AddISAExtension('zicboz');
+//AddISAExtension('ziccamoa');
+//AddISAExtension('ziccif');
+//AddISAExtension('zicclsm');
+//AddISAExtension('ziccrse');
+//AddISAExtension('zicfilp');
+//AddISAExtension('zicfiss');
+//AddISAExtension('zicond');
+//AddISAExtension('zicntr');
+  AddISAExtension('zicsr');
+  AddISAExtension('zifencei');
+//AddISAExtension('zihintntl');
+//AddISAExtension('zihintpause');
+//AddISAExtension('zihpm');
+//AddISAExtension('zimop');
+//AddISAExtension('zmmul');
+//AddISAExtension('za64rs');
+//AddISAExtension('zaamo');
+//AddISAExtension('zabha');
+//AddISAExtension('zacas');
+//AddISAExtension('zalrsc');
+//AddISAExtension('zama16b');
+//AddISAExtension('zawrs');
+//AddISAExtension('zfa');
+//AddISAExtension('zfbfmin');
+//AddISAExtension('zfh');
+//AddISAExtension('zfhmin');
+//AddISAExtension('zfinx');
+//AddISAExtension('zdinx');
+//AddISAExtension('zca');
+//AddISAExtension('zcb');
+//AddISAExtension('zcf');
+//AddISAExtension('zcd');
+//AddISAExtension('zce');
+//AddISAExtension('zcmop');
+//AddISAExtension('zcmp');
+//AddISAExtension('zcmt');
+//AddISAExtension('zba');
+//AddISAExtension('zbb');
+//AddISAExtension('zbc');
+//AddISAExtension('zbkb');
+//AddISAExtension('zbkc');
+//AddISAExtension('zbkx');
+//AddISAExtension('zbs');
+//AddISAExtension('zk');
+//AddISAExtension('zkn');
+//AddISAExtension('zknd');
+//AddISAExtension('zkne');
+//AddISAExtension('zknh');
+  AddISAExtension('zkr');
+//AddISAExtension('zks');
+//AddISAExtension('zksed');
+//AddISAExtension('zksh');
+//AddISAExtension('zkt');
+//AddISAExtension('ztso');
+//AddISAExtension('zvbb');
+//AddISAExtension('zvbc');
+//AddISAExtension('zve32f');
+//AddISAExtension('zve32x');
+//AddISAExtension('zve64f');
+//AddISAExtension('zve64d');
+//AddISAExtension('zve64x');
+//AddISAExtension('zvfbfmin');
+//AddISAExtension('zvfbfwma');
+//AddISAExtension('zvfh');
+//AddISAExtension('zvfhmin');
+//AddISAExtension('zvkb');
+//AddISAExtension('zvkg');
+//AddISAExtension('zvkn');
+//AddISAExtension('zvknc');
+//AddISAExtension('zvkned');
+//AddISAExtension('zvkng');
+//AddISAExtension('zvknha');
+//AddISAExtension('zvknhb');
+//AddISAExtension('zvks');
+//AddISAExtension('zvksc');
+//AddISAExtension('zvksed');
+//AddISAExtension('zvksg');
+//AddISAExtension('zvksh');
+//AddISAExtension('zvkt');
+//AddISAExtension('zhinx');
+//AddISAExtension('zhinxmin');
+//AddISAExtension('sdtrig');
+//AddISAExtension('shcounterenw');
+//AddISAExtension('sha');
+//AddISAExtension('shgatpa');
+//AddISAExtension('shtvala');
+//AddISAExtension('shvsatpa');
+//AddISAExtension('shvstvala');
+//AddISAExtension('shvstvecd');
+ if fConfiguration.fAIA then begin
+  AddISAExtension('smaia');
+ end;
+//AddISAExtension('smcdeleg');
+//AddISAExtension('smcntrpmf');
+//AddISAExtension('smcsrind');
+//AddISAExtension('smdbltrp');
+//AddISAExtension('smepmp');
+//AddISAExtension('smrnmi');
+//AddISAExtension('smmpm');
+//AddISAExtension('smnpm');
+//AddISAExtension('smstateen');
+  if fConfiguration.fAIA then begin
+   AddISAExtension('ssaia');
+  end;
+//AddISAExtension('ssccfg');
+//AddISAExtension('ssccptr');
+//AddISAExtension('sscofpmf');
+//AddISAExtension('sscounterenw');
+//AddISAExtension('sscsrind');
+//AddISAExtension('ssdbltrp');
+//AddISAExtension('ssnpm');
+//AddISAExtension('sspm');
+//AddISAExtension('ssstateen');
+//AddISAExtension('ssstrict');
+  AddISAExtension('sstc');
+//AddISAExtension('sstvala');
+//AddISAExtension('sstvecd');
+//AddISAExtension('ssu64xl');
+//AddISAExtension('supm');
+//AddISAExtension('svade');
+//AddISAExtension('smctr');
+//AddISAExtension('ssctr');
+  AddISAExtension('svadu');
+//AddISAExtension('svinval');
+  AddISAExtension('svnapot');
+//AddISAExtension('svpbmt');
+//AddISAExtension('svrsw60t59b');
+//AddISAExtension('svukte');
+//AddISAExtension('svvptc');
+//AddISAExtension('xtheadba');
+//AddISAExtension('xtheadbb');
+//AddISAExtension('xtheadbs');
+//AddISAExtension('xtheadcmo');
+//AddISAExtension('xtheadcondmov');
+//AddISAExtension('xtheadfmemidx');
+//AddISAExtension('xtheadfmv');
+//AddISAExtension('xtheadmac');
+//AddISAExtension('xtheadmemidx');
+//AddISAExtension('xtheadmempair');
+//AddISAExtension('xtheadsync');
+//AddISAExtension('xventanacondops');
+
+{ ISA:='rv64imafdcb_zicsr_zifencei_zkr_zicboz_zicbom_svadu_sstc_svnapot';
 //ISA:=ISA+'_svpbmt';
   ISAExtensions:='i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0+
                   'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot';
   if fConfiguration.fAIA then begin
    ISA:=ISA+'_smaia_ssaia';
    ISAExtensions:=ISAExtensions+#0'smaia'#0'ssaia';
-  end;
+  end;}
 
   ChosenNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'chosen');
   try
