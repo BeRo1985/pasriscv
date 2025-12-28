@@ -6232,9 +6232,9 @@ end;
 function CLZQWord(aValue:TPasRISCVUInt64):TPasRISCVUInt32;
 begin
  if aValue=0 then begin
-  result:=0;
+  result:=64;
  end else begin
-  result:=63-BSRQWord(aValue);
+  result:=63 xor BSRQWord(aValue);
  end;
 end;
 
@@ -6592,9 +6592,9 @@ asm
  // SysV ABI: rdi, rsi, rdx, rcx, r8, r9
  movq xmm0,rdi
 {$ifend}
- xorps xmm1,xmm1
- pcmpeqb xmm0,xmm1
- pcmpeqb xmm0,xmm1
+ pxor xmm1,xmm1
+ pcmpeqb xmm1,xmm0
+ pcmpeqb xmm1,xmm0
  movq rax,xmm0
 end;
 {$else}
@@ -28550,7 +28550,7 @@ begin
       {$ifndef TryToForceCaseJumpTableOnLevel2}$1:{$else}$01,$09,$11,$19,$21,$29,$31,$39,$41,$49,$51,$59,$61,$69,$71,$79,$81,$89,$91,$99,$a1,$a9,$b1,$b9,$c1,$c9,$d1,$d9,$e1,$e9,$f1,$f9:{$endif}begin
        // slli bseti bclri binvi
        {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $3f;
-       case ((aInstruction shr 25) and $7f) shr 1 of
+       case (aInstruction shr 26) shl 1 of
         $00:begin
          // slli
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -28585,7 +28585,7 @@ begin
            end;
           end;
           $01:begin
-           // ctx (Zbb)
+           // ctz (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CTZQWord(fState.Registers[rs1]);
            end;
@@ -28657,7 +28657,7 @@ begin
       {$ifndef TryToForceCaseJumpTableOnLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
        // srli srai bexti orcb.b rev8
        {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $3f;
-       case ((aInstruction shr 25) and $7f) shr 1 of
+       case (aInstruction shr 26) shl 1 of
         $00:begin
          // srli
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -28666,7 +28666,7 @@ begin
          result:=4;
          exit;
         end;
-        $10:begin
+        $20:begin
          // srai
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=SARInt64(fState.Registers[rs1],{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
@@ -28817,7 +28817,7 @@ begin
            exit;
           end;
           $01:begin
-           // ctxw (Zbb)
+           // ctzw (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CTZDWord(TPasRISCVUInt32(fState.Registers[rs1]));
            end;
@@ -36827,7 +36827,7 @@ begin
 //AddISAExtension('zcmp');
 //AddISAExtension('zcmt');
   AddISAExtension('zba');
-  AddISAExtension('zbb');
+  AddISAExtension('zbb'); //!
   AddISAExtension('zbc');
 //AddISAExtension('zbkb');
 //AddISAExtension('zbkc');
