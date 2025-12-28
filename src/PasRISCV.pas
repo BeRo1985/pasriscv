@@ -6592,9 +6592,9 @@ asm
  // SysV ABI: rdi, rsi, rdx, rcx, r8, r9
  movq xmm0,rdi
 {$ifend}
- pxor xmm1,xmm1
- pcmpeqb xmm1,xmm0
- pcmpeqb xmm1,xmm0
+ xorps xmm1,xmm1
+ pcmpeqb xmm0,xmm1
+ pcmpeqb xmm0,xmm1
  movq rax,xmm0
 end;
 {$else}
