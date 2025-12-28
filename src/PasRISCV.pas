@@ -28034,6 +28034,8 @@ begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=TPasRISCVUInt8(fState.Registers[rd]);
             end;
+            result:=2;
+            exit;
            end;
            $1:begin
             // c.sext.b (Zcb + Zbb)
@@ -28041,6 +28043,8 @@ begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(fState.Registers[rd])));
             end;
+            result:=2;
+            exit;
            end;
            $2:begin
             // c.zext.h (Zcb + Zbb)
@@ -28048,6 +28052,8 @@ begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=TPasRISCVUInt16(fState.Registers[rd]);
             end;
+            result:=2;
+            exit;
            end;
            $3:begin
             // c.sext.w (Zcb + Zbb)
@@ -28055,6 +28061,8 @@ begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(fState.Registers[rd])));
             end;
+            result:=2;
+            exit;
            end;
            $4:begin
             // c.zext.w (Zcb + Zba)
@@ -28062,6 +28070,8 @@ begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=TPasRISCVUInt32(fState.Registers[rd]);
             end;
+            result:=2;
+            exit;
            end;
            $5:begin
             // c.not (Zcb)
@@ -28069,6 +28079,8 @@ begin
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
              fState.Registers[rd]:=not fState.Registers[rd];
             end;
+            result:=2;
+            exit;
            end;
            else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
@@ -28583,30 +28595,40 @@ begin
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CLZQWord(fState.Registers[rs1]);
            end;
+           result:=4;
+           exit;
           end;
           $01:begin
            // ctz (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CTZQWord(fState.Registers[rs1]);
            end;
+           result:=4;
+           exit;
           end;
           $02:begin
            // cpop (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=POPCNTQWord(fState.Registers[rs1]);
            end;
+           result:=4;
+           exit;
           end;
           $04:begin
            // sext.b (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fState.Registers[rs1]))));
            end;
+           result:=4;
+           exit;
           end;
           $05:begin
            // sext.h (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fState.Registers[rs1]))));
            end;
+           result:=4;
+           exit;
           end;
           else begin
            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
