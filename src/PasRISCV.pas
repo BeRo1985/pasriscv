@@ -36849,7 +36849,7 @@ begin
 //AddISAExtension('zcmp');
 //AddISAExtension('zcmt');
   AddISAExtension('zba');
-  AddISAExtension('zbb'); //!
+  AddISAExtension('zbb');
   AddISAExtension('zbc');
 //AddISAExtension('zbkb');
 //AddISAExtension('zbkc');
