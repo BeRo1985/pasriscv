@@ -28461,7 +28461,7 @@ begin
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
       {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
        if aInstruction=TPasRISCVUInt32($0100000f) then begin
-        // pause
+        // pause (Zihintpause)
         Sleep(0);
         result:=4;
         exit;
@@ -36818,12 +36818,12 @@ begin
 //AddISAExtension('ziccrse');
 //AddISAExtension('zicfilp');
 //AddISAExtension('zicfiss');
-//AddISAExtension('zicond');
+  AddISAExtension('zicond');
 //AddISAExtension('zicntr');
   AddISAExtension('zicsr');
   AddISAExtension('zifencei');
 //AddISAExtension('zihintntl');
-//AddISAExtension('zihintpause');
+  AddISAExtension('zihintpause');
 //AddISAExtension('zihpm');
 //AddISAExtension('zimop');
 //AddISAExtension('zmmul');
