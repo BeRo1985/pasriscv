@@ -2518,16 +2518,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    end;
                    TDomainDevices=array[TPasRISCV.TAIARegFileMode] of TDomainDevice;
                    TDomainCfg=array[TPasRISCV.TAIARegFileMode] of TPasRISCVUInt32;
-                   TRegisters=array[0..APLIC_SRC_REGS-1] of TPasRISCVUInt32;
+                   TDeviceRegisters=array[0..APLIC_SRC_REGS-1] of TPasRISCVUInt32;
                    TSources=array[0..APLIC_SRC_LIMIT-1] of TPasRISCVUInt32;
              private
               fDomainDevices:TDomainDevices;
               fDomainCfg:TDomainCfg;
-              fDelegated:TRegisters;
-              fRaised:TRegisters;
-              fInvert:TRegisters;
-              fPending:TRegisters;
-              fEnabled:TRegisters;
+              fDelegated:TDeviceRegisters;
+              fRaised:TDeviceRegisters;
+              fInvert:TDeviceRegisters;
+              fPending:TDeviceRegisters;
+              fEnabled:TDeviceRegisters;
               fSource:TSources;
               fTarget:TSources;
               procedure GenerateMSI(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aTarget:TPasRISCVUInt32);
@@ -15056,11 +15056,11 @@ var Mode:TPasRISCV.TAIARegFileMode;
 begin
  inherited Reset;
  FillChar(fDomainCfg,SizeOf(TDomainCfg),#0);
- FillChar(fDelegated,SizeOf(TRegisters),#$ff); // All sources delegated in root domain
- FillChar(fRaised,SizeOf(TRegisters),#0);
- FillChar(fInvert,SizeOf(TRegisters),#0);
- FillChar(fPending,SizeOf(TRegisters),#0);
- FillChar(fEnabled,SizeOf(TRegisters),#0);
+ FillChar(fDelegated,SizeOf(TDeviceRegisters),#$ff); // All sources delegated in root domain
+ FillChar(fRaised,SizeOf(TDeviceRegisters),#0);
+ FillChar(fInvert,SizeOf(TDeviceRegisters),#0);
+ FillChar(fPending,SizeOf(TDeviceRegisters),#0);
+ FillChar(fEnabled,SizeOf(TDeviceRegisters),#0);
  FillChar(fSource,SizeOf(TSources),#0);
  FillChar(fTarget,SizeOf(TSources),#0);
  for Mode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
