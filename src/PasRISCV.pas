@@ -2756,7 +2756,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             end;
             TPCIBARRegion=record
              fAddress:TPasRISCVUInt64;
-             fSize:TPasRISCVUInt16;
+             fSize:TPasRISCVUInt64;
              fOnLoad:TPCIMemoryDevice.TOnLoad;
              fOnStore:TPCIMemoryDevice.TOnStore;
             end;
