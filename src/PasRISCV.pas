@@ -5575,6 +5575,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fINITRD:TMemoryStream;
 
+              fIVSHMEMSharedMemorySize:TPasRISCVUInt64;
+
               fAIA:Boolean;
 
               fLRSCMaximumCycles:TPasRISCVUInt64;
@@ -5691,6 +5693,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property Kernel:TMemoryStream read fKernel;
 
               property INITRD:TMemoryStream read fINITRD;
+
+              property IVSHMEMSharedMemorySize:TPasRISCVUInt64 read fIVSHMEMSharedMemorySize write fIVSHMEMSharedMemorySize;
 
               property AIA:Boolean read fAIA write fAIA;
 
@@ -36363,6 +36367,8 @@ begin
 
  fINITRD:=TMemoryStream.Create;
 
+ fIVSHMEMSharedMemorySize:=TPasRISCV.TIVSHMEMDevice.IVSHMEM_DEFAULT_SHM_SIZE;
+
  fAIA:=false;
 
  fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
@@ -36471,6 +36477,8 @@ begin
  fVirtIORandomGeneratorBase:=aConfiguration.fVirtIORandomGeneratorBase;
  fVirtIORandomGeneratorSize:=aConfiguration.fVirtIORandomGeneratorSize;
  fVirtIORandomGeneratorIRQ:=aConfiguration.fVirtIORandomGeneratorIRQ;
+
+ fIVSHMEMSharedMemorySize:=aConfiguration.fIVSHMEMSharedMemorySize;
 
  fAIA:=aConfiguration.fAIA;
 
@@ -36741,7 +36749,7 @@ begin
  fNVMeDevice:=TNVMeDevice.Create(fPCIBusDevice);
  fPCIBusDevice.AddBusDevice(fNVMeDevice);
 
- fIVSHMEMDevice:=TIVSHMEMDevice.Create(fPCIBusDevice);
+ fIVSHMEMDevice:=TIVSHMEMDevice.Create(fPCIBusDevice,fConfiguration.fIVSHMEMSharedMemorySize);
  fPCIBusDevice.AddBusDevice(fIVSHMEMDevice);
 
  fHARTs:=nil;
