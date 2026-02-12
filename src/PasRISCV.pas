@@ -3941,6 +3941,129 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure DeviceReset; override;
               function DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean; override;
             end;
+            { TVirtIOVSockDevice }
+            TVirtIOVSockDevice=class(TVirtIODevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($10059000);
+                    DefaultSize=TPasRISCVUInt64($1000);
+                    DefaultIRQ=TPasRISCVUInt64($19);
+                    DefaultGuestCID=TPasRISCVUInt64(3);
+                    VSOCK_DEVICE_ID=19;
+                    VSOCK_CID_HOST=2;
+                    VSOCK_HDR_SIZE=44;
+                    VSOCK_EVENT_SIZE=4;
+                    VIRTIO_VSOCK_TYPE_STREAM=1;
+                    VIRTIO_VSOCK_TYPE_SEQPACKET=2;
+                    VIRTIO_VSOCK_OP_INVALID=0;
+                    VIRTIO_VSOCK_OP_REQUEST=1;
+                    VIRTIO_VSOCK_OP_RESPONSE=2;
+                    VIRTIO_VSOCK_OP_RST=3;
+                    VIRTIO_VSOCK_OP_SHUTDOWN=4;
+                    VIRTIO_VSOCK_OP_RW=5;
+                    VIRTIO_VSOCK_OP_CREDIT_UPDATE=6;
+                    VIRTIO_VSOCK_OP_CREDIT_REQUEST=7;
+                    VIRTIO_VSOCK_SHUTDOWN_F_RECEIVE=1;
+                    VIRTIO_VSOCK_SHUTDOWN_F_SEND=2;
+                    VIRTIO_VSOCK_SEQ_EOM=1 shl 0;
+                    VIRTIO_VSOCK_SEQ_EOR=1 shl 1;
+                    VIRTIO_VSOCK_F_STREAM=TPasRISCVUInt64(1) shl 0;
+                    VIRTIO_VSOCK_F_SEQPACKET=TPasRISCVUInt64(1) shl 1;
+                    VIRTIO_VSOCK_EVENT_TRANSPORT_RESET=0;
+                    VSOCK_RXQ=0;
+                    VSOCK_TXQ=1;
+                    VSOCK_EVQ=2;
+                    VSOCK_DEFAULT_BUF_ALLOC=256*1024;
+                    VSOCK_MAX_PKT_BUF_SIZE=64*1024;
+              type TVSockHeader=packed record
+                    SrcCID:TPasRISCVUInt64;
+                    DstCID:TPasRISCVUInt64;
+                    SrcPort:TPasRISCVUInt32;
+                    DstPort:TPasRISCVUInt32;
+                    Len:TPasRISCVUInt32;
+                    SocketType:TPasRISCVUInt16;
+                    Op:TPasRISCVUInt16;
+                    Flags:TPasRISCVUInt32;
+                    BufAlloc:TPasRISCVUInt32;
+                    FwdCnt:TPasRISCVUInt32;
+                   end;
+                   PVSockHeader=^TVSockHeader;
+                   TVSockEvent=packed record
+                    ID:TPasRISCVUInt32;
+                   end;
+                   PVSockEvent=^TVSockEvent;
+                   TVSockConnectionState=
+                    (
+                     Closed,
+                     Connecting,
+                     PeerConnecting,
+                     Connected,
+                     Closing
+                    );
+                   TVSockConnection=class
+                    public
+                     LocalPort:TPasRISCVUInt32;
+                     RemoteCID:TPasRISCVUInt64;
+                     RemotePort:TPasRISCVUInt32;
+                     State:TVSockConnectionState;
+                     SocketType:TPasRISCVUInt16;
+                     BufAlloc:TPasRISCVUInt32;
+                     FwdCnt:TPasRISCVUInt32;
+                     TxCnt:TPasRISCVUInt32;
+                     PeerBufAlloc:TPasRISCVUInt32;
+                     PeerFwdCnt:TPasRISCVUInt32;
+                     ShutdownFlags:TPasRISCVUInt32;
+                     PeerShutdownFlags:TPasRISCVUInt32;
+                     LastFwdCntReported:TPasRISCVUInt32;
+                   end;
+                   TVSockConnections=array of TVSockConnection;
+                   TOnVSockConnect=procedure(const aSender:TVirtIOVSockDevice;const aLocalPort,aRemotePort:TPasRISCVUInt32;const aSocketType:TPasRISCVUInt16) of object;
+                   TOnVSockConnected=procedure(const aSender:TVirtIOVSockDevice;const aLocalPort,aRemotePort:TPasRISCVUInt32;const aSocketType:TPasRISCVUInt16;const aAccepted:Boolean) of object;
+                   TOnVSockDisconnect=procedure(const aSender:TVirtIOVSockDevice;const aLocalPort,aRemotePort:TPasRISCVUInt32) of object;
+                   TOnVSockReceive=procedure(const aSender:TVirtIOVSockDevice;const aLocalPort,aRemotePort:TPasRISCVUInt32;const aSocketType:TPasRISCVUInt16;const aData:Pointer;const aSize:TPasRISCVUInt32;const aFlags:TPasRISCVUInt32) of object;
+             private
+              fGuestCID:TPasRISCVUInt64;
+              fConnections:TVSockConnections;
+              fConnectionCount:TPasRISCVSizeInt;
+              fConnectionLock:TPasMPSlimReaderWriterLock;
+              fSendBuffer:TPasRISCVUInt8DynamicArray;
+              fRecvBuffer:TPasRISCVUInt8DynamicArray;
+              fOnConnect:TOnVSockConnect;
+              fOnConnected:TOnVSockConnected;
+              fOnDisconnect:TOnVSockDisconnect;
+              fOnReceive:TOnVSockReceive;
+              function FindConnection(const aLocalPort:TPasRISCVUInt32;const aRemoteCID:TPasRISCVUInt64;const aRemotePort:TPasRISCVUInt32):TVSockConnection;
+              function CreateConnection(const aLocalPort:TPasRISCVUInt32;const aRemoteCID:TPasRISCVUInt64;const aRemotePort:TPasRISCVUInt32;const aSocketType:TPasRISCVUInt16):TVSockConnection;
+              procedure DestroyConnection(const aConnection:TVSockConnection);
+              procedure DestroyAllConnections;
+              procedure SendControlPacket(const aConnection:TVSockConnection;const aOp:TPasRISCVUInt16;const aFlags:TPasRISCVUInt32=0);
+              procedure WriteRxPacket(const aHeader:TVSockHeader;const aData:Pointer;const aSize:TPasRISCVUInt32);
+              procedure WriteEvent(const aEventID:TPasRISCVUInt32);
+              procedure HandleRequest(var aHeader:TVSockHeader);
+              procedure HandleResponse(var aHeader:TVSockHeader);
+              procedure HandleRW(var aHeader:TVSockHeader;const aPayload:Pointer);
+              procedure HandleShutdown(var aHeader:TVSockHeader);
+              procedure HandleRST(var aHeader:TVSockHeader);
+              procedure HandleCreditUpdate(var aHeader:TVSockHeader);
+              procedure HandleCreditRequest(var aHeader:TVSockHeader);
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure DeviceReset; override;
+              function DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean; override;
+              procedure AcceptConnection(const aRemotePort,aLocalPort:TPasRISCVUInt32);
+              procedure RejectConnection(const aRemotePort,aLocalPort:TPasRISCVUInt32);
+              procedure Connect(const aLocalPort,aRemotePort:TPasRISCVUInt32;const aSocketType:TPasRISCVUInt16=VIRTIO_VSOCK_TYPE_STREAM);
+              procedure CloseConnection(const aRemotePort,aLocalPort:TPasRISCVUInt32);
+              procedure SendPacket(const aRemotePort,aLocalPort:TPasRISCVUInt32;const aData:Pointer;const aSize:TPasRISCVUInt32;const aFlags:TPasRISCVUInt32=0);
+              procedure SendData(const aRemotePort,aLocalPort:TPasRISCVUInt32;const aData:Pointer;const aSize:TPasRISCVUInt32;const aEOR:Boolean=false);
+              procedure SendTransportReset;
+             published
+              property GuestCID:TPasRISCVUInt64 read fGuestCID write fGuestCID;
+              property OnConnect:TOnVSockConnect read fOnConnect write fOnConnect;
+              property OnConnected:TOnVSockConnected read fOnConnected write fOnConnected;
+              property OnDisconnect:TOnVSockDisconnect read fOnDisconnect write fOnDisconnect;
+              property OnReceive:TOnVSockReceive read fOnReceive write fOnReceive;
+            end;
             { TUARTDevice }
             TUARTDevice=class(TBusDevice)
              public
@@ -5569,6 +5692,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIORandomGeneratorSize:TPasRISCVUInt64;
               fVirtIORandomGeneratorIRQ:TPasRISCVUInt64;
 
+              fVirtIOVSockBase:TPasRISCVUInt64;
+              fVirtIOVSockSize:TPasRISCVUInt64;
+              fVirtIOVSockIRQ:TPasRISCVUInt64;
+              fVirtIOVSockGuestCID:TPasRISCVUInt64;
+
               fBIOS:TMemoryStream;
 
               fKernel:TMemoryStream;
@@ -5688,6 +5816,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIORandomGeneratorSize:TPasRISCVUInt64 read fVirtIORandomGeneratorSize write fVirtIORandomGeneratorSize;
               property VirtIORandomGeneratorIRQ:TPasRISCVUInt64 read fVirtIORandomGeneratorIRQ write fVirtIORandomGeneratorIRQ;
 
+              property VirtIOVSockBase:TPasRISCVUInt64 read fVirtIOVSockBase write fVirtIOVSockBase;
+              property VirtIOVSockSize:TPasRISCVUInt64 read fVirtIOVSockSize write fVirtIOVSockSize;
+              property VirtIOVSockIRQ:TPasRISCVUInt64 read fVirtIOVSockIRQ write fVirtIOVSockIRQ;
+              property VirtIOVSockGuestCID:TPasRISCVUInt64 read fVirtIOVSockGuestCID write fVirtIOVSockGuestCID;
+
               property BIOS:TMemoryStream read fBIOS;
 
               property Kernel:TMemoryStream read fKernel;
@@ -5779,6 +5912,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fVirtIONetDevice:TVirtIONetDevice;
 
        fVirtIORandomGeneratorDevice:TVirtIORandomGeneratorDevice;
+
+       fVirtIOVSockDevice:TVirtIOVSockDevice;
 
        fCountHARTs:TPasRISCVSizeInt;
 
@@ -5927,6 +6062,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property VirtIONetDevice:TVirtIONetDevice read fVirtIONetDevice;
 
        property VirtIORandomGeneratorDevice:TVirtIORandomGeneratorDevice read fVirtIORandomGeneratorDevice;
+
+       property VirtIOVSockDevice:TVirtIOVSockDevice read fVirtIOVSockDevice;
 
        property Debugger:TDebugger read fDebugger;
 
@@ -21560,6 +21697,688 @@ begin
  result:=true;
 end;
 
+{ TPasRISCV.TVirtIOVSockDevice }
+
+constructor TPasRISCV.TVirtIOVSockDevice.Create(const aMachine:TPasRISCV);
+begin
+
+ fConnections:=nil;
+ fConnectionCount:=0;
+ fConnectionLock:=TPasMPSlimReaderWriterLock.Create;
+
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIOVSockBase,aMachine.fConfiguration.fVirtIOVSockSize,TVirtIODevice.TKind.MMIO);
+
+ fIRQ:=aMachine.fConfiguration.fVirtIOVSockIRQ;
+
+ fDeviceID:=VSOCK_DEVICE_ID;
+
+ fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  VIRTIO_VSOCK_F_STREAM or
+                  VIRTIO_VSOCK_F_SEQPACKET;
+
+ fQueues[VSOCK_RXQ].ManualRecv:=true;
+ fQueues[VSOCK_RXQ].Asynchronous:=false;
+
+ fQueues[VSOCK_TXQ].ManualRecv:=false;
+ fQueues[VSOCK_TXQ].Asynchronous:=false;
+
+ fQueues[VSOCK_EVQ].ManualRecv:=true;
+ fQueues[VSOCK_EVQ].Asynchronous:=false;
+
+ fGuestCID:=aMachine.fConfiguration.fVirtIOVSockGuestCID;
+
+ // Config space: le64 guest_cid
+ FillChar(fConfigSpace[0],8,#0);
+ fConfigSpace[0]:=TPasRISCVUInt8(fGuestCID and $ff);
+ fConfigSpace[1]:=TPasRISCVUInt8((fGuestCID shr 8) and $ff);
+ fConfigSpace[2]:=TPasRISCVUInt8((fGuestCID shr 16) and $ff);
+ fConfigSpace[3]:=TPasRISCVUInt8((fGuestCID shr 24) and $ff);
+ fConfigSpace[4]:=TPasRISCVUInt8((fGuestCID shr 32) and $ff);
+ fConfigSpace[5]:=TPasRISCVUInt8((fGuestCID shr 40) and $ff);
+ fConfigSpace[6]:=TPasRISCVUInt8((fGuestCID shr 48) and $ff);
+ fConfigSpace[7]:=TPasRISCVUInt8((fGuestCID shr 56) and $ff);
+ fConfigSpaceSize:=8;
+
+ fSendBuffer:=nil;
+ SetLength(fSendBuffer,VSOCK_MAX_PKT_BUF_SIZE+VSOCK_HDR_SIZE);
+
+ fRecvBuffer:=nil;
+ SetLength(fRecvBuffer,VSOCK_MAX_PKT_BUF_SIZE+VSOCK_HDR_SIZE);
+
+ fOnConnect:=nil;
+ fOnConnected:=nil;
+ fOnDisconnect:=nil;
+ fOnReceive:=nil;
+
+end;
+
+destructor TPasRISCV.TVirtIOVSockDevice.Destroy;
+begin
+ DestroyAllConnections;
+ fConnections:=nil;
+ FreeAndNil(fConnectionLock);
+ fSendBuffer:=nil;
+ fRecvBuffer:=nil;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.DeviceReset;
+begin
+ fConnectionLock.Acquire;
+ try
+  DestroyAllConnections;
+ finally
+  fConnectionLock.Release;
+ end;
+ inherited DeviceReset;
+end;
+
+function TPasRISCV.TVirtIOVSockDevice.FindConnection(const aLocalPort:TPasRISCVUInt32;const aRemoteCID:TPasRISCVUInt64;const aRemotePort:TPasRISCVUInt32):TVSockConnection;
+var Index:TPasRISCVSizeInt;
+    Connection:TVSockConnection;
+begin
+ result:=nil;
+ for Index:=0 to fConnectionCount-1 do begin
+  Connection:=fConnections[Index];
+  if assigned(Connection) and
+     (Connection.LocalPort=aLocalPort) and
+     (Connection.RemoteCID=aRemoteCID) and
+     (Connection.RemotePort=aRemotePort) then begin
+   result:=Connection;
+   exit;
+  end;
+ end;
+end;
+
+function TPasRISCV.TVirtIOVSockDevice.CreateConnection(const aLocalPort:TPasRISCVUInt32;const aRemoteCID:TPasRISCVUInt64;const aRemotePort:TPasRISCVUInt32;const aSocketType:TPasRISCVUInt16):TVSockConnection;
+var Index:TPasRISCVSizeInt;
+begin
+ result:=TVSockConnection.Create;
+ result.LocalPort:=aLocalPort;
+ result.RemoteCID:=aRemoteCID;
+ result.RemotePort:=aRemotePort;
+ result.State:=TVSockConnectionState.Closed;
+ result.SocketType:=aSocketType;
+ result.BufAlloc:=VSOCK_DEFAULT_BUF_ALLOC;
+ result.FwdCnt:=0;
+ result.TxCnt:=0;
+ result.PeerBufAlloc:=0;
+ result.PeerFwdCnt:=0;
+ result.ShutdownFlags:=0;
+ result.PeerShutdownFlags:=0;
+ result.LastFwdCntReported:=0;
+ // Find free slot or grow
+ for Index:=0 to fConnectionCount-1 do begin
+  if not assigned(fConnections[Index]) then begin
+   fConnections[Index]:=result;
+   exit;
+  end;
+ end;
+ if fConnectionCount>=length(fConnections) then begin
+  SetLength(fConnections,(fConnectionCount+1)+((fConnectionCount+1) shr 1));
+ end;
+ fConnections[fConnectionCount]:=result;
+ inc(fConnectionCount);
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.DestroyConnection(const aConnection:TVSockConnection);
+var Index:TPasRISCVSizeInt;
+begin
+ if assigned(aConnection) then begin
+  for Index:=0 to fConnectionCount-1 do begin
+   if fConnections[Index]=aConnection then begin
+    fConnections[Index]:=nil;
+    break;
+   end;
+  end;
+  aConnection.Free;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.DestroyAllConnections;
+var Index:TPasRISCVSizeInt;
+begin
+ for Index:=0 to fConnectionCount-1 do begin
+  FreeAndNil(fConnections[Index]);
+ end;
+ fConnectionCount:=0;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.SendControlPacket(const aConnection:TVSockConnection;const aOp:TPasRISCVUInt16;const aFlags:TPasRISCVUInt32=0);
+var Header:TVSockHeader;
+begin
+ FillChar(Header,SizeOf(TVSockHeader),#0);
+ Header.SrcCID:=VSOCK_CID_HOST;
+ Header.DstCID:=fGuestCID;
+ Header.SrcPort:=aConnection.LocalPort;
+ Header.DstPort:=aConnection.RemotePort;
+ Header.Len:=0;
+ Header.SocketType:=aConnection.SocketType;
+ Header.Op:=aOp;
+ Header.Flags:=aFlags;
+ Header.BufAlloc:=aConnection.BufAlloc;
+ Header.FwdCnt:=aConnection.FwdCnt;
+ WriteRxPacket(Header,nil,0);
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.WriteRxPacket(const aHeader:TVSockHeader;const aData:Pointer;const aSize:TPasRISCVUInt32);
+var Queue:PQueue;
+    AvailableIndex,DescriptorIndex:TPasRISCVUInt16;
+    ReadSize,WriteSize:TPasRISCVUInt64;
+    TotalSize:TPasRISCVSizeInt;
+begin
+ Queue:=@fQueues[VSOCK_RXQ];
+ if fDriverOK and Queue^.Ready then begin
+  TPasMPMultipleReaderSingleWriterSpinLock.AcquireWrite(Queue^.Lock);
+  try
+   if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
+    if Queue^.ShadowAvailableIndex<>AvailableIndex then begin
+     if Read16(Queue^.AvailableAddress+4+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
+      if GetDescriptors(ReadSize,WriteSize,VSOCK_RXQ,DescriptorIndex) then begin
+       TotalSize:=VSOCK_HDR_SIZE+TPasRISCVSizeInt(aSize);
+       if TotalSize<=WriteSize then begin
+        if length(fSendBuffer)<TotalSize then begin
+         SetLength(fSendBuffer,TotalSize+((TotalSize+1) shr 1));
+        end;
+        Move(aHeader,fSendBuffer[0],VSOCK_HDR_SIZE);
+        if (aSize>0) and assigned(aData) then begin
+         Move(aData^,fSendBuffer[VSOCK_HDR_SIZE],aSize);
+        end;
+        if not (CopyMemoryToQueue(VSOCK_RXQ,DescriptorIndex,0,@fSendBuffer[0],TotalSize) and
+                ConsumeDescriptor(VSOCK_RXQ,DescriptorIndex,TotalSize) and
+                UsedRingSync(VSOCK_RXQ) and
+                AdvanceShadowAvailableIndex(VSOCK_RXQ)) then begin
+         NotifyDeviceNeedsReset;
+        end;
+       end;
+      end else begin
+       NotifyDeviceNeedsReset;
+      end;
+     end else begin
+      NotifyDeviceNeedsReset;
+     end;
+    end;
+   end else begin
+    NotifyDeviceNeedsReset;
+   end;
+  finally
+   TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.WriteEvent(const aEventID:TPasRISCVUInt32);
+var Queue:PQueue;
+    Event:TVSockEvent;
+    AvailableIndex,DescriptorIndex:TPasRISCVUInt16;
+    ReadSize,WriteSize:TPasRISCVUInt64;
+begin
+ Queue:=@fQueues[VSOCK_EVQ];
+ if fDriverOK and Queue^.Ready then begin
+  TPasMPMultipleReaderSingleWriterSpinLock.AcquireWrite(Queue^.Lock);
+  try
+   if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
+    if Queue^.ShadowAvailableIndex<>AvailableIndex then begin
+     if Read16(Queue^.AvailableAddress+4+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
+      if GetDescriptors(ReadSize,WriteSize,VSOCK_EVQ,DescriptorIndex) then begin
+       if VSOCK_EVENT_SIZE<=WriteSize then begin
+        Event.ID:=aEventID;
+        if not (CopyMemoryToQueue(VSOCK_EVQ,DescriptorIndex,0,@Event,VSOCK_EVENT_SIZE) and
+                ConsumeDescriptor(VSOCK_EVQ,DescriptorIndex,VSOCK_EVENT_SIZE) and
+                UsedRingSync(VSOCK_EVQ) and
+                AdvanceShadowAvailableIndex(VSOCK_EVQ)) then begin
+         NotifyDeviceNeedsReset;
+        end;
+       end;
+      end else begin
+       NotifyDeviceNeedsReset;
+      end;
+     end else begin
+      NotifyDeviceNeedsReset;
+     end;
+    end;
+   end else begin
+    NotifyDeviceNeedsReset;
+   end;
+  finally
+   TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.HandleRequest(var aHeader:TVSockHeader);
+var Connection:TVSockConnection;
+begin
+ if (aHeader.SocketType<>VIRTIO_VSOCK_TYPE_STREAM) and (aHeader.SocketType<>VIRTIO_VSOCK_TYPE_SEQPACKET) then begin
+  // Unknown socket type, send RST via a temporary connection
+  Connection:=CreateConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort,aHeader.SocketType);
+  try
+   SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+  finally
+   DestroyConnection(Connection);
+  end;
+  exit;
+ end;
+ Connection:=FindConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort);
+ if assigned(Connection) then begin
+  // Connection already exists, send RST
+  SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+  exit;
+ end;
+ Connection:=CreateConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort,aHeader.SocketType);
+ Connection.State:=TVSockConnectionState.PeerConnecting;
+ Connection.PeerBufAlloc:=aHeader.BufAlloc;
+ Connection.PeerFwdCnt:=aHeader.FwdCnt;
+ if assigned(fOnConnect) then begin
+  fOnConnect(self,aHeader.DstPort,aHeader.SrcPort,aHeader.SocketType);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.HandleResponse(var aHeader:TVSockHeader);
+var Connection:TVSockConnection;
+begin
+ Connection:=FindConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort);
+ if (not assigned(Connection)) or (Connection.State<>TVSockConnectionState.Connecting) then begin
+  // Unexpected response, create temp connection for RST if needed
+  if not assigned(Connection) then begin
+   Connection:=CreateConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort,aHeader.SocketType);
+   try
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+   finally
+    DestroyConnection(Connection);
+   end;
+  end else begin
+   SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+  end;
+  exit;
+ end;
+ Connection.PeerBufAlloc:=aHeader.BufAlloc;
+ Connection.PeerFwdCnt:=aHeader.FwdCnt;
+ Connection.State:=TVSockConnectionState.Connected;
+ if assigned(fOnConnected) then begin
+  fOnConnected(self,aHeader.DstPort,aHeader.SrcPort,Connection.SocketType,true);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.HandleRW(var aHeader:TVSockHeader;const aPayload:Pointer);
+var Connection:TVSockConnection;
+begin
+ Connection:=FindConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort);
+ if (not assigned(Connection)) or (Connection.State<>TVSockConnectionState.Connected) then begin
+  if not assigned(Connection) then begin
+   Connection:=CreateConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort,aHeader.SocketType);
+   try
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+   finally
+    DestroyConnection(Connection);
+   end;
+  end else begin
+   SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+  end;
+  exit;
+ end;
+ Connection.PeerBufAlloc:=aHeader.BufAlloc;
+ Connection.PeerFwdCnt:=aHeader.FwdCnt;
+ Connection.FwdCnt:=Connection.FwdCnt+aHeader.Len;
+ if assigned(fOnReceive) then begin
+  fOnReceive(self,aHeader.DstPort,aHeader.SrcPort,Connection.SocketType,aPayload,aHeader.Len,aHeader.Flags);
+ end;
+ // For stream sockets, send credit update if we've consumed enough buffer space
+ if Connection.SocketType=VIRTIO_VSOCK_TYPE_STREAM then begin
+  if (Connection.FwdCnt-Connection.LastFwdCntReported)>=(Connection.BufAlloc shr 1) then begin
+   Connection.LastFwdCntReported:=Connection.FwdCnt;
+   SendControlPacket(Connection,VIRTIO_VSOCK_OP_CREDIT_UPDATE);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.HandleShutdown(var aHeader:TVSockHeader);
+var Connection:TVSockConnection;
+begin
+ Connection:=FindConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort);
+ if (not assigned(Connection)) or (Connection.State<>TVSockConnectionState.Connected) then begin
+  if not assigned(Connection) then begin
+   Connection:=CreateConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort,aHeader.SocketType);
+   try
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+   finally
+    DestroyConnection(Connection);
+   end;
+  end else begin
+   SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+  end;
+  exit;
+ end;
+ Connection.PeerShutdownFlags:=Connection.PeerShutdownFlags or aHeader.Flags;
+ if (Connection.PeerShutdownFlags and (VIRTIO_VSOCK_SHUTDOWN_F_RECEIVE or VIRTIO_VSOCK_SHUTDOWN_F_SEND))=(VIRTIO_VSOCK_SHUTDOWN_F_RECEIVE or VIRTIO_VSOCK_SHUTDOWN_F_SEND) then begin
+  SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+  if assigned(fOnDisconnect) then begin
+   fOnDisconnect(self,aHeader.DstPort,aHeader.SrcPort);
+  end;
+  DestroyConnection(Connection);
+ end else begin
+  if assigned(fOnDisconnect) then begin
+   fOnDisconnect(self,aHeader.DstPort,aHeader.SrcPort);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.HandleRST(var aHeader:TVSockHeader);
+var Connection:TVSockConnection;
+begin
+ Connection:=FindConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort);
+ if not assigned(Connection) then begin
+  exit;
+ end;
+ if Connection.State=TVSockConnectionState.Connecting then begin
+  if assigned(fOnConnected) then begin
+   fOnConnected(self,aHeader.DstPort,aHeader.SrcPort,Connection.SocketType,false);
+  end;
+ end else begin
+  if assigned(fOnDisconnect) then begin
+   fOnDisconnect(self,aHeader.DstPort,aHeader.SrcPort);
+  end;
+ end;
+ DestroyConnection(Connection);
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.HandleCreditUpdate(var aHeader:TVSockHeader);
+var Connection:TVSockConnection;
+begin
+ Connection:=FindConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort);
+ if assigned(Connection) then begin
+  Connection.PeerBufAlloc:=aHeader.BufAlloc;
+  Connection.PeerFwdCnt:=aHeader.FwdCnt;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.HandleCreditRequest(var aHeader:TVSockHeader);
+var Connection:TVSockConnection;
+begin
+ Connection:=FindConnection(aHeader.DstPort,aHeader.SrcCID,aHeader.SrcPort);
+ if assigned(Connection) then begin
+  SendControlPacket(Connection,VIRTIO_VSOCK_OP_CREDIT_UPDATE);
+ end;
+end;
+
+function TPasRISCV.TVirtIOVSockDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
+var Header:TVSockHeader;
+    PayloadPtr:Pointer;
+begin
+ result:=true;
+ if aQueueIndex<>VSOCK_TXQ then begin
+  exit;
+ end;
+ if aReadSize<VSOCK_HDR_SIZE then begin
+  if not (ConsumeDescriptor(VSOCK_TXQ,aDescriptorIndex,0) and
+          UsedRingSync(VSOCK_TXQ)) then begin
+   NotifyDeviceNeedsReset;
+  end;
+  exit;
+ end;
+ FillChar(Header,SizeOf(TVSockHeader),#0);
+ if not CopyMemoryFromQueue(@Header,VSOCK_TXQ,aDescriptorIndex,0,VSOCK_HDR_SIZE) then begin
+  NotifyDeviceNeedsReset;
+  exit;
+ end;
+ PayloadPtr:=nil;
+ if (Header.Op=VIRTIO_VSOCK_OP_RW) and (Header.Len>0) then begin
+  if Header.Len>VSOCK_MAX_PKT_BUF_SIZE then begin
+   Header.Len:=VSOCK_MAX_PKT_BUF_SIZE;
+  end;
+  if length(fRecvBuffer)<TPasRISCVSizeInt(Header.Len) then begin
+   SetLength(fRecvBuffer,Header.Len+((Header.Len+1) shr 1));
+  end;
+  if not CopyMemoryFromQueue(@fRecvBuffer[0],VSOCK_TXQ,aDescriptorIndex,VSOCK_HDR_SIZE,Header.Len) then begin
+   NotifyDeviceNeedsReset;
+   exit;
+  end;
+  PayloadPtr:=@fRecvBuffer[0];
+ end;
+ fConnectionLock.Acquire;
+ try
+  case Header.Op of
+   VIRTIO_VSOCK_OP_REQUEST:begin
+    HandleRequest(Header);
+   end;
+   VIRTIO_VSOCK_OP_RESPONSE:begin
+    HandleResponse(Header);
+   end;
+   VIRTIO_VSOCK_OP_RW:begin
+    HandleRW(Header,PayloadPtr);
+   end;
+   VIRTIO_VSOCK_OP_SHUTDOWN:begin
+    HandleShutdown(Header);
+   end;
+   VIRTIO_VSOCK_OP_RST:begin
+    HandleRST(Header);
+   end;
+   VIRTIO_VSOCK_OP_CREDIT_UPDATE:begin
+    HandleCreditUpdate(Header);
+   end;
+   VIRTIO_VSOCK_OP_CREDIT_REQUEST:begin
+    HandleCreditRequest(Header);
+   end;
+  end;
+ finally
+  fConnectionLock.Release;
+ end;
+ if not (ConsumeDescriptor(VSOCK_TXQ,aDescriptorIndex,0) and
+         UsedRingSync(VSOCK_TXQ)) then begin
+  NotifyDeviceNeedsReset;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.AcceptConnection(const aRemotePort,aLocalPort:TPasRISCVUInt32);
+var Connection:TVSockConnection;
+begin
+ fConnectionLock.Acquire;
+ try
+  Connection:=FindConnection(aLocalPort,fGuestCID,aRemotePort);
+  if assigned(Connection) and (Connection.State=TVSockConnectionState.PeerConnecting) then begin
+   Connection.State:=TVSockConnectionState.Connected;
+   SendControlPacket(Connection,VIRTIO_VSOCK_OP_RESPONSE);
+  end;
+ finally
+  fConnectionLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.RejectConnection(const aRemotePort,aLocalPort:TPasRISCVUInt32);
+var Connection:TVSockConnection;
+begin
+ fConnectionLock.Acquire;
+ try
+  Connection:=FindConnection(aLocalPort,fGuestCID,aRemotePort);
+  if assigned(Connection) and (Connection.State=TVSockConnectionState.PeerConnecting) then begin
+   SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+   DestroyConnection(Connection);
+  end;
+ finally
+  fConnectionLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.Connect(const aLocalPort,aRemotePort:TPasRISCVUInt32;const aSocketType:TPasRISCVUInt16=VIRTIO_VSOCK_TYPE_STREAM);
+var Connection:TVSockConnection;
+begin
+ fConnectionLock.Acquire;
+ try
+  Connection:=FindConnection(aLocalPort,fGuestCID,aRemotePort);
+  if assigned(Connection) then begin
+   exit;
+  end;
+  Connection:=CreateConnection(aLocalPort,fGuestCID,aRemotePort,aSocketType);
+  Connection.State:=TVSockConnectionState.Connecting;
+  SendControlPacket(Connection,VIRTIO_VSOCK_OP_REQUEST);
+ finally
+  fConnectionLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.CloseConnection(const aRemotePort,aLocalPort:TPasRISCVUInt32);
+var Connection:TVSockConnection;
+begin
+ fConnectionLock.Acquire;
+ try
+  Connection:=FindConnection(aLocalPort,fGuestCID,aRemotePort);
+  if not assigned(Connection) then begin
+   exit;
+  end;
+  case Connection.State of
+   TVSockConnectionState.Connected:begin
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_SHUTDOWN,VIRTIO_VSOCK_SHUTDOWN_F_RECEIVE or VIRTIO_VSOCK_SHUTDOWN_F_SEND);
+    Connection.ShutdownFlags:=VIRTIO_VSOCK_SHUTDOWN_F_RECEIVE or VIRTIO_VSOCK_SHUTDOWN_F_SEND;
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+    if assigned(fOnDisconnect) then begin
+     fOnDisconnect(self,aLocalPort,aRemotePort);
+    end;
+    DestroyConnection(Connection);
+   end;
+   TVSockConnectionState.PeerConnecting:begin
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+    DestroyConnection(Connection);
+   end;
+   TVSockConnectionState.Connecting:begin
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+    DestroyConnection(Connection);
+   end;
+   TVSockConnectionState.Closing:begin
+    SendControlPacket(Connection,VIRTIO_VSOCK_OP_RST);
+    DestroyConnection(Connection);
+   end;
+  end;
+ finally
+  fConnectionLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.SendPacket(const aRemotePort,aLocalPort:TPasRISCVUInt32;const aData:Pointer;const aSize:TPasRISCVUInt32;const aFlags:TPasRISCVUInt32=0);
+var Connection:TVSockConnection;
+    Header:TVSockHeader;
+    ActualSize:TPasRISCVUInt32;
+    PeerFree:TPasRISCVInt64;
+begin
+ fConnectionLock.Acquire;
+ try
+  Connection:=FindConnection(aLocalPort,fGuestCID,aRemotePort);
+  if (not assigned(Connection)) or (Connection.State<>TVSockConnectionState.Connected) then begin
+   exit;
+  end;
+  ActualSize:=aSize;
+  if ActualSize>VSOCK_MAX_PKT_BUF_SIZE then begin
+   ActualSize:=VSOCK_MAX_PKT_BUF_SIZE;
+  end;
+  FillChar(Header,SizeOf(TVSockHeader),#0);
+  Header.SrcCID:=VSOCK_CID_HOST;
+  Header.DstCID:=fGuestCID;
+  Header.SrcPort:=aLocalPort;
+  Header.DstPort:=aRemotePort;
+  Header.SocketType:=Connection.SocketType;
+  Header.Op:=VIRTIO_VSOCK_OP_RW;
+  Header.BufAlloc:=Connection.BufAlloc;
+  Header.FwdCnt:=Connection.FwdCnt;
+  if Connection.SocketType=VIRTIO_VSOCK_TYPE_STREAM then begin
+   PeerFree:=TPasRISCVInt64(Connection.PeerBufAlloc)-TPasRISCVInt64(Connection.TxCnt-Connection.PeerFwdCnt);
+   if PeerFree<=0 then begin
+    exit;
+   end;
+   if ActualSize>TPasRISCVUInt32(PeerFree) then begin
+    ActualSize:=TPasRISCVUInt32(PeerFree);
+   end;
+   Connection.TxCnt:=Connection.TxCnt+ActualSize;
+   Header.Flags:=0;
+  end else begin
+   Header.Flags:=aFlags;
+  end;
+  Header.Len:=ActualSize;
+  WriteRxPacket(Header,aData,ActualSize);
+ finally
+  fConnectionLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.SendData(const aRemotePort,aLocalPort:TPasRISCVUInt32;const aData:Pointer;const aSize:TPasRISCVUInt32;const aEOR:Boolean=false);
+var Connection:TVSockConnection;
+    Header:TVSockHeader;
+    Remaining,ChunkSize,Offset:TPasRISCVUInt32;
+    PeerFree:TPasRISCVInt64;
+    Flags:TPasRISCVUInt32;
+    RetryCount:TPasRISCVUInt32;
+begin
+ fConnectionLock.Acquire;
+ try
+  Connection:=FindConnection(aLocalPort,fGuestCID,aRemotePort);
+  if (not assigned(Connection)) or (Connection.State<>TVSockConnectionState.Connected) then begin
+   exit;
+  end;
+  Remaining:=aSize;
+  Offset:=0;
+  while Remaining>0 do begin
+   ChunkSize:=Remaining;
+   if ChunkSize>VSOCK_MAX_PKT_BUF_SIZE then begin
+    ChunkSize:=VSOCK_MAX_PKT_BUF_SIZE;
+   end;
+   FillChar(Header,SizeOf(TVSockHeader),#0);
+   Header.SrcCID:=VSOCK_CID_HOST;
+   Header.DstCID:=fGuestCID;
+   Header.SrcPort:=aLocalPort;
+   Header.DstPort:=aRemotePort;
+   Header.SocketType:=Connection.SocketType;
+   Header.Op:=VIRTIO_VSOCK_OP_RW;
+   Header.BufAlloc:=Connection.BufAlloc;
+   Header.FwdCnt:=Connection.FwdCnt;
+   if Connection.SocketType=VIRTIO_VSOCK_TYPE_STREAM then begin
+    PeerFree:=TPasRISCVInt64(Connection.PeerBufAlloc)-TPasRISCVInt64(Connection.TxCnt-Connection.PeerFwdCnt);
+    if PeerFree<=0 then begin
+     // Request credit update and retry
+     SendControlPacket(Connection,VIRTIO_VSOCK_OP_CREDIT_REQUEST);
+     RetryCount:=0;
+     while PeerFree<=0 do begin
+      inc(RetryCount);
+      if RetryCount>1000 then begin
+       exit; // Give up after too many retries
+      end;
+      PeerFree:=TPasRISCVInt64(Connection.PeerBufAlloc)-TPasRISCVInt64(Connection.TxCnt-Connection.PeerFwdCnt);
+     end;
+    end;
+    if ChunkSize>TPasRISCVUInt32(PeerFree) then begin
+     ChunkSize:=TPasRISCVUInt32(PeerFree);
+    end;
+    Connection.TxCnt:=Connection.TxCnt+ChunkSize;
+    Header.Flags:=0;
+   end else begin
+    // Seqpacket: set EOM (and optionally EOR) only on last fragment
+    Flags:=0;
+    if (Offset+ChunkSize)>=aSize then begin
+     Flags:=VIRTIO_VSOCK_SEQ_EOM;
+     if aEOR then begin
+      Flags:=Flags or VIRTIO_VSOCK_SEQ_EOR;
+     end;
+    end;
+    Header.Flags:=Flags;
+   end;
+   Header.Len:=ChunkSize;
+   WriteRxPacket(Header,Pointer(PtrUInt(PtrUInt(aData)+Offset)),ChunkSize);
+   inc(Offset,ChunkSize);
+   dec(Remaining,ChunkSize);
+  end;
+ finally
+  fConnectionLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOVSockDevice.SendTransportReset;
+begin
+ WriteEvent(VIRTIO_VSOCK_EVENT_TRANSPORT_RESET);
+ fConnectionLock.Acquire;
+ try
+  DestroyAllConnections;
+ finally
+  fConnectionLock.Release;
+ end;
+end;
+
 {$if defined(PasRISCVUseRealConsole)}
 
 { TPasRISCV.TUARTDevice.TUARTInputThread }
@@ -36361,6 +37180,11 @@ begin
  fVirtIORandomGeneratorSize:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultSize;
  fVirtIORandomGeneratorIRQ:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultIRQ;
 
+ fVirtIOVSockBase:=TPasRISCV.TVirtIOVSockDevice.DefaultBaseAddress;
+ fVirtIOVSockSize:=TPasRISCV.TVirtIOVSockDevice.DefaultSize;
+ fVirtIOVSockIRQ:=TPasRISCV.TVirtIOVSockDevice.DefaultIRQ;
+ fVirtIOVSockGuestCID:=TPasRISCV.TVirtIOVSockDevice.DefaultGuestCID;
+
  fBIOS:=TMemoryStream.Create;
 
  fKernel:=TMemoryStream.Create;
@@ -36477,6 +37301,11 @@ begin
  fVirtIORandomGeneratorBase:=aConfiguration.fVirtIORandomGeneratorBase;
  fVirtIORandomGeneratorSize:=aConfiguration.fVirtIORandomGeneratorSize;
  fVirtIORandomGeneratorIRQ:=aConfiguration.fVirtIORandomGeneratorIRQ;
+
+ fVirtIOVSockBase:=aConfiguration.fVirtIOVSockBase;
+ fVirtIOVSockSize:=aConfiguration.fVirtIOVSockSize;
+ fVirtIOVSockIRQ:=aConfiguration.fVirtIOVSockIRQ;
+ fVirtIOVSockGuestCID:=aConfiguration.fVirtIOVSockGuestCID;
 
  fIVSHMEMSharedMemorySize:=aConfiguration.fIVSHMEMSharedMemorySize;
 
@@ -36713,6 +37542,8 @@ begin
 
  fVirtIORandomGeneratorDevice:=TVirtIORandomGeneratorDevice.Create(self);
 
+ fVirtIOVSockDevice:=TVirtIOVSockDevice.Create(self);
+
  fBus:=TBus.Create(self);
  fBus.AddBusDevice(fBootMemoryDevice);
  fBus.AddBusDevice(fMemoryDevice);
@@ -36745,6 +37576,7 @@ begin
  fBus.AddBusDevice(fVirtIO9PDevice);
  fBus.AddBusDevice(fVirtIONetDevice);
  fBus.AddBusDevice(fVirtIORandomGeneratorDevice);
+ fBus.AddBusDevice(fVirtIOVSockDevice);
 
  fNVMeDevice:=TNVMeDevice.Create(fPCIBusDevice);
  fPCIBusDevice.AddBusDevice(fNVMeDevice);
@@ -36856,6 +37688,7 @@ begin
  FreeAndNil(fVirtIO9PDevice);
  FreeAndNil(fVirtIONetDevice);
  FreeAndNil(fVirtIORandomGeneratorDevice);
+ FreeAndNil(fVirtIOVSockDevice);
 
  FreeAndNil(fBus);
 
@@ -36944,6 +37777,7 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     VirtIOBlockNode,
     VirtIOInputKeyboardNode,VirtIOInputMouseNode,VirtIOSoundNode,VirtIO9PNode,VirtIONetNode,
     VirtIORandomGeneratorNode,
+    VirtIOVSockNode,
     SimpleFrameBufferNode:TPasRISCV.TFDT.TFDTNode;
     AIARegFileMode:TPasRISCV.TAIARegFileMode;
     CPUInterruptControllerNodes:array[0..15] of TPasRISCV.TFDT.TFDTNode;
@@ -37819,6 +38653,21 @@ begin
       VirtIORandomGeneratorNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
       SoCNode.AddChild(VirtIORandomGeneratorNode);
+     end;
+
+     VirtIOVSockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOVSockBase);
+     try
+      VirtIOVSockNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIOVSockBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIOVSockSize;
+      VirtIOVSockNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=INTC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOVSockIRQ);
+      VirtIOVSockNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIOVSockNode);
      end;
 
     end;

@@ -55,6 +55,7 @@ are required. The VirtIO devices are used to provide a standard interface for de
 | VIRTIO NET            | $10056000 | $1000     | $16                       | VirtIO network device                       |
 | VIRTIO RNG            | $10057000 | $1000     | $17                       | VirtIO random number generator              |
 | VIRTIO GPU            | $10058000 | $1000     | $18                       | VirtIO GPU device (planned)                 |
+| VIRTIO VSOCK          | $10059000 | $1000     | $19                       | VirtIO socket device                        |
 
 For each VirtIO device, the MMIO region size is $1000. For the VirtIO GPU device, the guest OS allocates its own frame buffer memory ranges, so $1000 as MMIO region size remains valid for the device registers in this case.
 
