@@ -42,6 +42,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - DS1742 real-time clock (read-only, no write support)
   - PCIe Bus
     - NVMe SSD
+    - IVSHMEM (Inter-VM Shared Memory) device for host-guest shared memory communication with doorbell interrupts
   - I2C bus (disabled for now, due to IRQ issues, will be either fixed, removed, or replaced with virtio-i2c later)
     - HID devices
       - Keyboard
