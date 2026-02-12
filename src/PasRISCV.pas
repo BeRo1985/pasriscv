@@ -3016,6 +3016,42 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure SaveToStream(const aStream:TStream);
               procedure SaveToFile(const aFileName:TPasRISCVUTF8String);
             end;
+            { TIVSHMEMDevice }
+            TIVSHMEMDevice=class(TPCIDevice)
+             public
+              const IVSHMEM_VENDOR_ID=$1af4; // Red Hat, Inc.
+                    IVSHMEM_DEVICE_ID=$1110; // Inter-VM shared memory (ivshmem)
+                    IVSHMEM_CLASS_CODE=$0580; // Memory controller, Other
+                    IVSHMEM_REVISION=$01;
+                    IVSHMEM_REG_INTMASK=$00;   // Interrupt Mask
+                    IVSHMEM_REG_INTSTATUS=$04; // Interrupt Status
+                    IVSHMEM_REG_IVPOSITION=$08; // IV Position
+                    IVSHMEM_REG_DOORBELL=$0c;  // Doorbell
+                    IVSHMEM_REG_SHM_SIZE_LO=$10; // Shared Memory Size Low
+                    IVSHMEM_REG_SHM_SIZE_HI=$14; // Shared Memory Size High
+                    IVSHMEM_BAR0_SIZE=$100; // 256 bytes for device registers
+                    IVSHMEM_DEFAULT_SHM_SIZE=$100000; // 1 MB default shared memory size
+              type TOnDoorbell=procedure(const aSender:TIVSHMEMDevice;const aValue:TPasRISCVUInt32) of object;
+             private
+              fIntMask:TPasRISCVUInt32;
+              fIntStatus:TPasRISCVUInt32;
+              fIVPosition:TPasRISCVUInt32;
+              fSharedMemorySize:TPasRISCVUInt64;
+              fSharedMemoryPointer:Pointer;
+              fOnDoorbell:TOnDoorbell;
+             public
+              constructor Create(const aBus:TPCIBusDevice;const aSharedMemorySize:TPasRISCVUInt64=IVSHMEM_DEFAULT_SHM_SIZE); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              procedure RingDoorbell;
+             public
+              property SharedMemory:Pointer read fSharedMemoryPointer;
+             published
+              property SharedMemorySize:TPasRISCVUInt64 read fSharedMemorySize;
+              property OnDoorbellEvent:TOnDoorbell read fOnDoorbell write fOnDoorbell;
+            end;
             { TVirtIODevice }
             TVirtIODevice=class(TBusDevice)
              public
@@ -5714,6 +5750,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fNVMeDevice:TNVMeDevice;
 
+       fIVSHMEMDevice:TIVSHMEMDevice;
+
        fFrameBufferDevice:TFrameBufferDevice;
 
        fRawKeyboardDevice:TRawKeyboardDevice;
@@ -5859,6 +5897,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property PCIBusDevice:TPCIBusDevice read fPCIBusDevice;
 
        property NVMeDevice:TNVMeDevice read fNVMeDevice;
+
+       property IVSHMEMDevice:TIVSHMEMDevice read fIVSHMEMDevice;
 
        property FrameBufferDevice:TFrameBufferDevice read fFrameBufferDevice;
 
@@ -17297,6 +17337,146 @@ begin
   SaveToStream(Stream);
  finally
   Stream.Free;
+ end;
+end;
+
+{ TPasRISCV.TIVSHMEMDevice }
+
+constructor TPasRISCV.TIVSHMEMDevice.Create(const aBus:TPasRISCV.TPCIBusDevice;const aSharedMemorySize:TPasRISCVUInt64=IVSHMEM_DEFAULT_SHM_SIZE);
+var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
+    BARRegion:TPasRISCV.PPCIBARRegion;
+begin
+ inherited Create(aBus);
+
+ fIntMask:=0;
+ fIntStatus:=0;
+ fIVPosition:=0;
+ fSharedMemorySize:=aSharedMemorySize;
+ fSharedMemoryPointer:=nil;
+ fOnDoorbell:=nil;
+
+ FillChar(FuncDesc,SizeOf(FuncDesc),#0);
+ FuncDesc.fVendorID:=IVSHMEM_VENDOR_ID;
+ FuncDesc.fDeviceID:=IVSHMEM_DEVICE_ID;
+ FuncDesc.fClassCode:=IVSHMEM_CLASS_CODE; // Memory Controller, Other
+ FuncDesc.fProgIF:=$00;
+ FuncDesc.fRevisionID:=IVSHMEM_REVISION;
+ FuncDesc.fIRQPin:=TPCI.PCI_IRQ_PIN_INTA;
+
+ // BAR0: Device registers (Doorbell, Interrupt Mask/Status, etc.)
+ BARRegion:=@FuncDesc.fBARRegions[0];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=IVSHMEM_BAR0_SIZE;
+ BARRegion^.fOnLoad:=OnLoad;
+ BARRegion^.fOnStore:=OnStore;
+
+ // BAR2: Shared memory region (raw memory, no callbacks)
+ BARRegion:=@FuncDesc.fBARRegions[2];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=fSharedMemorySize;
+ BARRegion^.fOnLoad:=nil;
+ BARRegion^.fOnStore:=nil;
+
+ fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
+
+ // Get shared memory pointer from BAR2's TPCIMemoryDevice backing memory
+ if assigned(fFuncs[0]) and assigned(fFuncs[0].fBARMemoryDevices[2]) then begin
+  fSharedMemoryPointer:=fFuncs[0].fBARMemoryDevices[2].fData;
+ end;
+
+end;
+
+destructor TPasRISCV.TIVSHMEMDevice.Destroy;
+begin
+ fOnDoorbell:=nil;
+ fSharedMemoryPointer:=nil;
+ FreeAndNil(fFuncs[0]);
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TIVSHMEMDevice.Reset;
+begin
+ inherited Reset;
+ fIntMask:=0;
+ fIntStatus:=0;
+end;
+
+function TPasRISCV.TIVSHMEMDevice.OnLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if aSize=4 then begin
+  case Address of
+   IVSHMEM_REG_INTMASK:begin
+    result:=TPasMPInterlocked.Read(fIntMask);
+   end;
+   IVSHMEM_REG_INTSTATUS:begin
+    // Read and clear
+    result:=TPasMPInterlocked.Exchange(fIntStatus,0);
+    if result<>0 then begin
+     fFuncs[0].LowerIRQ;
+    end;
+   end;
+   IVSHMEM_REG_IVPOSITION:begin
+    result:=fIVPosition;
+   end;
+   IVSHMEM_REG_DOORBELL:begin
+    result:=0; // Write-only register
+   end;
+   IVSHMEM_REG_SHM_SIZE_LO:begin
+    result:=fSharedMemorySize and TPasRISCVUInt64($ffffffff);
+   end;
+   IVSHMEM_REG_SHM_SIZE_HI:begin
+    result:=fSharedMemorySize shr 32;
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TIVSHMEMDevice.OnStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if aSize=4 then begin
+  case Address of
+   IVSHMEM_REG_INTMASK:begin
+    TPasMPInterlocked.Write(fIntMask,TPasRISCVUInt32(aValue));
+   end;
+   IVSHMEM_REG_INTSTATUS:begin
+    // Write to clear specific bits
+    TPasMPInterlocked.BitwiseAnd(fIntStatus,TPasRISCVUInt32(not TPasRISCVUInt32(aValue)));
+   end;
+   IVSHMEM_REG_DOORBELL:begin
+    // Guest rings doorbell to host
+    if assigned(fOnDoorbell) then begin
+     fOnDoorbell(self,TPasRISCVUInt32(aValue));
+    end;
+   end;
+   else begin
+    // Ignore writes to read-only or undefined registers
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TIVSHMEMDevice.RingDoorbell;
+begin
+ if (TPasMPInterlocked.Read(fIntMask) and 1)<>0 then begin
+  TPasMPInterlocked.BitwiseOr(fIntStatus,1);
+  fFuncs[0].RaiseIRQ(0);
  end;
 end;
 
@@ -36561,6 +36741,9 @@ begin
  fNVMeDevice:=TNVMeDevice.Create(fPCIBusDevice);
  fPCIBusDevice.AddBusDevice(fNVMeDevice);
 
+ fIVSHMEMDevice:=TIVSHMEMDevice.Create(fPCIBusDevice);
+ fPCIBusDevice.AddBusDevice(fIVSHMEMDevice);
+
  fHARTs:=nil;
  SetLength(fHARTs,fCountHARTs);
  for Index:=0 to length(fHARTs)-1 do begin
@@ -36621,6 +36804,9 @@ begin
 
  fHARTs:=nil;
  fHART:=nil;
+
+ fPCIBusDevice.RemoveBusDevice(fIVSHMEMDevice);
+ FreeAndNil(fIVSHMEMDevice);
 
  fPCIBusDevice.RemoveBusDevice(fNVMeDevice);
 
