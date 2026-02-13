@@ -4242,9 +4242,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             { TSharedMemoryDevice }
             TSharedMemoryDevice=class(TBusDevice)
              public
-              const DefaultBaseAddress=TPasRISCVUInt64($2F000000);
+              const DefaultBaseAddress=TPasRISCVUInt64($2f000000);
                     DefaultSize=TPasRISCVUInt64($100000); // 1 MB
-                    DefaultIRQ=TPasRISCVUInt64($1A); // 26
+                    DefaultIRQ=TPasRISCVUInt64($1a); // 26
                     REG_DOORBELL=$00;
                     REG_HOST_FLAGS=$04;
                     REG_GUEST_FLAGS=$08;
