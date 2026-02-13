@@ -2867,87 +2867,274 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     SSD_DeviceID=$4512; // Nextorage NE1N NVMe SSD //}
                     SSD_VendorID=$144d; // Samsung Electronics Co Ltd
                     SSD_DeviceID=$a809; // NVM Express SSD Controller 980 //}
-                    NVME_REG_CAP1=$0;   // Controller Capabilities
-                    NVME_REG_CAP2=$4;
-                    NVME_REG_VS=$8;   // Version
-                    NVME_REG_INTMS=$c;   // Interrupt Mask Set
-                    NVME_REG_INTMC=$10;  // Interrupt Mask Clear
-                    NVME_REG_CC=$14;  // Controller Configuration
+                    // Controller Registers
+                    NVME_REG_CAP1=$00;  // Controller Capabilities (Low)
+                    NVME_REG_CAP2=$04;  // Controller Capabilities (High)
+                    NVME_REG_VS=$08;    // Version
+                    NVME_REG_INTMS=$0c; // Interrupt Mask Set
+                    NVME_REG_INTMC=$10; // Interrupt Mask Clear
+                    NVME_REG_CC=$14;    // Controller Configuration
                     NVME_REG_CSTS=$1c;  // Controller Status
-                    NVME_REG_AQA=$24;  // Admin Queue Attributes
-                    NVME_REG_ASQ1=$28;  // Admin Submission Queue Base Address
-                    NVME_REG_ASQ2=$2c;
-                    NVME_REG_ACQ1=$30;  // Admin Completion Queue Base Address
-                    NVME_REG_ACQ2=$34;
-                    NVME_MQES=$ffff; // Maximum Queue Entries Supported: 65536
-                    NVME_CQR=$1;   // Contiguous Queues Required
-                    NVME_TO=$A;   // Timeout: 5s
-                    NVME_DSTRD=$0;   // Doorbell Stride (0 means 2-bit shift)
-                    NVME_CSS=$1;   // Command Sets Supported (NVM Command Set)
-                    NVME_MPMAX=$0;   // Max page size: 4K
-                    NVME_IOQES=$46;  // IO Queue Entry Sizes (16b:64b)
-                    NVME_LBAS=$9;   // LBA Block Size Shift (512b blocks)
-                    NVME_MAX_QUEUES=$10;  // Max Queues: 16 (Admin + IO, Submission & Completion)
-                    NVME_FEAT_NQES=TPasRISCVUInt32(TPasRISCVUInt32(NVME_MAX_QUEUES-1) or TPasRISCVUInt32(TPasRISCVUInt32(NVME_MAX_QUEUES-1) shl 16));
-                    NVME_PAGE_SIZE=TPasRISCVUInt64($1000);
-                    NVME_PAGE_MASK=TPasRISCVUInt64($fff);
+                    NVME_REG_AQA=$24;   // Admin Queue Attributes
+                    NVME_REG_ASQ1=$28;  // Admin Submission Queue Base Address (Low)
+                    NVME_REG_ASQ2=$2c;  // Admin Submission Queue Base Address (High)
+                    NVME_REG_ACQ1=$30;  // Admin Completion Queue Base Address (Low)
+                    NVME_REG_ACQ2=$34;  // Admin Completion Queue Base Address (High)
+                    // Controller Capabilities
+                    NVME_MQES=$ffff;   // Maximum Queue Entries Supported: 65536
+                    NVME_CQR=$1;       // Contiguous Queues Required
+                    NVME_TO=$A;        // Timeout: 5s
+                    NVME_DSTRD=$0;     // Doorbell Stride (0 means 2-bit shift)
+                    NVME_CSS=$1;       // Command Sets Supported (NVM Command Set)
+                    NVME_MPMAX=$0;     // Max page size: 4K
+                    NVME_IOQES=$46;    // IO Queue Entry Sizes (16b:64b)
+                    NVME_CAP1_MQES=TPasRISCVUInt32($0000ffff); // Maximum Queue Entries Supported: 65536
+                    NVME_CAP1_CQR=TPasRISCVUInt32($00010000);  // Contiguous Queues Required
+                    NVME_CAP1_CQR0=NVME_CAP1_CQR; // Legacy alias
+                    NVME_CAP1_TO=TPasRISCVUInt32($ff000000);   // Timeout: Max
+                    NVME_CAP2_DSTRD=TPasRISCVUInt32($00000000);// Doorbell Stride (0 means 2-bit shift)
+                    NVME_CAP2_CSS=TPasRISCVUInt32($00000020);  // Command Sets Supported (NVM Command Set)
+                    NVME_VERSION=TPasRISCVUInt32($00010400);    // NVMe v1.4
+                    // Controller Configuration
+                    NVME_CC_EN=TPasRISCVUInt32($00000001);     // Enabled
+                    NVME_CC_SHN=TPasRISCVUInt32($0000c000);    // Shutdown Notification
+                    NVME_CC_IOQES=TPasRISCVUInt32($00460000);  // IO Queue Entry Sizes (16b:64b)
+                    // Controller Status
+                    NVME_CSTS_RDY=TPasRISCVUInt32($00000001);  // Ready
+                    NVME_CSTS_SHST=TPasRISCVUInt32($00000008); // Shutdown Status
+                    // Queue IDs
+                    QUEUE_ADMIN=$00;          // Admin Queue ID
+                    QUEUE_IO=$01;             // IO Queues starting ID
+                    // Submission Queue Entry definitions
+                    SQE_SIZE=$40;           // 64 bytes
+                    SQE_SIZE_SHIFT=$06;
+                    SQE_CDW0=$00;           // Command Dword 0 (Opcode, Fused, CID)
+                    SQE_CID=$02;            // Command Identifier (offset within SQE)
+                    SQE_NSID=$04;           // Namespace Identifier
+                    SQE_MPTR=$10;           // Metadata Pointer
+                    SQE_PRP1=$18;           // PRP Entry 1
+                    SQE_PRP2=$20;           // PRP Entry 2
+                    SQE_CDW10=$28;          // Command Dword 10 (Command-Specific)
+                    SQE_CDW11=$2c;          // Command Dword 11 (Command-Specific)
+                    SQE_CDW12=$30;          // Command Dword 12 (Command-Specific)
+                    SQE_CDW13=$34;          // Command Dword 13 (Command-Specific)
+                    SQE_CDW14=$38;          // Command Dword 14 (Command-Specific)
+                    SQE_CDW15=$3c;          // Command Dword 15 (Command-Specific)
+                    // Completion Queue Entry definitions
+                    CQE_SIZE=$10;           // 16 bytes
+                    CQE_SIZE_SHIFT=$04;
+                    CQE_CS=$00;             // Command Specific
+                    CQE_RSVD=$04;           // Reserved
+                    CQE_SQHD_SQID=$08;     // SQ Head Pointer & SQ Identifier
+                    CQE_CID_PB_SF=$0c;     // Command Identifier, Phase Bit, Status Field
+                    CQE_PB_MASK=$10000;     // Phase Bit Mask
+                    CQE_SF_SHIFT=$11;       // Status Field Shift (17)
+                    // Admin Command Set
+                    ADMIN_DELETE_IO_SQ=$00;  // Delete IO Submission Queue
+                    ADMIN_CREATE_IO_SQ=$01;  // Create IO Submission Queue
+                    ADMIN_GET_LOG_PAGE=$02;  // Get Log Page
+                    ADMIN_DELETE_IO_CQ=$04;  // Delete IO Completion Queue
+                    ADMIN_CREATE_IO_CQ=$05;  // Create IO Completion Queue
+                    ADMIN_IDENTIFY=$06;      // Identify
+                    ADMIN_ABORT=$08;         // Abort Command
+                    ADMIN_SET_FEATURES=$09;  // Set Features
+                    ADMIN_GET_FEATURES=$0a;  // Get Features
+                    ADMIN_ASYNC_EVENT_REQ=$0c; // Asynchronous Event Request
+                    ADMIN_NAMESPACE_MGMT=$0d; // Namespace Management (Optional)
+                    ADMIN_FIRMWARE_COMM=$10;  // Firmware Commit (Optional)
+                    ADMIN_FIRMWARE_DOWN=$11;  // Firmware Image Download (Optional)
+                    ADMIN_SELF_TEST=$14;     // Device Self-Test (Optional)
+                    ADMIN_NAMESPACE_ATCH=$15; // Namespace Attachment (Optional)
+                    ADMIN_KEEP_ALIVE=$18;    // Keep Alive (Optional)
+                    ADMIN_DIRECTIVE_SEND=$19; // Directive Send (Optional)
+                    ADMIN_DIRECTIVE_RECV=$1a; // Directive Receive (Optional)
+                    ADMIN_VIRT_MGMT=$1c;     // Virtualization Management (Optional)
+                    ADMIN_NVME_MI_SEND=$1d;  // NVMe-MI Send (Optional)
+                    ADMIN_NVME_MI_RECV=$1e;  // NVMe-MI Receive (Optional)
+                    ADMIN_DBELL_BUFF_CFG=$7c; // Doorbell Buffer Config (Optional)
+                    ADMIN_FORMAT_NVM=$80;    // Format NVM (Optional)
+                    ADMIN_SECURITY_SEND=$81; // Security Send (Optional)
+                    ADMIN_SECURITY_RECV=$82; // Security Receive (Optional)
+                    ADMIN_SANITIZE=$84;      // Sanitize (Optional)
+                    ADMIN_GET_LBA_STAT=$86;  // Get LBA Status (Optional)
+                    // Completion Queue Flags
+                    CQ_FLAGS_PC=$01;  // Physically Contiguous
+                    CQ_FLAGS_IEN=$02; // Interrupts Enabled
+                    // NVMe Get Log Page - Log Page Identifiers
+                    LOG_ERROR=$01;           // Error Information
+                    LOG_SMART=$02;           // SMART / Health Information
+                    LOG_FIRMWARE_SLOT=$03;   // Firmware Slot Information
+                    LOG_CHANGED_NS_LIST=$04; // Changed Namespace List (Optional)
+                    LOG_CMD_SUPPORTED=$05;   // Commands Supported and Effects (Optional)
+                    LOG_SELF_TEST=$06;       // Device Self-Test (Optional)
+                    LOG_TELEMETRY_HOST=$07;  // Telemetry Host-Initiated (Optional)
+                    LOG_TELEMETRY_CTRL=$08;  // Telemetry Controller-Initiated (Optional)
+                    LOG_EGRP_INFO=$09;       // Endurance Group Information (Optional)
+                    LOG_PRED_LAT_SET=$0a;    // Predictable Latency Per NVM Set (Optional)
+                    LOG_PRED_LAT_AGGR=$0b;   // Predictable Latency Event Aggregate (Optional)
+                    LOG_ASYMM_NS_ACCESS=$0c; // Asymmetric Namespace Access (Optional)
+                    LOG_PERSIST_EVENT=$0d;   // Persistent Event Log (Optional)
+                    LOG_LBA_STATUS=$0e;      // LBA Status Information (Optional)
+                    LOG_EGRP_AGGR=$0f;       // Endurance Group Event Aggregate (Optional)
+                    LOG_DISCOVERY=$70;       // Discovery (Optional)
+                    LOG_RSV_NOTIFY=$80;      // Reservation Notification (Optional)
+                    LOG_SANITIZE_STAT=$81;   // Sanitize Status (Optional)
+                    // NVMe Identify - CNS Identifiers
+                    IDENT_NS=$00;            // Identify Namespace
+                    CNS_NAMESPACE=IDENT_NS;
+                    IDENT_CTRL=$01;          // Identify Controller
+                    CNS_CONTROLLER=IDENT_CTRL;
+                    IDENT_NSLS=$02;          // Identify Namespace List
+                    CNS_NSID_LIST=IDENT_NSLS;
+                    IDENT_NIDS=$03;          // Identify Namespace Descriptors
+                    CNS_NSID_DESC=IDENT_NIDS;
+                    CNS_NVM_SET_LIST=$04;    // Identify NVM Set List (Optional)
+                    CNS_ALLOC_NSID=$10;      // Identify Allocated Namespace ID List (Optional)
+                    CNS_ALLOC_NAMESPACE=$11;  // Identify Allocated Namespace (Optional)
+                    CNS_CTRL_NSID_LIST=$12;  // Identify Controller List attached to NSID (Optional)
+                    CNS_CTRL_LIST=$13;       // Identify Controller List in NVM subsystem (Optional)
+                    CNS_CTRL_CAPS=$14;       // Identify Primary Controller Capabilities (Optional)
+                    CNS_CTRL_SECONDARY=$15;  // Identify Secondary Controller List (Optional)
+                    CNS_NS_GRANULARITY=$16;  // Identify Namespace Granularity List (Optional)
+                    CNS_UUID_LIST=$17;       // Identify UUID List (Optional)
+                    // NVMe Get/Set Feature - Feature Identifiers
+                    FEAT_ARBITRATION=$01;    // Arbitration
+                    FEAT_POWER_MGMT=$02;     // Power Management
+                    FEAT_LBA_RANGE=$03;      // LBA Range Type (Optional)
+                    FEAT_TEMP_THRESH=$04;    // Temperature Threshold
+                    FEAT_ERROR_RECOVER=$05;  // Error Recovery
+                    FEAT_VOLATILE_WC=$06;    // Volatile Write Cache (Optional)
+                    FEAT_NUM_QUEUES=$07;     // Number of Queues
+                    FEAT_IRQ_COALESCE=$08;   // Interrupt Coalescing
+                    FEAT_IRQ_VECTOR=$09;     // Interrupt Vector Configuration
+                    FEAT_WR_ATOMIC=$0a;      // Write Atomicity Normal
+                    FEAT_ASYNC_EVENT=$0b;    // Asynchronous Event Configuration
+                    FEAT_AUTO_PWSTATE=$0c;   // Autonomous Power State Transition (Optional)
+                    FEAT_HOST_MEM_BUFF=$0d;  // Host Memory Buffer (Optional)
+                    FEAT_TIMESTAMP=$0e;      // Timestamp (Optional)
+                    FEAT_KPALIVE_TIMER=$0f;  // Keep Alive Timer (Optional)
+                    FEAT_HOST_THERMAL=$10;   // Host-Controlled Thermal Management (Optional)
+                    FEAT_NONOP_PWR_CFG=$11;  // Non-Operational Power State Config (Optional)
+                    FEAT_RDRECOVER_LVL=$12;  // Read Recovery Level Config (Optional)
+                    FEAT_PRED_LAT_CFG=$13;   // Predictable Latency Mode Config (Optional)
+                    FEAT_PRED_LAT_WIN=$14;   // Predictable Latency Mode Window (Optional)
+                    FEAT_LBA_STAT_INF=$15;   // LBA Status Information Attributes (Optional)
+                    FEAT_HOST_BEHAVIOR=$16;  // Host Behavior Support (Optional)
+                    FEAT_SANITIZE_CFG=$17;   // Sanitize Config (Optional)
+                    FEAT_EGRP_EVT_CFG=$18;   // Endurance Group Event Configuration (Optional)
+                    FEAT_SW_PROGRESS=$80;    // Software Progress Marker (Optional)
+                    FEAT_HOST_IDENT=$81;     // Host Identifier (Optional)
+                    // NVMe IO Command Set
+                    NVM_FLUSH=$00;           // Flush buffers
+                    NVM_WRITE=$01;           // Write
+                    NVM_READ=$02;            // Read
+                    NVM_WRITE_UNC=$04;       // Write Uncorrectable (Optional)
+                    NVM_COMPARE=$05;         // Compare (Optional)
+                    NVM_WRITEZ=$08;          // Write Zeroes (Optional)
+                    NVM_DTSM=$09;            // Dataset Management (Optional)
+                    NVM_VERIFY=$0c;          // Verify (Optional)
+                    NVM_RSV_REGISTER=$0d;    // Reservation Register (Optional)
+                    NVM_RSV_REPORT=$0e;      // Reservation Report (Optional)
+                    NVM_RSV_ACQUIRE=$11;     // Reservation Acquire (Optional)
+                    NVM_RSV_RELEASE=$15;     // Reservation Release (Optional)
+                    // NVMe Generic Status Codes - Admin command set
+                    SC_SUCCESS=$00;          // Successful Completion
+                    SC_BAD_OPCODE=$01;       // Invalid Command Opcode
+                    SC_BAD_FIELD=$02;        // Invalid Field in Command
+                    SC_ID_CONFLICT=$03;      // Command ID Conflict
+                    SC_DATA_ERR=$04;         // Data Transfer Error
+                    SC_POWER_LOSS=$05;       // Command Aborted due to Power Loss
+                    SC_INTERNAL_ERR=$06;     // Internal Error
+                    SC_ABORTED=$07;          // Command Abort Requested
+                    SC_SQ_DELETED=$08;       // Command Aborted due to SQ Deletion
+                    SC_FUSE_FAIL=$09;        // Command Aborted due to Failed Fused Command
+                    SC_FUSE_MISSING=$0a;     // Command Aborted due to Missing Fused Command
+                    SC_BAD_NAMESPACE=$0b;    // Invalid Namespace or Format
+                    SC_SEQUENCE_ERR=$0c;     // Command Sequence Error
+                    SC_BAD_SGL_DESC=$0d;     // Invalid SGL Segment Descriptor
+                    SC_BAD_SGL_NUM=$0e;      // Invalid Number of SGL Descriptors
+                    SC_BAD_SGL_DATA=$0f;     // Invalid Data SGL Length
+                    SC_BAD_SGL_META=$10;     // Invalid Metadata SGL Length
+                    SC_BAD_SGL_TYPE=$11;     // Invalid SGL Descriptor Type
+                    SC_INVALID_CMB_USE=$12;  // Invalid Use of Controller Memory Buffer
+                    SC_BAD_PRP_OFFSET=$13;   // Invalid PRP Offset
+                    SC_ATOMIC_UNIT=$14;      // Atomic Write Unit Exceeded
+                    SC_PERM_DENIED=$15;      // Operation Denied
+                    SC_BAD_SGL_OFFSET=$16;   // Invalid SGL Offset
+                    SC_BAD_HOST_ID=$18;      // Host Identifier Inconsistent Format
+                    SC_KEEP_ALIVE=$19;       // Keep Alive Timer Expired
+                    SC_BAD_TIMER=$1a;        // Keep Alive Timeout Invalid
+                    SC_PREEMPTED=$1b;        // Command Aborted due to Preempt and Abort
+                    SC_SANITIZE_FAIL=$1c;    // Sanitize Failed
+                    SC_SANITIZE_NOW=$1d;     // Sanitize In Progress
+                    SC_BAD_SGL_GRAN=$1e;     // Invalid SGL Data Block Granularity
+                    SC_QUEUE_IN_CMB=$1f;     // Command Not Supported for Queue in CMB
+                    SC_NAMESPACE_WP=$20;     // Namespace is Write Protected
+                    SC_INTERRUPTED=$21;      // Command Interrupted
+                    SC_TRANSPORT_ERR=$22;    // Transient Transport Error
+                    // NVMe Generic Status Codes - IO command set
+                    SC_LBA_RANGE=$80;        // LBA Out of Range
+                    SC_NS_CAPACITY=$81;      // Capacity Exceeded
+                    SC_NS_NOT_READY=$82;     // Namespace Not Ready
+                    SC_RSV_CONFLICT=$83;     // Reservation Conflict
+                    SC_FORMAT_NOW=$84;       // Format In Progress
+                    // NVMe Command Specific Status Codes - Admin command set
+                    SC_BAD_CQ=$0100;         // Completion Queue Invalid
+                    SC_BAD_QUEUE_ID=$0101;   // Invalid Queue Identifier
+                    SC_BAD_QUEUE_SIZE=$0102;  // Invalid Queue Size
+                    SC_ABORT_LIMIT=$0103;    // Abort Command Limit Exceeded
+                    SC_AER_LIMIT=$0105;      // Asynchronous Event Request Limit Exceeded
+                    SC_BAD_FW_SLOT=$0106;    // Invalid Firmware Slot
+                    SC_BAD_FW_IMG=$0107;     // Invalid Firmware Image
+                    SC_BAD_IRQ_VEC=$0108;    // Invalid Interrupt Vector
+                    SC_BAD_LOG_PAGE=$0109;   // Invalid Log Page
+                    SC_BAD_FORMAT=$010a;     // Invalid Format
+                    SC_FW_NEED_RST=$010b;    // Firmware Activation Requires Conventional Reset
+                    SC_BAD_QUEUE_DEL=$010c;  // Invalid Queue Deletion
+                    SC_FEAT_NOT_SAVEBL=$010d; // Feature Identifier Not Saveable
+                    SC_FEAT_NOT_CHGBL=$010e;  // Feature Not Changeable
+                    SC_FEAT_NOT_NS=$010f;    // Feature Not Namespace Specific
+                    SC_FW_NEED_NRST=$0110;   // Firmware Activation Requires NVM Subsystem Reset
+                    SC_FW_NEED_CRST=$0111;   // Firmware Activation Requires Controller Level Reset
+                    SC_FW_NEED_MTO=$0112;    // Firmware Activation Requires Maximum Time Violation
+                    SC_FW_PROHIBIT=$0113;    // Firmware Activation Prohibited
+                    SC_OVERLAP_RANGE=$0114;  // Overlapping Range
+                    SC_NS_NO_CAPACITY=$0115; // Namespace Insufficient Capacity
+                    SC_NS_ID_UNAVAIL=$0116;  // Namespace Identifier Unavailable
+                    SC_NS_ATTACHED=$0118;    // Namespace Already Attached
+                    SC_NS_PRIVATE=$0119;     // Namespace Is Private
+                    SC_NS_NATTACHED=$011a;   // Namespace Not Attached
+                    SC_THIN_PROV_SUPP=$011b; // Thin Provisioning Not Supported
+                    SC_BAD_CTRL_LIST=$011c;  // Controller List Invalid
+                    SC_SELF_TEST=$011d;      // Device Self-test In Progress
+                    SC_BOOT_PART_WP=$011e;   // Boot Partition Write Prohibited
+                    SC_BAD_CTRL_ID=$011f;    // Invalid Controller Identifier
+                    SC_BAD_CTRL_SEC=$0120;   // Invalid Secondary Controller State
+                    SC_BAD_CTRL_RES=$0121;   // Invalid Number of Controller Resources
+                    SC_BAD_RES_ID=$0122;     // Invalid Resource Identifier
+                    SC_SANITIZE_PMR=$0123;   // Sanitize Prohibited While PMR Enabled
+                    SC_ANA_GROUP_ID=$0124;   // ANA Group Identifier Invalid
+                    SC_ANA_ATTACH=$0125;     // ANA Attach Failed
+                    // NVMe Command Specific Status Codes - IO command set
+                    SC_BAD_ATTRS=$0180;      // Conflicting Attributes
+                    SC_BAD_PROT=$0181;       // Invalid Protection Information
+                    SC_READONLY=$0182;       // Attempted Write to Read Only Range
+                    // Implementation constants
+                    NVME_PAGE_SHIFT=$0c;     // 4KB Page Shift
+                    NVME_LBAS=$09;           // LBA Block Size Shift (512b blocks) - legacy alias
+                    NVME_LBA_SHIFT=NVME_LBAS;
+                    NVME_IO_QUEUES=$10;     // Max IO Queues (16)
+                    NVME_PAGE_SIZE=TPasRISCVUInt64(TPasRISCVUInt64(1) shl NVME_PAGE_SHIFT);
+                    NVME_PAGE_MASK=TPasRISCVUInt64(NVME_PAGE_SIZE-1);
                     NVME_PRP2_END=TPasRISCVUInt64($ff8);
-                    NVME_NQUEUES=(NVME_MAX_QUEUES+1) shl 1;
-                    NVME_CAP1_MQES=TPasRISCVUInt32($0000ffff); // NVME_MQES or (NVME_CQR shl 16) or (NVME_TO shl 24);
-                    NVME_CAP1_CQR0=TPasRISCVUInt32($00010000);
-                    NVME_CAP1_TO=TPasRISCVUInt32($ff000000);
-                    NVME_CAP2_DSTRD=TPasRISCVUInt32($00000000);
-                    NVME_CAP2_CSS=TPasRISCVUInt32($00000020);// NVME_DSTRD or (NVME_CSS shl 5) or (NVME_MPMAX shl 20);
-                    NVME_VERSION=TPasRISCVUInt32($00010400);
-                    NVME_CC_EN=TPasRISCVUInt32($00000001);
-                    NVME_CC_SHN=TPasRISCVUInt32($0000c000);
-                    NVME_CC_IOQES=TPasRISCVUInt32($00460000);
-                    NVME_CSTS_RDY=TPasRISCVUInt32($00000001);
-                    NVME_CSTS_SHST=TPasRISCVUInt32($00000008);
-                    ADMIN_SUBMISSION_QUEUE=$0;   // Admin Submission Queue
-                    ADMIN_COMPLETION_QUEUE=$1;   // Admin Completion Queue
-                    ADMIN_DELETE_IO_SQ=$0;   // Delete IO Submission Queue
-                    ADMIN_CREATE_IO_SQ=$1;   // Create IO Submission Queue
-                    ADMIN_DELETE_IO_CQ=$4;   // Delete IO Completion Queue
-                    ADMIN_CREATE_IO_CQ=$5;   // Create IO Completion Queue
-                    ADMIN_IDENTIFY=$6;   // Identify
-                    ADMIN_ABORT=$8;   // Abort Command
-                    ADMIN_SET_FEATURES=$9;   // Set Features
-                    ADMIN_GET_FEATURES=$A;   // Get Features
-                    CQ_FLAGS_PC=$1; // Physically Contiguous
-                    CQ_FLAGS_IEN=$2; // Interrupts Enabled
-                    IDENT_NS=$0;   // Identify Namespace
-                    IDENT_CTRL=$1;   // Identify Controller
-                    IDENT_NSLS=$2;   // Identify Namespace List
-                    IDENT_NIDS=$3;   // Identify Namespace Descriptors
-                    FEAT_ARBITRATION=$1; // Arbitration
-                    FEAT_POWER_MGMT=$2; // Power Management
-                    FEAT_TEMP_THRESH=$4; // Temperature Threshold
-                    FEAT_ERROR_RECOV=$5; // Error Recovery
-                    FEAT_VOLATILE_WC=$6; // Volatile Write Cache
-                    FEAT_NUM_QUEUES=$7; // Number of Queues
-                    FEAT_IRQ_COALESC=$8; // Interrupt Coalescing
-                    FEAT_IRQ_VECTOR=$9; // Interrupt Vector Configuration
-                    FEAT_WR_ATOMIC=$a; // Write Atomicity Normal
-                    FEAT_ASYNC_EVENT=$b; // Asynchronous Event Configuration
-                    NVM_FLUSH=$0;
-                    NVM_WRITE=$1;
-                    NVM_READ=$2;
-                    NVM_WRITEZ=$8;   // Write Zeroes
-                    NVM_DTSM=$9;   // Dataset Management
-                    SC_SUCCESS=$00;   // Successful Completion
-                    SC_BAD_OPCODE=$01;   // Invalid Command Opcode
-                    SC_BAD_FIELD=$02;   // Invalid Field in Command
-                    SC_DATA_ERR=$04;   // Data Transfer Error
-                    SC_ABORT=$07;   // Command Abort Requested
-                    SC_SQ_DELETED=$08; // Command Aborted due to SQ Deletion
-                    SC_FEAT_NSAVE=$0d; // Feature Identifier Not Saveable
-                    SC_FEAT_NCHG=$0e; // Feature Identifier Not Changeable
-                    SC_LBA_RANGE=$80; // LBA Out of Range
-                    CS_CQ_INVALID=$00; // Invalid Completion Queue
-                    CS_ID_INVALID=$01; // Invalid Queue ID
-                    CS_SIZE_INVALID=$02;  // Invalid Queue size
-              type TNVMeQueue=record
+                    NVME_LBA_SIZE=TPasRISCVUInt64(TPasRISCVUInt64(1) shl NVME_LBA_SHIFT);
+                    NVME_LBA_MASK=TPasRISCVUInt64(NVME_LBA_SIZE-1);
+              type TNVMeQueueData=record
+                    case boolean of
+                     false:(CompletionQueueID:TPasRISCVUInt32); // Used by Submission Queues
+                     true:(IRQ:TPasRISCVUInt32);                // Used by Completion Queues
+                   end;
+                   TNVMeQueue=record
                     public
                      AddressLow:TPasRISCVUInt32;
                      AddressHigh:TPasRISCVUInt32;
@@ -2955,20 +3142,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      Head:TPasRISCVUInt32;
                      Tail:TPasRISCVUInt32;
                      Phase:TPasRISCVUInt32;
-                     CompletionQueueID:TPasRISCVUInt32;
-                     IRQ:TPasRISCVUInt32;
-                     class function GetNext(var aHeadOrTail:TPasRISCVUInt32;const aSize:TPasRISCVUInt32):TPasRISCVUInt32; static;
+                     Data:TNVMeQueueData;
+                     class function Dequeue(var aQueue:TNVMeQueue;out aEntry:TPasRISCVUInt32):Boolean; static;
+                     class function Enqueue(var aQueue:TNVMeQueue):TPasRISCVUInt32; static;
                      function GetAddress:TPasRISCVUInt64;
+                     function GetSize:TPasRISCVUInt32;
                      procedure RaiseIRQ(const aNVMEDevice:TNVMEDevice);
                      procedure LowerIRQ(const aNVMEDevice:TNVMEDevice);
-                     procedure Setup(const aNVMEDevice:TNVMEDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32);
+                     procedure Reset;
+                     procedure Setup(const aNVMEDevice:TNVMEDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32;const aData:TPasRISCVUInt32);
                    end;
                    PNVMeQueue=^TNVMeQueue;
                    TNVMePRPCtx=record
                     PRP1:TPasRISCVUInt64;
                     PRP2:TPasRISCVUInt64;
-                    PRP2DMA:Pointer;
-                    PRP2Offset:TPasRISCVUInt64;
                     Size:TPasRISCVUInt64;
                     Current:TPasRISCVUInt64;
                    end;
@@ -2976,38 +3163,44 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    TNVMeCommand=record
                     Ptr:Pointer;
                     PRP:TNVMePRPCtx;
-                    CmdID:TPasRISCVUInt32;
                     SqHeadID:TPasRISCVUInt32;
                     CompletionQueueID:TPasRISCVUInt32;
-                    CommandSpecificStatus:TPasRISCVUInt32;
                    end;
                    PNVMeCommand=^TNVMeCommand;
              private
               fThreads:TPasRISCVUInt32;
               fConf:TPasRISCVUInt32;
               fIRQMask:TPasRISCVUInt32;
+              fTempThresh:TPasRISCVUInt32;
               fSerial:array[0..11] of TPasRISCVRawByteChar;
-              fQueues:array[0..NVME_NQUEUES-1] of TNVMeQueue;
+              fSubmissionQueues:array[0..NVME_IO_QUEUES] of TNVMeQueue;
+              fCompletionQueues:array[0..NVME_IO_QUEUES] of TNVMeQueue;
               fStreamLock:TPasMPSlimReaderWriterLock;
               fStream:TStream;
              public
               constructor Create(const aBus:TPCIBusDevice); reintroduce;
               destructor Destroy; override;
               procedure ResetDevice;
-              procedure CompleteCommand(const aCommand:PNVMeCommand;const aStatusField:TPasRISCVUInt32); overload;
-              procedure CompleteCommand(const aCommand:PNVMeCommand;const aStatusField,aCommandSpecificStatus:TPasRISCVUInt32); overload;
-              function ProcessPRPChunk(const aCommand:PNVMeCommand):TPasRISCVUInt64;
-              function GetPRPChunk(const aCommand:PNVMeCommand;out aSize:TPasRISCVUInt64):Pointer;
-              function WritePRP(const aCommand:PNVMeCommand;const aData:Pointer;const aSize:TPasRISCVUInt64):Boolean;
+              function GetSubmissionQueue(const aQueueID:TPasRISCVUInt32):PNVMeQueue;
+              function GetCompletionQueue(const aQueueID:TPasRISCVUInt32):PNVMeQueue;
+              procedure CompleteCommand(const aCommand:PNVMeCommand;const aStatus:TPasRISCVUInt32;const aCommandSpecific:TPasRISCVUInt32=0);
+              procedure PreparePRP(const aCommand:PNVMeCommand;const aSize:TPasRISCVUInt64);
+              function PRPAvail(const aCommand:PNVMeCommand):TPasRISCVUInt64;
+              function ParsePRPRegion(const aCommand:PNVMeCommand):TPasRISCVUInt64;
+              function GetPRPRegion(const aCommand:PNVMeCommand;out aSize:TPasRISCVUInt64):Pointer;
+              procedure CopyToPRP(const aCommand:PNVMeCommand;const aData:Pointer;const aSize:TPasRISCVUInt64);
               procedure Identify(const aCommand:PNVMeCommand);
               procedure CreateIOSubmissionQueue(const aCommand:PNVMeCommand);
               procedure CreateIOCompletionQueue(const aCommand:PNVMeCommand);
               procedure DeleteIOQueue(const aCommand:PNVMeCommand;const aIsCompletionQueue:Boolean);
+              procedure HandleFeature(const aCommand:PNVMeCommand;const aSet:Boolean);
+              procedure GetLogPage(const aCommand:PNVMeCommand);
               procedure AdminCommand(const aCommand:PNVMeCommand);
               procedure IOCommand(const aCommand:PNVMeCommand);
               procedure ProcessCommand(const aCommand:TNVMeDeviceCommand);
               procedure ProcessQueue(const aSubmissionQueueID:TPasRISCVUInt32;const aValue:TPasRISCVUInt16;const aLocking:Boolean);
               procedure Doorbell(const aQueueID:TPasRISCVUInt32;const aValue:TPasRISCVUInt16);
+              procedure CheckMaskedIRQs(const aMask:TPasRISCVUInt32);
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               procedure AttachStream(const aStream:TStream);
@@ -16669,18 +16862,43 @@ end;
 
 { TPasRISCV.TNVMeDevice.TNVMeQueue }
 
-class function TPasRISCV.TNVMeDevice.TNVMeQueue.GetNext(var aHeadOrTail:TPasRISCVUInt32;const aSize:TPasRISCVUInt32):TPasRISCVUInt32;
-var Next:TPasRISCVUInt32;
+class function TPasRISCV.TNVMeDevice.TNVMeQueue.Dequeue(var aQueue:TNVMeQueue;out aEntry:TPasRISCVUInt32):Boolean;
+var Size,Head,Tail,Next:TPasRISCVUInt32;
 begin
- result:=0;
+ Size:=TPasMPInterlocked.Read(aQueue.Size);
+ Tail:=TPasMPInterlocked.Read(aQueue.Tail);
  repeat
   TPasMPMemoryBarrier.ReadDependency;
-  result:=TPasMPInterlocked.Read(aHeadOrTail);
-  Next:=result+1;
-  if Next>aSize then begin // or >=(aSize+1)
+  Head:=TPasMPInterlocked.Read(aQueue.Head);
+  if (Head=Tail) or (Tail>Size) then begin
+   aEntry:=0;
+   result:=false;
+   exit;
+  end;
+  if Head<Size then begin
+   Next:=Head+1;
+  end else begin
    Next:=0;
   end;
- until TPasMPInterlocked.CompareExchange(aHeadOrTail,Next,result)=result;
+ until TPasMPInterlocked.CompareExchange(aQueue.Head,Next,Head)=Head;
+ aEntry:=Head;
+ result:=true;
+end;
+
+class function TPasRISCV.TNVMeDevice.TNVMeQueue.Enqueue(var aQueue:TNVMeQueue):TPasRISCVUInt32;
+var Size,Tail,Next:TPasRISCVUInt32;
+begin
+ Size:=TPasMPInterlocked.Read(aQueue.Size);
+ repeat
+  TPasMPMemoryBarrier.ReadDependency;
+  Tail:=TPasMPInterlocked.Read(aQueue.Tail);
+  if Tail<Size then begin
+   Next:=Tail+1;
+  end else begin
+   Next:=0;
+  end;
+ until TPasMPInterlocked.CompareExchange(aQueue.Tail,Next,Tail)=Tail;
+ result:=Tail;
 end;
 
 function TPasRISCV.TNVMeDevice.TNVMeQueue.GetAddress:TPasRISCVUInt64;
@@ -16691,36 +16909,46 @@ begin
  result:=result or (TPasRISCVUInt64(TPasMPInterlocked.Read(AddressHigh)) shl 32);
 end;
 
+function TPasRISCV.TNVMeDevice.TNVMeQueue.GetSize:TPasRISCVUInt32;
+begin
+ TPasMPMemoryBarrier.ReadDependency;
+ result:=TPasMPInterlocked.Read(Size);
+end;
+
 procedure TPasRISCV.TNVMeDevice.TNVMeQueue.RaiseIRQ(const aNVMEDevice:TNVMEDevice);
 var IRQRegister,IRQVector,IRQMask:TPasRISCVUInt32;
 begin
- IRQRegister:=TPasMPInterlocked.Read(IRQ);
- IRQVector:=(IRQRegister shr 16) and $1f;
- IRQMask:=TPasRISCVUInt32(1) shl (IRQVector and $1f);
- if ((IRQRegister and CQ_FLAGS_IEN)<>0) and ((TPasMPInterlocked.Read(aNVMEDevice.fIRQMask) and IRQMask)=0) then begin
-  aNVMEDevice.fFuncs[0].RaiseIRQ(IRQVector);
+ IRQRegister:=TPasMPInterlocked.Read(Data.IRQ);
+ if (IRQRegister and CQ_FLAGS_IEN)<>0 then begin
+  IRQVector:=(IRQRegister shr 16) and $1f;
+  IRQMask:=TPasRISCVUInt32(1) shl (IRQVector and $1f);
+  if (TPasMPInterlocked.Read(aNVMEDevice.fIRQMask) and IRQMask)=0 then begin
+   aNVMEDevice.fFuncs[0].RaiseIRQ(IRQVector);
+  end;
  end;
 end;
 
 procedure TPasRISCV.TNVMeDevice.TNVMeQueue.LowerIRQ(const aNVMEDevice:TNVMEDevice);
-var IRQRegister,IRQVector:TPasRISCVUInt32;
+var IRQVector:TPasRISCVUInt32;
 begin
- IRQRegister:=TPasMPInterlocked.Read(IRQ);
- IRQVector:=(IRQRegister shr 16) and $1f;
+ IRQVector:=(TPasMPInterlocked.Read(Data.IRQ) shr 16) and $1f;
  aNVMEDevice.fFuncs[0].LowerIRQ(IRQVector);
 end;
 
-procedure TPasRISCV.TNVMeDevice.TNVMeQueue.Setup(const aNVMEDevice:TNVMEDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32);
+procedure TPasRISCV.TNVMeDevice.TNVMeQueue.Reset;
 begin
  TPasMPInterlocked.Write(Head,0);
  TPasMPInterlocked.Write(Tail,0);
  TPasMPInterlocked.Write(Phase,0); // gets 1 initial, because Tail is initally also 0 (0=overflow flip indicator)
+end;
+
+procedure TPasRISCV.TNVMeDevice.TNVMeQueue.Setup(const aNVMEDevice:TNVMEDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt32;const aData:TPasRISCVUInt32);
+begin
  TPasMPInterlocked.Write(AddressLow,TPasRISCVUInt32(aAddress and not NVME_PAGE_MASK));
  TPasMPInterlocked.Write(AddressHigh,TPasRISCVUInt32(aAddress shr 32));
  TPasMPInterlocked.Write(Size,aSize);
-{$ifdef NVMELevelTriggeredPCIEInterrupts}
- LowerIRQ(aNVMEDevice);
-{$endif}
+ TPasMPInterlocked.Write(Data.CompletionQueueID,aData);
+ Reset;
 end;
 
 { TPasRISCV.TNVMeDevice }
@@ -16755,7 +16983,7 @@ begin
 
 {$ifdef NVMELevelTriggeredPCIEInterrupts}
  // Enable IEN on Admin Completion Queue
- fQueues[ADMIN_COMPLETION_QUEUE].IRQ:=CQ_FLAGS_IEN;
+ fCompletionQueues[QUEUE_ADMIN].Data.IRQ:=CQ_FLAGS_IEN;
 {$endif}
 
  // Random serial number
@@ -16778,189 +17006,222 @@ begin
  inherited Destroy;
 end;
 
+function TPasRISCV.TNVMeDevice.GetSubmissionQueue(const aQueueID:TPasRISCVUInt32):PNVMeQueue;
+begin
+ if aQueueID<=NVME_IO_QUEUES then begin
+  result:=@fSubmissionQueues[aQueueID];
+ end else begin
+  result:=nil;
+ end;
+end;
+
+function TPasRISCV.TNVMeDevice.GetCompletionQueue(const aQueueID:TPasRISCVUInt32):PNVMeQueue;
+begin
+ if aQueueID<=NVME_IO_QUEUES then begin
+  result:=@fCompletionQueues[aQueueID];
+ end else begin
+  result:=nil;
+ end;
+end;
+
 procedure TPasRISCV.TNVMeDevice.ResetDevice;
 var Index:TPasRISCVSizeInt;
-    Queue:PNVMeQueue;
 begin
  while TPasMPInterlocked.Read(fThreads)<>0 do begin
   sleep(1);
  end;
- for Index:=0 to length(fQueues)-1 do begin
-  Queue:=@fQueues[Index];
-  case Index of
-   ADMIN_SUBMISSION_QUEUE,ADMIN_COMPLETION_QUEUE:begin
-    Queue.Setup(self,Queue^.GetAddress,TPasMPInterlocked.Read(Queue^.Size));
-   end;
-   else begin
-    Queue.Setup(self,0,0);
-   end;
-  end;
+ // Reset Admin Queues (keep address, size, data)
+ fSubmissionQueues[QUEUE_ADMIN].Reset;
+ fCompletionQueues[QUEUE_ADMIN].LowerIRQ(self);
+ fCompletionQueues[QUEUE_ADMIN].Reset;
+ // Reset IO Queues
+ for Index:=QUEUE_IO to NVME_IO_QUEUES do begin
+  fSubmissionQueues[Index].Setup(self,0,0,0);
+  fCompletionQueues[Index].LowerIRQ(self);
+  fCompletionQueues[Index].Setup(self,0,0,0);
  end;
 end;
 
-procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;const aStatusField:TPasRISCVUInt32);
+procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;const aStatus:TPasRISCVUInt32;const aCommandSpecific:TPasRISCVUInt32=0);
 var Queue:PNVMeQueue;
-    QueueSize,QueueTail{$ifndef NVMELevelTriggeredPCIEInterrupts},IRQVector,IRQMask{$endif}:TPasRISCVUInt32;
+    QueueTail,CmdID{$ifndef NVMELevelTriggeredPCIEInterrupts},IRQVector,IRQMask{$endif}:TPasRISCVUInt32;
     Address:TPasRISCVUInt64;
     Ptr:PPasRISCVUInt8;
 begin
 
- Queue:=@fQueues[(aCommand^.CompletionQueueID shl 1) or 1];
+ Queue:=GetCompletionQueue(aCommand^.CompletionQueueID);
+ if not assigned(Queue) then begin
+  exit;
+ end;
 
- TPasMPMemoryBarrier.ReadDependency;
- QueueSize:=Queue^.Size;
-
- QueueTail:=TNVMeQueue.GetNext(Queue^.Tail,QueueSize);
+ QueueTail:=TNVMeQueue.Enqueue(Queue^);
 
  if QueueTail=0 then begin
   Queue^.Phase:=Queue^.Phase xor 1;
  end;
 
- Address:=Queue^.GetAddress+(QueueTail shl 4);
+ Address:=Queue^.GetAddress+(TPasRISCVUInt64(QueueTail) shl CQE_SIZE_SHIFT);
 
- Ptr:=GetGlobalDirectMemoryAccessPointer(Address,16,true,nil);
+ Ptr:=GetGlobalDirectMemoryAccessPointer(Address,CQE_SIZE,true,nil);
  if assigned(Ptr) then begin
-  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[0])^:=aCommand^.CommandSpecificStatus;
-  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[4])^:=0;
-  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[8])^:=aCommand^.SqHeadID;
+  // Read CmdID from the SQE
+  CmdID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CID])^;
+  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[CQE_CS])^:=aCommandSpecific;
+  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[CQE_RSVD])^:=0;
+  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[CQE_SQHD_SQID])^:=aCommand^.SqHeadID;
   TPasMPMemoryBarrier.Write;
-  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[12])^:=aCommand^.CmdID or (aStatusField shl 17) or ((Queue^.Phase and 1) shl 16);
+  PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)[CQE_CID_PB_SF])^:=CmdID or (aStatus shl CQE_SF_SHIFT) or ((Queue^.Phase and 1) shl 16);
   TPasMPMemoryBarrier.Write;
- end;
-
 {$ifdef NVMELevelTriggeredPCIEInterrupts}
- Queue^.RaiseIRQ(self);
+  Queue^.RaiseIRQ(self);
 {$else}
- IRQVector:=Queue^.IRQ shr 16;
- IRQMask:=TPasRISCVUInt32(1) shl (IRQVector and $1f);
- if (fIRQMask and IRQMask)=0 then begin
-  SendIRQ(0,IRQMask);
- end;
+  IRQVector:=Queue^.Data.IRQ shr 16;
+  IRQMask:=TPasRISCVUInt32(1) shl (IRQVector and $1f);
+  if (fIRQMask and IRQMask)=0 then begin
+   SendIRQ(0,IRQMask);
+  end;
 {$endif}
-
-end;
-
-procedure TPasRISCV.TNVMeDevice.CompleteCommand(const aCommand:PNVMeCommand;const aStatusField,aCommandSpecificStatus:TPasRISCVUInt32);
-begin
- aCommand^.CommandSpecificStatus:=aCommandSpecificStatus;
- CompleteCommand(aCommand,aStatusField);
-end;
-
-function TPasRISCV.TNVMeDevice.ProcessPRPChunk(const aCommand:PNVMeCommand):TPasRISCVUInt64;
-var PRP:PNVMePRPCtx;
-    Address:TPasRISCVUInt64;
-    Size:TPasRISCVUInt64;
-begin
-
- PRP:=@aCommand^.PRP;
- Address:=PRP^.PRP1;
- Size:=NVME_PAGE_SIZE;
-
- if PRP^.Current>=PRP^.Size then begin
-  result:=0;
- end else begin
-
-  if PRP^.Current=0 then begin
-   Size:=NVME_PAGE_SIZE-(PRP^.PRP1 and NVME_PAGE_MASK);
-   if (Size<PRP^.Size) and (PRP^.Size<=(NVME_PAGE_SIZE+Size)) then begin
-    PRP^.PRP1:=PRP^.PRP2;
-    if PRP^.PRP1=(Address+Size) then begin
-     inc(Size,NVME_PAGE_SIZE);
-    end;
-    if Size>=PRP^.Size then begin
-     Size:=PRP^.Size;
-    end;
-    PRP^.Current:=Size;
-    result:=Size;
-    exit;
-   end else if Size>=PRP^.Size then begin
-    PRP^.Current:=PRP^.Size;
-    result:=PRP^.Size;
-    exit;
-   end;
-  end;
-
-  // Process all PRP items until the end of the transfer
-  while (PRP^.Current+Size)<PRP^.Size do begin
-
-   if not assigned(PRP^.PRP2DMA) then begin
-    PRP^.PRP2DMA:=GetGlobalDirectMemoryAccessPointer(PRP^.PRP2,NVME_PAGE_SIZE,true,nil);
-    if not assigned(PRP^.PRP2DMA) then begin
-     // DMA error
-     CompleteCommand(aCommand,SC_DATA_ERR);
-     result:=0;
-     exit;
-    end;
-   end;
-
-   if PRP^.PRP2Offset>=NVME_PRP2_END then begin
-    // Fetch the next PRP chain item
-    PRP^.PRP2:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PRP^.PRP2DMA)+NVME_PRP2_END))^;
-    PRP^.PRP2Offset:=0;
-    PRP^.PRP2DMA:=nil;
-   end else begin
-    // Process the next PRP item
-    PRP^.PRP1:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PRP^.PRP2DMA)+PRP^.PRP2Offset))^;
-    inc(PRP^.PRP2Offset,8);
-   end;
-
-   // Non-continuous page, split the chunk
-   if PRP^.PRP1<>(Address+Size) then begin
-    break;
-   end;
-
-   inc(Size,NVME_PAGE_SIZE);
-
-  end;
-
-  if (PRP^.Current+Size)>PRP^.Size then begin
-   Size:=PRP^.Size-PRP^.Current;
-  end;
-
-  inc(PRP^.Current,Size);
-  result:=Size;
-
  end;
 
 end;
 
-function TPasRISCV.TNVMeDevice.GetPRPChunk(const aCommand:PNVMeCommand;out aSize:TPasRISCVUInt64):Pointer;
-var PRP:PNVMePRPCtx;
-    Address:TPasRISCVUInt64;
-    Size:TPasRISCVUInt64;
+procedure TPasRISCV.TNVMeDevice.PreparePRP(const aCommand:PNVMeCommand;const aSize:TPasRISCVUInt64);
 begin
- PRP:=@aCommand^.PRP;
- Address:=PRP^.PRP1;
- Size:=ProcessPRPChunk(aCommand);
- if Size=0 then begin
-  result:=nil;
- end else begin
-  aSize:=Size;
-  result:=GetGlobalDirectMemoryAccessPointer(Address,Size,true,nil);
-  if not assigned(result) then begin
-   CompleteCommand(aCommand,SC_DATA_ERR);
-  end;
- end;
-end;
-
-function TPasRISCV.TNVMeDevice.WritePRP(const aCommand:PNVMeCommand;const aData:Pointer;const aSize:TPasRISCVUInt64):Boolean;
-var Src:PPasRISCVUInt8;
-    Dest:PPasRISCVUInt8;
-    Size:TPasRISCVUInt64;
-begin
- Src:=aData;
+ aCommand^.PRP.PRP1:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_PRP1])^;
+ aCommand^.PRP.PRP2:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_PRP2])^;
  aCommand^.PRP.Size:=aSize;
- while aCommand^.PRP.Current<aCommand^.PRP.Size do begin
-  Dest:=GetPRPChunk(aCommand,Size);
-  if assigned(Dest) then begin
-   Move(Src^,Dest^,Size);
-   inc(Src,Size);
-  end else begin
-   result:=false;
+ aCommand^.PRP.Current:=0;
+end;
+
+function TPasRISCV.TNVMeDevice.PRPAvail(const aCommand:PNVMeCommand):TPasRISCVUInt64;
+begin
+ result:=aCommand^.PRP.Size-aCommand^.PRP.Current;
+end;
+
+function TPasRISCV.TNVMeDevice.ParsePRPRegion(const aCommand:PNVMeCommand):TPasRISCVUInt64;
+var PRP:PNVMePRPCtx;
+    Len:TPasRISCVUInt64;
+    PRP2Addr:TPasRISCVUInt64;
+    DMA:Pointer;
+    Page:TPasRISCVUInt64;
+    Avail:TPasRISCVUInt64;
+begin
+
+ PRP:=@aCommand^.PRP;
+ Len:=NVME_PAGE_SIZE;
+
+ if PRP^.Current=0 then begin
+  // Consume the first page from PRP1, may be misaligned
+  Len:=NVME_PAGE_SIZE-(PRP^.PRP1 and NVME_PAGE_MASK);
+  if Len>=PRP^.Size then begin
+   // Single-page region
+   result:=PRP^.Size;
+   exit;
+  end else if PRP^.Size<=(Len+NVME_PAGE_SIZE) then begin
+   // PRP2 encodes second page address
+   Page:=PRP^.PRP2 and (not NVME_PAGE_MASK);
+   if Page=(PRP^.PRP1+Len) then begin
+    // Contiguous two-page region
+    result:=PRP^.Size;
+   end else begin
+    // Scattered two-page region
+    PRP^.PRP1:=Page;
+    result:=Len;
+   end;
    exit;
   end;
  end;
- result:=true;
+
+ // Process PRP list entries until we reach end of transfer
+ PRP2Addr:=PRP^.PRP2 and (not TPasRISCVUInt64(7));
+ DMA:=nil;
+
+ while PRPAvail(aCommand)>Len do begin
+
+  if not assigned(DMA) then begin
+   // Obtain DMA mapping of the PRP list
+   DMA:=GetGlobalDirectMemoryAccessPointer(PRP2Addr and (not NVME_PAGE_MASK),NVME_PAGE_SIZE,true,nil);
+   if not assigned(DMA) then begin
+    // PRP list DMA error
+    break;
+   end;
+  end;
+
+  if (((PRP2Addr+8) and NVME_PAGE_MASK)=0) and (PRPAvail(aCommand)>(Len+NVME_PAGE_SIZE)) then begin
+   // Last entry in PRP list page => pointer to next PRP list page
+   PRP2Addr:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(DMA)+NVME_PAGE_SIZE-8))^ and (not NVME_PAGE_MASK);
+   DMA:=nil;
+  end else begin
+   // Regular PRP list entry
+   Page:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(DMA)+(PRP2Addr and NVME_PAGE_MASK)))^;
+   // Advance pointers
+   inc(PRP2Addr,8);
+   if Page<>(PRP^.PRP1+Len) then begin
+    // Scattered region - save state and break
+    PRP^.PRP1:=Page;
+    PRP^.PRP2:=PRP2Addr;
+    break;
+   end;
+   inc(Len,NVME_PAGE_SIZE);
+  end;
+
+ end;
+
+ Avail:=PRPAvail(aCommand);
+ if Len<Avail then begin
+  result:=Len;
+ end else begin
+  result:=Avail;
+ end;
+
+end;
+
+function TPasRISCV.TNVMeDevice.GetPRPRegion(const aCommand:PNVMeCommand;out aSize:TPasRISCVUInt64):Pointer;
+var Address:TPasRISCVUInt64;
+    Size:TPasRISCVUInt64;
+begin
+ Address:=aCommand^.PRP.PRP1;
+ Size:=ParsePRPRegion(aCommand);
+ if Size<>0 then begin
+  result:=GetGlobalDirectMemoryAccessPointer(Address,Size,true,nil);
+  inc(aCommand^.PRP.Current,Size);
+  if assigned(result) then begin
+   aSize:=Size;
+   exit;
+  end;
+ end;
+ aSize:=0;
+ result:=nil;
+end;
+
+procedure TPasRISCV.TNVMeDevice.CopyToPRP(const aCommand:PNVMeCommand;const aData:Pointer;const aSize:TPasRISCVUInt64);
+var Src:PPasRISCVUInt8;
+    Dest:Pointer;
+    RegSize,Remaining,ToCopy:TPasRISCVUInt64;
+begin
+ Src:=aData;
+ Remaining:=aSize;
+ while true do begin
+  RegSize:=0;
+  Dest:=GetPRPRegion(aCommand,RegSize);
+  if not assigned(Dest) then begin
+   break;
+  end;
+  ToCopy:=RegSize;
+  if ToCopy>Remaining then begin
+   ToCopy:=Remaining;
+  end;
+  if ToCopy>0 then begin
+   Move(Src^,Dest^,ToCopy);
+   Dest:=Pointer(TPasRISCVPtrUInt(Dest)+ToCopy);
+   dec(RegSize,ToCopy);
+   inc(Src,ToCopy);
+   dec(Remaining,ToCopy);
+  end;
+  if RegSize>0 then begin
+   FillChar(Dest^,RegSize,#0);
+  end;
+ end;
 end;
 
 procedure TPasRISCV.TNVMeDevice.Identify(const aCommand:PNVMeCommand);
@@ -16975,15 +17236,17 @@ begin
  GetMem(Ptr,NVME_PAGE_SIZE);
  try
   FillChar(Ptr^,NVME_PAGE_SIZE,#0);
-//writeln('Admin command identify: ',LowerCase(IntToHex(PPasRISCVUInt8Array(aCommand^.Ptr)^[40])));
-  case PPasRISCVUInt8Array(aCommand^.Ptr)^[40] of
+//writeln('Admin command identify: ',LowerCase(IntToHex(PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10])));
+  PreparePRP(aCommand,NVME_PAGE_SIZE);
+  case PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10] of
    IDENT_NS:begin
     LBASize:=fStream.Size shr NVME_LBAS;
     PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[0])^:=LBASize;
     PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[8])^:=LBASize;
     PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[16])^:=LBASize;
-    PPasRISCVUInt8Array(Ptr)^[33]:=$8;
-    PPasRISCVUInt8Array(Ptr)^[130]:=NVME_LBAS;
+    // Namespace features
+    PPasRISCVUInt8Array(Ptr)^[33]:=$09; // Deallocated blocks read as zero; Supports Deallocate bit in Write Zeroes
+    PPasRISCVUInt8Array(Ptr)^[130]:=NVME_LBAS; // LBA Format: 512b logical blocks
     OK:=true;
    end;
    IDENT_CTRL:begin
@@ -16992,13 +17255,16 @@ begin
     Move(fSerial,PPasRISCVUInt8Array(Ptr)^[4],SizeOf(fSerial)); // Serial Number
     Move(NVMeStr[1],PPasRISCVUInt8Array(Ptr)^[24],Length(NVMeStr)); // Model Number
     Move(R947Str[1],PPasRISCVUInt8Array(Ptr)^[64],Length(R947Str)); // Firmware Revision
-    PPasRISCVUInt8Array(Ptr)^[77]:=9; // MDTS
     PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)^[80])^:=NVME_VERSION; // Version
+    // Controller features
+    PPasRISCVUInt8Array(Ptr)^[72]:=$02; // Recommended Arbitration Burst
     PPasRISCVUInt8Array(Ptr)^[111]:=$1; // Controller Type: I/O Controller
     PPasRISCVUInt8Array(Ptr)^[512]:=$66; // Submission Queue Max/Cur Entry Size
     PPasRISCVUInt8Array(Ptr)^[513]:=$44; // Completion Queue Max/Cur Entry Size
     PPasRISCVUInt8Array(Ptr)^[516]:=$1; // Number of Namespaces
-    PPasRISCVUInt8Array(Ptr)^[520]:=$c; // Supports Write Zeroes, Dataset Management
+    PPasRISCVUInt8Array(Ptr)^[520]:=$4; // Supports Dataset Management (TRIM)
+    PPasRISCVUInt8Array(Ptr)^[526]:=$07; // Atomic Write Unit Normal: 4kb
+    PPasRISCVUInt8Array(Ptr)^[528]:=$07; // Atomic Write Unit Power Fail: 4kb
     // NVMe Qualified Name including serial to distinguish targets
     s:=ID;
     SetLength(s,length(s)+SizeOf(fSerial));
@@ -17020,9 +17286,43 @@ begin
    end;
   end;
   if OK then begin
-   if WritePRP(aCommand,Ptr,NVME_PAGE_SIZE) then begin
-    CompleteCommand(aCommand,SC_SUCCESS);
+   CopyToPRP(aCommand,Ptr,NVME_PAGE_SIZE);
+   CompleteCommand(aCommand,SC_SUCCESS);
+  end else begin
+   CompleteCommand(aCommand,SC_BAD_FIELD);
+  end;
+ finally
+  FreeMem(Ptr);
+ end;
+end;
+
+procedure TPasRISCV.TNVMeDevice.GetLogPage(const aCommand:PNVMeCommand);
+var Ptr:PPasRISCVUInt8;
+    LogID:TPasRISCVUInt8;
+    OK:Boolean;
+begin
+ GetMem(Ptr,NVME_PAGE_SIZE);
+ try
+  FillChar(Ptr^,NVME_PAGE_SIZE,#0);
+  LogID:=PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10];
+  case LogID of
+   LOG_ERROR,LOG_FIRMWARE_SLOT:begin
+    OK:=true;
    end;
+   LOG_SMART:begin
+    PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)^[1])^:=315; // Temperature (In Kelvins)
+    PPasRISCVUInt8Array(Ptr)^[3]:=94;  // Available Spare Percent
+    PPasRISCVUInt8Array(Ptr)^[4]:=10;  // Available Spare Threshold
+    OK:=true;
+   end;
+   else begin
+    OK:=false;
+   end;
+  end;
+  if OK then begin
+   PreparePRP(aCommand,PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10])^ shr 16);
+   CopyToPRP(aCommand,Ptr,NVME_PAGE_SIZE);
+   CompleteCommand(aCommand,SC_SUCCESS);
   end else begin
    CompleteCommand(aCommand,SC_BAD_FIELD);
   end;
@@ -17034,27 +17334,30 @@ end;
 procedure TPasRISCV.TNVMeDevice.CreateIOSubmissionQueue(const aCommand:PNVMeCommand);
 var Address:TPasRISCVUInt64;
     SubmissionQueueID,SubmissionQueueSize,CompletionQueueFlag,CompletionQueueID:TPasRISCVUInt32;
-    Queue:PNVMeQueue;
+    SubmissionQueue:PNVMeQueue;
+    CompletionQueue:PNVMeQueue;
 begin
- Address:=aCommand^.PRP.PRP1;
- SubmissionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[40])^;
- SubmissionQueueSize:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[42])^;
- CompletionQueueFlag:=PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)[44])^;
- CompletionQueueID:=CompletionQueueFlag shr 16;
- if (SubmissionQueueID=0) or (SubmissionQueueID>NVME_MAX_QUEUES) then begin
-  CompleteCommand(aCommand,SC_BAD_FIELD,CS_ID_INVALID);
- end else if (CompletionQueueID=0) or (CompletionQueueID>NVME_MAX_QUEUES) then begin
-  CompleteCommand(aCommand,SC_BAD_FIELD,CS_CQ_INVALID);
- end else if SubmissionQueueSize=0 then begin
-  CompleteCommand(aCommand,SC_BAD_FIELD,CS_SIZE_INVALID);
+ Address:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_PRP1])^;
+ SubmissionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW10])^;
+ SubmissionQueueSize:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW10+2])^;
+ CompletionQueueFlag:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW11])^;
+ CompletionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW11+2])^;
+ SubmissionQueue:=GetSubmissionQueue(SubmissionQueueID);
+ CompletionQueue:=GetCompletionQueue(CompletionQueueID);
 {$ifdef NVMELevelTriggeredPCIEInterrupts}
- end else if (CompletionQueueFlag and CQ_FLAGS_PC)=0 then begin
+ if (CompletionQueueFlag and CQ_FLAGS_PC)=0 then begin
+  // Non-contiguous queue
   CompleteCommand(aCommand,SC_BAD_FIELD);
-{$endif}
+ end else{$endif}if SubmissionQueueSize=0 then begin
+  CompleteCommand(aCommand,SC_BAD_QUEUE_SIZE);
+ end else if (SubmissionQueueID=0) or (not assigned(SubmissionQueue)) or (SubmissionQueue^.GetSize<>0) then begin
+  // Submission queue ID invalid or already in use
+  CompleteCommand(aCommand,SC_BAD_QUEUE_ID);
+ end else if (not assigned(CompletionQueue)) or (CompletionQueue^.GetSize=0) then begin
+  // Completion queue invalid or not yet created
+  CompleteCommand(aCommand,SC_BAD_CQ);
  end else begin
-  Queue:=@fQueues[SubmissionQueueID shl 1];
-  Queue^.Setup(self,Address,SubmissionQueueSize);
-  TPasMPInterlocked.Write(Queue^.CompletionQueueID,CompletionQueueID);
+  SubmissionQueue^.Setup(self,Address,SubmissionQueueSize,CompletionQueueID);
   CompleteCommand(aCommand,SC_SUCCESS);
  end;
 end;
@@ -17064,22 +17367,23 @@ var Address:TPasRISCVUInt64;
     CompletionQueueID,CompletionQueueSize,CompletionQueueFlag:TPasRISCVUInt32;
     Queue:PNVMeQueue;
 begin
- Address:=aCommand^.PRP.PRP1;
- CompletionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[40])^;
- CompletionQueueSize:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[42])^;
- CompletionQueueFlag:=PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)[44])^;
- if (CompletionQueueID=0) or (CompletionQueueID>NVME_MAX_QUEUES) then begin
-  CompleteCommand(aCommand,SC_BAD_FIELD,CS_ID_INVALID);
- end else if CompletionQueueSize=0 then begin
-  CompleteCommand(aCommand,SC_BAD_FIELD,CS_SIZE_INVALID);
+ Address:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_PRP1])^;
+ CompletionQueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW10])^;
+ CompletionQueueSize:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW10+2])^;
+ CompletionQueueFlag:=PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW11])^;
+ Queue:=GetCompletionQueue(CompletionQueueID);
 {$ifdef NVMELevelTriggeredPCIEInterrupts}
- end else if (CompletionQueueFlag and CQ_FLAGS_PC)=0 then begin
+ if (CompletionQueueFlag and CQ_FLAGS_PC)=0 then begin
+  // Non-contiguous queue
   CompleteCommand(aCommand,SC_BAD_FIELD);
-{$endif}
+ end else{$endif}if CompletionQueueSize=0 then begin
+  CompleteCommand(aCommand,SC_BAD_QUEUE_SIZE);
+ end else if (CompletionQueueID=0) or (not assigned(Queue)) or (Queue^.GetSize<>0) then begin
+  // Completion queue ID invalid or already in use
+  CompleteCommand(aCommand,SC_BAD_QUEUE_ID);
  end else begin
-  Queue:=@fQueues[(CompletionQueueID shl 1) or 1];
-  Queue^.Setup(self,Address,CompletionQueueSize);
-  TPasMPInterlocked.Write(Queue^.IRQ,CompletionQueueFlag);
+  Queue^.LowerIRQ(self);
+  Queue^.Setup(self,Address,CompletionQueueSize,CompletionQueueFlag);
   CompleteCommand(aCommand,SC_SUCCESS);
  end;
 end;
@@ -17088,13 +17392,61 @@ procedure TPasRISCV.TNVMeDevice.DeleteIOQueue(const aCommand:PNVMeCommand;const 
 var QueueID:TPasRISCVUInt32;
     Queue:PNVMeQueue;
 begin
- QueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[40])^;
- if (QueueID=0) or (QueueID>NVME_MAX_QUEUES) then begin
-  CompleteCommand(aCommand,SC_BAD_FIELD,CS_ID_INVALID);
+ QueueID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)[SQE_CDW10])^;
+ if aIsCompletionQueue then begin
+  Queue:=GetCompletionQueue(QueueID);
  end else begin
-  Queue:=@fQueues[(QueueID shl 1) or (ord(aIsCompletionQueue) and 1)];
-  Queue^.Setup(self,0,0);
+  Queue:=GetSubmissionQueue(QueueID);
+ end;
+ if (QueueID=0) or (not assigned(Queue)) then begin
+  CompleteCommand(aCommand,SC_BAD_QUEUE_ID);
+ end else begin
+  if aIsCompletionQueue then begin
+   Queue^.LowerIRQ(self);
+  end;
+  Queue^.Setup(self,0,0,0);
   CompleteCommand(aCommand,SC_SUCCESS);
+ end;
+end;
+
+procedure TPasRISCV.TNVMeDevice.HandleFeature(const aCommand:PNVMeCommand;const aSet:Boolean);
+var FeatureID:TPasRISCVUInt8;
+    FeatureVal:TPasRISCVUInt32;
+begin
+ FeatureID:=PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10];
+ FeatureVal:=0;
+ case FeatureID of
+  FEAT_ARBITRATION:begin
+   FeatureVal:=$07;
+  end;
+  FEAT_NUM_QUEUES:begin
+   FeatureVal:=TPasRISCVUInt32(NVME_IO_QUEUES-1) or TPasRISCVUInt32(TPasRISCVUInt32(NVME_IO_QUEUES-1) shl 16);
+  end;
+  FEAT_TEMP_THRESH:begin
+   if aSet then begin
+    TPasMPInterlocked.Write(fTempThresh,PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW11])^);
+   end else begin
+    FeatureVal:=TPasMPInterlocked.Read(fTempThresh);
+   end;
+  end;
+  FEAT_POWER_MGMT,
+  FEAT_ERROR_RECOVER,
+  FEAT_VOLATILE_WC,
+  FEAT_IRQ_COALESCE,
+  FEAT_IRQ_VECTOR,
+  FEAT_WR_ATOMIC,
+  FEAT_ASYNC_EVENT:begin
+   // Stubs
+  end;
+  else begin
+   CompleteCommand(aCommand,SC_BAD_FIELD);
+   exit;
+  end;
+ end;
+ if aSet then begin
+  CompleteCommand(aCommand,SC_SUCCESS);
+ end else begin
+  CompleteCommand(aCommand,SC_SUCCESS,FeatureVal);
  end;
 end;
 
@@ -17102,9 +17454,6 @@ procedure TPasRISCV.TNVMeDevice.AdminCommand(const aCommand:PNVMeCommand);
 begin
 //writeln('Admin command opcode: ',LowerCase(IntToHex(PPasRISCVUInt8Array(aCommand^.Ptr)^[0],8)));
  case PPasRISCVUInt8Array(aCommand^.Ptr)^[0] of
-  ADMIN_IDENTIFY:begin
-   Identify(aCommand);
-  end;
   ADMIN_CREATE_IO_SQ:begin
    CreateIOSubmissionQueue(aCommand);
   end;
@@ -17117,30 +17466,25 @@ begin
   ADMIN_DELETE_IO_CQ:begin
    DeleteIOQueue(aCommand,true);
   end;
-  ADMIN_SET_FEATURES,ADMIN_GET_FEATURES:begin
-   case PPasRISCVUInt8Array(aCommand^.Ptr)^[40] of
-    FEAT_NUM_QUEUES:begin
-     CompleteCommand(aCommand,SC_SUCCESS,NVME_FEAT_NQES);
-    end;
-    FEAT_TEMP_THRESH:begin
-     CompleteCommand(aCommand,SC_SUCCESS,0);
-    end;
-    FEAT_WR_ATOMIC:begin
-     CompleteCommand(aCommand,SC_SUCCESS,0);
-    end;
-    FEAT_IRQ_COALESC:begin
-     CompleteCommand(aCommand,SC_SUCCESS,0);
-    end;
-    FEAT_IRQ_VECTOR:begin
-     CompleteCommand(aCommand,SC_SUCCESS,0);
-    end;
-    else begin
-     CompleteCommand(aCommand,SC_BAD_FIELD);
-    end;
-   end;
+  ADMIN_GET_LOG_PAGE:begin
+   GetLogPage(aCommand);
+  end;
+  ADMIN_IDENTIFY:begin
+   Identify(aCommand);
   end;
   ADMIN_ABORT:begin
+   CompleteCommand(aCommand,SC_SUCCESS,1);
+  end;
+  ADMIN_SET_FEATURES,ADMIN_GET_FEATURES:begin
+   HandleFeature(aCommand,PPasRISCVUInt8Array(aCommand^.Ptr)^[0]=ADMIN_SET_FEATURES);
+  end;
+{$ifdef NVMeAdminSelfTest}
+  ADMIN_SELF_TEST:begin
    CompleteCommand(aCommand,SC_SUCCESS);
+  end;
+{$endif}
+  ADMIN_ASYNC_EVENT_REQ:begin
+   // Nothing ever happens
   end;
   else begin
    CompleteCommand(aCommand,SC_BAD_OPCODE);
@@ -17153,13 +17497,17 @@ var Opcode:TPasRISCVUInt8;
     Pos:TPasRISCVUInt64;
     Buffer:Pointer;
     Size,ToDo,Temporary:TPasRISCVUInt64;
+    NLB:TPasRISCVUInt16;
 begin
  Opcode:=PPasRISCVUInt8Array(aCommand^.Ptr)^[0];
- Pos:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)^[40])^ shl NVME_LBAS;
+ Pos:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10])^ shl NVME_LBA_SHIFT;
  case Opcode of
   NVM_READ,NVM_WRITE:begin
-   while aCommand^.PRP.Current<aCommand^.PRP.Size do begin
-    Buffer:=GetPRPChunk(aCommand,Size);
+   NLB:=PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW12])^;
+   PreparePRP(aCommand,(TPasRISCVUInt64(NLB)+1) shl NVME_LBA_SHIFT);
+   while PRPAvail(aCommand)>0 do begin
+    Size:=0;
+    Buffer:=GetPRPRegion(aCommand,Size);
     if assigned(Buffer) then begin
      fStreamLock.Acquire;
      try
@@ -17195,48 +17543,29 @@ begin
     fStreamLock.Release;
    end;
   end;
-  NVM_WRITEZ:begin
-   Size:=aCommand^.PRP.Size;
-   if Size>0 then begin
-    fStreamLock.Acquire;
-    try
-     fStream.Seek(Pos,soBeginning);
-     while Size>0 do begin
-      if Size<SizeOf(TZeroBuffer) then begin
-       ToDo:=Size;
-      end else begin
-       ToDo:=SizeOf(TZeroBuffer);
-      end;
-      fStream.Write(ZeroBuffer[0],ToDo);
-      dec(Size,ToDo);
-     end;
-    finally
-     fStreamLock.Release;
-    end;
-   end;
-  end;
   NVM_DTSM:begin
-   if (PPasRISCVUInt8Array(aCommand^.Ptr)^[44] and 4)<>0 then begin
-    aCommand^.PRP.Size:=((TPasRISCVUInt64(PPasRISCVUInt8Array(aCommand^.Ptr)^[40]))+1) shl 4;
-    while aCommand^.PRP.Current<aCommand^.PRP.Size do begin
-     Buffer:=GetPRPChunk(aCommand,Size);
+   if (PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW11] and 4)<>0 then begin
+    PreparePRP(aCommand,((TPasRISCVUInt64(PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10]))+1) shl 4);
+    while PRPAvail(aCommand)>0 do begin
+     Size:=0;
+     Buffer:=GetPRPRegion(aCommand,Size);
      if assigned(Buffer) then begin
       Temporary:=0;
       while (Temporary+16)<=Size do begin
-       Pos:=TPasRISCVUInt64(PPasRISCVUInt32(@PPasRISCVUInt8Array(Buffer)^[4])^) shl NVME_LBAS;
-       Size:=PPasRISCVUInt64(@PPasRISCVUInt8Array(Buffer)^[8])^ shl NVME_LBAS;
-       if Size>0 then begin
+       Pos:=TPasRISCVUInt64(PPasRISCVUInt32(@PPasRISCVUInt8Array(Buffer)^[Temporary+4])^) shl NVME_LBA_SHIFT;
+       ToDo:=PPasRISCVUInt64(@PPasRISCVUInt8Array(Buffer)^[Temporary+8])^ shl NVME_LBA_SHIFT;
+       if ToDo>0 then begin
         fStreamLock.Acquire;
         try
          fStream.Seek(Pos,soBeginning);
-         while Size>0 do begin
-          if Size<SizeOf(TZeroBuffer) then begin
-           ToDo:=Size;
+         while ToDo>0 do begin
+          if ToDo<SizeOf(TZeroBuffer) then begin
+           Size:=ToDo;
           end else begin
-           ToDo:=SizeOf(TZeroBuffer);
+           Size:=SizeOf(TZeroBuffer);
           end;
-          fStream.Write(ZeroBuffer[0],ToDo);
-          dec(Size,ToDo);
+          fStream.Write(ZeroBuffer[0],Size);
+          dec(ToDo,Size);
          end;
         finally
          fStreamLock.Release;
@@ -17264,28 +17593,24 @@ var SubmissionQueue:PNVMeQueue;
     Command:TNVMeCommand;
 begin
 
- SubmissionQueue:=@fQueues[aCommand.SubmissionQueueID shl 1];
+ SubmissionQueue:=GetSubmissionQueue(aCommand.SubmissionQueueID);
+ if not assigned(SubmissionQueue) then begin
+  TPasMPInterlocked.Decrement(fThreads);
+  exit;
+ end;
 
  SubmissionQueueAddress:=SubmissionQueue^.GetAddress;
 
- Ptr:=GetGlobalDirectMemoryAccessPointer(SubmissionQueueAddress+(aCommand.SubmissionQueueHead shl 6),64,false,nil);
+ Ptr:=GetGlobalDirectMemoryAccessPointer(SubmissionQueueAddress+(TPasRISCVUInt64(aCommand.SubmissionQueueHead) shl SQE_SIZE_SHIFT),SQE_SIZE,false,nil);
  if assigned(Ptr) then begin
 
   FillChar(Command,SizeOf(TNVMeCommand),#0);
   Command.Ptr:=Ptr;
-  Command.PRP.PRP1:=PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)[24])^;
-  Command.PRP.PRP2:=PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)[32])^;
-  Command.PRP.PRP2DMA:=nil;
-  Command.PRP.PRP2Offset:=0;
-  Command.PRP.Size:=(PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)[48])^+1) shl NVME_LBAS;
-  Command.PRP.Current:=0;
-  Command.CmdID:=PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)[2])^;
   Command.SqHeadID:=aCommand.SubmissionQueueHead or (TPasRISCVUInt32(aCommand.SubmissionQueueID) shl 16);
-  Command.CompletionQueueID:=SubmissionQueue^.CompletionQueueID;
-  Command.CommandSpecificStatus:=0;
+  Command.CompletionQueueID:=SubmissionQueue^.Data.CompletionQueueID;
 
   case aCommand.SubmissionQueueID of
-   ADMIN_SUBMISSION_QUEUE:begin
+   QUEUE_ADMIN:begin
     AdminCommand(@Command);
    end;
    else begin
@@ -17301,78 +17626,93 @@ end;
 
 procedure TPasRISCV.TNVMeDevice.ProcessQueue(const aSubmissionQueueID:TPasRISCVUInt32;const aValue:TPasRISCVUInt16;const aLocking:Boolean);
 var Queue:PNVMeQueue;
-    QueueSize,QueueTail,QueueHead:TPasRISCVUInt32;
+    QueueHead:TPasRISCVUInt32;
     Command:TNVMeDeviceCommand;
 begin
 
- Queue:=@fQueues[aSubmissionQueueID shl 1];
+ Queue:=GetSubmissionQueue(aSubmissionQueueID);
+ if not assigned(Queue) then begin
+  exit;
+ end;
 
- TPasMPMemoryBarrier.ReadDependency;
- QueueSize:=Queue^.Size;
-
- TPasMPMemoryBarrier.ReadDependency;
- QueueTail:=Queue^.Tail;
-
- repeat
-  TPasMPMemoryBarrier.ReadDependency;
-  if Queue^.Head<>QueueTail then begin
-   QueueHead:=TNVMeQueue.GetNext(Queue^.Head,QueueSize);
-   Command.SubmissionQueueID:=aSubmissionQueueID;
-   Command.SubmissionQueueHead:=QueueHead;
-   TPasMPInterlocked.Increment(fThreads);
-   if aSubmissionQueueID<>0 then begin
-    if not fBus.fMachine.fJobManager.EnqueueNVMeDeviceCommand(self,Command) then begin
-     ProcessCommand(Command);
-    end;
-   end else begin
+ while TNVMeQueue.Dequeue(Queue^,QueueHead) do begin
+  Command.SubmissionQueueID:=aSubmissionQueueID;
+  Command.SubmissionQueueHead:=QueueHead;
+  TPasMPInterlocked.Increment(fThreads);
+  if aSubmissionQueueID<>0 then begin
+   if not fBus.fMachine.fJobManager.EnqueueNVMeDeviceCommand(self,Command) then begin
     ProcessCommand(Command);
    end;
   end else begin
-   break;
+   ProcessCommand(Command);
   end;
- until false;
+ end;
 
 end;
 
 procedure TPasRISCV.TNVMeDevice.Doorbell(const aQueueID:TPasRISCVUInt32;const aValue:TPasRISCVUInt16);
 var Queue:PNVMeQueue;
-    QueueSize:TPasRISCVUInt32;
+    QueueSize,SubmissionQueueID:TPasRISCVUInt32;
 begin
 
- Queue:=@fQueues[aQueueID];
+ SubmissionQueueID:=aQueueID shr 1;
 
- TPasMPMemoryBarrier.ReadDependency;
- QueueSize:=Queue^.Size;
-
- if aValue<=QueueSize then begin
-
-  if (aQueueID and 1)<>0 then begin
-
-   TPasMPMemoryBarrier.ReadWrite;
-   Queue^.Head:=aValue;
-
+ if (aQueueID and 1)<>0 then begin
+  // Completion Queue doorbell
+  if SubmissionQueueID<=NVME_IO_QUEUES then begin
+   Queue:=GetCompletionQueue(SubmissionQueueID);
+   if assigned(Queue) then begin
+    TPasMPMemoryBarrier.ReadDependency;
+    QueueSize:=Queue^.Size;
+    if aValue<=QueueSize then begin
+     TPasMPMemoryBarrier.ReadWrite;
+     Queue^.Head:=aValue;
 {$ifdef NVMELevelTriggeredPCIEInterrupts}
-   TPasMPMemoryBarrier.ReadDependency;
-   if Queue^.Tail=aValue then begin
-    Queue^.LowerIRQ(self);
-   end;
+     TPasMPMemoryBarrier.ReadDependency;
+     if Queue^.Tail=aValue then begin
+      Queue^.LowerIRQ(self);
+     end;
 {$endif}
-
-  end else begin
-
-   TPasMPMemoryBarrier.ReadWrite;
-   Queue^.Tail:=aValue;
-   TPasMPMemoryBarrier.ReadDependency;
-
-// ProcessQueue(aQueueID shr 1,aValue,false);
-   if not fBus.fMachine.fJobManager.EnqueueNVMeDeviceQueue(self,aQueueID shr 1,aValue) then begin
-    ProcessQueue(aQueueID shr 1,aValue,false);
+    end;
    end;
-
   end;
-
+ end else begin
+  // Submission Queue doorbell
+  if SubmissionQueueID<=NVME_IO_QUEUES then begin
+   Queue:=GetSubmissionQueue(SubmissionQueueID);
+   if assigned(Queue) then begin
+    TPasMPMemoryBarrier.ReadDependency;
+    QueueSize:=Queue^.Size;
+    if aValue<=QueueSize then begin
+     TPasMPMemoryBarrier.ReadWrite;
+     Queue^.Tail:=aValue;
+     TPasMPMemoryBarrier.ReadDependency;
+//   ProcessQueue(SubmissionQueueID,aValue,false);
+     if not fBus.fMachine.fJobManager.EnqueueNVMeDeviceQueue(self,SubmissionQueueID,aValue) then begin
+      ProcessQueue(SubmissionQueueID,aValue,false);
+     end;
+    end;
+   end;
+  end;
  end;
 
+end;
+
+procedure TPasRISCV.TNVMeDevice.CheckMaskedIRQs(const aMask:TPasRISCVUInt32);
+var Index:TPasRISCVSizeInt;
+    Queue:PNVMeQueue;
+begin
+ for Index:=QUEUE_ADMIN to NVME_IO_QUEUES do begin
+  Queue:=@fCompletionQueues[Index];
+  if (aMask and (TPasRISCVUInt32(1) shl ((TPasMPInterlocked.Read(Queue^.Data.IRQ) shr 16) and $1f)))<>0 then begin
+   TPasMPMemoryBarrier.ReadDependency;
+   if Queue^.Head<>TPasMPInterlocked.Read(Queue^.Tail) then begin
+    Queue^.RaiseIRQ(self);
+   end else begin
+    Queue^.LowerIRQ(self);
+   end;
+  end;
+ end;
 end;
 
 function TPasRISCV.TNVMeDevice.OnLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -17382,7 +17722,7 @@ begin
  if aSize=4 then begin
   case Address of
    NVME_REG_CAP1:begin
-    result:=NVME_CAP1_MQES or NVME_CAP1_CQR0 or NVME_CAP1_TO;
+    result:=NVME_CAP1_MQES or NVME_CAP1_CQR or NVME_CAP1_TO;
    end;
    NVME_REG_CAP2:begin
     result:=NVME_CAP2_CSS;
@@ -17409,25 +17749,25 @@ begin
    end;
    NVME_REG_AQA:begin
     TPasMPMemoryBarrier.ReadDependency;
-    result:=fQueues[ADMIN_SUBMISSION_QUEUE].Size or (fQueues[ADMIN_COMPLETION_QUEUE].Size shl 16);
+    result:=fSubmissionQueues[QUEUE_ADMIN].Size;
     TPasMPMemoryBarrier.ReadDependency;
-    result:=result or (fQueues[ADMIN_COMPLETION_QUEUE].Size shl 16);
+    result:=result or (fCompletionQueues[QUEUE_ADMIN].Size shl 16);
    end;
    NVME_REG_ASQ1:begin
     TPasMPMemoryBarrier.ReadDependency;
-    result:=fQueues[ADMIN_SUBMISSION_QUEUE].AddressLow;
+    result:=fSubmissionQueues[QUEUE_ADMIN].AddressLow;
    end;
    NVME_REG_ASQ2:begin
     TPasMPMemoryBarrier.ReadDependency;
-    result:=fQueues[ADMIN_SUBMISSION_QUEUE].AddressHigh;
+    result:=fSubmissionQueues[QUEUE_ADMIN].AddressHigh;
    end;
    NVME_REG_ACQ1:begin
     TPasMPMemoryBarrier.ReadDependency;
-    result:=fQueues[ADMIN_COMPLETION_QUEUE].AddressLow;
+    result:=fCompletionQueues[QUEUE_ADMIN].AddressLow;
    end;
    NVME_REG_ACQ2:begin
     TPasMPMemoryBarrier.ReadDependency;
-    result:=fQueues[ADMIN_COMPLETION_QUEUE].AddressHigh;
+    result:=fCompletionQueues[QUEUE_ADMIN].AddressHigh;
    end;
    else begin
     result:=0;
@@ -17447,16 +17787,16 @@ begin
 //writeln('NVMe Write ',LowerCase(IntToHex(Address,8)),' ',LowerCase(IntToHex(aValue,8)));
   if Address>=$1000 then begin
    QueueID:=(Address-$1000) shr 2;
-   if QueueID<NVME_NQUEUES then begin
-    Doorbell(QueueID,aValue);
-   end;
+   Doorbell(QueueID,aValue);
   end else begin
    case Address of
     NVME_REG_INTMS:begin
      TPasMPInterlocked.BitwiseOr(fIRQMask,TPasRISCVUInt32(aValue));
+     CheckMaskedIRQs(TPasRISCVUInt32(aValue));
     end;
     NVME_REG_INTMC:begin
      TPasMPInterlocked.BitwiseAnd(fIRQMask,TPasRISCVUInt32(not TPasRISCVUInt32(aValue)));
+     CheckMaskedIRQs(TPasRISCVUInt32(aValue));
     end;
     NVME_REG_CC:begin
      TPasMPInterlocked.Write(fConf,TPasRISCVUInt32(aValue));
@@ -17465,20 +17805,20 @@ begin
      end;
     end;
     NVME_REG_AQA:begin
-     TPasMPInterlocked.Write(fQueues[ADMIN_SUBMISSION_QUEUE].Size,TPasRISCVUInt32(aValue and $fff));
-     TPasMPInterlocked.Write(fQueues[ADMIN_COMPLETION_QUEUE].Size,TPasRISCVUInt32((aValue shr 16) and $fff));
+     TPasMPInterlocked.Write(fSubmissionQueues[QUEUE_ADMIN].Size,TPasRISCVUInt32(aValue and $fff));
+     TPasMPInterlocked.Write(fCompletionQueues[QUEUE_ADMIN].Size,TPasRISCVUInt32((aValue shr 16) and $fff));
     end;
     NVME_REG_ASQ1:begin
-     TPasMPInterlocked.Write(fQueues[ADMIN_SUBMISSION_QUEUE].AddressLow,TPasRISCVUInt32(aValue) and TPasRISCVUInt32($fffff000));
+     TPasMPInterlocked.Write(fSubmissionQueues[QUEUE_ADMIN].AddressLow,TPasRISCVUInt32(aValue) and TPasRISCVUInt32($fffff000));
     end;
     NVME_REG_ASQ2:begin
-     TPasMPInterlocked.Write(fQueues[ADMIN_SUBMISSION_QUEUE].AddressHigh,TPasRISCVUInt32(aValue));
+     TPasMPInterlocked.Write(fSubmissionQueues[QUEUE_ADMIN].AddressHigh,TPasRISCVUInt32(aValue));
     end;
     NVME_REG_ACQ1:begin
-     TPasMPInterlocked.Write(fQueues[ADMIN_COMPLETION_QUEUE].AddressLow,TPasRISCVUInt32(aValue) and TPasRISCVUInt32($fffff000));
+     TPasMPInterlocked.Write(fCompletionQueues[QUEUE_ADMIN].AddressLow,TPasRISCVUInt32(aValue) and TPasRISCVUInt32($fffff000));
     end;
     NVME_REG_ACQ2:begin
-     TPasMPInterlocked.Write(fQueues[ADMIN_COMPLETION_QUEUE].AddressHigh,TPasRISCVUInt32(aValue));
+     TPasMPInterlocked.Write(fCompletionQueues[QUEUE_ADMIN].AddressHigh,TPasRISCVUInt32(aValue));
     end;
    end;
   end;
