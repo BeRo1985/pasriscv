@@ -5240,6 +5240,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                             5:(
                              ui128:TPasMPInt128Record;
                             );
+                            6:(
+                             ui8:TPasRISCVUInt8;
+                            );
+                            7:(
+                             ui16:TPasRISCVUInt16;
+                            );
                           end;
                           PBounce=^TBounce;
                     public
@@ -13950,6 +13956,28 @@ begin
  AddInstruction32('amominu.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$18));
  AddInstruction32('amomaxu.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$1c));
  AddInstruction32('amocas.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$05));
+
+ // Zabha: Byte and Halfword AMO
+ AddInstruction32('amoswap.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$01));
+ AddInstruction32('amoadd.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$00));
+ AddInstruction32('amoxor.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$04));
+ AddInstruction32('amoand.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$0c));
+ AddInstruction32('amoor.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$08));
+ AddInstruction32('amomin.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$10));
+ AddInstruction32('amomax.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$14));
+ AddInstruction32('amominu.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$18));
+ AddInstruction32('amomaxu.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$1c));
+ AddInstruction32('amocas.b',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,0,$05));
+ AddInstruction32('amoswap.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$01));
+ AddInstruction32('amoadd.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$00));
+ AddInstruction32('amoxor.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$04));
+ AddInstruction32('amoand.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$0c));
+ AddInstruction32('amoor.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$08));
+ AddInstruction32('amomin.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$10));
+ AddInstruction32('amomax.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$14));
+ AddInstruction32('amominu.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$18));
+ AddInstruction32('amomaxu.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$1c));
+ AddInstruction32('amocas.h',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,1,$05));
 
  AddInstruction32('lr.d',TInstructionFormat.LR,MaskAmo,ValueAmo(OpcodeAmo,3,$02));
  AddInstruction32('sc.d',TInstructionFormat.SC,MaskAmo,ValueAmo(OpcodeAmo,3,$03));
@@ -33013,6 +33041,735 @@ begin
      // approach and QEMU's implementation in the legacy code path. It's more
      // efficient as it avoids unnecessary TLB lookups for misaligned addresses.
      case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 12) and 7) of
+      {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
+       // amob (Zabha: Byte atomics)
+       // No alignment check needed for byte operations
+       rd:=TRegister((aInstruction shr 7) and $1f);
+       rs1:=TRegister((aInstruction shr 15) and $1f);
+       rs2:=TRegister((aInstruction shr 20) and $1f);
+       begin
+{$if defined(cpu386) or defined(cpux86_64)}
+        // Native 8-bit atomics (x86/x86_64)
+        Ptr:=MemoryPointerTranslate(fState.Registers[rs1],1,@fState.Bounce.ui8,false);
+        if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+         case ((aInstruction shr 25) and $7c) shr 2 of
+          $00:begin
+           // amoadd.b (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.Add(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $01:begin
+           // amoswap.b (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.Exchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $04:begin
+           // amoxor.b (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.ExchangeBitwiseXor(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $05:begin
+           // amocas.b (Zabha+Zacas)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(fState.Registers[rd])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $08:begin
+           // amoor.b (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.ExchangeBitwiseOr(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $0c:begin
+           // amoand.b (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.ExchangeBitwiseAnd(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $10:begin
+           // amomin.b (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
+            if TPasRISCVInt8(Temporary)<=TPasRISCVInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $14:begin
+           // amomax.b (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
+            if TPasRISCVInt8(Temporary)>=TPasRISCVInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $18:begin
+           // amominu.b (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
+            if TPasRISCVUInt8(Temporary)<=TPasRISCVUInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          $1c:begin
+           // amomaxu.b (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
+            if TPasRISCVUInt8(Temporary)>=TPasRISCVUInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui8 then begin
+            RMWCommit(fState.Registers[rs1],1,@fState.Bounce.ui8);
+           end;
+           result:=4;
+           exit;
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end;
+{$else}
+        // 32-bit CAS loop fallback (non-x86 platforms)
+        Address:=fState.Registers[rs1] and TPasRISCVUInt64(not TPasRISCVUInt64(3));
+        Offset:=TPasRISCVUInt64((fState.Registers[rs1] and 3) shl 3); // bit shift for byte position
+        Ptr:=MemoryPointerTranslate(Address,4,@fState.Bounce.ui32,false);
+        if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+         case ((aInstruction shr 25) and $7c) shr 2 of
+          $00:begin
+           // amoadd.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(TPasRISCVUInt8(Immediate)+TPasRISCVUInt8(fState.Registers[rs2]))) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $01:begin
+           // amoswap.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $04:begin
+           // amoxor.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) xor TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $05:begin
+           // amocas.b (Zabha+Zacas)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+            if TPasRISCVUInt8(Immediate)=TPasRISCVUInt8(fState.Registers[rd]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $08:begin
+           // amoor.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) or TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $0c:begin
+           // amoand.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) and TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $10:begin
+           // amomin.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+            if TPasRISCVInt8(Immediate)<=TPasRISCVInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $14:begin
+           // amomax.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+            if TPasRISCVInt8(Immediate)>=TPasRISCVInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $18:begin
+           // amominu.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+            if TPasRISCVUInt8(Immediate)<=TPasRISCVUInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $1c:begin
+           // amomaxu.b (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
+            if TPasRISCVUInt8(Immediate)>=TPasRISCVUInt8(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end;
+{$ifend}
+       end;
+      end;
+      {$ifndef TryToForceCaseJumpTableOnLevel2}$1:{$else}$01,$09,$11,$19,$21,$29,$31,$39,$41,$49,$51,$59,$61,$69,$71,$79,$81,$89,$91,$99,$a1,$a9,$b1,$b9,$c1,$c9,$d1,$d9,$e1,$e9,$f1,$f9:{$endif}begin
+       // amoh (Zabha: Halfword atomics)
+       rd:=TRegister((aInstruction shr 7) and $1f);
+       rs1:=TRegister((aInstruction shr 15) and $1f);
+       rs2:=TRegister((aInstruction shr 20) and $1f);
+       if (fState.Registers[rs1] and 1)<>0 then begin
+        SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
+        result:=4;
+        exit;
+       end else begin
+{$if defined(cpu386) or defined(cpux86_64)}
+        // Native 16-bit atomics (x86/x86_64)
+        Ptr:=MemoryPointerTranslate(fState.Registers[rs1],2,@fState.Bounce.ui16,false);
+        if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+         case ((aInstruction shr 25) and $7c) shr 2 of
+          $00:begin
+           // amoadd.h (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.Add(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $01:begin
+           // amoswap.h (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.Exchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $04:begin
+           // amoxor.h (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.ExchangeBitwiseXor(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $05:begin
+           // amocas.h (Zabha+Zacas)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(fState.Registers[rd])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $08:begin
+           // amoor.h (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.ExchangeBitwiseOr(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $0c:begin
+           // amoand.h (Zabha)
+           Immediate:=TPasRISCVInt64(TPasMPInterlocked.ExchangeBitwiseAnd(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2])));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $10:begin
+           // amomin.h (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
+            if TPasRISCVInt16(Temporary)<=TPasRISCVInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $14:begin
+           // amomax.h (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
+            if TPasRISCVInt16(Temporary)>=TPasRISCVInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $18:begin
+           // amominu.h (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
+            if TPasRISCVUInt16(Temporary)<=TPasRISCVUInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          $1c:begin
+           // amomaxu.h (Zabha)
+           repeat
+            Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
+            if TPasRISCVUInt16(Temporary)>=TPasRISCVUInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui16 then begin
+            RMWCommit(fState.Registers[rs1],2,@fState.Bounce.ui16);
+           end;
+           result:=4;
+           exit;
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end;
+{$else}
+        // 32-bit CAS loop fallback (non-x86 platforms)
+        Address:=fState.Registers[rs1] and TPasRISCVUInt64(not TPasRISCVUInt64(3));
+        Offset:=TPasRISCVUInt64((fState.Registers[rs1] and 2) shl 3); // bit shift for halfword position (0 or 16)
+        Ptr:=MemoryPointerTranslate(Address,4,@fState.Bounce.ui32,false);
+        if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+         case ((aInstruction shr 25) and $7c) shr 2 of
+          $00:begin
+           // amoadd.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVUInt16(Immediate)+TPasRISCVUInt16(fState.Registers[rs2]))) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $01:begin
+           // amoswap.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $04:begin
+           // amoxor.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) xor TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $05:begin
+           // amocas.h (Zabha+Zacas)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+            if TPasRISCVUInt16(Immediate)=TPasRISCVUInt16(fState.Registers[rd]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $08:begin
+           // amoor.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) or TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $0c:begin
+           // amoand.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) and TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $10:begin
+           // amomin.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+            if TPasRISCVInt16(Immediate)<=TPasRISCVInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $14:begin
+           // amomax.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+            if TPasRISCVInt16(Immediate)>=TPasRISCVInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $18:begin
+           // amominu.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+            if TPasRISCVUInt16(Immediate)<=TPasRISCVUInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          $1c:begin
+           // amomaxu.h (Zabha)
+           repeat
+            Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
+            Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
+            if TPasRISCVUInt16(Immediate)>=TPasRISCVUInt16(fState.Registers[rs2]) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end else begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+            end;
+           until false;
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(Address,4,@fState.Bounce.ui32);
+           end;
+           result:=4;
+           exit;
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end;
+{$ifend}
+       end;
+      end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
        // amow
        rd:=TRegister((aInstruction shr 7) and $1f);
