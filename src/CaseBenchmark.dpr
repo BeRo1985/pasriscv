@@ -10,8 +10,7 @@ program CaseBenchmark;
 {$endif}
 {$apptype console}
 
-uses
- SysUtils;
+uses SysUtils;
 
 const InstructionCount=4*1024*1024;
       Iterations=64;
