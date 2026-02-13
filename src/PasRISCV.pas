@@ -22781,7 +22781,7 @@ begin
     Header.Flags:=Flags;
    end;
    Header.Len:=ChunkSize;
-   WriteRxPacket(Header,Pointer(PtrUInt(PtrUInt(aData)+Offset)),ChunkSize);
+   WriteRxPacket(Header,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aData)+Offset)),ChunkSize);
    inc(Offset,ChunkSize);
    dec(Remaining,ChunkSize);
   end;
