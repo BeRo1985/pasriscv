@@ -5952,6 +5952,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fAIA:Boolean;
 
+              fVirtIOBlockEnabled:Boolean;
+
+              fNVMeEnabled:Boolean;
+
               fLRSCMaximumCycles:TPasRISCVUInt64;
 
              public
@@ -6079,6 +6083,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property IVSHMEMSharedMemorySize:TPasRISCVUInt64 read fIVSHMEMSharedMemorySize write fIVSHMEMSharedMemorySize;
 
               property AIA:Boolean read fAIA write fAIA;
+
+              property VirtIOBlockEnabled:Boolean read fVirtIOBlockEnabled write fVirtIOBlockEnabled;
+
+              property NVMeEnabled:Boolean read fNVMeEnabled write fNVMeEnabled;
 
               property LRSCMaximumCycles:TPasRISCVUInt64 read fLRSCMaximumCycles write fLRSCMaximumCycles;
 
@@ -39149,6 +39157,10 @@ begin
 
  fAIA:=false;
 
+ fVirtIOBlockEnabled:=false;
+
+ fNVMeEnabled:=false;
+
  fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
 
 end;
@@ -39268,6 +39280,10 @@ begin
  fIVSHMEMSharedMemorySize:=aConfiguration.fIVSHMEMSharedMemorySize;
 
  fAIA:=aConfiguration.fAIA;
+
+ fVirtIOBlockEnabled:=aConfiguration.fVirtIOBlockEnabled;
+
+ fNVMeEnabled:=aConfiguration.fNVMeEnabled;
 
  fLRSCMaximumCycles:=aConfiguration.fLRSCMaximumCycles;
 
@@ -39467,7 +39483,11 @@ begin
 
  fSYSCONDevice:=TSYSCONDevice.Create(self);
 
- fVirtIOBlockDevice:=TVirtIOBlockDevice.Create(self);
+ if fConfiguration.fVirtIOBlockEnabled then begin
+  fVirtIOBlockDevice:=TVirtIOBlockDevice.Create(self);
+ end else begin
+  fVirtIOBlockDevice:=nil;
+ end;
 
  fUARTDevice:=TUARTDevice.Create(self);
 
@@ -39521,7 +39541,9 @@ begin
   fBus.AddBusDevice(fPLICDevice);
  end;
  fBus.AddBusDevice(fSYSCONDevice);
- fBus.AddBusDevice(fVirtIOBlockDevice);
+ if assigned(fVirtIOBlockDevice) then begin
+  fBus.AddBusDevice(fVirtIOBlockDevice);
+ end;
  fBus.AddBusDevice(fUARTDevice);
  fBus.AddBusDevice(fDS1742Device);
  fBus.AddBusDevice(fPCIBusDevice);
@@ -39539,8 +39561,12 @@ begin
  fBus.AddBusDevice(fVirtIORandomGeneratorDevice);
  fBus.AddBusDevice(fVirtIOVSockDevice);
 
- fNVMeDevice:=TNVMeDevice.Create(fPCIBusDevice);
- fPCIBusDevice.AddBusDevice(fNVMeDevice);
+ if fConfiguration.fNVMeEnabled then begin
+  fNVMeDevice:=TNVMeDevice.Create(fPCIBusDevice);
+  fPCIBusDevice.AddBusDevice(fNVMeDevice);
+ end else begin
+  fNVMeDevice:=nil;
+ end;
 
  fIVSHMEMDevice:=TIVSHMEMDevice.Create(fPCIBusDevice,fConfiguration.fIVSHMEMSharedMemorySize);
  fPCIBusDevice.AddBusDevice(fIVSHMEMDevice);
@@ -40687,7 +40713,7 @@ begin
 
    end;
 
-   if true then begin
+   if assigned(fVirtIOBlockDevice) then begin
 
     VirtIOBlockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOBlockBase);
     try
