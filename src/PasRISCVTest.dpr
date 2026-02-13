@@ -155,6 +155,10 @@ begin
 
   try
 
+   if ParamStr(1)='image' then begin
+    Configuration.VirtIOBlockEnabled:=true;
+   end;
+
    Machine:=TPasRISCV.Create(Configuration);
    try
 
