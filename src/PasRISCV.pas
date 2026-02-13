@@ -41190,7 +41190,9 @@ begin
   fPLICDevice.Reset;
  end;
  fSYSCONDevice.Reset;
- fVirtIOBlockDevice.Reset;
+ if assigned(fVirtIOBlockDevice) then begin
+  fVirtIOBlockDevice.Reset;
+ end;
  fUARTDevice.Reset;
  fDS1742Device.Reset;
  fPCIBusDevice.Reset;
@@ -41206,7 +41208,9 @@ begin
  fVirtIONetDevice.Reset;
  fVirtIORandomGeneratorDevice.Reset;
 
- fNVMeDevice.Reset;
+ if assigned(fNVMeDevice) then begin
+  fNVMeDevice.Reset;
+ end;
 
  for Index:=0 to length(fHARTs)-1 do begin
   fHARTs[Index].Init;
