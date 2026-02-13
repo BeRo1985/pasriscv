@@ -59,6 +59,26 @@ are required. The VirtIO devices are used to provide a standard interface for de
 
 For each VirtIO device, the MMIO region size is $1000. For the VirtIO GPU device, the guest OS allocates its own frame buffer memory ranges, so $1000 as MMIO region size remains valid for the device registers in this case.
 
+# Shared Memory device
+
+The shared memory device provides a simple flat memory-mapped region for zero-copy host-guest communication. It is declared as a `reserved-memory` node in the device tree with `no-map` to prevent the kernel from using it as regular RAM. The device includes a small register area (first 64 bytes) for control and signaling, followed by the data region.
+
+| What                  | Where     | Size      | IRQ(s)                    | Description                                 |
+|-----------------------|-----------|-----------|---------------------------|---------------------------------------------|
+| SHARED MEMORY         | $2F000000 | $100000   | $1A                       | Shared memory with doorbell IRQ             |
+
+Register layout (offsets from base address):
+
+| Offset | Size    | Access       | Description                                                  |
+|--------|---------|--------------|--------------------------------------------------------------|
+| $00    | 4 bytes | Guest: Write | Doorbell — writing triggers a callback on the host side      |
+| $04    | 4 bytes | Guest: Read  | Host flags — set by the host, readable by the guest          |
+| $08    | 4 bytes | Guest: R/W   | Guest flags — set by the guest, readable by the host         |
+| $0C    | 4 bytes | Guest: Read  | Data size — size of the shared data region in bytes          |
+| $10    | 4 bytes | Guest: Read  | IRQ status — bitmask of pending interrupt reasons            |
+| $14    | 4 bytes | Guest: Write | IRQ acknowledge — write bits to clear corresponding IRQ      |
+| $40+   | varies  | Guest: R/W   | Shared memory data region                                    |
+
 # PCIe devices
 
 These devices are the Peripheral Component Interconnect Express (PCIe) devices that are used to connect to the system. 

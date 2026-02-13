@@ -38,6 +38,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
     - Sound
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
   - Framebuffer support
+  - Shared memory device for host-guest shared memory communication with doorbell IRQ support
   - PS/2 keyboard and mouse
   - Raw keyboard input with scancode bit-array (for more direct input per polling) 
   - DS1742 real-time clock (read-only, no write support)

@@ -4239,6 +4239,47 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property Dirty:TPasMPBool32 read fDirty write fDirty;
 {$endif}
             end;
+            { TSharedMemoryDevice }
+            TSharedMemoryDevice=class(TBusDevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($2F000000);
+                    DefaultSize=TPasRISCVUInt64($100000); // 1 MB
+                    DefaultIRQ=TPasRISCVUInt64($1A); // 26
+                    REG_DOORBELL=$00;
+                    REG_HOST_FLAGS=$04;
+                    REG_GUEST_FLAGS=$08;
+                    REG_SIZE=$0C;
+                    REG_IRQ_STATUS=$10;
+                    REG_IRQ_ACK=$14;
+                    DATA_OFFSET=$40;
+              type TOnDoorbell=procedure(const aSender:TSharedMemoryDevice;const aValue:TPasRISCVUInt32) of object;
+             private
+              fIRQ:TPasRISCVUInt64;
+              fLock:TPasMPMultipleReaderSingleWriterLock;
+              fData:TPasRISCVUInt8DynamicArray;
+              fDataSize:TPasRISCVUInt64;
+              fHostFlags:TPasRISCVUInt32;
+              fGuestFlags:TPasRISCVUInt32;
+              fIRQStatus:TPasRISCVUInt32;
+              fOnDoorbell:TOnDoorbell;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              function GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer; override;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+              procedure RingDoorbell;
+              function GetDataPointer:Pointer;
+             public
+              property Data:TPasRISCVUInt8DynamicArray read fData;
+              property DataPointer:Pointer read GetDataPointer;
+              property DataSize:TPasRISCVUInt64 read fDataSize;
+              property Lock:TPasMPMultipleReaderSingleWriterLock read fLock;
+             published
+              property HostFlags:TPasRISCVUInt32 read fHostFlags write fHostFlags;
+              property GuestFlags:TPasRISCVUInt32 read fGuestFlags;
+              property OnDoorbellEvent:TOnDoorbell read fOnDoorbell write fOnDoorbell;
+            end;
             { TRawKeyboardDevice }
             TRawKeyboardDevice=class(TBusDevice)
              public
@@ -5654,6 +5695,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fFrameBufferStride:TPasRISCVUInt64;
               fFrameBufferFormat:TPasRISCVUInt64;
 
+              fSharedMemoryBase:TPasRISCVUInt64;
+              fSharedMemorySize:TPasRISCVUInt64;
+              fSharedMemoryIRQ:TPasRISCVUInt64;
+
               fRawKeyboardBase:TPasRISCVUInt64;
               fRawKeyboardSize:TPasRISCVUInt64;
 
@@ -5778,6 +5823,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property FrameBufferStride:TPasRISCVUInt64 read fFrameBufferStride write fFrameBufferStride;
               property FrameBufferFormat:TPasRISCVUInt64 read fFrameBufferFormat write fFrameBufferFormat;
 
+              property SharedMemoryBase:TPasRISCVUInt64 read fSharedMemoryBase write fSharedMemoryBase;
+              property SharedMemorySize:TPasRISCVUInt64 read fSharedMemorySize write fSharedMemorySize;
+              property SharedMemoryIRQ:TPasRISCVUInt64 read fSharedMemoryIRQ write fSharedMemoryIRQ;
+
               property RawKeyboardBase:TPasRISCVUInt64 read fRawKeyboardBase write fRawKeyboardBase;
               property RawKeyboardSize:TPasRISCVUInt64 read fRawKeyboardSize write fRawKeyboardSize;
 
@@ -5890,6 +5939,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fIVSHMEMDevice:TIVSHMEMDevice;
 
        fFrameBufferDevice:TFrameBufferDevice;
+
+       fSharedMemoryDevice:TSharedMemoryDevice;
 
        fRawKeyboardDevice:TRawKeyboardDevice;
 
@@ -6040,6 +6091,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property IVSHMEMDevice:TIVSHMEMDevice read fIVSHMEMDevice;
 
        property FrameBufferDevice:TFrameBufferDevice read fFrameBufferDevice;
+
+       property SharedMemoryDevice:TSharedMemoryDevice read fSharedMemoryDevice;
 
        property RawKeyboardDevice:TRawKeyboardDevice read fRawKeyboardDevice;
 
@@ -21704,6 +21757,7 @@ begin
 
  fConnections:=nil;
  fConnectionCount:=0;
+
  fConnectionLock:=TPasMPSlimReaderWriterLock.Create;
 
  inherited Create(aMachine,aMachine.fConfiguration.fVirtIOVSockBase,aMachine.fConfiguration.fVirtIOVSockSize,TVirtIODevice.TKind.MMIO);
@@ -23210,6 +23264,160 @@ begin
    end;
   end;
  end;
+end;
+
+{ TPasRISCV.TSharedMemoryDevice }
+
+constructor TPasRISCV.TSharedMemoryDevice.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fSharedMemoryBase,aMachine.fConfiguration.fSharedMemorySize);
+ fIRQ:=aMachine.fConfiguration.fSharedMemoryIRQ;
+ fLock:=TPasMPMultipleReaderSingleWriterLock.Create;
+ fDataSize:=fSize-DATA_OFFSET;
+ fData:=nil;
+ SetLength(fData,fDataSize);
+ FillChar(fData[0],fDataSize,#0);
+ fHostFlags:=0;
+ fGuestFlags:=0;
+ fIRQStatus:=0;
+ fOnDoorbell:=nil;
+end;
+
+destructor TPasRISCV.TSharedMemoryDevice.Destroy;
+begin
+ fData:=nil;
+ FreeAndNil(fLock);
+ inherited Destroy;
+end;
+
+function TPasRISCV.TSharedMemoryDevice.GetDataPointer:Pointer;
+begin
+ if length(fData)>0 then begin
+  result:=@fData[0];
+ end else begin
+  result:=nil;
+ end;
+end;
+
+function TPasRISCV.TSharedMemoryDevice.GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
+var Address:TPasRISCVUInt64;
+begin
+ if (aAddress>=fBase) and ((aAddress-fBase)<fSize) then begin
+  Address:=aAddress-fBase;
+  if (Address>=DATA_OFFSET) and ((Address-DATA_OFFSET+aSize)<=fDataSize) then begin
+   result:=@fData[Address-DATA_OFFSET];
+  end else begin
+   result:=aBounce;
+  end;
+ end else begin
+  result:=nil;
+ end;
+end;
+
+function TPasRISCV.TSharedMemoryDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-fBase;
+ case Address of
+  REG_DOORBELL:begin
+   result:=0;
+  end;
+  REG_HOST_FLAGS:begin
+   result:=TPasRISCVUInt64(fHostFlags);
+  end;
+  REG_GUEST_FLAGS:begin
+   result:=TPasRISCVUInt64(fGuestFlags);
+  end;
+  REG_SIZE:begin
+   result:=fDataSize;
+  end;
+  REG_IRQ_STATUS:begin
+   result:=TPasRISCVUInt64(fIRQStatus);
+  end;
+  REG_IRQ_ACK:begin
+   result:=0;
+  end;
+  else begin
+   if (Address>=DATA_OFFSET) and ((Address-DATA_OFFSET+aSize)<=fDataSize) then begin
+    dec(Address,DATA_OFFSET);
+    case aSize of
+     1:begin
+      result:=fData[Address];
+     end;
+     2:begin
+      result:=TPasRISCVUInt16(Pointer(@fData[Address])^);
+     end;
+     4:begin
+      result:=TPasRISCVUInt32(Pointer(@fData[Address])^);
+     end;
+     8:begin
+      result:=TPasRISCVUInt64(Pointer(@fData[Address])^);
+     end;
+     else begin
+      result:=0;
+     end;
+    end;
+   end else begin
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TSharedMemoryDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-fBase;
+ case Address of
+  REG_DOORBELL:begin
+   if assigned(fOnDoorbell) then begin
+    fOnDoorbell(self,TPasRISCVUInt32(aValue));
+   end;
+  end;
+  REG_HOST_FLAGS:begin
+   // Read-only for guest, ignore
+  end;
+  REG_GUEST_FLAGS:begin
+   fGuestFlags:=TPasRISCVUInt32(aValue);
+  end;
+  REG_SIZE:begin
+   // Read-only, ignore
+  end;
+  REG_IRQ_STATUS:begin
+   // Read-only, ignore
+  end;
+  REG_IRQ_ACK:begin
+   fIRQStatus:=fIRQStatus and (not TPasRISCVUInt32(aValue));
+   if fIRQStatus=0 then begin
+    fMachine.fInterrupts.LowerIRQ(fIRQ);
+   end;
+  end;
+  else begin
+   if (Address>=DATA_OFFSET) and ((Address-DATA_OFFSET+aSize)<=fDataSize) then begin
+    dec(Address,DATA_OFFSET);
+    case aSize of
+     1:begin
+      fData[Address]:=TPasRISCVUInt8(aValue);
+     end;
+     2:begin
+      TPasRISCVUInt16(Pointer(@fData[Address])^):=TPasRISCVUInt16(aValue);
+     end;
+     4:begin
+      TPasRISCVUInt32(Pointer(@fData[Address])^):=TPasRISCVUInt32(aValue);
+     end;
+     8:begin
+      TPasRISCVUInt64(Pointer(@fData[Address])^):=TPasRISCVUInt64(aValue);
+     end;
+    end;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TSharedMemoryDevice.RingDoorbell;
+begin
+ fIRQStatus:=fIRQStatus or 1;
+ fMachine.fInterrupts.SendIRQ(fIRQ);
 end;
 
 { TPasRISCV.TRawKeyboardDevice }
@@ -37142,6 +37350,10 @@ begin
  fFrameBufferSize:=fFrameBufferWidth*fFrameBufferHeight*fFrameBufferBytesPerPixel;
  fFrameBufferFormat:=0;
 
+ fSharedMemoryBase:=TPasRISCV.TSharedMemoryDevice.DefaultBaseAddress;
+ fSharedMemorySize:=TPasRISCV.TSharedMemoryDevice.DefaultSize;
+ fSharedMemoryIRQ:=TPasRISCV.TSharedMemoryDevice.DefaultIRQ;
+
  fRawKeyboardBase:=TPasRISCV.TRawKeyboardDevice.DefaultBaseAddress;
  fRawKeyboardSize:=TPasRISCV.TRawKeyboardDevice.DefaultSize;
 
@@ -37263,6 +37475,10 @@ begin
  fFrameBufferStride:=aConfiguration.fFrameBufferStride;
  fFrameBufferSize:=aConfiguration.fFrameBufferSize;
  fFrameBufferFormat:=aConfiguration.fFrameBufferFormat;
+
+ fSharedMemoryBase:=aConfiguration.fSharedMemoryBase;
+ fSharedMemorySize:=aConfiguration.fSharedMemorySize;
+ fSharedMemoryIRQ:=aConfiguration.fSharedMemoryIRQ;
 
  fRawKeyboardBase:=aConfiguration.fRawKeyboardBase;
  fRawKeyboardSize:=aConfiguration.fRawKeyboardSize;
@@ -37519,6 +37735,8 @@ begin
 
  fFrameBufferDevice:=TFrameBufferDevice.Create(self);
 
+ fSharedMemoryDevice:=TSharedMemoryDevice.Create(self);
+
  fRawKeyboardDevice:=TRawKeyboardDevice.Create(self);
 
 {fI2CDevice:=TI2CDevice.Create(self);
@@ -37566,6 +37784,7 @@ begin
  fBus.AddBusDevice(fDS1742Device);
  fBus.AddBusDevice(fPCIBusDevice);
  fBus.AddBusDevice(fFrameBufferDevice);
+ fBus.AddBusDevice(fSharedMemoryDevice);
  fBus.AddBusDevice(fRawKeyboardDevice);
 //fBus.AddBusDevice(fI2CDevice);
  fBus.AddBusDevice(fPS2KeyboardDevice);
@@ -37674,6 +37893,8 @@ begin
 
  FreeAndNil(fFrameBufferDevice);
 
+ FreeAndNil(fSharedMemoryDevice);
+
  FreeAndNil(fRawKeyboardDevice);
 
  FreeAndNil(fI2CHIDKeyboardBusDevice);
@@ -37778,7 +37999,8 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     VirtIOInputKeyboardNode,VirtIOInputMouseNode,VirtIOSoundNode,VirtIO9PNode,VirtIONetNode,
     VirtIORandomGeneratorNode,
     VirtIOVSockNode,
-    SimpleFrameBufferNode:TPasRISCV.TFDT.TFDTNode;
+    SimpleFrameBufferNode,
+    ReservedMemoryNode,SharedMemoryNode:TPasRISCV.TFDT.TFDTNode;
     AIARegFileMode:TPasRISCV.TAIARegFileMode;
     CPUInterruptControllerNodes:array[0..15] of TPasRISCV.TFDT.TFDTNode;
     CPUNodes:array of TPasRISCV.TFDT.TFDTNode;
@@ -38743,6 +38965,30 @@ begin
 
   finally
    fFDT.fRoot.AddChild(SoCNode);
+  end;
+
+  ReservedMemoryNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'reserved-memory');
+  try
+   ReservedMemoryNode.AddPropertyU32('#address-cells',2);
+   ReservedMemoryNode.AddPropertyU32('#size-cells',2);
+   ReservedMemoryNode.AddProperty('ranges',Cells,0);
+   SharedMemoryNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'shared-memory',fConfiguration.fSharedMemoryBase);
+   try
+    SharedMemoryNode.AddPropertyString('compatible','pasriscv,shared-memory');
+    Cells[0]:=0;
+    Cells[1]:=fConfiguration.fSharedMemoryBase;
+    Cells[2]:=0;
+    Cells[3]:=fConfiguration.fSharedMemorySize;
+    SharedMemoryNode.AddPropertyCells('reg',@Cells,4);
+    SharedMemoryNode.AddProperty('no-map',Cells,0);
+    Cells[0]:=INTC0.GetPHandle;
+    Cells[1]:=TPasRISCVUInt32(fConfiguration.fSharedMemoryIRQ);
+    SharedMemoryNode.AddPropertyCells('interrupts-extended',@Cells,2);
+   finally
+    ReservedMemoryNode.AddChild(SharedMemoryNode);
+   end;
+  finally
+   fFDT.fRoot.AddChild(ReservedMemoryNode);
   end;
 
  {FileStream:=TFileStream.Create('fdt.dtb',fmCreate);
