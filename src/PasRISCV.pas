@@ -40026,6 +40026,7 @@ begin
        CPUNode.AddPropertyU32('reg',Index);
        CPUNode.AddPropertyString('status','okay');
        CPUNode.AddPropertyString('compatible','riscv');
+       CPUNode.AddPropertyU32('riscv,cbop-block-size',64);
        CPUNode.AddPropertyU32('riscv,cboz-block-size',64);
        CPUNode.AddPropertyU32('riscv,cbom-block-size',64);
        CPUNode.AddPropertyString('riscv,isa',ISA);
