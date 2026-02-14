@@ -22055,6 +22055,11 @@ begin
    end;
   end;
   else begin
+   // Unknown queue - consume descriptor to avoid hang
+   if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
+           UsedRingSync(aQueueIndex)) then begin
+    NotifyDeviceNeedsReset;
+   end;
   end;
  end;
  result:=true;
