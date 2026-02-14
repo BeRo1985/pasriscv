@@ -4782,6 +4782,66 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
             end;
+            { TGoldfishRTCDevice }
+            TGoldfishRTCDevice=class(TBusDevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($101000);
+                    DefaultSize=TPasRISCVUInt64($24);
+                    DefaultIRQ=TPasRISCVUInt64($0b);
+                    REG_TIME_LOW=$00;
+                    REG_TIME_HIGH=$04;
+                    REG_ALARM_LOW=$08;
+                    REG_ALARM_HIGH=$0c;
+                    REG_IRQ_ENABLED=$10;
+                    REG_CLEAR_ALARM=$14;
+                    REG_ALARM_STATUS=$18;
+                    REG_CLEAR_INTERRUPT=$1c;
+             private
+              fIRQ:TPasRISCVUInt64;
+              fTickOffset:TPasRISCVInt64;   // ns offset so that GetCount returns ns since epoch
+              fTimeHigh:TPasRISCVUInt32;    // latched high word
+              fAlarmNext:TPasRISCVUInt64;
+              fAlarmRunning:Boolean;
+              fIRQEnabled:Boolean;
+              fIRQPending:Boolean;
+              function GetCount:TPasRISCVUInt64;
+              procedure UpdateIRQ;
+              procedure CheckAlarm;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+            end;
+            { TDS1307I2CBusDevice }
+            TDS1307I2CBusDevice=class(TI2CBusDevice)
+             public
+              const DS1307_ADDRESS=$68;
+                    REG_SECONDS=$00;
+                    REG_MINUTES=$01;
+                    REG_HOURS=$02;
+                    REG_DAY=$03;
+                    REG_DATE=$04;
+                    REG_MONTH=$05;
+                    REG_YEAR=$06;
+                    REG_CONTROL=$07;
+                    BIT_CH=$80; // Clock Halt (bit 7 of seconds register)
+                    COUNT_REGS=8;
+             private
+              fRegisters:array[0..63] of TPasRISCVUInt8; // 8 time regs + 56 bytes NVRAM
+              fRegPointer:TPasRISCVUInt8;
+              fWriteState:TPasRISCVUInt8; // 0=expect reg pointer, 1=writing data
+              class function ToBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8; static;
+              class function FromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8; static;
+              procedure UpdateRegisters;
+             public
+              constructor Create(const aI2CDevice:TI2CDevice); override;
+              destructor Destroy; override;
+              function Start(const aIsWrite:Boolean):Boolean; override;
+              procedure Stop; override;
+              function Read(out aValue:TPasRISCVUInt8):Boolean; override;
+              function Write(const aValue:TPasRISCVUInt8):Boolean; override;
+            end;
             { TFrameBufferDevice }
             TFrameBufferDevice=class
              public
@@ -6281,6 +6341,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               BochsVBE,
               Cirrus
              );
+            TRTCMode=
+             (
+              DS1742,
+              GoldfishRTC,
+              DS1307
+             );
             { TConfiguration }
             TConfiguration=class
              private
@@ -6328,8 +6394,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIOBlockSize:TPasRISCVUInt64;
               fVirtIOBlockIRQ:TPasRISCVUInt64;
 
+              fRTCMode:TRTCMode;
+
               fDS1742Base:TPasRISCVUInt64;
               fDS1742Size:TPasRISCVUInt64;
+
+              fGoldfishRTCBase:TPasRISCVUInt64;
+              fGoldfishRTCSize:TPasRISCVUInt64;
+              fGoldfishRTCIRQ:TPasRISCVUInt64;
 
               fFrameBufferBase:TPasRISCVUInt64;
               fFrameBufferSize:TPasRISCVUInt64;
@@ -6468,8 +6540,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIOBlockSize:TPasRISCVUInt64 read fVirtIOBlockSize write fVirtIOBlockSize;
               property VirtIOBlockIRQ:TPasRISCVUInt64 read fVirtIOBlockIRQ write fVirtIOBlockIRQ;
 
+              property RTCMode:TRTCMode read fRTCMode write fRTCMode;
+
               property DS1742Base:TPasRISCVUInt64 read fDS1742Base write fDS1742Base;
               property DS1742Size:TPasRISCVUInt64 read fDS1742Size write fDS1742Size;
+
+              property GoldfishRTCBase:TPasRISCVUInt64 read fGoldfishRTCBase write fGoldfishRTCBase;
+              property GoldfishRTCSize:TPasRISCVUInt64 read fGoldfishRTCSize write fGoldfishRTCSize;
+              property GoldfishRTCIRQ:TPasRISCVUInt64 read fGoldfishRTCIRQ write fGoldfishRTCIRQ;
 
               property FrameBufferBase:TPasRISCVUInt64 read fFrameBufferBase write fFrameBufferBase;
               property FrameBufferSize:TPasRISCVUInt64 read fFrameBufferSize write fFrameBufferSize;
@@ -6599,6 +6677,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fUARTDevice:TUARTDevice;
 
        fDS1742Device:TDS1742Device;
+
+       fGoldfishRTCDevice:TGoldfishRTCDevice;
+
+       fDS1307Device:TDS1307I2CBusDevice;
 
        fPCIBusDevice:TPCIBusDevice;
 
@@ -6761,6 +6843,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property UARTDevice:TUARTDevice read fUARTDevice;
 
        property DS1742Device:TDS1742Device read fDS1742Device;
+
+       property GoldfishRTCDevice:TGoldfishRTCDevice read fGoldfishRTCDevice;
+
+       property DS1307Device:TDS1307I2CBusDevice read fDS1307Device;
 
        property PCIBusDevice:TPCIBusDevice read fPCIBusDevice;
 
@@ -25593,6 +25679,210 @@ begin
  end;
 end;
 
+{ TPasRISCV.TGoldfishRTCDevice }
+
+constructor TPasRISCV.TGoldfishRTCDevice.Create(const aMachine:TPasRISCV);
+var CurrentTime:TDateTime;
+    UnixSeconds:TPasRISCVInt64;
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fGoldfishRTCBase,aMachine.fConfiguration.fGoldfishRTCSize);
+ fIRQ:=aMachine.fConfiguration.fGoldfishRTCIRQ;
+ fUnalignedAccessSupport:=false;
+ fMinOpSize:=4;
+ fMaxOpSize:=4;
+ // Compute tick offset so GetCount returns ns since Unix epoch
+ CurrentTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
+ UnixSeconds:=DateTimeToUnix(CurrentTime{$if declared(NowUTC)},true{$else},false{$ifend});
+ fTickOffset:=(UnixSeconds*TPasRISCVInt64(1000000000))-TPasRISCVInt64(GetCurrentFrequencyTime(1000000000));
+ fTimeHigh:=0;
+ fAlarmNext:=0;
+ fAlarmRunning:=false;
+ fIRQEnabled:=false;
+ fIRQPending:=false;
+end;
+
+destructor TPasRISCV.TGoldfishRTCDevice.Destroy;
+begin
+ inherited Destroy;
+end;
+
+function TPasRISCV.TGoldfishRTCDevice.GetCount:TPasRISCVUInt64;
+begin
+ result:=TPasRISCVUInt64(TPasRISCVInt64(GetCurrentFrequencyTime(1000000000))+fTickOffset);
+end;
+
+procedure TPasRISCV.TGoldfishRTCDevice.UpdateIRQ;
+begin
+ if fIRQPending and fIRQEnabled then begin
+  fMachine.fInterrupts.RaiseIRQ(fIRQ);
+ end else begin
+  fMachine.fInterrupts.LowerIRQ(fIRQ);
+ end;
+end;
+
+procedure TPasRISCV.TGoldfishRTCDevice.CheckAlarm;
+begin
+ if fAlarmRunning and (GetCount>=fAlarmNext) then begin
+  fAlarmRunning:=false;
+  fIRQPending:=true;
+  UpdateIRQ;
+ end;
+end;
+
+function TPasRISCV.TGoldfishRTCDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+    Count:TPasRISCVUInt64;
+begin
+ if fAlarmRunning then begin
+  CheckAlarm;
+ end;
+ Address:=aAddress-fBase;
+ case Address of
+  REG_TIME_LOW:begin
+   Count:=GetCount;
+   fTimeHigh:=TPasRISCVUInt32(Count shr 32);
+   result:=TPasRISCVUInt32(Count);
+  end;
+  REG_TIME_HIGH:begin
+   result:=fTimeHigh;
+  end;
+  REG_ALARM_LOW:begin
+   result:=TPasRISCVUInt32(fAlarmNext);
+  end;
+  REG_ALARM_HIGH:begin
+   result:=TPasRISCVUInt32(fAlarmNext shr 32);
+  end;
+  REG_IRQ_ENABLED:begin
+   result:=ord(fIRQEnabled);
+  end;
+  REG_ALARM_STATUS:begin
+   result:=ord(fAlarmRunning);
+  end;
+  else begin
+   result:=0;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TGoldfishRTCDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+    Current,NewTime:TPasRISCVUInt64;
+begin
+ Address:=aAddress-fBase;
+ case Address of
+  REG_TIME_LOW:begin
+   Current:=GetCount;
+   NewTime:=(Current and TPasRISCVUInt64($ffffffff00000000)) or TPasRISCVUInt64(TPasRISCVUInt32(aValue));
+   fTickOffset:=fTickOffset+TPasRISCVInt64(NewTime)-TPasRISCVInt64(Current);
+  end;
+  REG_TIME_HIGH:begin
+   Current:=GetCount;
+   NewTime:=(Current and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(TPasRISCVUInt32(aValue)) shl 32);
+   fTickOffset:=fTickOffset+TPasRISCVInt64(NewTime)-TPasRISCVInt64(Current);
+  end;
+  REG_ALARM_LOW:begin
+   fAlarmNext:=(fAlarmNext and TPasRISCVUInt64($ffffffff00000000)) or TPasRISCVUInt64(TPasRISCVUInt32(aValue));
+   // Writing ALARM_LOW activates the alarm
+   fAlarmRunning:=true;
+   CheckAlarm;
+  end;
+  REG_ALARM_HIGH:begin
+   fAlarmNext:=(fAlarmNext and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(TPasRISCVUInt32(aValue)) shl 32);
+  end;
+  REG_IRQ_ENABLED:begin
+   fIRQEnabled:=(aValue and 1)<>0;
+   UpdateIRQ;
+  end;
+  REG_CLEAR_ALARM:begin
+   fAlarmRunning:=false;
+   fAlarmNext:=0;
+  end;
+  REG_CLEAR_INTERRUPT:begin
+   fIRQPending:=false;
+   UpdateIRQ;
+  end;
+ end;
+end;
+
+{ TPasRISCV.TDS1307I2CBusDevice }
+
+constructor TPasRISCV.TDS1307I2CBusDevice.Create(const aI2CDevice:TI2CDevice);
+begin
+ inherited Create(aI2CDevice);
+ fAddress:=DS1307_ADDRESS;
+ FillChar(fRegisters,SizeOf(fRegisters),#0);
+ fRegPointer:=0;
+ fWriteState:=0;
+ UpdateRegisters;
+end;
+
+destructor TPasRISCV.TDS1307I2CBusDevice.Destroy;
+begin
+ inherited Destroy;
+end;
+
+class function TPasRISCV.TDS1307I2CBusDevice.ToBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
+begin
+ result:=((aValue div 10) shl 4) or (aValue mod 10);
+end;
+
+class function TPasRISCV.TDS1307I2CBusDevice.FromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
+begin
+ result:=((aValue shr 4)*10)+(aValue and $f);
+end;
+
+procedure TPasRISCV.TDS1307I2CBusDevice.UpdateRegisters;
+var CurrentTime:TDateTime;
+    Year,Month,Day,DayOfWeek,Hour,Minute,Second,Millisecond:TPasRISCVUInt16;
+begin
+ CurrentTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
+ DecodeDateFully(CurrentTime,Year,Month,Day,DayOfWeek);
+ DecodeTime(CurrentTime,Hour,Minute,Second,Millisecond);
+ fRegisters[REG_SECONDS]:=ToBCD(Min(59,Second)); // bit 7 (CH) = 0, clock running
+ fRegisters[REG_MINUTES]:=ToBCD(Minute);
+ fRegisters[REG_HOURS]:=ToBCD(Hour); // 24h mode (bit 6 = 0)
+ fRegisters[REG_DAY]:=ToBCD(DayOfWeek);
+ fRegisters[REG_DATE]:=ToBCD(Day);
+ fRegisters[REG_MONTH]:=ToBCD(Month);
+ fRegisters[REG_YEAR]:=ToBCD(Year mod 100);
+end;
+
+function TPasRISCV.TDS1307I2CBusDevice.Start(const aIsWrite:Boolean):Boolean;
+begin
+ fWriteState:=0;
+ if not aIsWrite then begin
+  // Read start — refresh time registers
+  UpdateRegisters;
+ end;
+ result:=true;
+end;
+
+procedure TPasRISCV.TDS1307I2CBusDevice.Stop;
+begin
+ // Nothing special needed
+end;
+
+function TPasRISCV.TDS1307I2CBusDevice.Read(out aValue:TPasRISCVUInt8):Boolean;
+begin
+ aValue:=fRegisters[fRegPointer and $3f];
+ fRegPointer:=(fRegPointer+1) and $3f; // auto-increment with wrap
+ result:=true;
+end;
+
+function TPasRISCV.TDS1307I2CBusDevice.Write(const aValue:TPasRISCVUInt8):Boolean;
+begin
+ if fWriteState=0 then begin
+  // First byte after START+W is the register pointer
+  fRegPointer:=aValue and $3f;
+  fWriteState:=1;
+ end else begin
+  // Subsequent bytes are data writes
+  fRegisters[fRegPointer and $3f]:=aValue;
+  fRegPointer:=(fRegPointer+1) and $3f;
+ end;
+ result:=true;
+end;
+
 { TPasRISCV.TFrameBufferDevice }
 
 constructor TPasRISCV.TFrameBufferDevice.Create(const aMachine:TPasRISCV);
@@ -41481,6 +41771,12 @@ begin
  fDS1742Base:=TPasRISCV.TDS1742Device.DefaultBaseAddress;
  fDS1742Size:=TPasRISCV.TDS1742Device.DefaultSize;
 
+ fGoldfishRTCBase:=TPasRISCV.TGoldfishRTCDevice.DefaultBaseAddress;
+ fGoldfishRTCSize:=TPasRISCV.TGoldfishRTCDevice.DefaultSize;
+ fGoldfishRTCIRQ:=TPasRISCV.TGoldfishRTCDevice.DefaultIRQ;
+
+ fRTCMode:=TRTCMode.DS1742;
+
  fFrameBufferBase:=TPasRISCVUInt64($28000000)-TSimpleFBDevice.FrameBufferAddress;
  fFrameBufferWidth:=640;
  fFrameBufferHeight:=400;
@@ -41618,6 +41914,12 @@ begin
 
  fDS1742Base:=aConfiguration.fDS1742Base;
  fDS1742Size:=aConfiguration.fDS1742Size;
+
+ fGoldfishRTCBase:=aConfiguration.fGoldfishRTCBase;
+ fGoldfishRTCSize:=aConfiguration.fGoldfishRTCSize;
+ fGoldfishRTCIRQ:=aConfiguration.fGoldfishRTCIRQ;
+
+ fRTCMode:=aConfiguration.fRTCMode;
 
  fFrameBufferBase:=aConfiguration.fFrameBufferBase;
  fFrameBufferWidth:=aConfiguration.fFrameBufferWidth;
@@ -41896,7 +42198,29 @@ begin
 
  fUARTDevice:=TUARTDevice.Create(self);
 
- fDS1742Device:=TDS1742Device.Create(self);
+ case fConfiguration.fRTCMode of
+  TRTCMode.DS1742:begin
+   fDS1742Device:=TDS1742Device.Create(self);
+   fGoldfishRTCDevice:=nil;
+   fDS1307Device:=nil;
+  end;
+  TRTCMode.GoldfishRTC:begin
+   fDS1742Device:=nil;
+   fGoldfishRTCDevice:=TGoldfishRTCDevice.Create(self);
+   fDS1307Device:=nil;
+  end;
+  TRTCMode.DS1307:begin
+   fDS1742Device:=nil;
+   fGoldfishRTCDevice:=nil;
+   // DS1307 is an I2C device — created later when I2C bus is set up
+   fDS1307Device:=nil;
+  end;
+  else begin
+   fDS1742Device:=TDS1742Device.Create(self);
+   fGoldfishRTCDevice:=nil;
+   fDS1307Device:=nil;
+  end;
+ end;
 
  fPCIBusDevice:=TPCIBusDevice.Create(self);
 
@@ -41920,6 +42244,14 @@ begin
  fSharedMemoryDevice:=TSharedMemoryDevice.Create(self);
 
  fRawKeyboardDevice:=TRawKeyboardDevice.Create(self);
+
+ if fConfiguration.fRTCMode=TRTCMode.DS1307 then begin
+  fI2CDevice:=TI2CDevice.Create(self);
+  fDS1307Device:=TDS1307I2CBusDevice.Create(fI2CDevice);
+  fI2CDevice.AttachBusDevice(fDS1307Device);
+ end else begin
+  fI2CDevice:=nil;
+ end;
 
 {fI2CDevice:=TI2CDevice.Create(self);
 
@@ -41974,7 +42306,13 @@ begin
   fBus.AddBusDevice(fVirtIOBlockDevice);
  end;
  fBus.AddBusDevice(fUARTDevice);
- fBus.AddBusDevice(fDS1742Device);
+ if assigned(fDS1742Device) then begin
+  fBus.AddBusDevice(fDS1742Device);
+ end;
+ if assigned(fGoldfishRTCDevice) then begin
+  fBus.AddBusDevice(fGoldfishRTCDevice);
+ end;
+//fBus.AddBusDevice(fDS1742Device);
  fBus.AddBusDevice(fPCIBusDevice);
  if assigned(fPCIIODevice) then begin
   fBus.AddBusDevice(fPCIIODevice);
@@ -41984,6 +42322,9 @@ begin
  end;
  fBus.AddBusDevice(fSharedMemoryDevice);
  fBus.AddBusDevice(fRawKeyboardDevice);
+ if assigned(fI2CDevice) then begin
+  fBus.AddBusDevice(fI2CDevice);
+ end;
 //fBus.AddBusDevice(fI2CDevice);
  fBus.AddBusDevice(fPS2KeyboardDevice);
  fBus.AddBusDevice(fPS2MouseDevice);
@@ -42124,6 +42465,10 @@ begin
 
  FreeAndNil(fDS1742Device);
 
+ FreeAndNil(fGoldfishRTCDevice);
+
+ FreeAndNil(fDS1307Device);
+
  FreeAndNil(fPCIIODevice);
 
  FreeAndNil(fPCIBusDevice);
@@ -42231,9 +42576,9 @@ procedure TPasRISCV.InitializeFDT;
 var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     ChosenNode,CPUNode,CPUInterruptControllerNode,CPUsNode,CPUMap,CPUClusterNode,CoreNode,
     MemoryNode,SysConNode,PowerOffNode,RebootNode,
-    SoCNode,IMSIC0,IMSICM0,IMSICS0,APLIC0,APLICM0,APLICS0,PLIC0,ACLINTNode,UART0,DS1742Node,
+    SoCNode,IMSIC0,IMSICM0,IMSICS0,APLIC0,APLICM0,APLICS0,PLIC0,ACLINTNode,UART0,RTCNode,
     INTC0,PCIBusNode,
-    I2CClockNode,I2CNode,I2CHIDKeyboardNode,
+    I2CClockNode,I2CNode,I2CHIDKeyboardNode,I2CDS1307Node,
     PS2KeyboardNode,PS2MouseNode,
     VirtIOBlockNode,
     VirtIOInputKeyboardNode,VirtIOInputMouseNode,VirtIOSoundNode,VirtIO9PNode,VirtIONetNode,
@@ -42842,13 +43187,31 @@ begin
     SoCNode.AddChild(UART0);
    end;
 
-   DS1742Node:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fDS1742Base);
-   try
-    DS1742Node.AddPropertyReg('reg',fConfiguration.fDS1742Base,fConfiguration.fDS1742Size);
-    DS1742Node.AddPropertyString('compatible','maxim,ds1742');
-   finally
-    SoCNode.AddChild(DS1742Node);
-   end;//}
+   case fConfiguration.fRTCMode of
+    TRTCMode.DS1742:begin
+     RTCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fDS1742Base);
+     try
+      RTCNode.AddPropertyReg('reg',fConfiguration.fDS1742Base,fConfiguration.fDS1742Size);
+      RTCNode.AddPropertyString('compatible','maxim,ds1742');
+     finally
+      SoCNode.AddChild(RTCNode);
+     end;
+    end;
+    TRTCMode.GoldfishRTC:begin
+     RTCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fGoldfishRTCBase);
+     try
+      RTCNode.AddPropertyReg('reg',fConfiguration.fGoldfishRTCBase,fConfiguration.fGoldfishRTCSize);
+      RTCNode.AddPropertyU32('interrupts',fConfiguration.fGoldfishRTCIRQ);
+      RTCNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
+      RTCNode.AddPropertyString('compatible','google,goldfish-rtc');
+     finally
+      SoCNode.AddChild(RTCNode);
+     end;
+    end;
+    TRTCMode.DS1307:begin
+     // DS1307 is declared as part of the I2C bus node, not as a standalone SoC node
+    end;
+   end;
 
    begin
 
@@ -43159,7 +43522,7 @@ begin
 
    end;
 
-   if false then begin
+   if fConfiguration.fRTCMode=TRTCMode.DS1307 then begin
 
     I2CClockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c_oc_osc');
     try
@@ -43190,7 +43553,15 @@ begin
      I2CNode.AddPropertyU32('#size-cells',0);
      I2CNode.AddPropertyString('status','okay');
 
-     I2CHIDKeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',TI2CHIDKeyboardBusDevice.Address);
+     I2CDS1307Node:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',TDS1307I2CBusDevice.DS1307_ADDRESS);
+     try
+      I2CDS1307Node.AddPropertyString('compatible','dallas,ds1307');
+      I2CDS1307Node.AddPropertyU32('reg',TDS1307I2CBusDevice.DS1307_ADDRESS);
+     finally
+      I2CNode.AddChild(I2CDS1307Node);
+     end;
+
+{    I2CHIDKeyboardNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',TI2CHIDKeyboardBusDevice.Address);
      try
       I2CHIDKeyboardNode.AddPropertyString('compatible','hid-over-i2c');
       I2CHIDKeyboardNode.AddPropertyU32('reg',TI2CHIDKeyboardBusDevice.Address);
@@ -43199,7 +43570,7 @@ begin
       I2CHIDKeyboardNode.AddPropertyU32('interrupts',TI2CHIDKeyboardBusDevice.IRQ);
      finally
       I2CNode.AddChild(I2CHIDKeyboardNode);
-     end;
+     end;//\}
 
     finally
      SoCNode.AddChild(I2CNode);
