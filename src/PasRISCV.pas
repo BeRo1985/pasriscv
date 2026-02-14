@@ -18987,6 +18987,7 @@ begin
  inherited Create(aBus);
 
  fFrameBuffer:=aFrameBuffer;
+ fFrameBuffer.fAutomaticRefresh:=true;
 
  fSEQIndex:=0;
  FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
