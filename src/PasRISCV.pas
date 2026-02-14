@@ -4691,6 +4691,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             end;
             { TFrameBufferDevice }
             TFrameBufferDevice=class
+             public
+              const CURSOR_SIZE=64;
+                    CURSOR_PIXELS=CURSOR_SIZE*CURSOR_SIZE;
+                    CURSOR_BYTES=CURSOR_PIXELS*4;
+              type TCursor=record
+                    Data:array[0..CURSOR_BYTES-1] of TPasRISCVUInt8;
+                    X:TPasRISCVInt32;
+                    Y:TPasRISCVInt32;
+                    HotX:TPasRISCVInt32;
+                    HotY:TPasRISCVInt32;
+                    Visible:Boolean;
+                   end;
+                   PCursor=^TCursor;
              private
               fMachine:TPasRISCV;
               fLock:TPasMPMultipleReaderSingleWriterLock;
@@ -4700,6 +4713,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fHeight:TPasRISCVUInt32;
               fBytesPerPixel:TPasRISCVUInt32;
               fData:TPasRISCVUInt8DynamicArray;
+              fComposited:TPasRISCVUInt8DynamicArray;
+              fCursor:TCursor;
+              fCursorCompositing:Boolean;
 {$ifdef FrameBufferDeviceDirtyMarking}
               fDirty:TPasMPBool32;
 {$endif}
@@ -4710,9 +4726,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure ClearFrameBuffer;
               function CheckDirtyAndFlush:Boolean;
               procedure MarkDirty;
+              procedure SetCursorImage(const aData:Pointer;const aSize:TPasRISCVUInt32);
+              procedure SetCursorPosition(const aX,aY:TPasRISCVInt32);
+              procedure SetCursorHotspot(const aHotX,aHotY:TPasRISCVInt32);
+              procedure SetCursorVisible(const aVisible:Boolean);
+              procedure CompositeCursor;
+              function GetOutputData:TPasRISCVUInt8DynamicArray;
              public
               property Machine:TPasRISCV read fMachine;
               property Data:TPasRISCVUInt8DynamicArray read fData write fData;
+              property Composited:TPasRISCVUInt8DynamicArray read fComposited;
+              property OutputData:TPasRISCVUInt8DynamicArray read GetOutputData;
+              property Cursor:TCursor read fCursor;
+              property CursorCompositing:Boolean read fCursorCompositing write fCursorCompositing;
               property Active:Boolean read fActive write fActive;
               property AutomaticRefresh:Boolean read fAutomaticRefresh write fAutomaticRefresh;
               property Width:TPasRISCVUInt32 read fWidth;
@@ -23428,14 +23454,38 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleUpdateCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
+var Resource:TGPUResource;
+    CopySize:TPasRISCVUInt64;
 begin
- // Cursor not supported, just acknowledge
+ fFrameBuffer.SetCursorPosition(aCmd^.Pos.X,aCmd^.Pos.Y);
+ fFrameBuffer.SetCursorHotspot(aCmd^.HotX,aCmd^.HotY);
+ if aCmd^.ResourceID<>0 then begin
+  Resource:=FindResource(aCmd^.ResourceID);
+  if assigned(Resource) and (length(Resource.Data)>0) then begin
+   CopySize:=length(Resource.Data);
+   if CopySize>TFrameBufferDevice.CURSOR_BYTES then begin
+    CopySize:=TFrameBufferDevice.CURSOR_BYTES;
+   end;
+   fFrameBuffer.SetCursorImage(@Resource.Data[0],CopySize);
+   fFrameBuffer.SetCursorVisible(true);
+  end else begin
+   fFrameBuffer.SetCursorVisible(false);
+  end;
+ end else begin
+  fFrameBuffer.SetCursorVisible(false);
+ end;
+{$ifdef FrameBufferDeviceDirtyMarking}
+ fFrameBuffer.fDirty:=true;
+{$endif}
  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleMoveCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
 begin
- // Cursor not supported, just acknowledge
+ fFrameBuffer.SetCursorPosition(aCmd^.Pos.X,aCmd^.Pos.Y);
+{$ifdef FrameBufferDeviceDirtyMarking}
+ fFrameBuffer.fDirty:=true;
+{$endif}
  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
 end;
 
@@ -24865,12 +24915,18 @@ begin
  fBytesPerPixel:=aMachine.fConfiguration.fFrameBufferBytesPerPixel;
  fData:=nil;
  SetLength(fData,fWidth*fHeight*fBytesPerPixel);
+ fComposited:=nil;
+ SetLength(fComposited,length(fData));
+ FillChar(fCursor,SizeOf(fCursor),#0);
+ fCursor.Visible:=false;
+ fCursorCompositing:=false;
  ClearFrameBuffer;
 end;
 
 destructor TPasRISCV.TFrameBufferDevice.Destroy;
 begin
  fData:=nil;
+ fComposited:=nil;
  FreeAndNil(fLock);
  inherited Destroy;
 end;
@@ -24893,6 +24949,9 @@ begin
    finally
     fData:=NewData;
    end;
+  end;
+  if fCursorCompositing and (length(fComposited)<length(fData)) then begin
+   SetLength(fComposited,length(fData));
   end;
 {$ifdef FrameBufferDeviceDirtyMarking}
   fDirty:=true;
@@ -24935,6 +24994,125 @@ begin
 {$ifdef FrameBufferDeviceDirtyMarking}
  fDirty:=true;
 {$endif}
+end;
+
+procedure TPasRISCV.TFrameBufferDevice.SetCursorImage(const aData:Pointer;const aSize:TPasRISCVUInt32);
+var CopySize:TPasRISCVUInt32;
+begin
+ CopySize:=aSize;
+ if CopySize>CURSOR_BYTES then begin
+  CopySize:=CURSOR_BYTES;
+ end;
+ Move(aData^,fCursor.Data[0],CopySize);
+ if CopySize<CURSOR_BYTES then begin
+  FillChar(fCursor.Data[CopySize],CURSOR_BYTES-CopySize,#0);
+ end;
+{$ifdef FrameBufferDeviceDirtyMarking}
+ fDirty:=true;
+{$endif}
+end;
+
+procedure TPasRISCV.TFrameBufferDevice.SetCursorPosition(const aX,aY:TPasRISCVInt32);
+begin
+ fCursor.X:=aX;
+ fCursor.Y:=aY;
+end;
+
+procedure TPasRISCV.TFrameBufferDevice.SetCursorHotspot(const aHotX,aHotY:TPasRISCVInt32);
+begin
+ fCursor.HotX:=aHotX;
+ fCursor.HotY:=aHotY;
+end;
+
+procedure TPasRISCV.TFrameBufferDevice.SetCursorVisible(const aVisible:Boolean);
+begin
+ fCursor.Visible:=aVisible;
+{$ifdef FrameBufferDeviceDirtyMarking}
+ fDirty:=true;
+{$endif}
+end;
+
+procedure TPasRISCV.TFrameBufferDevice.CompositeCursor;
+var CurX,CurY:TPasRISCVInt32;
+    StartX,StartY,EndX,EndY:TPasRISCVInt32;
+    Row,Col:TPasRISCVInt32;
+    SrcOffset,DstOffset:TPasRISCVUInt64;
+    Stride:TPasRISCVUInt64;
+    SrcPixel:PPasRISCVUInt8;
+    Alpha,InvAlpha:TPasRISCVUInt32;
+    SR,SG,SB,DR,DG,DB:TPasRISCVUInt32;
+    DstPixel:PPasRISCVUInt8;
+begin
+ // Copy base framebuffer to composited buffer
+ if length(fComposited)<length(fData) then begin
+  SetLength(fComposited,length(fData));
+ end;
+ Move(fData[0],fComposited[0],fWidth*fHeight*fBytesPerPixel);
+ if (not fCursor.Visible) or (fBytesPerPixel<>4) then begin
+  exit;
+ end;
+ // Calculate cursor draw position (top-left corner = cursor pos - hotspot)
+ CurX:=fCursor.X-fCursor.HotX;
+ CurY:=fCursor.Y-fCursor.HotY;
+ // Clip to framebuffer
+ StartX:=0;
+ StartY:=0;
+ EndX:=CURSOR_SIZE;
+ EndY:=CURSOR_SIZE;
+ if CurX<0 then begin
+  StartX:=-CurX;
+ end;
+ if CurY<0 then begin
+  StartY:=-CurY;
+ end;
+ if (CurX+EndX)>TPasRISCVInt32(fWidth) then begin
+  EndX:=TPasRISCVInt32(fWidth)-CurX;
+ end;
+ if (CurY+EndY)>TPasRISCVInt32(fHeight) then begin
+  EndY:=TPasRISCVInt32(fHeight)-CurY;
+ end;
+ if (StartX>=EndX) or (StartY>=EndY) then begin
+  exit;
+ end;
+ Stride:=TPasRISCVUInt64(fWidth)*4;
+ for Row:=StartY to EndY-1 do begin
+  for Col:=StartX to EndX-1 do begin
+   SrcOffset:=(TPasRISCVUInt64(Row)*CURSOR_SIZE+TPasRISCVUInt64(Col))*4;
+   SrcPixel:=@fCursor.Data[SrcOffset];
+   Alpha:=SrcPixel[3];
+   if Alpha=0 then begin
+    continue;
+   end;
+   DstOffset:=TPasRISCVUInt64(CurY+Row)*Stride+TPasRISCVUInt64(CurX+Col)*4;
+   DstPixel:=@fComposited[DstOffset];
+   if Alpha=255 then begin
+    // Opaque — direct copy
+    DstPixel[0]:=SrcPixel[0];
+    DstPixel[1]:=SrcPixel[1];
+    DstPixel[2]:=SrcPixel[2];
+    DstPixel[3]:=255;
+   end else begin
+    // Alpha blend
+    InvAlpha:=255-Alpha;
+    SB:=SrcPixel[0]; SG:=SrcPixel[1]; SR:=SrcPixel[2];
+    DB:=DstPixel[0]; DG:=DstPixel[1]; DR:=DstPixel[2];
+    DstPixel[0]:=TPasRISCVUInt8((SB*Alpha+DB*InvAlpha+127) div 255);
+    DstPixel[1]:=TPasRISCVUInt8((SG*Alpha+DG*InvAlpha+127) div 255);
+    DstPixel[2]:=TPasRISCVUInt8((SR*Alpha+DR*InvAlpha+127) div 255);
+    DstPixel[3]:=255;
+   end;
+  end;
+ end;
+end;
+
+function TPasRISCV.TFrameBufferDevice.GetOutputData:TPasRISCVUInt8DynamicArray;
+begin
+ if fCursorCompositing and fCursor.Visible then begin
+  CompositeCursor;
+  result:=fComposited;
+ end else begin
+  result:=fData;
+ end;
 end;
 
 { TPasRISCV.TSimpleFBDevice }
