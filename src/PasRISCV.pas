@@ -23396,9 +23396,11 @@ procedure TPasRISCV.TVirtIOGPUDevice.DeviceReset;
 begin
  DestroyAllResources;
  FillChar(fScanouts,SizeOf(TGPUScanouts),#0);
- fScanouts[0].Rect.Width:=fFrameBuffer.fWidth;
- fScanouts[0].Rect.Height:=fFrameBuffer.fHeight;
- fScanouts[0].Enabled:=true;
+ if assigned(fFrameBuffer) then begin
+  fScanouts[0].Rect.Width:=fFrameBuffer.fWidth;
+  fScanouts[0].Rect.Height:=fFrameBuffer.fHeight;
+  fScanouts[0].Enabled:=true;
+ end;
  fGPUConfig.EventsRead:=0;
  Move(fGPUConfig,fConfigSpace[0],SizeOf(TVirtIOGPUConfig));
  inherited DeviceReset;
