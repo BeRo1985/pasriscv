@@ -6568,6 +6568,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fPCIBusDevice:TPCIBusDevice;
 
+       fPCIIODevice:TBusDevice;
+
        fNVMeDevice:TNVMeDevice;
 
        fIVSHMEMDevice:TIVSHMEMDevice;
@@ -41504,6 +41506,15 @@ begin
 
  fPCIBusDevice:=TPCIBusDevice.Create(self);
 
+ if TPCI.PCI_IO_DEFAULT_SIZE<>0 then begin
+  fPCIIODevice:=TBusDevice.Create(self,TPCI.PCI_IO_DEFAULT_ADDR,TPCI.PCI_IO_DEFAULT_SIZE);
+  fPCIIODevice.UnalignedAccessSupport:=true;
+  fPCIIODevice.MinOpSize:=1;
+  fPCIIODevice.MaxOpSize:=4;
+ end else begin
+  fPCIIODevice:=nil;
+ end;
+
  fFrameBufferDevice:=TFrameBufferDevice.Create(self);
 
  case fConfiguration.fDisplayMode of
@@ -41574,6 +41585,9 @@ begin
  fBus.AddBusDevice(fUARTDevice);
  fBus.AddBusDevice(fDS1742Device);
  fBus.AddBusDevice(fPCIBusDevice);
+ if assigned(fPCIIODevice) then begin
+  fBus.AddBusDevice(fPCIIODevice);
+ end;
  if assigned(fSimpleFBDevice) then begin
   fBus.AddBusDevice(fSimpleFBDevice);
  end;
@@ -41718,6 +41732,8 @@ begin
  FreeAndNil(fUARTDevice);
 
  FreeAndNil(fDS1742Device);
+
+ FreeAndNil(fPCIIODevice);
 
  FreeAndNil(fPCIBusDevice);
 
