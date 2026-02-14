@@ -19594,6 +19594,12 @@ begin
    end;
 
    TVirtIOBlockDevice.VIRTIO_BLK_T_SCSI:begin
+    Value:=VIRTIO_BLK_S_UNSUPP;
+    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@Value,SizeOf(TPasRISCVUInt8)) and
+            ConsumeDescriptor(aQueueIndex,aDescriptorIndex,1) and
+            UsedRingSync(aQueueIndex)) then begin
+     NotifyDeviceNeedsReset;
+    end;
    end;
 
    TVirtIOBlockDevice.VIRTIO_BLK_T_FLUSH,
@@ -19616,9 +19622,31 @@ begin
    end;
 
    TVirtIOBlockDevice.VIRTIO_BLK_T_GET_ID:begin
+    // Return 20 bytes of zeros (empty serial) + status OK
+    WriteSize:=aWriteSize;
+    if WriteSize>0 then begin
+     GetMem(Buf,WriteSize);
+     try
+      FillChar(Buf^,WriteSize,0);
+      PPasRISCVUInt8Array(Buf)^[WriteSize-1]:=VIRTIO_BLK_S_OK;
+      if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,Buf,WriteSize) and
+              ConsumeDescriptor(aQueueIndex,aDescriptorIndex,WriteSize) and
+              UsedRingSync(aQueueIndex)) then begin
+       NotifyDeviceNeedsReset;
+      end;
+     finally
+      FreeMem(Buf);
+     end;
+    end;
    end;
 
    TVirtIOBlockDevice.VIRTIO_BLK_T_GET_LIFETIME:begin
+    Value:=VIRTIO_BLK_S_UNSUPP;
+    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@Value,SizeOf(TPasRISCVUInt8)) and
+            ConsumeDescriptor(aQueueIndex,aDescriptorIndex,1) and
+            UsedRingSync(aQueueIndex)) then begin
+     NotifyDeviceNeedsReset;
+    end;
    end;
 
    TVirtIOBlockDevice.VIRTIO_BLK_T_DISCARD,
@@ -19655,6 +19683,17 @@ begin
      NotifyDeviceNeedsReset;
     end;
    end;
+
+   else begin
+    // Unknown request type - return UNSUPP
+    Value:=VIRTIO_BLK_S_UNSUPP;
+    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@Value,SizeOf(TPasRISCVUInt8)) and
+            ConsumeDescriptor(aQueueIndex,aDescriptorIndex,1) and
+            UsedRingSync(aQueueIndex)) then begin
+     NotifyDeviceNeedsReset;
+    end;
+   end;
+
   end;
 
  end else begin
