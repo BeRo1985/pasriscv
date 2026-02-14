@@ -3408,6 +3408,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     VIRTIO_MMIO_QUEUE_USED_HIGH=$0a4;
                     VIRTIO_MMIO_CONFIG_GENERATION=$0fc;
                     VIRTIO_MMIO_CONFIG=$100;
+                    VIRTIO_MMIO_SHM_SEL=$0ac;
+                    VIRTIO_MMIO_SHM_LEN_LOW=$0b0;
+                    VIRTIO_MMIO_SHM_LEN_HIGH=$0b4;
+                    VIRTIO_MMIO_SHM_BASE_LOW=$0b8;
+                    VIRTIO_MMIO_SHM_BASE_HIGH=$0bc;
                     VIRTIO_PCI_DEVICE_FEATURE_SEL=$000;
                     VIRTIO_PCI_DEVICE_FEATURE=$004;
                     VIRTIO_PCI_DRIVER_FEATURE_SEL=$008;
@@ -20062,6 +20067,16 @@ begin
      VIRTIO_MMIO_CONFIG_GENERATION:begin
       result:=0;
      end;
+     VIRTIO_MMIO_SHM_LEN_LOW,
+     VIRTIO_MMIO_SHM_LEN_HIGH:begin
+      // Return ~0 to indicate no shared memory region present
+      result:=$ffffffff;
+     end;
+     VIRTIO_MMIO_SHM_SEL,
+     VIRTIO_MMIO_SHM_BASE_LOW,
+     VIRTIO_MMIO_SHM_BASE_HIGH:begin
+      result:=0;
+     end;
      else begin
       result:=0;
      end;
@@ -20147,6 +20162,9 @@ begin
      VIRTIO_MMIO_INTERRUPT_ACK:begin
       TPasMPInterlocked.BitwiseAnd(fIntStatus,not TPasMPUInt32(aValue));
       UpdateIRQ;
+     end;
+     VIRTIO_MMIO_SHM_SEL:begin
+      // no-op: SHM regions not supported
      end;
     end;
    end;
