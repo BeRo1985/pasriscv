@@ -19399,11 +19399,11 @@ begin
  fConfig.DiscardSectorAlignment:=1;
 
  fConfig.MaxSecureEraseSectors:=128;
- fConfig.MaxSecureEraseSectors:=1;
+ fConfig.MaxSecureEraseSeg:=1;
  fConfig.SecureEraseSectorAlignment:=1;
 
  fConfig.MaxWriteZeroesSectors:=128;
- fConfig.MaxWriteZeroesSectors:=1;
+ fConfig.MaxWriteZeroesSeg:=1;
 
  fConfigSpaceSize:=SizeOf(TVirtIOBlkConfig);
 
