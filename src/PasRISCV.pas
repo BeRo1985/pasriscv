@@ -4811,6 +4811,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCursor:TCursor;
               fCursorCompositing:Boolean;
               fDirectRGBA32:Boolean;
+              fSwapColorChannels:Boolean;
 {$ifdef FrameBufferDeviceDirtyMarking}
               fDirty:TPasMPBool32;
 {$endif}
@@ -4839,6 +4840,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property Active:Boolean read fActive write fActive;
               property AutomaticRefresh:Boolean read fAutomaticRefresh write fAutomaticRefresh;
               property DirectRGBA32:Boolean read fDirectRGBA32 write fDirectRGBA32;
+              property SwapColorChannels:Boolean read fSwapColorChannels write fSwapColorChannels;
               property Width:TPasRISCVUInt32 read fWidth;
               property Height:TPasRISCVUInt32 read fHeight;
               property BytesPerPixel:TPasRISCVUInt32 read fBytesPerPixel;
@@ -18695,6 +18697,7 @@ begin
  inherited Create(aBus);
 
  fFrameBuffer:=aFrameBuffer;
+ fFrameBuffer.fSwapColorChannels:=true;
 
  fVBEEnable:=0;
  fVBEXRes:=640;
@@ -18988,6 +18991,7 @@ begin
 
  fFrameBuffer:=aFrameBuffer;
  fFrameBuffer.fAutomaticRefresh:=true;
+ fFrameBuffer.fSwapColorChannels:=true;
 
  fSEQIndex:=0;
  FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
@@ -23617,6 +23621,7 @@ begin
  fDeviceID:=TVirtIOGPUDevice.DeviceID;
 
  fFrameBuffer:=aMachine.fFrameBufferDevice;
+ fFrameBuffer.fSwapColorChannels:=true;
 
  fGPUConfig.EventsRead:=0;
  fGPUConfig.EventsClear:=0;
@@ -25610,6 +25615,7 @@ begin
  fCursor.Visible:=false;
  fCursorCompositing:=false;
  fDirectRGBA32:=false;
+ fSwapColorChannels:=false;
  ClearFrameBuffer;
 end;
 
@@ -25805,7 +25811,7 @@ procedure TPasRISCV.TFrameBufferDevice.ConvertToRGBA32(const aSrc:TPasRISCVUInt8
 var PixelCount,PixelIndex:TPasRISCVSizeInt;
     SrcPtr:PPasRISCVUInt8;
     DstPtr:PPasRISCVUInt32;
-    Pixel16,r,g,b:TPasRISCVUInt32;
+    Pixel16,Pixel,r,g,b:TPasRISCVUInt32;
     RGBA32DataSize:TPasRISCVSizeInt;
 begin
  PixelCount:=fWidth*fHeight;
@@ -25815,40 +25821,71 @@ begin
  end;
  case fBytesPerPixel of
   4:begin
-   // RGBA8888 — direct copy
+   // BGRA8888/RGBA8888 — copy with optional channel swap
    if length(aSrc)>=(PixelCount*4) then begin
-    Move(aSrc[0],fRGBA32Data[0],RGBA32DataSize);
+    if fSwapColorChannels then begin
+     SrcPtr:=@aSrc[0];
+     DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
+     for PixelIndex:=1 to PixelCount do begin
+      Pixel:=PPasRISCVUInt32(SrcPtr)^;
+      DstPtr^:=(Pixel and $ff00ff00) or ((Pixel and $00ff0000) shr 16) or ((Pixel and $000000ff) shl 16);
+      inc(SrcPtr,4);
+      inc(DstPtr);
+     end;
+    end else begin
+     Move(aSrc[0],fRGBA32Data[0],RGBA32DataSize);
+    end;
    end else begin
     FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
    end;
   end;
   2:begin
-   // RGB565 to RGBA8888 conversion
+   // RGB565 to RGBA8888 conversion (with optional channel swap)
    if length(aSrc)>=(PixelCount*2) then begin
     SrcPtr:=@aSrc[0];
     DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
-    for PixelIndex:=1 to PixelCount do begin
-     Pixel16:=PPasRISCVUInt16(SrcPtr)^;
-     r:=(Pixel16 shr 11) and $1f;
-     g:=(Pixel16 shr 5) and $3f;
-     b:=Pixel16 and $1f;
-     DstPtr^:=$ff000000 or (((r shl 3) or (r shr 2)) shl 16) or (((g shl 2) or (g shr 4)) shl 8) or ((b shl 3) or (b shr 2));
-     inc(SrcPtr,2);
-     inc(DstPtr);
+    if fSwapColorChannels then begin
+     for PixelIndex:=1 to PixelCount do begin
+      Pixel16:=PPasRISCVUInt16(SrcPtr)^;
+      r:=(Pixel16 shr 11) and $1f;
+      g:=(Pixel16 shr 5) and $3f;
+      b:=Pixel16 and $1f;
+      DstPtr^:=$ff000000 or ((b shl 3) or (b shr 2)) or (((g shl 2) or (g shr 4)) shl 8) or (((r shl 3) or (r shr 2)) shl 16);
+      inc(SrcPtr,2);
+      inc(DstPtr);
+     end;
+    end else begin
+     for PixelIndex:=1 to PixelCount do begin
+      Pixel16:=PPasRISCVUInt16(SrcPtr)^;
+      r:=(Pixel16 shr 11) and $1f;
+      g:=(Pixel16 shr 5) and $3f;
+      b:=Pixel16 and $1f;
+      DstPtr^:=$ff000000 or (((r shl 3) or (r shr 2)) shl 16) or (((g shl 2) or (g shr 4)) shl 8) or ((b shl 3) or (b shr 2));
+      inc(SrcPtr,2);
+      inc(DstPtr);
+     end;
     end;
    end else begin
     FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
    end;
   end;
   3:begin
-   // BGR888 to RGBA8888 conversion
+   // BGR888/RGB888 to RGBA8888 conversion (with optional channel swap)
    if length(aSrc)>=(PixelCount*3) then begin
     SrcPtr:=@aSrc[0];
     DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
-    for PixelIndex:=1 to PixelCount do begin
-     DstPtr^:=$ff000000 or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[2]) shl 16) or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[1]) shl 8) or TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[0]);
-     inc(SrcPtr,3);
-     inc(DstPtr);
+    if fSwapColorChannels then begin
+     for PixelIndex:=1 to PixelCount do begin
+      DstPtr^:=$ff000000 or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[0]) shl 16) or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[1]) shl 8) or TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[2]);
+      inc(SrcPtr,3);
+      inc(DstPtr);
+     end;
+    end else begin
+     for PixelIndex:=1 to PixelCount do begin
+      DstPtr^:=$ff000000 or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[2]) shl 16) or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[1]) shl 8) or TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[0]);
+      inc(SrcPtr,3);
+      inc(DstPtr);
+     end;
     end;
    end else begin
     FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
@@ -25876,20 +25913,11 @@ end;
 
 procedure TPasRISCV.TFrameBufferDevice.UpdateOutputData;
 begin
- if (fCursorCompositing and fCursor.Visible) or (fBytesPerPixel<>4) or not fDirectRGBA32 then begin
-  if fBytesPerPixel=4 then begin
-   if fCursorCompositing and fCursor.Visible then begin
-    CompositeCursor;
-    fRGBA32Data:=fComposited;
-   end else begin
-    fRGBA32Data:=fData;
-   end;
-  end else begin
-   ConvertToRGBA32(fData);
-   if fCursorCompositing and fCursor.Visible then begin
-    CompositeCursor;
-    fRGBA32Data:=fComposited;
-   end;
+ if (fCursorCompositing and fCursor.Visible) or (fBytesPerPixel<>4) or fSwapColorChannels or not fDirectRGBA32 then begin
+  ConvertToRGBA32(fData);
+  if fCursorCompositing and fCursor.Visible then begin
+   CompositeCursor;
+   fRGBA32Data:=fComposited;
   end;
  end else begin 
   fRGBA32Data:=fData;
