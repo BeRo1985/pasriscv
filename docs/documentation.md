@@ -97,6 +97,7 @@ These devices are the PCIe bus devices that are used to connect to the system.
 |------|--------|----------|----------|-----------|-----------|-------------------------------------------------------------|
 | $00  | $00    | $00      | $0600    | $f15e     | $0000     | PCIe controller (host bridge)                               |
 | $00  | $01    | $00      | $0108    | $1aad     | $a809     | Non-Volatile Memory Controller (NVMe) / NVMe SSD controller |
+| $00  | $03    | $00      | $0300    | $1234     | $1111     | Bochs VBE VGA compatible controller (if DisplayMode=BochsVBE) |
 
 # Boot Trampoline and Device Tree Blob Memory
 

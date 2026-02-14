@@ -2167,6 +2167,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             end;
             TVirtIODevice=class;
             TNVMeDevice=class;
+            TBochsVBEDevice=class;
             TVirtIOBlockDeviceCommand=record
              RequestType:TPasRISCVUInt32;
              SectorIndex:TPasRISCVUInt64;
@@ -3246,6 +3247,68 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              published
               property SharedMemorySize:TPasRISCVUInt64 read fSharedMemorySize;
               property OnDoorbellEvent:TOnDoorbell read fOnDoorbell write fOnDoorbell;
+            end;
+            { TBochsVBEDevice }
+            TBochsVBEDevice=class(TPCIDevice)
+             public
+              const BOCHS_VBE_VENDOR_ID=$1234;
+                    BOCHS_VBE_DEVICE_ID=$1111;
+                    BOCHS_VBE_CLASS_CODE=$0300; // VGA compatible controller
+                    BOCHS_VBE_REVISION=$02;
+                    // VBE DISPI registers (MMIO BAR2 offsets, 16-bit each)
+                    VBE_DISPI_INDEX_ID=$00;
+                    VBE_DISPI_INDEX_XRES=$02;
+                    VBE_DISPI_INDEX_YRES=$04;
+                    VBE_DISPI_INDEX_BPP=$06;
+                    VBE_DISPI_INDEX_ENABLE=$08;
+                    VBE_DISPI_INDEX_BANK=$0A;
+                    VBE_DISPI_INDEX_VIRT_WIDTH=$0C;
+                    VBE_DISPI_INDEX_VIRT_HEIGHT=$0E;
+                    VBE_DISPI_INDEX_X_OFFSET=$10;
+                    VBE_DISPI_INDEX_Y_OFFSET=$12;
+                    VBE_DISPI_INDEX_VIDEO_MEMORY_64K=$14;
+                    // DISPI ID values
+                    VBE_DISPI_ID0=$B0C0;
+                    VBE_DISPI_ID1=$B0C1;
+                    VBE_DISPI_ID2=$B0C2;
+                    VBE_DISPI_ID3=$B0C3;
+                    VBE_DISPI_ID4=$B0C4;
+                    VBE_DISPI_ID5=$B0C5;
+                    // Enable flags
+                    VBE_DISPI_ENABLED=$01;
+                    VBE_DISPI_GETCAPS=$02;
+                    VBE_DISPI_8BIT_DAC=$20;
+                    VBE_DISPI_LFB_ENABLED=$40;
+                    VBE_DISPI_NOCLEARMEM=$80;
+                    // Sizes
+                    VBE_DISPI_MAX_XRES=2560;
+                    VBE_DISPI_MAX_YRES=1600;
+                    VBE_DISPI_MAX_BPP=32;
+                    // BAR sizes
+                    BOCHS_VBE_BAR0_SIZE=TPasRISCVUInt64(16*1024*1024); // 16MB framebuffer
+                    BOCHS_VBE_BAR2_SIZE=TPasRISCVUInt64($1000);        // 4KB VBE DISPI regs
+             private
+              fFrameBuffer:TFrameBufferDevice;
+              fVBEEnable:TPasRISCVUInt16;
+              fVBEXRes:TPasRISCVUInt16;
+              fVBEYRes:TPasRISCVUInt16;
+              fVBEBPP:TPasRISCVUInt16;
+              fVBEBank:TPasRISCVUInt16;
+              fVBEVirtWidth:TPasRISCVUInt16;
+              fVBEVirtHeight:TPasRISCVUInt16;
+              fVBEXOffset:TPasRISCVUInt16;
+              fVBEYOffset:TPasRISCVUInt16;
+              procedure ApplyVideoMode;
+             public
+              constructor Create(const aBus:TPCIBusDevice;const aFrameBuffer:TFrameBufferDevice); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              function OnFBLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnFBStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function OnVBELoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnVBEStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+             public
+              property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
             end;
             { TVirtIODevice }
             TVirtIODevice=class(TBusDevice)
@@ -6416,6 +6479,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fIVSHMEMDevice:TIVSHMEMDevice;
 
+       fBochsVBEDevice:TBochsVBEDevice;
+
        fFrameBufferDevice:TFrameBufferDevice;
 
        fSimpleFBDevice:TSimpleFBDevice;
@@ -6571,6 +6636,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property NVMeDevice:TNVMeDevice read fNVMeDevice;
 
        property IVSHMEMDevice:TIVSHMEMDevice read fIVSHMEMDevice;
+
+       property BochsVBEDevice:TBochsVBEDevice read fBochsVBEDevice;
 
        property FrameBufferDevice:TFrameBufferDevice read fFrameBufferDevice;
 
@@ -18377,6 +18444,295 @@ begin
  if (TPasMPInterlocked.Read(fIntMask) and 1)<>0 then begin
   TPasMPInterlocked.BitwiseOr(fIntStatus,1);
   fFuncs[0].RaiseIRQ(0);
+ end;
+end;
+
+{ TPasRISCV.TBochsVBEDevice }
+
+constructor TPasRISCV.TBochsVBEDevice.Create(const aBus:TPasRISCV.TPCIBusDevice;const aFrameBuffer:TFrameBufferDevice);
+var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
+    BARRegion:TPasRISCV.PPCIBARRegion;
+begin
+ inherited Create(aBus);
+
+ fFrameBuffer:=aFrameBuffer;
+
+ fVBEEnable:=0;
+ fVBEXRes:=640;
+ fVBEYRes:=400;
+ fVBEBPP:=32;
+ fVBEBank:=0;
+ fVBEVirtWidth:=640;
+ fVBEVirtHeight:=400;
+ fVBEXOffset:=0;
+ fVBEYOffset:=0;
+
+ FillChar(FuncDesc,SizeOf(FuncDesc),#0);
+ FuncDesc.fVendorID:=BOCHS_VBE_VENDOR_ID;
+ FuncDesc.fDeviceID:=BOCHS_VBE_DEVICE_ID;
+ FuncDesc.fClassCode:=BOCHS_VBE_CLASS_CODE;
+ FuncDesc.fProgIF:=$00;
+ FuncDesc.fRevisionID:=BOCHS_VBE_REVISION;
+ FuncDesc.fIRQPin:=TPCI.PCI_IRQ_PIN_INTA;
+
+ // BAR0: Linear framebuffer (16MB)
+ BARRegion:=@FuncDesc.fBARRegions[0];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=BOCHS_VBE_BAR0_SIZE;
+ BARRegion^.fOnLoad:=OnFBLoad;
+ BARRegion^.fOnStore:=OnFBStore;
+
+ // BAR2: VBE DISPI registers (4KB MMIO)
+ BARRegion:=@FuncDesc.fBARRegions[2];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=BOCHS_VBE_BAR2_SIZE;
+ BARRegion^.fOnLoad:=OnVBELoad;
+ BARRegion^.fOnStore:=OnVBEStore;
+
+ fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
+
+end;
+
+destructor TPasRISCV.TBochsVBEDevice.Destroy;
+begin
+ fFrameBuffer:=nil;
+ FreeAndNil(fFuncs[0]);
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TBochsVBEDevice.Reset;
+begin
+ inherited Reset;
+ fVBEEnable:=0;
+ fVBEXRes:=640;
+ fVBEYRes:=400;
+ fVBEBPP:=32;
+ fVBEBank:=0;
+ fVBEVirtWidth:=640;
+ fVBEVirtHeight:=400;
+ fVBEXOffset:=0;
+ fVBEYOffset:=0;
+end;
+
+procedure TPasRISCV.TBochsVBEDevice.ApplyVideoMode;
+var NewBPP:TPasRISCVUInt32;
+begin
+ if (fVBEEnable and VBE_DISPI_ENABLED)<>0 then begin
+  if fVBEXRes=0 then begin
+   fVBEXRes:=1;
+  end;
+  if fVBEYRes=0 then begin
+   fVBEYRes:=1;
+  end;
+  if fVBEXRes>VBE_DISPI_MAX_XRES then begin
+   fVBEXRes:=VBE_DISPI_MAX_XRES;
+  end;
+  if fVBEYRes>VBE_DISPI_MAX_YRES then begin
+   fVBEYRes:=VBE_DISPI_MAX_YRES;
+  end;
+  case fVBEBPP of
+   8:begin
+    NewBPP:=1;
+   end;
+   15,16:begin
+    NewBPP:=2;
+   end;
+   24:begin
+    NewBPP:=3;
+   end;
+   else begin
+    NewBPP:=4; // 32
+   end;
+  end;
+  fVBEVirtWidth:=fVBEXRes;
+  fVBEVirtHeight:=fVBEYRes;
+  fFrameBuffer.ResizeFrameBuffer(fVBEXRes,fVBEYRes,NewBPP);
+  fFrameBuffer.fActive:=true;
+  if (fVBEEnable and VBE_DISPI_NOCLEARMEM)=0 then begin
+   fFrameBuffer.ClearFrameBuffer;
+  end;
+  if assigned(fMachine.OnNewFrame) then begin
+   fMachine.OnNewFrame();
+  end;
+ end else begin
+  fFrameBuffer.fActive:=false;
+ end;
+end;
+
+function TPasRISCV.TBochsVBEDevice.OnFBLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if (Address+aSize)<=length(fFrameBuffer.fData) then begin
+  case aSize of
+   1:begin
+    result:=fFrameBuffer.fData[Address];
+   end;
+   2:begin
+    result:=TPasRISCVUInt16(Pointer(@fFrameBuffer.fData[Address])^);
+   end;
+   4:begin
+    result:=TPasRISCVUInt32(Pointer(@fFrameBuffer.fData[Address])^);
+   end;
+   8:begin
+    result:=TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^);
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TBochsVBEDevice.OnFBStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if (Address+aSize)<=length(fFrameBuffer.fData) then begin
+{$ifdef FrameBufferDeviceDirtyMarking}
+  fFrameBuffer.fDirty:=true;
+{$endif}
+  case aSize of
+   1:begin
+    fFrameBuffer.fData[Address]:=TPasRISCVUInt8(aValue);
+   end;
+   2:begin
+    TPasRISCVUInt16(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt16(aValue);
+   end;
+   4:begin
+    TPasRISCVUInt32(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt32(aValue);
+   end;
+   8:begin
+    TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt64(aValue);
+   end;
+  end;
+ end;
+end;
+
+function TPasRISCV.TBochsVBEDevice.OnVBELoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if (fVBEEnable and VBE_DISPI_GETCAPS)<>0 then begin
+  // Return maximum capabilities
+  case Address of
+   VBE_DISPI_INDEX_XRES:begin
+    result:=VBE_DISPI_MAX_XRES;
+   end;
+   VBE_DISPI_INDEX_YRES:begin
+    result:=VBE_DISPI_MAX_YRES;
+   end;
+   VBE_DISPI_INDEX_BPP:begin
+    result:=VBE_DISPI_MAX_BPP;
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ end else begin
+  case Address of
+   VBE_DISPI_INDEX_ID:begin
+    result:=VBE_DISPI_ID5;
+   end;
+   VBE_DISPI_INDEX_XRES:begin
+    result:=fVBEXRes;
+   end;
+   VBE_DISPI_INDEX_YRES:begin
+    result:=fVBEYRes;
+   end;
+   VBE_DISPI_INDEX_BPP:begin
+    result:=fVBEBPP;
+   end;
+   VBE_DISPI_INDEX_ENABLE:begin
+    result:=fVBEEnable;
+   end;
+   VBE_DISPI_INDEX_BANK:begin
+    result:=fVBEBank;
+   end;
+   VBE_DISPI_INDEX_VIRT_WIDTH:begin
+    result:=fVBEVirtWidth;
+   end;
+   VBE_DISPI_INDEX_VIRT_HEIGHT:begin
+    result:=fVBEVirtHeight;
+   end;
+   VBE_DISPI_INDEX_X_OFFSET:begin
+    result:=fVBEXOffset;
+   end;
+   VBE_DISPI_INDEX_Y_OFFSET:begin
+    result:=fVBEYOffset;
+   end;
+   VBE_DISPI_INDEX_VIDEO_MEMORY_64K:begin
+    result:=BOCHS_VBE_BAR0_SIZE div 65536;
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TBochsVBEDevice.OnVBEStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+    Value16:TPasRISCVUInt16;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ Value16:=TPasRISCVUInt16(aValue);
+ case Address of
+  VBE_DISPI_INDEX_ID:begin
+   // Guest can write any ID value; we always report VBE_DISPI_ID5 on read
+  end;
+  VBE_DISPI_INDEX_XRES:begin
+   fVBEXRes:=Value16;
+  end;
+  VBE_DISPI_INDEX_YRES:begin
+   fVBEYRes:=Value16;
+  end;
+  VBE_DISPI_INDEX_BPP:begin
+   if Value16 in [8,15,16,24,32] then begin
+    fVBEBPP:=Value16;
+   end;
+  end;
+  VBE_DISPI_INDEX_ENABLE:begin
+   fVBEEnable:=Value16;
+   ApplyVideoMode;
+  end;
+  VBE_DISPI_INDEX_BANK:begin
+   fVBEBank:=Value16;
+  end;
+  VBE_DISPI_INDEX_VIRT_WIDTH:begin
+   fVBEVirtWidth:=Value16;
+  end;
+  VBE_DISPI_INDEX_VIRT_HEIGHT:begin
+   fVBEVirtHeight:=Value16;
+  end;
+  VBE_DISPI_INDEX_X_OFFSET:begin
+   fVBEXOffset:=Value16;
+{$ifdef FrameBufferDeviceDirtyMarking}
+   fFrameBuffer.fDirty:=true;
+{$endif}
+   if assigned(fMachine.OnNewFrame) then begin
+    fMachine.OnNewFrame();
+   end;
+  end;
+  VBE_DISPI_INDEX_Y_OFFSET:begin
+   fVBEYOffset:=Value16;
+{$ifdef FrameBufferDeviceDirtyMarking}
+   fFrameBuffer.fDirty:=true;
+{$endif}
+   if assigned(fMachine.OnNewFrame) then begin
+    fMachine.OnNewFrame();
+   end;
+  end;
  end;
 end;
 
@@ -40640,6 +40996,16 @@ begin
  fIVSHMEMDevice:=TIVSHMEMDevice.Create(fPCIBusDevice,fConfiguration.fIVSHMEMSharedMemorySize);
  fPCIBusDevice.AddBusDevice(fIVSHMEMDevice);
 
+ case fConfiguration.fDisplayMode of
+  TDisplayMode.BochsVBE:begin
+   fBochsVBEDevice:=TBochsVBEDevice.Create(fPCIBusDevice,fFrameBufferDevice);
+   fPCIBusDevice.AddBusDevice(fBochsVBEDevice);
+  end;
+  else begin
+   fBochsVBEDevice:=nil;
+  end;
+ end;
+
  fHARTs:=nil;
  SetLength(fHARTs,fCountHARTs);
  for Index:=0 to length(fHARTs)-1 do begin
@@ -40700,6 +41066,11 @@ begin
 
  fHARTs:=nil;
  fHART:=nil;
+
+ if assigned(fBochsVBEDevice) then begin
+  fPCIBusDevice.RemoveBusDevice(fBochsVBEDevice);
+  FreeAndNil(fBochsVBEDevice);
+ end;
 
  fPCIBusDevice.RemoveBusDevice(fIVSHMEMDevice);
  FreeAndNil(fIVSHMEMDevice);
@@ -42309,6 +42680,10 @@ begin
 
  if assigned(fNVMeDevice) then begin
   fNVMeDevice.Reset;
+ end;
+
+ if assigned(fBochsVBEDevice) then begin
+  fBochsVBEDevice.Reset;
  end;
 
  for Index:=0 to length(fHARTs)-1 do begin
