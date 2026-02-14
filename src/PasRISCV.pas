@@ -25845,7 +25845,7 @@ begin
     SrcPtr:=@aSrc[0];
     DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
     for PixelIndex:=1 to PixelCount do begin
-     DstPtr^:=$ff000000 or (TPasRISCVUInt32(PPasRISCVUInt8(SrcPtr+2)^) shl 16) or (TPasRISCVUInt32(PPasRISCVUInt8(SrcPtr+1)^) shl 8) or TPasRISCVUInt32(SrcPtr^);
+     DstPtr^:=$ff000000 or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[2]) shl 16) or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[1]) shl 8) or TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[0]);
      inc(SrcPtr,3);
      inc(DstPtr);
     end;
