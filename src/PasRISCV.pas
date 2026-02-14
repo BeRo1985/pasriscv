@@ -19396,11 +19396,11 @@ begin
 
  fConfig.MaxDiscardSectors:=128;
  fConfig.MaxDiscardSeg:=1;
- fConfig.DiscardSectorAlignment:=1;
+ fConfig.DiscardSectorAlignment:=fConfig.BlkSize shr 9;
 
  fConfig.MaxSecureEraseSectors:=128;
  fConfig.MaxSecureEraseSeg:=1;
- fConfig.SecureEraseSectorAlignment:=1;
+ fConfig.SecureEraseSectorAlignment:=fConfig.BlkSize shr 9;
 
  fConfig.MaxWriteZeroesSectors:=128;
  fConfig.MaxWriteZeroesSeg:=1;
