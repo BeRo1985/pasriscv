@@ -25038,11 +25038,9 @@ var CurX,CurY:TPasRISCVInt32;
     Row,Col:TPasRISCVInt32;
     SrcOffset,DstOffset:TPasRISCVUInt64;
     Stride:TPasRISCVUInt64;
-    SrcPixel:PPasRISCVUInt8;
+    SrcPixel,DstPixel:PPasRISCVUInt8Array;
     Alpha,InvAlpha:TPasRISCVUInt32;
-    SR,SG,SB,DR,DG,DB:TPasRISCVUInt32;
-    DstPixel:PPasRISCVUInt8;
-begin
+begin    
  // Copy base framebuffer to composited buffer
  if length(fComposited)<length(fData) then begin
   SetLength(fComposited,length(fData));
@@ -25078,29 +25076,26 @@ begin
  for Row:=StartY to EndY-1 do begin
   for Col:=StartX to EndX-1 do begin
    SrcOffset:=(TPasRISCVUInt64(Row)*CURSOR_SIZE+TPasRISCVUInt64(Col))*4;
-   SrcPixel:=@fCursor.Data[SrcOffset];
-   Alpha:=SrcPixel[3];
-   if Alpha=0 then begin
-    continue;
-   end;
-   DstOffset:=TPasRISCVUInt64(CurY+Row)*Stride+TPasRISCVUInt64(CurX+Col)*4;
-   DstPixel:=@fComposited[DstOffset];
-   if Alpha=255 then begin
-    // Opaque — direct copy
-    DstPixel[0]:=SrcPixel[0];
-    DstPixel[1]:=SrcPixel[1];
-    DstPixel[2]:=SrcPixel[2];
-    DstPixel[3]:=255;
-   end else begin
-    // Alpha blend
-    InvAlpha:=255-Alpha;
-    SB:=SrcPixel[0]; SG:=SrcPixel[1]; SR:=SrcPixel[2];
-    DB:=DstPixel[0]; DG:=DstPixel[1]; DR:=DstPixel[2];
-    DstPixel[0]:=TPasRISCVUInt8((SB*Alpha+DB*InvAlpha+127) div 255);
-    DstPixel[1]:=TPasRISCVUInt8((SG*Alpha+DG*InvAlpha+127) div 255);
-    DstPixel[2]:=TPasRISCVUInt8((SR*Alpha+DR*InvAlpha+127) div 255);
-    DstPixel[3]:=255;
-   end;
+   SrcPixel:=PPasRISCVUInt8Array(@fCursor.Data[SrcOffset]);
+   Alpha:=SrcPixel^[3];
+   if Alpha<>0 then begin
+    DstOffset:=TPasRISCVUInt64(CurY+Row)*Stride+TPasRISCVUInt64(CurX+Col)*4;
+    DstPixel:=PPasRISCVUInt8Array(@PPasRISCVUInt8Array(fComposited)^[DstOffset]);
+    if Alpha=255 then begin
+     // Opaque — direct copy
+     DstPixel^[0]:=SrcPixel^[0];
+     DstPixel^[1]:=SrcPixel^[1];
+     DstPixel^[2]:=SrcPixel^[2];
+     DstPixel^[3]:=255;
+    end else begin
+     // Alpha blend
+     InvAlpha:=255-Alpha;
+     DstPixel^[0]:=TPasRISCVUInt8(((SrcPixel^[0]*Alpha)+(DstPixel^[0]*InvAlpha)+127) shr 8);
+     DstPixel^[1]:=TPasRISCVUInt8(((SrcPixel^[1]*Alpha)+(DstPixel^[1]*InvAlpha)+127) shr 8);
+     DstPixel^[2]:=TPasRISCVUInt8(((SrcPixel^[2]*Alpha)+(DstPixel^[2]*InvAlpha)+127) shr 8);
+     DstPixel^[3]:=255;
+    end;
+   end; 
   end;
  end;
 end;
