@@ -19404,6 +19404,7 @@ begin
 
  fConfig.MaxWriteZeroesSectors:=128;
  fConfig.MaxWriteZeroesSeg:=1;
+ fConfig.WriteZeroesMayUnmap:=0;
 
  fConfigSpaceSize:=SizeOf(TVirtIOBlkConfig);
 
