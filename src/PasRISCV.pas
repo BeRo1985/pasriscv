@@ -2549,6 +2549,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
             end;
+            TFrameBufferDevice=class;
             { TPLICDevice }
             TPLICDevice=class(TINTCDevice)
              public
@@ -4134,6 +4135,240 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               destructor Destroy; override;
               procedure DeviceReset; override;
               function DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean; override;
+            end;
+            { TVirtIOGPUDevice }
+            TVirtIOGPUDevice=class(TVirtIODevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($10058000);
+                    DefaultSize=TPasRISCVUInt64($1000);
+                    DefaultIRQ=TPasRISCVUInt64($18);
+                    DeviceID=16;
+                    // Feature bits
+                    VIRTIO_GPU_F_VIRGL=TPasRISCVUInt64(1) shl 0;
+                    VIRTIO_GPU_F_EDID=TPasRISCVUInt64(1) shl 1;
+                    VIRTIO_GPU_F_RESOURCE_UUID=TPasRISCVUInt64(1) shl 2;
+                    VIRTIO_GPU_F_RESOURCE_BLOB=TPasRISCVUInt64(1) shl 3;
+                    VIRTIO_GPU_F_CONTEXT_INIT=TPasRISCVUInt64(1) shl 4;
+                    // 2D Command types
+                    VIRTIO_GPU_CMD_GET_DISPLAY_INFO=$0100;
+                    VIRTIO_GPU_CMD_RESOURCE_CREATE_2D=$0101;
+                    VIRTIO_GPU_CMD_RESOURCE_UNREF=$0102;
+                    VIRTIO_GPU_CMD_SET_SCANOUT=$0103;
+                    VIRTIO_GPU_CMD_RESOURCE_FLUSH=$0104;
+                    VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D=$0105;
+                    VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING=$0106;
+                    VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING=$0107;
+                    VIRTIO_GPU_CMD_GET_CAPSET_INFO=$0108;
+                    VIRTIO_GPU_CMD_GET_CAPSET=$0109;
+                    VIRTIO_GPU_CMD_GET_EDID=$010A;
+                    // Cursor command types
+                    VIRTIO_GPU_CMD_UPDATE_CURSOR=$0300;
+                    VIRTIO_GPU_CMD_MOVE_CURSOR=$0301;
+                    // Response types (success)
+                    VIRTIO_GPU_RESP_OK_NODATA=$1100;
+                    VIRTIO_GPU_RESP_OK_DISPLAY_INFO=$1101;
+                    VIRTIO_GPU_RESP_OK_CAPSET_INFO=$1102;
+                    VIRTIO_GPU_RESP_OK_CAPSET=$1103;
+                    VIRTIO_GPU_RESP_OK_EDID=$1104;
+                    // Response types (error)
+                    VIRTIO_GPU_RESP_ERR_UNSPEC=$1200;
+                    VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY=$1201;
+                    VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID=$1202;
+                    VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID=$1203;
+                    VIRTIO_GPU_RESP_ERR_INVALID_CONTEXT_ID=$1204;
+                    VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER=$1205;
+                    // Pixel formats
+                    VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM=1;
+                    VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM=2;
+                    VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM=3;
+                    VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM=4;
+                    VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM=67;
+                    VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM=68;
+                    VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM=121;
+                    VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM=134;
+                    // Queue indices
+                    VIRTIO_GPU_VQ_CONTROL=0;
+                    VIRTIO_GPU_VQ_CURSOR=1;
+                    // Scanout
+                    VIRTIO_GPU_MAX_SCANOUTS=1;
+                    // EDID
+                    VIRTIO_GPU_EDID_SIZE=256;
+                    // Config event flags
+                    VIRTIO_GPU_EVENT_DISPLAY=(1 shl 0);
+              type TVirtIOGPUCtrlHeader=packed record
+                    CtrlType:TPasRISCVUInt32;
+                    Flags:TPasRISCVUInt32;
+                    FenceID:TPasRISCVUInt64;
+                    CtxID:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUCtrlHeader=^TVirtIOGPUCtrlHeader;
+                   TVirtIOGPURect=packed record
+                    X:TPasRISCVUInt32;
+                    Y:TPasRISCVUInt32;
+                    Width:TPasRISCVUInt32;
+                    Height:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPURect=^TVirtIOGPURect;
+                   TVirtIOGPUDisplayOne=packed record
+                    Rect:TVirtIOGPURect;
+                    Enabled:TPasRISCVUInt32;
+                    Flags:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUDisplayOne=^TVirtIOGPUDisplayOne;
+                   TVirtIOGPURespDisplayInfo=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    PModes:array[0..VIRTIO_GPU_MAX_SCANOUTS-1] of TVirtIOGPUDisplayOne;
+                   end;
+                   PVirtIOGPURespDisplayInfo=^TVirtIOGPURespDisplayInfo;
+                   TVirtIOGPUResourceCreate2D=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    ResourceID:TPasRISCVUInt32;
+                    Format:TPasRISCVUInt32;
+                    Width:TPasRISCVUInt32;
+                    Height:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUResourceCreate2D=^TVirtIOGPUResourceCreate2D;
+                   TVirtIOGPUResourceUnref=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    ResourceID:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUResourceUnref=^TVirtIOGPUResourceUnref;
+                   TVirtIOGPUSetScanout=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    Rect:TVirtIOGPURect;
+                    ScanoutID:TPasRISCVUInt32;
+                    ResourceID:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUSetScanout=^TVirtIOGPUSetScanout;
+                   TVirtIOGPUResourceFlush=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    Rect:TVirtIOGPURect;
+                    ResourceID:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUResourceFlush=^TVirtIOGPUResourceFlush;
+                   TVirtIOGPUTransferToHost2D=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    Rect:TVirtIOGPURect;
+                    Offset:TPasRISCVUInt64;
+                    ResourceID:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUTransferToHost2D=^TVirtIOGPUTransferToHost2D;
+                   TVirtIOGPUMemEntry=packed record
+                    Addr:TPasRISCVUInt64;
+                    Length:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUMemEntry=^TVirtIOGPUMemEntry;
+                   TVirtIOGPUResourceAttachBacking=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    ResourceID:TPasRISCVUInt32;
+                    NrEntries:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUResourceAttachBacking=^TVirtIOGPUResourceAttachBacking;
+                   TVirtIOGPUResourceDetachBacking=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    ResourceID:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUResourceDetachBacking=^TVirtIOGPUResourceDetachBacking;
+                   TVirtIOGPUGetEDID=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    Scanout:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUGetEDID=^TVirtIOGPUGetEDID;
+                   TVirtIOGPURespEDID=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    Size:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                    EDID:array[0..VIRTIO_GPU_EDID_SIZE-1] of TPasRISCVUInt8;
+                   end;
+                   PVirtIOGPURespEDID=^TVirtIOGPURespEDID;
+                   TVirtIOGPUCursorPos=packed record
+                    ScanoutID:TPasRISCVUInt32;
+                    X:TPasRISCVUInt32;
+                    Y:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUCursorPos=^TVirtIOGPUCursorPos;
+                   TVirtIOGPUUpdateCursor=packed record
+                    Header:TVirtIOGPUCtrlHeader;
+                    Pos:TVirtIOGPUCursorPos;
+                    ResourceID:TPasRISCVUInt32;
+                    HotX:TPasRISCVUInt32;
+                    HotY:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUUpdateCursor=^TVirtIOGPUUpdateCursor;
+                   TVirtIOGPUConfig=packed record
+                    EventsRead:TPasRISCVUInt32;
+                    EventsClear:TPasRISCVUInt32;
+                    NumScanouts:TPasRISCVUInt32;
+                    NumCapsets:TPasRISCVUInt32;
+                   end;
+                   PVirtIOGPUConfig=^TVirtIOGPUConfig;
+                   TGPUBackingPage=record
+                    Addr:TPasRISCVUInt64;
+                    Length:TPasRISCVUInt32;
+                   end;
+                   TGPUBackingPages=array of TGPUBackingPage;
+                   TGPUResource=class
+                    public
+                     ID:TPasRISCVUInt32;
+                     Width:TPasRISCVUInt32;
+                     Height:TPasRISCVUInt32;
+                     Format:TPasRISCVUInt32;
+                     BytesPerPixel:TPasRISCVUInt32;
+                     Data:TPasRISCVUInt8DynamicArray;
+                     BackingPages:TGPUBackingPages;
+                     constructor Create;
+                     destructor Destroy; override;
+                   end;
+                   TGPUResources=array of TGPUResource;
+                   TGPUScanout=record
+                    ResourceID:TPasRISCVUInt32;
+                    Rect:TVirtIOGPURect;
+                    Enabled:Boolean;
+                   end;
+                   TGPUScanouts=array[0..VIRTIO_GPU_MAX_SCANOUTS-1] of TGPUScanout;
+             private
+              fFrameBuffer:TFrameBufferDevice;
+              fGPUConfig:TVirtIOGPUConfig;
+              fResources:TGPUResources;
+              fResourceCount:TPasRISCVSizeInt;
+              fScanouts:TGPUScanouts;
+              fRecvBuffer:TPasRISCVUInt8DynamicArray;
+              fSendBuffer:TPasRISCVUInt8DynamicArray;
+              function FindResource(const aResourceID:TPasRISCVUInt32):TGPUResource;
+              function CreateResource(const aResourceID,aWidth,aHeight,aFormat:TPasRISCVUInt32):TGPUResource;
+              procedure DestroyResource(const aResourceID:TPasRISCVUInt32);
+              procedure DestroyAllResources;
+              function GetFormatBytesPerPixel(const aFormat:TPasRISCVUInt32):TPasRISCVUInt32;
+              procedure SendResponse(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aData:Pointer;const aSize:TPasRISCVUInt64);
+              procedure SendOKNoData(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader);
+              procedure SendError(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader;const aErrorCode:TPasRISCVUInt32);
+              procedure HandleGetDisplayInfo(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader);
+              procedure HandleResourceCreate2D(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceCreate2D);
+              procedure HandleResourceUnref(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceUnref);
+              procedure HandleSetScanout(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUSetScanout);
+              procedure HandleResourceFlush(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceFlush);
+              procedure HandleTransferToHost2D(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUTransferToHost2D);
+              procedure HandleResourceAttachBacking(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aReadSize:TPasRISCVUInt64);
+              procedure HandleResourceDetachBacking(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceDetachBacking);
+              procedure HandleGetEDID(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUGetEDID);
+              procedure HandleUpdateCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
+              procedure HandleMoveCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure DeviceReset; override;
+              function DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean; override;
+             public
+              property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
             end;
             { TVirtIOVSockDevice }
             TVirtIOVSockDevice=class(TVirtIODevice)
@@ -5956,6 +6191,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIORandomGeneratorSize:TPasRISCVUInt64;
               fVirtIORandomGeneratorIRQ:TPasRISCVUInt64;
 
+              fVirtIOGPUBase:TPasRISCVUInt64;
+              fVirtIOGPUSize:TPasRISCVUInt64;
+              fVirtIOGPUIRQ:TPasRISCVUInt64;
+
               fVirtIOVSockBase:TPasRISCVUInt64;
               fVirtIOVSockSize:TPasRISCVUInt64;
               fVirtIOVSockIRQ:TPasRISCVUInt64;
@@ -6092,6 +6331,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIORandomGeneratorSize:TPasRISCVUInt64 read fVirtIORandomGeneratorSize write fVirtIORandomGeneratorSize;
               property VirtIORandomGeneratorIRQ:TPasRISCVUInt64 read fVirtIORandomGeneratorIRQ write fVirtIORandomGeneratorIRQ;
 
+              property VirtIOGPUBase:TPasRISCVUInt64 read fVirtIOGPUBase write fVirtIOGPUBase;
+              property VirtIOGPUSize:TPasRISCVUInt64 read fVirtIOGPUSize write fVirtIOGPUSize;
+              property VirtIOGPUIRQ:TPasRISCVUInt64 read fVirtIOGPUIRQ write fVirtIOGPUIRQ;
+
               property VirtIOVSockBase:TPasRISCVUInt64 read fVirtIOVSockBase write fVirtIOVSockBase;
               property VirtIOVSockSize:TPasRISCVUInt64 read fVirtIOVSockSize write fVirtIOVSockSize;
               property VirtIOVSockIRQ:TPasRISCVUInt64 read fVirtIOVSockIRQ write fVirtIOVSockIRQ;
@@ -6200,6 +6443,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fVirtIONetDevice:TVirtIONetDevice;
 
        fVirtIORandomGeneratorDevice:TVirtIORandomGeneratorDevice;
+
+       fVirtIOGPUDevice:TVirtIOGPUDevice;
 
        fVirtIOVSockDevice:TVirtIOVSockDevice;
 
@@ -6354,6 +6599,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property VirtIONetDevice:TVirtIONetDevice read fVirtIONetDevice;
 
        property VirtIORandomGeneratorDevice:TVirtIORandomGeneratorDevice read fVirtIORandomGeneratorDevice;
+
+       property VirtIOGPUDevice:TVirtIOGPUDevice read fVirtIOGPUDevice;
 
        property VirtIOVSockDevice:TVirtIOVSockDevice read fVirtIOVSockDevice;
 
@@ -22267,6 +22514,680 @@ begin
   NotifyDeviceNeedsReset;
  end;
  result:=true;
+end;
+
+{ TPasRISCV.TVirtIOGPUDevice.TGPUResource }
+
+constructor TPasRISCV.TVirtIOGPUDevice.TGPUResource.Create;
+begin
+ inherited Create;
+ ID:=0;
+ Width:=0;
+ Height:=0;
+ Format:=0;
+ BytesPerPixel:=0;
+ Data:=nil;
+ BackingPages:=nil;
+end;
+
+destructor TPasRISCV.TVirtIOGPUDevice.TGPUResource.Destroy;
+begin
+ Data:=nil;
+ BackingPages:=nil;
+ inherited Destroy;
+end;
+
+{ TPasRISCV.TVirtIOGPUDevice }
+
+constructor TPasRISCV.TVirtIOGPUDevice.Create(const aMachine:TPasRISCV);
+begin
+
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIOGPUBase,aMachine.fConfiguration.fVirtIOGPUSize,TVirtIODevice.TKind.MMIO);
+
+ fIRQ:=aMachine.fConfiguration.fVirtIOGPUIRQ;
+
+ fUseQueueDescriptorCaching:=true;
+
+ fDeviceID:=TVirtIOGPUDevice.DeviceID;
+
+ fFrameBuffer:=aMachine.fFrameBufferDevice;
+
+ fGPUConfig.EventsRead:=0;
+ fGPUConfig.EventsClear:=0;
+ fGPUConfig.NumScanouts:=VIRTIO_GPU_MAX_SCANOUTS;
+ fGPUConfig.NumCapsets:=0;
+
+ fConfigSpaceSize:=SizeOf(TVirtIOGPUConfig);
+ Move(fGPUConfig,fConfigSpace[0],SizeOf(TVirtIOGPUConfig));
+
+ fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  VIRTIO_GPU_F_EDID or
+                  0;
+
+ fQueues[VIRTIO_GPU_VQ_CONTROL].ManualRecv:=false;
+ fQueues[VIRTIO_GPU_VQ_CONTROL].Asynchronous:=false;
+
+ fQueues[VIRTIO_GPU_VQ_CURSOR].ManualRecv:=false;
+ fQueues[VIRTIO_GPU_VQ_CURSOR].Asynchronous:=false;
+
+ fResources:=nil;
+ fResourceCount:=0;
+
+ FillChar(fScanouts,SizeOf(fScanouts),#0);
+ fScanouts[0].Rect.Width:=fFrameBuffer.fWidth;
+ fScanouts[0].Rect.Height:=fFrameBuffer.fHeight;
+ fScanouts[0].Enabled:=true;
+
+ fRecvBuffer:=nil;
+ SetLength(fRecvBuffer,65536);
+
+ fSendBuffer:=nil;
+ SetLength(fSendBuffer,65536);
+
+end;
+
+destructor TPasRISCV.TVirtIOGPUDevice.Destroy;
+begin
+ DestroyAllResources;
+ fResources:=nil;
+ fRecvBuffer:=nil;
+ fSendBuffer:=nil;
+ fFrameBuffer:=nil;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.DeviceReset;
+begin
+ DestroyAllResources;
+ FillChar(fScanouts,SizeOf(fScanouts),#0);
+ fScanouts[0].Rect.Width:=fFrameBuffer.fWidth;
+ fScanouts[0].Rect.Height:=fFrameBuffer.fHeight;
+ fScanouts[0].Enabled:=true;
+ fGPUConfig.EventsRead:=0;
+ Move(fGPUConfig,fConfigSpace[0],SizeOf(TVirtIOGPUConfig));
+ inherited DeviceReset;
+end;
+
+function TPasRISCV.TVirtIOGPUDevice.FindResource(const aResourceID:TPasRISCVUInt32):TGPUResource;
+var Index:TPasRISCVSizeInt;
+begin
+ result:=nil;
+ for Index:=0 to fResourceCount-1 do begin
+  if fResources[Index].ID=aResourceID then begin
+   result:=fResources[Index];
+   exit;
+  end;
+ end;
+end;
+
+function TPasRISCV.TVirtIOGPUDevice.CreateResource(const aResourceID,aWidth,aHeight,aFormat:TPasRISCVUInt32):TGPUResource;
+var BPP:TPasRISCVUInt32;
+begin
+ BPP:=GetFormatBytesPerPixel(aFormat);
+ result:=TGPUResource.Create;
+ result.ID:=aResourceID;
+ result.Width:=aWidth;
+ result.Height:=aHeight;
+ result.Format:=aFormat;
+ result.BytesPerPixel:=BPP;
+ SetLength(result.Data,aWidth*aHeight*BPP);
+ FillChar(result.Data[0],length(result.Data),#0);
+ if fResourceCount>=length(fResources) then begin
+  SetLength(fResources,(fResourceCount+1)*2);
+ end;
+ fResources[fResourceCount]:=result;
+ inc(fResourceCount);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.DestroyResource(const aResourceID:TPasRISCVUInt32);
+var Index,ScanoutIndex:TPasRISCVSizeInt;
+begin
+ for Index:=0 to fResourceCount-1 do begin
+  if fResources[Index].ID=aResourceID then begin
+   for ScanoutIndex:=0 to VIRTIO_GPU_MAX_SCANOUTS-1 do begin
+    if fScanouts[ScanoutIndex].ResourceID=aResourceID then begin
+     fScanouts[ScanoutIndex].ResourceID:=0;
+     fScanouts[ScanoutIndex].Enabled:=false;
+    end;
+   end;
+   FreeAndNil(fResources[Index]);
+   dec(fResourceCount);
+   if Index<fResourceCount then begin
+    Move(fResources[Index+1],fResources[Index],(fResourceCount-Index)*SizeOf(TGPUResource));
+   end;
+   fResources[fResourceCount]:=nil;
+   exit;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.DestroyAllResources;
+var Index:TPasRISCVSizeInt;
+begin
+ for Index:=0 to fResourceCount-1 do begin
+  FreeAndNil(fResources[Index]);
+ end;
+ fResourceCount:=0;
+end;
+
+function TPasRISCV.TVirtIOGPUDevice.GetFormatBytesPerPixel(const aFormat:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ case aFormat of
+  VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM,
+  VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM,
+  VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM,
+  VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM,
+  VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM,
+  VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM,
+  VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM,
+  VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM:begin
+   result:=4;
+  end;
+  else begin
+   result:=4;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.SendResponse(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aData:Pointer;const aSize:TPasRISCVUInt64);
+begin
+ if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,aData,aSize) and
+         ConsumeDescriptor(aQueueIndex,aDescriptorIndex,aSize) and
+         UsedRingSync(aQueueIndex)) then begin
+  NotifyDeviceNeedsReset;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.SendOKNoData(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader);
+var Response:TVirtIOGPUCtrlHeader;
+begin
+ FillChar(Response,SizeOf(Response),#0);
+ Response.CtrlType:=VIRTIO_GPU_RESP_OK_NODATA;
+ Response.Flags:=aHeader^.Flags;
+ Response.FenceID:=aHeader^.FenceID;
+ Response.CtxID:=aHeader^.CtxID;
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.SendError(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader;const aErrorCode:TPasRISCVUInt32);
+var Response:TVirtIOGPUCtrlHeader;
+begin
+ FillChar(Response,SizeOf(Response),#0);
+ Response.CtrlType:=aErrorCode;
+ Response.Flags:=aHeader^.Flags;
+ Response.FenceID:=aHeader^.FenceID;
+ Response.CtxID:=aHeader^.CtxID;
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleGetDisplayInfo(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader);
+var Response:TVirtIOGPURespDisplayInfo;
+    Index:TPasRISCVSizeInt;
+begin
+ FillChar(Response,SizeOf(Response),#0);
+ Response.Header.CtrlType:=VIRTIO_GPU_RESP_OK_DISPLAY_INFO;
+ Response.Header.Flags:=aHeader^.Flags;
+ Response.Header.FenceID:=aHeader^.FenceID;
+ Response.Header.CtxID:=aHeader^.CtxID;
+ for Index:=0 to VIRTIO_GPU_MAX_SCANOUTS-1 do begin
+  Response.PModes[Index].Rect:=fScanouts[Index].Rect;
+  Response.PModes[Index].Enabled:=ord(fScanouts[Index].Enabled);
+  Response.PModes[Index].Flags:=0;
+ end;
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleResourceCreate2D(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceCreate2D);
+var Resource:TGPUResource;
+begin
+ if (aCmd^.ResourceID=0) or assigned(FindResource(aCmd^.ResourceID)) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID);
+  exit;
+ end;
+ if (aCmd^.Width=0) or (aCmd^.Height=0) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+  exit;
+ end;
+ Resource:=CreateResource(aCmd^.ResourceID,aCmd^.Width,aCmd^.Height,aCmd^.Format);
+ if assigned(Resource) then begin
+  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_OUT_OF_MEMORY);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleResourceUnref(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceUnref);
+begin
+ if not assigned(FindResource(aCmd^.ResourceID)) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID);
+  exit;
+ end;
+ DestroyResource(aCmd^.ResourceID);
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleSetScanout(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUSetScanout);
+var Resource:TGPUResource;
+begin
+ if aCmd^.ScanoutID>=VIRTIO_GPU_MAX_SCANOUTS then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID);
+  exit;
+ end;
+ if aCmd^.ResourceID=0 then begin
+  // Disable scanout
+  fScanouts[aCmd^.ScanoutID].ResourceID:=0;
+  fScanouts[aCmd^.ScanoutID].Enabled:=false;
+  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+  exit;
+ end;
+ Resource:=FindResource(aCmd^.ResourceID);
+ if not assigned(Resource) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID);
+  exit;
+ end;
+ fScanouts[aCmd^.ScanoutID].ResourceID:=aCmd^.ResourceID;
+ fScanouts[aCmd^.ScanoutID].Rect:=aCmd^.Rect;
+ fScanouts[aCmd^.ScanoutID].Enabled:=true;
+ // Resize framebuffer to match scanout if needed
+ if (aCmd^.ScanoutID=0) and
+    ((fFrameBuffer.fWidth<>aCmd^.Rect.Width) or
+     (fFrameBuffer.fHeight<>aCmd^.Rect.Height)) then begin
+  fFrameBuffer.ResizeFrameBuffer(aCmd^.Rect.Width,aCmd^.Rect.Height,Resource.BytesPerPixel);
+ end;
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleResourceFlush(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceFlush);
+var Resource:TGPUResource;
+    ScanoutIndex:TPasRISCVSizeInt;
+    SrcX,SrcY,DstX,DstY,CopyWidth,CopyHeight:TPasRISCVUInt32;
+    SrcStride,DstStride:TPasRISCVUInt32;
+    Row:TPasRISCVUInt32;
+    SrcOffset,DstOffset:TPasRISCVUInt64;
+begin
+ Resource:=FindResource(aCmd^.ResourceID);
+ if not assigned(Resource) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID);
+  exit;
+ end;
+ // Copy resource data to framebuffer for each scanout using this resource
+ for ScanoutIndex:=0 to VIRTIO_GPU_MAX_SCANOUTS-1 do begin
+  if fScanouts[ScanoutIndex].Enabled and (fScanouts[ScanoutIndex].ResourceID=aCmd^.ResourceID) then begin
+   fFrameBuffer.fLock.AcquireWrite;
+   try
+    SrcX:=aCmd^.Rect.X;
+    SrcY:=aCmd^.Rect.Y;
+    DstX:=fScanouts[ScanoutIndex].Rect.X+aCmd^.Rect.X;
+    DstY:=fScanouts[ScanoutIndex].Rect.Y+aCmd^.Rect.Y;
+    CopyWidth:=aCmd^.Rect.Width;
+    CopyHeight:=aCmd^.Rect.Height;
+    // Clamp
+    if (SrcX+CopyWidth)>Resource.Width then begin
+     CopyWidth:=Resource.Width-SrcX;
+    end;
+    if (SrcY+CopyHeight)>Resource.Height then begin
+     CopyHeight:=Resource.Height-SrcY;
+    end;
+    if (DstX+CopyWidth)>fFrameBuffer.fWidth then begin
+     CopyWidth:=fFrameBuffer.fWidth-DstX;
+    end;
+    if (DstY+CopyHeight)>fFrameBuffer.fHeight then begin
+     CopyHeight:=fFrameBuffer.fHeight-DstY;
+    end;
+    SrcStride:=Resource.Width*Resource.BytesPerPixel;
+    DstStride:=fFrameBuffer.fWidth*fFrameBuffer.fBytesPerPixel;
+    for Row:=0 to CopyHeight-1 do begin
+     SrcOffset:=TPasRISCVUInt64(SrcY+Row)*SrcStride+TPasRISCVUInt64(SrcX)*Resource.BytesPerPixel;
+     DstOffset:=TPasRISCVUInt64(DstY+Row)*DstStride+TPasRISCVUInt64(DstX)*fFrameBuffer.fBytesPerPixel;
+     if (SrcOffset+(TPasRISCVUInt64(CopyWidth)*Resource.BytesPerPixel))<=length(Resource.Data) then begin
+      if (DstOffset+(TPasRISCVUInt64(CopyWidth)*fFrameBuffer.fBytesPerPixel))<=length(fFrameBuffer.fData) then begin
+       Move(Resource.Data[SrcOffset],fFrameBuffer.fData[DstOffset],CopyWidth*Resource.BytesPerPixel);
+      end;
+     end;
+    end;
+{$ifdef FrameBufferDeviceDirtyMarking}
+    fFrameBuffer.fDirty:=true;
+{$endif}
+   finally
+    fFrameBuffer.fLock.ReleaseWrite;
+   end;
+  end;
+ end;
+ // VSync: Notify host that a new frame is ready
+ if assigned(fMachine.OnNewFrame) then begin
+  fMachine.OnNewFrame();
+ end;
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleTransferToHost2D(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUTransferToHost2D);
+var Resource:TGPUResource;
+    PageIndex:TPasRISCVSizeInt;
+    SrcRow,DstRow:TPasRISCVUInt32;
+    SrcStride,DstStride:TPasRISCVUInt32;
+    Offset,PageOffset,CopyLen,PageRemain:TPasRISCVUInt64;
+    DstOffset:TPasRISCVUInt64;
+    ResourceDataSize:TPasRISCVUInt64;
+begin
+ Resource:=FindResource(aCmd^.ResourceID);
+ if not assigned(Resource) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID);
+  exit;
+ end;
+ if length(Resource.BackingPages)=0 then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_UNSPEC);
+  exit;
+ end;
+ // Copy from guest backing pages to resource pixel data
+ DstStride:=Resource.Width*Resource.BytesPerPixel;
+ ResourceDataSize:=length(Resource.Data);
+ Offset:=aCmd^.Offset;
+ for DstRow:=0 to aCmd^.Rect.Height-1 do begin
+  DstOffset:=TPasRISCVUInt64(aCmd^.Rect.Y+DstRow)*DstStride+TPasRISCVUInt64(aCmd^.Rect.X)*Resource.BytesPerPixel;
+  CopyLen:=TPasRISCVUInt64(aCmd^.Rect.Width)*Resource.BytesPerPixel;
+  if (DstOffset+CopyLen)>ResourceDataSize then begin
+   break;
+  end;
+  // Walk backing pages to find source data at Offset
+  PageOffset:=Offset;
+  PageIndex:=0;
+  while (PageIndex<length(Resource.BackingPages)) and (PageOffset>=Resource.BackingPages[PageIndex].Length) do begin
+   dec(PageOffset,Resource.BackingPages[PageIndex].Length);
+   inc(PageIndex);
+  end;
+  if PageIndex<length(Resource.BackingPages) then begin
+   PageRemain:=Resource.BackingPages[PageIndex].Length-PageOffset;
+   if PageRemain>=CopyLen then begin
+    CopyMemoryFromRAM(@Resource.Data[DstOffset],Resource.BackingPages[PageIndex].Addr+PageOffset,CopyLen);
+   end else begin
+    // Span across pages
+    CopyMemoryFromRAM(@Resource.Data[DstOffset],Resource.BackingPages[PageIndex].Addr+PageOffset,PageRemain);
+    inc(PageIndex);
+    if PageIndex<length(Resource.BackingPages) then begin
+     CopyMemoryFromRAM(@Resource.Data[DstOffset+PageRemain],Resource.BackingPages[PageIndex].Addr,CopyLen-PageRemain);
+    end;
+   end;
+  end;
+  inc(Offset,DstStride);
+ end;
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleResourceAttachBacking(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aReadSize:TPasRISCVUInt64);
+var Cmd:TVirtIOGPUResourceAttachBacking;
+    Resource:TGPUResource;
+    MemEntries:array of TVirtIOGPUMemEntry;
+    Index:TPasRISCVSizeInt;
+    EntriesSize:TPasRISCVUInt64;
+begin
+ if not CopyMemoryFromQueue(@Cmd,aQueueIndex,aDescriptorIndex,0,SizeOf(Cmd)) then begin
+  NotifyDeviceNeedsReset;
+  exit;
+ end;
+ Resource:=FindResource(Cmd.ResourceID);
+ if not assigned(Resource) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@Cmd.Header,VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID);
+  exit;
+ end;
+ MemEntries:=nil;
+ SetLength(MemEntries,Cmd.NrEntries);
+ EntriesSize:=TPasRISCVUInt64(Cmd.NrEntries)*SizeOf(TVirtIOGPUMemEntry);
+ if not CopyMemoryFromQueue(@MemEntries[0],aQueueIndex,aDescriptorIndex,SizeOf(Cmd),EntriesSize) then begin
+  MemEntries:=nil;
+  NotifyDeviceNeedsReset;
+  exit;
+ end;
+ SetLength(Resource.BackingPages,Cmd.NrEntries);
+ for Index:=0 to Cmd.NrEntries-1 do begin
+  Resource.BackingPages[Index].Addr:=MemEntries[Index].Addr;
+  Resource.BackingPages[Index].Length:=MemEntries[Index].Length;
+ end;
+ MemEntries:=nil;
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@Cmd.Header);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleResourceDetachBacking(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceDetachBacking);
+var Resource:TGPUResource;
+begin
+ Resource:=FindResource(aCmd^.ResourceID);
+ if not assigned(Resource) then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID);
+  exit;
+ end;
+ Resource.BackingPages:=nil;
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleGetEDID(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUGetEDID);
+var Response:TVirtIOGPURespEDID;
+    CheckSum:TPasRISCVUInt8;
+    Index:TPasRISCVSizeInt;
+    Width,Height:TPasRISCVUInt32;
+begin
+ if aCmd^.Scanout>=VIRTIO_GPU_MAX_SCANOUTS then begin
+  SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID);
+  exit;
+ end;
+ FillChar(Response,SizeOf(Response),#0);
+ Response.Header.CtrlType:=VIRTIO_GPU_RESP_OK_EDID;
+ Response.Header.Flags:=aCmd^.Header.Flags;
+ Response.Header.FenceID:=aCmd^.Header.FenceID;
+ Response.Header.CtxID:=aCmd^.Header.CtxID;
+ Response.Size:=128; // Standard EDID block size
+ Width:=fScanouts[aCmd^.Scanout].Rect.Width;
+ Height:=fScanouts[aCmd^.Scanout].Rect.Height;
+ if Width=0 then begin
+  Width:=fFrameBuffer.fWidth;
+ end;
+ if Height=0 then begin
+  Height:=fFrameBuffer.fHeight;
+ end;
+ // Build minimal EDID v1.3
+ // Header
+ Response.EDID[0]:=$00;
+ Response.EDID[1]:=$ff;
+ Response.EDID[2]:=$ff;
+ Response.EDID[3]:=$ff;
+ Response.EDID[4]:=$ff;
+ Response.EDID[5]:=$ff;
+ Response.EDID[6]:=$ff;
+ Response.EDID[7]:=$00;
+ // Manufacturer ID "PRC" (PasRISCV)
+ Response.EDID[8]:=$3e; // 'P'=16, 'R'=18 compressed: ((16 shl 10) or (18 shl 5) or 3) = $40A3 -> bytes $40, $A3
+ Response.EDID[9]:=$a3;
+ // Product code
+ Response.EDID[10]:=$01;
+ Response.EDID[11]:=$00;
+ // Serial
+ Response.EDID[12]:=$01;
+ Response.EDID[13]:=$00;
+ Response.EDID[14]:=$00;
+ Response.EDID[15]:=$00;
+ // Week / Year
+ Response.EDID[16]:=1;
+ Response.EDID[17]:=26; // 2016+10 = year offset
+ // Version 1.3
+ Response.EDID[18]:=1;
+ Response.EDID[19]:=3;
+ // Digital input
+ Response.EDID[20]:=$80;
+ // Max horizontal/vertical image size in cm
+ Response.EDID[21]:=TPasRISCVUInt8((Width*254) div 10000);  // ~cm at 96dpi
+ Response.EDID[22]:=TPasRISCVUInt8((Height*254) div 10000);
+ // Gamma 2.2
+ Response.EDID[23]:=120;
+ // Features: RGB, preferred timing in DTD 1
+ Response.EDID[24]:=$0a;
+ // Chromaticity skip (bytes 25-34)
+ // Established timings (bytes 35-37)
+ // Standard timings (bytes 38-53) - not used
+ FillChar(Response.EDID[38],16,$01);
+ // Detailed Timing Descriptor #1 (bytes 54-71): preferred mode
+ // Pixel clock in 10 kHz units (e.g. 25175 for 640x480@60 => 2517)
+ // Simplified: just set width/height, minimal valid structure
+ Response.EDID[54]:=((Width*60*125) div 100000) and $ff;
+ Response.EDID[55]:=(((Width*60*125) div 100000) shr 8) and $ff;
+ Response.EDID[56]:=Width and $ff;
+ Response.EDID[57]:=0; // H blanking low
+ Response.EDID[58]:=((Width shr 4) and $f0); // H active high nibble
+ Response.EDID[59]:=Height and $ff;
+ Response.EDID[60]:=0; // V blanking low
+ Response.EDID[61]:=((Height shr 4) and $f0); // V active high nibble
+ // Bytes 62-71: various timing, keep zero
+ // Monitor descriptor blocks (bytes 72-125): fill with dummy descriptors
+ // Block 2: Monitor name
+ Response.EDID[72]:=0;
+ Response.EDID[73]:=0;
+ Response.EDID[74]:=0;
+ Response.EDID[75]:=$fc; // Monitor name tag
+ Response.EDID[76]:=0;
+ Response.EDID[77]:=ord('P');
+ Response.EDID[78]:=ord('a');
+ Response.EDID[79]:=ord('s');
+ Response.EDID[80]:=ord('R');
+ Response.EDID[81]:=ord('I');
+ Response.EDID[82]:=ord('S');
+ Response.EDID[83]:=ord('C');
+ Response.EDID[84]:=ord('V');
+ Response.EDID[85]:=$0a;
+ // Block 3: Monitor range
+ Response.EDID[90]:=0;
+ Response.EDID[91]:=0;
+ Response.EDID[92]:=0;
+ Response.EDID[93]:=$fd; // Monitor range tag
+ Response.EDID[94]:=0;
+ Response.EDID[95]:=50; // Min V freq
+ Response.EDID[96]:=75; // Max V freq
+ Response.EDID[97]:=30; // Min H freq kHz
+ Response.EDID[98]:=80; // Max H freq kHz
+ Response.EDID[99]:=25; // Max pixel clock / 10 MHz
+ Response.EDID[100]:=0; // GTF
+ // Checksum
+ CheckSum:=0;
+ for Index:=0 to 126 do begin
+  inc(CheckSum,Response.EDID[Index]);
+ end;
+ Response.EDID[127]:=TPasRISCVUInt8(256-CheckSum);
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleUpdateCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
+begin
+ // Cursor not supported, just acknowledge
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+end;
+
+procedure TPasRISCV.TVirtIOGPUDevice.HandleMoveCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
+begin
+ // Cursor not supported, just acknowledge
+ SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+end;
+
+function TPasRISCV.TVirtIOGPUDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
+var Header:TVirtIOGPUCtrlHeader;
+begin
+ result:=true;
+ if aReadSize<SizeOf(TVirtIOGPUCtrlHeader) then begin
+  NotifyDeviceNeedsReset;
+  exit;
+ end;
+ if not CopyMemoryFromQueue(@fRecvBuffer[0],aQueueIndex,aDescriptorIndex,0,aReadSize) then begin
+  NotifyDeviceNeedsReset;
+  exit;
+ end;
+ Move(fRecvBuffer[0],Header,SizeOf(Header));
+ case aQueueIndex of
+  VIRTIO_GPU_VQ_CONTROL:begin
+   case Header.CtrlType of
+    VIRTIO_GPU_CMD_GET_DISPLAY_INFO:begin
+     HandleGetDisplayInfo(aQueueIndex,aDescriptorIndex,@Header);
+    end;
+    VIRTIO_GPU_CMD_RESOURCE_CREATE_2D:begin
+     if aReadSize>=SizeOf(TVirtIOGPUResourceCreate2D) then begin
+      HandleResourceCreate2D(aQueueIndex,aDescriptorIndex,PVirtIOGPUResourceCreate2D(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_RESOURCE_UNREF:begin
+     if aReadSize>=SizeOf(TVirtIOGPUResourceUnref) then begin
+      HandleResourceUnref(aQueueIndex,aDescriptorIndex,PVirtIOGPUResourceUnref(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_SET_SCANOUT:begin
+     if aReadSize>=SizeOf(TVirtIOGPUSetScanout) then begin
+      HandleSetScanout(aQueueIndex,aDescriptorIndex,PVirtIOGPUSetScanout(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_RESOURCE_FLUSH:begin
+     if aReadSize>=SizeOf(TVirtIOGPUResourceFlush) then begin
+      HandleResourceFlush(aQueueIndex,aDescriptorIndex,PVirtIOGPUResourceFlush(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_TRANSFER_TO_HOST_2D:begin
+     if aReadSize>=SizeOf(TVirtIOGPUTransferToHost2D) then begin
+      HandleTransferToHost2D(aQueueIndex,aDescriptorIndex,PVirtIOGPUTransferToHost2D(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING:begin
+     HandleResourceAttachBacking(aQueueIndex,aDescriptorIndex,aReadSize);
+    end;
+    VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING:begin
+     if aReadSize>=SizeOf(TVirtIOGPUResourceDetachBacking) then begin
+      HandleResourceDetachBacking(aQueueIndex,aDescriptorIndex,PVirtIOGPUResourceDetachBacking(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_GET_EDID:begin
+     if aReadSize>=SizeOf(TVirtIOGPUGetEDID) then begin
+      HandleGetEDID(aQueueIndex,aDescriptorIndex,PVirtIOGPUGetEDID(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_GET_CAPSET_INFO,
+    VIRTIO_GPU_CMD_GET_CAPSET:begin
+     SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_UNSPEC);
+    end;
+    else begin
+     SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_UNSPEC);
+    end;
+   end;
+  end;
+  VIRTIO_GPU_VQ_CURSOR:begin
+   case Header.CtrlType of
+    VIRTIO_GPU_CMD_UPDATE_CURSOR:begin
+     if aReadSize>=SizeOf(TVirtIOGPUUpdateCursor) then begin
+      HandleUpdateCursor(aQueueIndex,aDescriptorIndex,PVirtIOGPUUpdateCursor(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    VIRTIO_GPU_CMD_MOVE_CURSOR:begin
+     if aReadSize>=SizeOf(TVirtIOGPUUpdateCursor) then begin
+      HandleMoveCursor(aQueueIndex,aDescriptorIndex,PVirtIOGPUUpdateCursor(@fRecvBuffer[0]));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+     end;
+    end;
+    else begin
+     SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_UNSPEC);
+    end;
+   end;
+  end;
+  else begin
+   NotifyDeviceNeedsReset;
+  end;
+ end;
 end;
 
 { TPasRISCV.TVirtIOVSockDevice }
@@ -39251,6 +40172,10 @@ begin
  fVirtIORandomGeneratorSize:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultSize;
  fVirtIORandomGeneratorIRQ:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultIRQ;
 
+ fVirtIOGPUBase:=TPasRISCV.TVirtIOGPUDevice.DefaultBaseAddress;
+ fVirtIOGPUSize:=TPasRISCV.TVirtIOGPUDevice.DefaultSize;
+ fVirtIOGPUIRQ:=TPasRISCV.TVirtIOGPUDevice.DefaultIRQ;
+
  fVirtIOVSockBase:=TPasRISCV.TVirtIOVSockDevice.DefaultBaseAddress;
  fVirtIOVSockSize:=TPasRISCV.TVirtIOVSockDevice.DefaultSize;
  fVirtIOVSockIRQ:=TPasRISCV.TVirtIOVSockDevice.DefaultIRQ;
@@ -39384,6 +40309,10 @@ begin
  fVirtIORandomGeneratorBase:=aConfiguration.fVirtIORandomGeneratorBase;
  fVirtIORandomGeneratorSize:=aConfiguration.fVirtIORandomGeneratorSize;
  fVirtIORandomGeneratorIRQ:=aConfiguration.fVirtIORandomGeneratorIRQ;
+
+ fVirtIOGPUBase:=aConfiguration.fVirtIOGPUBase;
+ fVirtIOGPUSize:=aConfiguration.fVirtIOGPUSize;
+ fVirtIOGPUIRQ:=aConfiguration.fVirtIOGPUIRQ;
 
  fVirtIOVSockBase:=aConfiguration.fVirtIOVSockBase;
  fVirtIOVSockSize:=aConfiguration.fVirtIOVSockSize;
@@ -39648,6 +40577,15 @@ begin
 
  fVirtIORandomGeneratorDevice:=TVirtIORandomGeneratorDevice.Create(self);
 
+ case fConfiguration.fDisplayMode of
+  TDisplayMode.VirtIOGPU:begin
+   fVirtIOGPUDevice:=TVirtIOGPUDevice.Create(self);
+  end;
+  else begin
+   fVirtIOGPUDevice:=nil;
+  end;
+ end;
+
  fVirtIOVSockDevice:=TVirtIOVSockDevice.Create(self);
 
  fBus:=TBus.Create(self);
@@ -39687,6 +40625,9 @@ begin
  fBus.AddBusDevice(fVirtIO9PDevice);
  fBus.AddBusDevice(fVirtIONetDevice);
  fBus.AddBusDevice(fVirtIORandomGeneratorDevice);
+ if assigned(fVirtIOGPUDevice) then begin
+  fBus.AddBusDevice(fVirtIOGPUDevice);
+ end;
  fBus.AddBusDevice(fVirtIOVSockDevice);
 
  if fConfiguration.fNVMeEnabled then begin
@@ -39807,6 +40748,7 @@ begin
  FreeAndNil(fVirtIO9PDevice);
  FreeAndNil(fVirtIONetDevice);
  FreeAndNil(fVirtIORandomGeneratorDevice);
+ FreeAndNil(fVirtIOGPUDevice);
  FreeAndNil(fVirtIOVSockDevice);
 
  FreeAndNil(fBus);
@@ -39896,6 +40838,7 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     VirtIOBlockNode,
     VirtIOInputKeyboardNode,VirtIOInputMouseNode,VirtIOSoundNode,VirtIO9PNode,VirtIONetNode,
     VirtIORandomGeneratorNode,
+    VirtIOGPUNode,
     VirtIOVSockNode,
     SimpleFrameBufferNode,
     ReservedMemoryNode,SharedMemoryNode:TPasRISCV.TFDT.TFDTNode;
@@ -40780,6 +41723,23 @@ begin
       SoCNode.AddChild(VirtIORandomGeneratorNode);
      end;
 
+     if fConfiguration.fDisplayMode=TDisplayMode.VirtIOGPU then begin
+      VirtIOGPUNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOGPUBase);
+      try
+       VirtIOGPUNode.AddPropertyString('compatible','virtio,mmio');
+       Cells[0]:=0;
+       Cells[1]:=fConfiguration.fVirtIOGPUBase;
+       Cells[2]:=0;
+       Cells[3]:=fConfiguration.fVirtIOGPUSize;
+       VirtIOGPUNode.AddPropertyCells('reg',@Cells,4);
+       Cells[0]:=INTC0.GetPHandle;
+       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOGPUIRQ);
+       VirtIOGPUNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      finally
+       SoCNode.AddChild(VirtIOGPUNode);
+      end;
+     end;
+
      VirtIOVSockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOVSockBase);
      try
       VirtIOVSockNode.AddPropertyString('compatible','virtio,mmio');
@@ -41343,6 +42303,9 @@ begin
  fVirtIO9PDevice.Reset;
  fVirtIONetDevice.Reset;
  fVirtIORandomGeneratorDevice.Reset;
+ if assigned(fVirtIOGPUDevice) then begin
+  fVirtIOGPUDevice.Reset;
+ end;
 
  if assigned(fNVMeDevice) then begin
   fNVMeDevice.Reset;
