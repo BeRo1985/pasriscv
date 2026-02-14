@@ -54,10 +54,22 @@ are required. The VirtIO devices are used to provide a standard interface for de
 | VIRTIO 9P             | $10055000 | $1000     | $15                       | VirtIO 9P device                            |
 | VIRTIO NET            | $10056000 | $1000     | $16                       | VirtIO network device                       |
 | VIRTIO RNG            | $10057000 | $1000     | $17                       | VirtIO random number generator              |
-| VIRTIO GPU            | $10058000 | $1000     | $18                       | VirtIO GPU device                           |
+| VIRTIO GPU            | $10058000 | $1000     | $18                       | VirtIO GPU device (if DisplayMode=VirtIOGPU) |
 | VIRTIO VSOCK          | $10059000 | $1000     | $19                       | VirtIO socket device                        |
 
 For each VirtIO device, the MMIO region size is $1000. For the VirtIO GPU device, the guest OS allocates its own frame buffer memory ranges, so $1000 as MMIO region size remains valid for the device registers in this case.
+
+# Display modes
+
+The emulator supports three display modes, selectable via `Configuration.DisplayMode`:
+
+| Mode       | Device                  | Type       | Linux driver   | Description                                                                                           |
+|------------|-------------------------|------------|----------------|-------------------------------------------------------------------------------------------------------|
+| SimpleFB   | TSimpleFBDevice         | MMIO       | simplefb       | Custom framebuffer at $28000000, uses a simple memory-mapped interface with control registers. Default mode, suitable for baremetal and simple guest software. |
+| VirtIOGPU  | TVirtIOGPUDevice        | VirtIO MMIO| virtio-gpu     | VirtIO GPU (2D only, no 3D/virgl). Guest allocates resources, attaches backing memory, transfers pixel data and flushes to host framebuffer. Supports EDID. |
+| BochsVBE   | TBochsVBEDevice         | PCIe       | bochs-drm      | Bochs VBE VGA adapter on PCIe bus (vendor $1234, device $1111). 16MB linear framebuffer (BAR0) with VBE DISPI registers (BAR2) for mode setting. |
+
+All three modes write their output to the shared `TFrameBufferDevice` pixel buffer, which the host frontend reads for rendering. The frontend code does not need to change between display modes.
 
 # Shared Memory device
 

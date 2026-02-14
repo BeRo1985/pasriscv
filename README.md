@@ -36,8 +36,12 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
     - Keyboard
     - Mouse
     - Sound
-    - GPU (with simple 2D acceleration support, no 3D support yet, planned for the future)
+    - GPU (2D only, no 3D/virgl support yet)
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
+  - Display mode support with three selectable backends:
+    - SimpleFB — custom MMIO framebuffer (default, for baremetal and simple guests)
+    - VirtIO GPU — standard VirtIO 2D GPU with EDID support (for Linux with virtio-gpu driver)
+    - Bochs VBE — PCI VGA adapter with VBE DISPI registers (for Linux with bochs-drm driver)
   - Framebuffer support
   - Shared memory device for host-guest shared memory communication with doorbell IRQ support
   - PS/2 keyboard and mouse
@@ -46,6 +50,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - PCIe Bus
     - NVMe SSD
     - IVSHMEM (Inter-VM Shared Memory) device for host-guest shared memory communication with doorbell interrupts
+    - Bochs VBE VGA adapter (if DisplayMode=BochsVBE)
   - I2C bus (disabled for now, due to IRQ issues, will be either fixed, removed, or replaced with virtio-i2c later)
     - HID devices
       - Keyboard
