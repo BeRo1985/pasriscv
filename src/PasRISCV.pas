@@ -18886,7 +18886,7 @@ begin
  BARRegion^.fOnStore:=OnFBStore;
 
  // BAR1: MMIO registers (4KB)
- BARRegion:=@FuncDesc.fBARRegions[2];
+ BARRegion:=@FuncDesc.fBARRegions[1];
 {$ifdef NewPCI}
  BARRegion^.fAddress:=0;
 {$else}
