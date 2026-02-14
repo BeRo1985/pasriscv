@@ -4806,9 +4806,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fHeight:TPasRISCVUInt32;
               fBytesPerPixel:TPasRISCVUInt32;
               fData:TPasRISCVUInt8DynamicArray;
+              fRGBA32Data:TPasRISCVUInt8DynamicArray;
               fComposited:TPasRISCVUInt8DynamicArray;
               fCursor:TCursor;
               fCursorCompositing:Boolean;
+              fDirectRGBA32:Boolean;
 {$ifdef FrameBufferDeviceDirtyMarking}
               fDirty:TPasMPBool32;
 {$endif}
@@ -4824,6 +4826,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure SetCursorHotspot(const aHotX,aHotY:TPasRISCVInt32);
               procedure SetCursorVisible(const aVisible:Boolean);
               procedure CompositeCursor;
+              procedure ConvertToRGBA32(const aSrc:TPasRISCVUInt8DynamicArray);
+              procedure UpdateOutputData;
               function GetOutputData:TPasRISCVUInt8DynamicArray;
              public
               property Machine:TPasRISCV read fMachine;
@@ -4834,6 +4838,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property CursorCompositing:Boolean read fCursorCompositing write fCursorCompositing;
               property Active:Boolean read fActive write fActive;
               property AutomaticRefresh:Boolean read fAutomaticRefresh write fAutomaticRefresh;
+              property DirectRGBA32:Boolean read fDirectRGBA32 write fDirectRGBA32;
               property Width:TPasRISCVUInt32 read fWidth;
               property Height:TPasRISCVUInt32 read fHeight;
               property BytesPerPixel:TPasRISCVUInt32 read fBytesPerPixel;
@@ -18793,6 +18798,7 @@ begin
   if (fVBEEnable and VBE_DISPI_NOCLEARMEM)=0 then begin
    fFrameBuffer.ClearFrameBuffer;
   end;
+  fFrameBuffer.UpdateOutputData;
   if assigned(fMachine.OnNewFrame) then begin
    fMachine.OnNewFrame();
   end;
@@ -18954,6 +18960,7 @@ begin
 {$ifdef FrameBufferDeviceDirtyMarking}
    fFrameBuffer.fDirty:=true;
 {$endif}
+   fFrameBuffer.UpdateOutputData;
    if assigned(fMachine.OnNewFrame) then begin
     fMachine.OnNewFrame();
    end;
@@ -18963,6 +18970,7 @@ begin
 {$ifdef FrameBufferDeviceDirtyMarking}
    fFrameBuffer.fDirty:=true;
 {$endif}
+   fFrameBuffer.UpdateOutputData;
    if assigned(fMachine.OnNewFrame) then begin
     fMachine.OnNewFrame();
    end;
@@ -19167,6 +19175,7 @@ begin
   fFrameBuffer.ResizeFrameBuffer(fWidth,fHeight,BytesPerPixel);
   fFrameBuffer.fActive:=true;
   fModeActive:=true;
+  fFrameBuffer.UpdateOutputData;
   if assigned(fMachine.OnNewFrame) then begin
    fMachine.OnNewFrame();
   end;
@@ -19301,6 +19310,7 @@ begin
 {$ifdef FrameBufferDeviceDirtyMarking}
      fFrameBuffer.fDirty:=true;
 {$endif}
+     fFrameBuffer.UpdateOutputData;
      if assigned(fMachine.OnNewFrame) then begin
       fMachine.OnNewFrame();
      end;
@@ -19402,6 +19412,7 @@ begin
 {$ifdef FrameBufferDeviceDirtyMarking}
      fFrameBuffer.fDirty:=true;
 {$endif}
+     fFrameBuffer.UpdateOutputData;
      if assigned(fMachine.OnNewFrame) then begin
       fMachine.OnNewFrame();
      end;
@@ -23910,6 +23921,7 @@ begin
   end;
  end;
  // VSync: Notify host that a new frame is ready
+ fFrameBuffer.UpdateOutputData;
  if assigned(fMachine.OnNewFrame) then begin
   fMachine.OnNewFrame();
  end;
@@ -25589,17 +25601,21 @@ begin
  fBytesPerPixel:=aMachine.fConfiguration.fFrameBufferBytesPerPixel;
  fData:=nil;
  SetLength(fData,fWidth*fHeight*fBytesPerPixel);
+ fRGBA32Data:=nil;
+ SetLength(fRGBA32Data,fWidth*fHeight*4);
  fComposited:=nil;
- SetLength(fComposited,length(fData));
+ SetLength(fComposited,fWidth*fHeight*4);
  FillChar(fCursor,SizeOf(fCursor),#0);
  fCursor.Visible:=false;
  fCursorCompositing:=false;
+ fDirectRGBA32:=false;
  ClearFrameBuffer;
 end;
 
 destructor TPasRISCV.TFrameBufferDevice.Destroy;
 begin
  fData:=nil;
+ fRGBA32Data:=nil;
  fComposited:=nil;
  FreeAndNil(fLock);
  inherited Destroy;
@@ -25624,8 +25640,11 @@ begin
     fData:=NewData;
    end;
   end;
-  if fCursorCompositing and (length(fComposited)<length(fData)) then begin
-   SetLength(fComposited,length(fData));
+  if length(fRGBA32Data)<(fWidth*fHeight*4) then begin
+   SetLength(fRGBA32Data,fWidth*fHeight*4);
+  end;
+  if fCursorCompositing and (length(fComposited)<(fWidth*fHeight*4)) then begin
+   SetLength(fComposited,fWidth*fHeight*4);
   end;
 {$ifdef FrameBufferDeviceDirtyMarking}
   fDirty:=true;
@@ -25714,73 +25733,174 @@ var CurX,CurY:TPasRISCVInt32;
     Stride:TPasRISCVUInt64;
     SrcPixel,DstPixel:PPasRISCVUInt8Array;
     Alpha,InvAlpha:TPasRISCVUInt32;
+    SourceData:TPasRISCVUInt8DynamicArray;
+    PixelCount32:TPasRISCVSizeInt;
 begin    
- // Copy base framebuffer to composited buffer
- if length(fComposited)<length(fData) then begin
-  SetLength(fComposited,length(fData));
+ // Use converted RGBA32 data when not 32bpp, otherwise use raw fData
+ if fBytesPerPixel=4 then begin
+  SourceData:=fData;
+ end else begin
+  SourceData:=fRGBA32Data;
  end;
- Move(fData[0],fComposited[0],fWidth*fHeight*fBytesPerPixel);
- if (not fCursor.Visible) or (fBytesPerPixel<>4) then begin
-  exit;
+ // Composite buffer is always 32bpp
+ PixelCount32:=fWidth*fHeight*4;
+ if length(fComposited)<PixelCount32 then begin
+  SetLength(fComposited,PixelCount32);
  end;
- // Calculate cursor draw position (top-left corner = cursor pos - hotspot)
- CurX:=fCursor.X-fCursor.HotX;
- CurY:=fCursor.Y-fCursor.HotY;
- // Clip to framebuffer
- StartX:=0;
- StartY:=0;
- EndX:=CURSOR_SIZE;
- EndY:=CURSOR_SIZE;
- if CurX<0 then begin
-  StartX:=-CurX;
- end;
- if CurY<0 then begin
-  StartY:=-CurY;
- end;
- if (CurX+EndX)>TPasRISCVInt32(fWidth) then begin
-  EndX:=TPasRISCVInt32(fWidth)-CurX;
- end;
- if (CurY+EndY)>TPasRISCVInt32(fHeight) then begin
-  EndY:=TPasRISCVInt32(fHeight)-CurY;
- end;
- if (StartX>=EndX) or (StartY>=EndY) then begin
-  exit;
- end;
- Stride:=TPasRISCVUInt64(fWidth)*4;
- for Row:=StartY to EndY-1 do begin
-  for Col:=StartX to EndX-1 do begin
-   SrcOffset:=(TPasRISCVUInt64(Row)*CURSOR_SIZE+TPasRISCVUInt64(Col))*4;
-   SrcPixel:=PPasRISCVUInt8Array(@fCursor.Data[SrcOffset]);
-   Alpha:=SrcPixel^[3];
-   if Alpha<>0 then begin
-    DstOffset:=TPasRISCVUInt64(CurY+Row)*Stride+TPasRISCVUInt64(CurX+Col)*4;
-    DstPixel:=PPasRISCVUInt8Array(@PPasRISCVUInt8Array(fComposited)^[DstOffset]);
-    if Alpha=255 then begin
-     // Opaque — direct copy
-     DstPixel^[0]:=SrcPixel^[0];
-     DstPixel^[1]:=SrcPixel^[1];
-     DstPixel^[2]:=SrcPixel^[2];
-     DstPixel^[3]:=255;
-    end else begin
-     // Alpha blend
-     InvAlpha:=255-Alpha;
-     DstPixel^[0]:=TPasRISCVUInt8(((SrcPixel^[0]*Alpha)+(DstPixel^[0]*InvAlpha)+127) shr 8);
-     DstPixel^[1]:=TPasRISCVUInt8(((SrcPixel^[1]*Alpha)+(DstPixel^[1]*InvAlpha)+127) shr 8);
-     DstPixel^[2]:=TPasRISCVUInt8(((SrcPixel^[2]*Alpha)+(DstPixel^[2]*InvAlpha)+127) shr 8);
-     DstPixel^[3]:=255;
+ Move(SourceData[0],fComposited[0],PixelCount32);
+ if fCursor.Visible then begin
+  // Calculate cursor draw position (top-left corner = cursor pos - hotspot)
+  CurX:=fCursor.X-fCursor.HotX;
+  CurY:=fCursor.Y-fCursor.HotY;
+  // Clip to framebuffer
+  StartX:=0;
+  StartY:=0;
+  EndX:=CURSOR_SIZE;
+  EndY:=CURSOR_SIZE;
+  if CurX<0 then begin
+   StartX:=-CurX;
+  end;
+  if CurY<0 then begin
+   StartY:=-CurY;
+  end;
+  if (CurX+EndX)>TPasRISCVInt32(fWidth) then begin
+   EndX:=TPasRISCVInt32(fWidth)-CurX;
+  end;
+  if (CurY+EndY)>TPasRISCVInt32(fHeight) then begin
+   EndY:=TPasRISCVInt32(fHeight)-CurY;
+  end;
+  if (StartX<EndX) and (StartY<EndY) then begin
+   Stride:=TPasRISCVUInt64(fWidth)*4;
+   for Row:=StartY to EndY-1 do begin
+    for Col:=StartX to EndX-1 do begin
+     SrcOffset:=(TPasRISCVUInt64(Row)*CURSOR_SIZE+TPasRISCVUInt64(Col))*4;
+     SrcPixel:=PPasRISCVUInt8Array(@fCursor.Data[SrcOffset]);
+     Alpha:=SrcPixel^[3];
+     if Alpha<>0 then begin
+      DstOffset:=TPasRISCVUInt64(CurY+Row)*Stride+TPasRISCVUInt64(CurX+Col)*4;
+      DstPixel:=PPasRISCVUInt8Array(@PPasRISCVUInt8Array(fComposited)^[DstOffset]);
+      if Alpha=255 then begin
+       // Opaque — direct copy
+       DstPixel^[0]:=SrcPixel^[0];
+       DstPixel^[1]:=SrcPixel^[1];
+       DstPixel^[2]:=SrcPixel^[2];
+       DstPixel^[3]:=255;
+      end else begin
+       // Alpha blend
+       InvAlpha:=255-Alpha;
+       DstPixel^[0]:=TPasRISCVUInt8(((SrcPixel^[0]*Alpha)+(DstPixel^[0]*InvAlpha)+127) shr 8);
+       DstPixel^[1]:=TPasRISCVUInt8(((SrcPixel^[1]*Alpha)+(DstPixel^[1]*InvAlpha)+127) shr 8);
+       DstPixel^[2]:=TPasRISCVUInt8(((SrcPixel^[2]*Alpha)+(DstPixel^[2]*InvAlpha)+127) shr 8);
+       DstPixel^[3]:=255;
+      end;
+     end; 
     end;
-   end; 
+   end;
+  end;
+ end;
+end; 
+
+procedure TPasRISCV.TFrameBufferDevice.ConvertToRGBA32(const aSrc:TPasRISCVUInt8DynamicArray);
+var PixelCount,PixelIndex:TPasRISCVSizeInt;
+    SrcPtr:PPasRISCVUInt8;
+    DstPtr:PPasRISCVUInt32;
+    Pixel16,r,g,b:TPasRISCVUInt32;
+    RGBA32DataSize:TPasRISCVSizeInt;
+begin
+ PixelCount:=fWidth*fHeight;
+ RGBA32DataSize:=PixelCount*4;
+ if length(fRGBA32Data)<RGBA32DataSize then begin
+  SetLength(fRGBA32Data,RGBA32DataSize);
+ end;
+ case fBytesPerPixel of
+  4:begin
+   // RGBA8888 — direct copy
+   if length(aSrc)>=(PixelCount*4) then begin
+    Move(aSrc[0],fRGBA32Data[0],RGBA32DataSize);
+   end else begin
+    FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
+   end;
+  end;
+  2:begin
+   // RGB565 to RGBA8888 conversion
+   if length(aSrc)>=(PixelCount*2) then begin
+    SrcPtr:=@aSrc[0];
+    DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
+    for PixelIndex:=1 to PixelCount do begin
+     Pixel16:=PPasRISCVUInt16(SrcPtr)^;
+     r:=(Pixel16 shr 11) and $1f;
+     g:=(Pixel16 shr 5) and $3f;
+     b:=Pixel16 and $1f;
+     DstPtr^:=$ff000000 or (((r shl 3) or (r shr 2)) shl 16) or (((g shl 2) or (g shr 4)) shl 8) or ((b shl 3) or (b shr 2));
+     inc(SrcPtr,2);
+     inc(DstPtr);
+    end;
+   end else begin
+    FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
+   end;
+  end;
+  3:begin
+   // BGR888 to RGBA8888 conversion
+   if length(aSrc)>=(PixelCount*3) then begin
+    SrcPtr:=@aSrc[0];
+    DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
+    for PixelIndex:=1 to PixelCount do begin
+     DstPtr^:=$ff000000 or (TPasRISCVUInt32(PPasRISCVUInt8(SrcPtr+2)^) shl 16) or (TPasRISCVUInt32(PPasRISCVUInt8(SrcPtr+1)^) shl 8) or TPasRISCVUInt32(SrcPtr^);
+     inc(SrcPtr,3);
+     inc(DstPtr);
+    end;
+   end else begin
+    FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
+   end;
+  end;
+  1:begin
+   // 8bpp grayscale to RGBA8888 conversion (no palette support yet)
+   if length(aSrc)>=PixelCount then begin
+    SrcPtr:=@aSrc[0];
+    DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
+    for PixelIndex:=1 to PixelCount do begin
+     DstPtr^:=$ff000000 or (TPasRISCVUInt32(SrcPtr^)*$010101);
+     inc(SrcPtr);
+     inc(DstPtr);
+    end;
+   end else begin
+    FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
+   end;
+  end;
+  else begin
+   FillChar(fRGBA32Data[0],RGBA32DataSize,#0);
   end;
  end;
 end;
 
+procedure TPasRISCV.TFrameBufferDevice.UpdateOutputData;
+begin
+ if (fCursorCompositing and fCursor.Visible) or (fBytesPerPixel<>4) or not fDirectRGBA32 then begin
+  if fBytesPerPixel=4 then begin
+   if fCursorCompositing and fCursor.Visible then begin
+    CompositeCursor;
+    fRGBA32Data:=fComposited;
+   end else begin
+    fRGBA32Data:=fData;
+   end;
+  end else begin
+   ConvertToRGBA32(fData);
+   if fCursorCompositing and fCursor.Visible then begin
+    CompositeCursor;
+    fRGBA32Data:=fComposited;
+   end;
+  end;
+ end else begin 
+  fRGBA32Data:=fData;
+ end;
+end; 
+
 function TPasRISCV.TFrameBufferDevice.GetOutputData:TPasRISCVUInt8DynamicArray;
 begin
- if fCursorCompositing and fCursor.Visible then begin
-  CompositeCursor;
-  result:=fComposited;
- end else begin
+ if fDirectRGBA32 then begin
   result:=fData;
+ end else begin
+  result:=fRGBA32Data;
  end;
 end;
 
@@ -25790,6 +25910,8 @@ constructor TPasRISCV.TSimpleFBDevice.Create(const aMachine:TPasRISCV);
 begin
  inherited Create(aMachine,aMachine.fConfiguration.fFrameBufferBase,FrameBufferAddress+aMachine.fConfiguration.fFrameBufferSize);
  fFrameBuffer:=aMachine.fFrameBufferDevice;
+ fFrameBuffer.fAutomaticRefresh:=true;
+ fFrameBuffer.fDirectRGBA32:=true;
 end;
 
 destructor TPasRISCV.TSimpleFBDevice.Destroy;
@@ -25874,8 +25996,11 @@ begin
  Address:=aAddress-fBase;
  case Address of
   FrameReadyAddress:begin
-   if (aValue<>0) and assigned(fMachine.OnNewFrame) then begin
-    fMachine.OnNewFrame();
+   if (aValue<>0) then begin
+    fFrameBuffer.UpdateOutputData;
+    if assigned(fMachine.OnNewFrame) then begin
+     fMachine.OnNewFrame();
+    end;
    end;
   end;
   ActiveAddress:begin
@@ -25884,11 +26009,13 @@ begin
     if (aValue and 2)=0 then begin
      fFrameBuffer.ClearFrameBuffer;
     end;
+    fFrameBuffer.UpdateOutputData;
     if assigned(fMachine.OnNewFrame) then begin
      fMachine.OnNewFrame();
     end;
    end;
    fFrameBuffer.fAutomaticRefresh:=(aValue and 4)<>0;
+   fFrameBuffer.fDirectRGBA32:=fFrameBuffer.fAutomaticRefresh;
   end;
   ResolutionAddress:begin
    fFrameBuffer.ResizeFrameBuffer(TPasRISCVUInt32(aValue and $ffff),TPasRISCVUInt32((aValue shr 16) and $ffff),fFrameBuffer.fBytesPerPixel);
