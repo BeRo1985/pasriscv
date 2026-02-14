@@ -5954,6 +5954,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fVirtIOBlockEnabled:Boolean;
 
+              fVirtIOBlockMQ:Boolean;
+
               fNVMeEnabled:Boolean;
 
               fLRSCMaximumCycles:TPasRISCVUInt64;
@@ -6085,6 +6087,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property AIA:Boolean read fAIA write fAIA;
 
               property VirtIOBlockEnabled:Boolean read fVirtIOBlockEnabled write fVirtIOBlockEnabled;
+
+              property VirtIOBlockMQ:Boolean read fVirtIOBlockMQ write fVirtIOBlockMQ;
 
               property NVMeEnabled:Boolean read fNVMeEnabled write fNVMeEnabled;
 
@@ -19364,8 +19368,14 @@ begin
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
 //                TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
 //                TPasRISCV.TVirtIODevice.VIRTIO_F_IN_ORDER or
-                  VIRTIO_BLK_F_MQ or
+                  VIRTIO_BLK_F_SIZE_MAX or
+                  VIRTIO_BLK_F_SEG_MAX or
+                  VIRTIO_BLK_F_BLK_SIZE or
                   VIRTIO_BLK_F_FLUSH;
+
+ if aMachine.fConfiguration.fVirtIOBlockMQ then begin
+  fDeviceFeatures:=fDeviceFeatures or VIRTIO_BLK_F_MQ;
+ end;
 
  fStreamLock:=TPasMPSlimReaderWriterLock.Create;
 
@@ -19373,7 +19383,16 @@ begin
 
  FillChar(fConfig,Sizeof(TVirtIOBlkConfig),#0);
 
- fConfig.NumQueues:=MAXIMUM_COUNT_QUEUES;
+ if aMachine.fConfiguration.fVirtIOBlockMQ then begin
+  fConfig.NumQueues:=MAXIMUM_COUNT_QUEUES;
+ end else begin
+  fConfig.NumQueues:=1;
+ end;
+
+ fConfig.BlkSize:=SECTOR_SIZE;
+ fConfig.SizeMax:=SECTOR_SIZE*256;
+ fConfig.SegMax:=128;
+ fConfig.Writeback:=1;
 
  fConfig.MaxDiscardSectors:=128;
  fConfig.MaxDiscardSeg:=1;
@@ -39159,6 +39178,8 @@ begin
 
  fVirtIOBlockEnabled:=false;
 
+ fVirtIOBlockMQ:=false;
+
  fNVMeEnabled:=false;
 
  fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
@@ -39282,6 +39303,8 @@ begin
  fAIA:=aConfiguration.fAIA;
 
  fVirtIOBlockEnabled:=aConfiguration.fVirtIOBlockEnabled;
+
+ fVirtIOBlockMQ:=aConfiguration.fVirtIOBlockMQ;
 
  fNVMeEnabled:=aConfiguration.fNVMeEnabled;
 
