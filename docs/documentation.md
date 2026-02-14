@@ -68,6 +68,7 @@ The emulator supports three display modes, selectable via `Configuration.Display
 | SimpleFB   | TSimpleFBDevice         | MMIO       | simplefb       | Custom framebuffer at $28000000, uses a simple memory-mapped interface with control registers. Default mode, suitable for baremetal and simple guest software. |
 | VirtIOGPU  | TVirtIOGPUDevice        | VirtIO MMIO| virtio-gpu     | VirtIO GPU (2D only, no 3D/virgl). Guest allocates resources, attaches backing memory, transfers pixel data and flushes to host framebuffer. Supports EDID. |
 | BochsVBE   | TBochsVBEDevice         | PCIe       | bochs-drm      | Bochs VBE VGA adapter on PCIe bus (vendor $1234, device $1111). 16MB linear framebuffer (BAR0) with VBE DISPI registers (BAR2) for mode setting. |
+| Cirrus     | TCirrusDevice           | PCIe       | cirrus (drm)   | Cirrus Logic GD 5446 VGA adapter on PCIe bus (vendor $1013, device $00b8). 4MB linear framebuffer (BAR0) with VGA register MMIO (BAR2) for mode setting. Subsystem IDs match QEMU ($1af4:$1100) for Linux cirrus-qemu driver compatibility. |
 
 All three modes write their output to the shared `TFrameBufferDevice` pixel buffer, which the host frontend reads for rendering. The frontend code does not need to change between display modes.
 
@@ -77,7 +78,7 @@ The shared memory device provides a simple flat memory-mapped region for zero-co
 
 | What                  | Where     | Size      | IRQ(s)                    | Description                                 |
 |-----------------------|-----------|-----------|---------------------------|---------------------------------------------|
-| SHARED MEMORY         | $2F000000 | $100000   | $1A                       | Shared memory with doorbell IRQ             |
+| SHARED MEMORY         | $2f000000 | $100000   | $1a                       | Shared memory with doorbell IRQ             |
 
 Register layout (offsets from base address):
 
@@ -110,6 +111,7 @@ These devices are the PCIe bus devices that are used to connect to the system.
 | $00  | $00    | $00      | $0600    | $f15e     | $0000     | PCIe controller (host bridge)                               |
 | $00  | $01    | $00      | $0108    | $1aad     | $a809     | Non-Volatile Memory Controller (NVMe) / NVMe SSD controller |
 | $00  | $03    | $00      | $0300    | $1234     | $1111     | Bochs VBE VGA compatible controller (if DisplayMode=BochsVBE) |
+| $00  | $04    | $00      | $0300    | $1013     | $00b8     | Cirrus Logic GD 5446 VGA controller (if DisplayMode=Cirrus)   |
 
 # Boot Trampoline and Device Tree Blob Memory
 

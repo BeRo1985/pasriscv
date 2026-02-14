@@ -2168,6 +2168,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TVirtIODevice=class;
             TNVMeDevice=class;
             TBochsVBEDevice=class;
+            TCirrusDevice=class;
             TVirtIOBlockDeviceCommand=record
              RequestType:TPasRISCVUInt32;
              SectorIndex:TPasRISCVUInt64;
@@ -2769,6 +2770,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TPCIFuncDescriptor=record
              fVendorID:TPasRISCVUInt16;
              fDeviceID:TPasRISCVUInt16;
+             fSubsystemVendorID:TPasRISCVUInt16;
+             fSubsystemDeviceID:TPasRISCVUInt16;
              fClassCode:TPasRISCVUInt16;
              fProgIF:TPasRISCVUInt8;
              fRevisionID:TPasRISCVUInt8;
@@ -2790,6 +2793,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fIRQLine:TPasRISCVUInt32;
               fVendorID:TPasRISCVUInt16;
               fDeviceID:TPasRISCVUInt16;
+              fSubsystemVendorID:TPasRISCVUInt16;
+              fSubsystemDeviceID:TPasRISCVUInt16;
               fClassCode:TPasRISCVUInt16;
               fProgIF:TPasRISCVUInt8;
               fRevisionID:TPasRISCVUInt8;
@@ -3261,19 +3266,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     VBE_DISPI_INDEX_YRES=$04;
                     VBE_DISPI_INDEX_BPP=$06;
                     VBE_DISPI_INDEX_ENABLE=$08;
-                    VBE_DISPI_INDEX_BANK=$0A;
-                    VBE_DISPI_INDEX_VIRT_WIDTH=$0C;
-                    VBE_DISPI_INDEX_VIRT_HEIGHT=$0E;
+                    VBE_DISPI_INDEX_BANK=$0a;
+                    VBE_DISPI_INDEX_VIRT_WIDTH=$0c;
+                    VBE_DISPI_INDEX_VIRT_HEIGHT=$0e;
                     VBE_DISPI_INDEX_X_OFFSET=$10;
                     VBE_DISPI_INDEX_Y_OFFSET=$12;
                     VBE_DISPI_INDEX_VIDEO_MEMORY_64K=$14;
                     // DISPI ID values
-                    VBE_DISPI_ID0=$B0C0;
-                    VBE_DISPI_ID1=$B0C1;
-                    VBE_DISPI_ID2=$B0C2;
-                    VBE_DISPI_ID3=$B0C3;
-                    VBE_DISPI_ID4=$B0C4;
-                    VBE_DISPI_ID5=$B0C5;
+                    VBE_DISPI_ID0=$b0c0;
+                    VBE_DISPI_ID1=$b0c1;
+                    VBE_DISPI_ID2=$b0c2;
+                    VBE_DISPI_ID3=$b0c3;
+                    VBE_DISPI_ID4=$b0c4;
+                    VBE_DISPI_ID5=$b0c5;
                     // Enable flags
                     VBE_DISPI_ENABLED=$01;
                     VBE_DISPI_GETCAPS=$02;
@@ -3307,6 +3312,62 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure OnFBStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               function OnVBELoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnVBEStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+             public
+              property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
+            end;
+            { TCirrusDevice }
+            TCirrusDevice=class(TPCIDevice)
+             public
+              const CIRRUS_VENDOR_ID=$1013;
+                    CIRRUS_DEVICE_ID=$00b8; // GD 5446
+                    CIRRUS_SUBVENDOR_ID=$1af4; // Red Hat / QUMRANET
+                    CIRRUS_SUBDEVICE_ID=$1100; // QEMU
+                    CIRRUS_CLASS_CODE=$0300; // VGA compatible controller
+                    CIRRUS_REVISION=$01;
+                    // VRAM size
+                    CIRRUS_VRAM_SIZE=TPasRISCVUInt64(4*1024*1024); // 4MB
+                    // MMIO size
+                    CIRRUS_MMIO_SIZE=TPasRISCVUInt64($1000); // 4KB
+                    // MMIO register offsets (as used by the Linux driver)
+                    SEQ_INDEX=$04;
+                    SEQ_DATA=$05;
+                    CRT_INDEX=$14;
+                    CRT_DATA=$15;
+                    GFX_INDEX=$0e;
+                    GFX_DATA=$0f;
+                    VGA_DAC_MASK=$06;
+                    // Max pitch
+                    CIRRUS_MAX_PITCH=(($1ff shl 3)); // (4096-1) & ~7
+             private
+              fFrameBuffer:TFrameBufferDevice;
+              // Sequencer registers
+              fSEQIndex:TPasRISCVUInt8;
+              fSEQRegs:array[0..255] of TPasRISCVUInt8;
+              // CRT controller registers
+              fCRTIndex:TPasRISCVUInt8;
+              fCRTRegs:array[0..255] of TPasRISCVUInt8;
+              // Graphics controller registers
+              fGFXIndex:TPasRISCVUInt8;
+              fGFXRegs:array[0..255] of TPasRISCVUInt8;
+              // Hidden DAC register
+              fHDRReadCount:TPasRISCVUInt32;
+              fHDR:TPasRISCVUInt8;
+              // Derived state
+              fWidth:TPasRISCVUInt32;
+              fHeight:TPasRISCVUInt32;
+              fBPP:TPasRISCVUInt32;
+              fPitch:TPasRISCVUInt32;
+              fStartAddress:TPasRISCVUInt32;
+              fModeActive:Boolean;
+              procedure UpdateDerivedState;
+             public
+              constructor Create(const aBus:TPCIBusDevice;const aFrameBuffer:TFrameBufferDevice); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              function OnFBLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnFBStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function OnMMIOLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnMMIOStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
              public
               property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
             end;
@@ -4223,7 +4284,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING=$0107;
                     VIRTIO_GPU_CMD_GET_CAPSET_INFO=$0108;
                     VIRTIO_GPU_CMD_GET_CAPSET=$0109;
-                    VIRTIO_GPU_CMD_GET_EDID=$010A;
+                    VIRTIO_GPU_CMD_GET_EDID=$010a;
                     // Cursor command types
                     VIRTIO_GPU_CMD_UPDATE_CURSOR=$0300;
                     VIRTIO_GPU_CMD_MOVE_CURSOR=$0301;
@@ -6178,7 +6239,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              (
               SimpleFB,
               VirtIOGPU,
-              BochsVBE
+              BochsVBE,
+              Cirrus
              );
             { TConfiguration }
             TConfiguration=class
@@ -6507,6 +6569,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fBochsVBEDevice:TBochsVBEDevice;
 
+       fCirrusDevice:TCirrusDevice;
+
        fFrameBufferDevice:TFrameBufferDevice;
 
        fSimpleFBDevice:TSimpleFBDevice;
@@ -6664,6 +6728,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property IVSHMEMDevice:TIVSHMEMDevice read fIVSHMEMDevice;
 
        property BochsVBEDevice:TBochsVBEDevice read fBochsVBEDevice;
+
+       property CirrusDevice:TCirrusDevice read fCirrusDevice;
 
        property FrameBufferDevice:TFrameBufferDevice read fFrameBufferDevice;
 
@@ -16527,6 +16593,8 @@ begin
  fIRQLine:=0;
  fVendorID:=aFuncDesc.fVendorID;
  fDeviceID:=aFuncDesc.fDeviceID;
+ fSubsystemVendorID:=aFuncDesc.fSubsystemVendorID;
+ fSubsystemDeviceID:=aFuncDesc.fSubsystemDeviceID;
  fClassCode:=aFuncDesc.fClassCode;
  fProgIF:=aFuncDesc.fProgIF;
  fRevisionID:=aFuncDesc.fRevisionID;
@@ -16844,7 +16912,11 @@ begin
 {$endif}
    end;
    TPCI.PCI_REG_SSID_SVID:begin
-    result:=$eba110dc;
+    if (Func.fSubsystemVendorID<>0) or (Func.fSubsystemDeviceID<>0) then begin
+     result:=Func.fSubsystemVendorID or (TPasRISCVUInt32(Func.fSubsystemDeviceID) shl 16);
+    end else begin
+     result:=$eba110dc;
+    end;
    end;
 {$ifdef NewPCI}
    TPCI.PCI_REG_EXPANSION_ROM:begin
@@ -17041,7 +17113,7 @@ constructor TPasRISCV.TPCIHostBridgeDevice.Create(const aBus:TPasRISCV.TPCIBusDe
 var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
 begin
  inherited Create(aBus);
- FillChar(FuncDesc,SizeOf(FuncDesc),#0);
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
  FuncDesc.fVendorID:=$f15e;
  FuncDesc.fDeviceID:=$0000;
  FuncDesc.fClassCode:=$0600;
@@ -17420,7 +17492,7 @@ var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
 begin
  inherited Create(aBus);
 
- FillChar(FuncDesc,SizeOf(FuncDesc),#0);
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
  FuncDesc.fVendorID:=SSD_VendorID;
  FuncDesc.fDeviceID:=SSD_DeviceID;
  FuncDesc.fClassCode:=$0108; // Mass Storage Controller, Non-Volatile Memory Controller
@@ -18348,7 +18420,7 @@ begin
  fSharedMemoryPointer:=nil;
  fOnDoorbell:=nil;
 
- FillChar(FuncDesc,SizeOf(FuncDesc),#0);
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
  FuncDesc.fVendorID:=IVSHMEM_VENDOR_ID;
  FuncDesc.fDeviceID:=IVSHMEM_DEVICE_ID;
  FuncDesc.fClassCode:=IVSHMEM_CLASS_CODE; // Memory Controller, Other
@@ -18493,7 +18565,7 @@ begin
  fVBEXOffset:=0;
  fVBEYOffset:=0;
 
- FillChar(FuncDesc,SizeOf(FuncDesc),#0);
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
  FuncDesc.fVendorID:=BOCHS_VBE_VENDOR_ID;
  FuncDesc.fDeviceID:=BOCHS_VBE_DEVICE_ID;
  FuncDesc.fClassCode:=BOCHS_VBE_CLASS_CODE;
@@ -18758,6 +18830,348 @@ begin
    if assigned(fMachine.OnNewFrame) then begin
     fMachine.OnNewFrame();
    end;
+  end;
+ end;
+end;
+
+{ TPasRISCV.TCirrusDevice }
+
+constructor TPasRISCV.TCirrusDevice.Create(const aBus:TPasRISCV.TPCIBusDevice;const aFrameBuffer:TFrameBufferDevice);
+var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
+    BARRegion:TPasRISCV.PPCIBARRegion;
+begin
+ inherited Create(aBus);
+
+ fFrameBuffer:=aFrameBuffer;
+
+ fSEQIndex:=0;
+ FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
+ fCRTIndex:=0;
+ FillChar(fCRTRegs,SizeOf(fCRTRegs),#0);
+ fGFXIndex:=0;
+ FillChar(fGFXRegs,SizeOf(fGFXRegs),#0);
+ fHDRReadCount:=0;
+ fHDR:=0;
+ fWidth:=640;
+ fHeight:=480;
+ fBPP:=32;
+ fPitch:=640*4;
+ fStartAddress:=0;
+ fModeActive:=false;
+
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
+ FuncDesc.fVendorID:=CIRRUS_VENDOR_ID;
+ FuncDesc.fDeviceID:=CIRRUS_DEVICE_ID;
+ FuncDesc.fSubsystemVendorID:=CIRRUS_SUBVENDOR_ID;
+ FuncDesc.fSubsystemDeviceID:=CIRRUS_SUBDEVICE_ID;
+ FuncDesc.fClassCode:=CIRRUS_CLASS_CODE;
+ FuncDesc.fProgIF:=$00;
+ FuncDesc.fRevisionID:=CIRRUS_REVISION;
+ FuncDesc.fIRQPin:=TPCI.PCI_IRQ_PIN_INTA;
+
+ // BAR0: Linear framebuffer (4MB VRAM)
+ BARRegion:=@FuncDesc.fBARRegions[0];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=CIRRUS_VRAM_SIZE;
+ BARRegion^.fOnLoad:=OnFBLoad;
+ BARRegion^.fOnStore:=OnFBStore;
+
+ // BAR1: MMIO registers (4KB)
+ BARRegion:=@FuncDesc.fBARRegions[2];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=CIRRUS_MMIO_SIZE;
+ BARRegion^.fOnLoad:=OnMMIOLoad;
+ BARRegion^.fOnStore:=OnMMIOStore;
+
+ fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
+
+end;
+
+destructor TPasRISCV.TCirrusDevice.Destroy;
+begin
+ fFrameBuffer:=nil;
+ FreeAndNil(fFuncs[0]);
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TCirrusDevice.Reset;
+begin
+ inherited Reset;
+ fSEQIndex:=0;
+ FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
+ fCRTIndex:=0;
+ FillChar(fCRTRegs,SizeOf(fCRTRegs),#0);
+ fGFXIndex:=0;
+ FillChar(fGFXRegs,SizeOf(fGFXRegs),#0);
+ fHDRReadCount:=0;
+ fHDR:=0;
+ fWidth:=640;
+ fHeight:=480;
+ fBPP:=32;
+ fPitch:=640*4;
+ fStartAddress:=0;
+ fModeActive:=false;
+end;
+
+procedure TPasRISCV.TCirrusDevice.UpdateDerivedState;
+var SR07:TPasRISCVUInt8;
+    NewBPP,NewPitch,NewWidth,NewHeight:TPasRISCVUInt32;
+    HDispEnd,VDispEnd:TPasRISCVUInt32;
+    BytesPerPixel:TPasRISCVUInt32;
+begin
+ // Determine BPP from SR07 + HDR (same logic as Linux cirrus-qemu driver)
+ SR07:=fSEQRegs[$07];
+ case SR07 and $1f of // mask relevant bits
+  $11:begin
+   NewBPP:=8;
+  end;
+  $17:begin
+   NewBPP:=16;
+  end;
+  $15:begin
+   NewBPP:=24;
+  end;
+  $19:begin
+   NewBPP:=32;
+  end;
+  else begin
+   NewBPP:=fBPP; // keep current
+  end;
+ end;
+
+ // Derive display resolution from CRT registers
+ // hdispend = (CRT[1] + 1) * 8
+ HDispEnd:=(TPasRISCVUInt32(fCRTRegs[$01])+1)*8;
+ // vdispend = CRT[0x12] + overflow bits from CRT[0x07]
+ VDispEnd:=TPasRISCVUInt32(fCRTRegs[$12]);
+ if (fCRTRegs[$07] and $02)<>0 then begin
+  VDispEnd:=VDispEnd or $100;
+ end;
+ if (fCRTRegs[$07] and $40)<>0 then begin
+  VDispEnd:=VDispEnd or $200;
+ end;
+ inc(VDispEnd); // VDispEnd is 0-based
+ NewWidth:=HDispEnd;
+ NewHeight:=VDispEnd;
+
+ // Sanity checks
+ if NewWidth<1 then begin
+  NewWidth:=1;
+ end;
+ if NewHeight<1 then begin
+  NewHeight:=1;
+ end;
+ if NewWidth>2048 then begin
+  NewWidth:=2048;
+ end;
+ if NewHeight>1024 then begin
+  NewHeight:=1024;
+ end;
+
+ // Derive pitch from CRT[0x13] + CRT[0x1b]
+ NewPitch:=TPasRISCVUInt32(fCRTRegs[$13])*8;
+ if (fCRTRegs[$1b] and $10)<>0 then begin
+  NewPitch:=NewPitch or $800; // bit 11
+ end;
+
+ // Derive start address
+ fStartAddress:=TPasRISCVUInt32(fCRTRegs[$0d]) or
+                (TPasRISCVUInt32(fCRTRegs[$0c]) shl 8);
+ fStartAddress:=fStartAddress shl 2;
+ // Extended start address bits from CRT[0x1b] and CRT[0x1d]
+ if (fCRTRegs[$1b] and $01)<>0 then begin
+  fStartAddress:=fStartAddress or $10000;
+ end;
+ if (fCRTRegs[$1b] and $04)<>0 then begin
+  fStartAddress:=fStartAddress or $20000;
+ end;
+ if (fCRTRegs[$1b] and $08)<>0 then begin
+  fStartAddress:=fStartAddress or $40000;
+ end;
+ if (fCRTRegs[$1d] and $80)<>0 then begin
+  fStartAddress:=fStartAddress or $80000;
+ end;
+
+ // Sanity on pitch
+ case NewBPP of
+  8:BytesPerPixel:=1;
+  16:BytesPerPixel:=2;
+  24:BytesPerPixel:=3;
+  else BytesPerPixel:=4;
+ end;
+ if NewPitch=0 then begin
+  NewPitch:=NewWidth*BytesPerPixel;
+ end;
+
+ // Check if mode is valid
+ if (NewWidth>=8) and (NewHeight>=8) and
+    (NewPitch>0) and (NewPitch<=CIRRUS_MAX_PITCH) and
+    (TPasRISCVUInt64(NewPitch)*NewHeight<=CIRRUS_VRAM_SIZE) then begin
+  fWidth:=NewWidth;
+  fHeight:=NewHeight;
+  fBPP:=NewBPP;
+  fPitch:=NewPitch;
+  fFrameBuffer.ResizeFrameBuffer(fWidth,fHeight,BytesPerPixel);
+  fFrameBuffer.fActive:=true;
+  fModeActive:=true;
+  if assigned(fMachine.OnNewFrame) then begin
+   fMachine.OnNewFrame();
+  end;
+ end;
+end;
+
+function TPasRISCV.TCirrusDevice.OnFBLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if (Address+aSize)<=length(fFrameBuffer.fData) then begin
+  case aSize of
+   1:begin
+    result:=fFrameBuffer.fData[Address];
+   end;
+   2:begin
+    result:=TPasRISCVUInt16(Pointer(@fFrameBuffer.fData[Address])^);
+   end;
+   4:begin
+    result:=TPasRISCVUInt32(Pointer(@fFrameBuffer.fData[Address])^);
+   end;
+   8:begin
+    result:=TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^);
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TCirrusDevice.OnFBStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if (Address+aSize)<=length(fFrameBuffer.fData) then begin
+{$ifdef FrameBufferDeviceDirtyMarking}
+  fFrameBuffer.fDirty:=true;
+{$endif}
+  case aSize of
+   1:begin
+    fFrameBuffer.fData[Address]:=TPasRISCVUInt8(aValue);
+   end;
+   2:begin
+    TPasRISCVUInt16(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt16(aValue);
+   end;
+   4:begin
+    TPasRISCVUInt32(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt32(aValue);
+   end;
+   8:begin
+    TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt64(aValue);
+   end;
+  end;
+ end;
+end;
+
+function TPasRISCV.TCirrusDevice.OnMMIOLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ case Address of
+  SEQ_INDEX:begin
+   result:=fSEQIndex;
+  end;
+  SEQ_DATA:begin
+   result:=fSEQRegs[fSEQIndex];
+  end;
+  CRT_INDEX:begin
+   result:=fCRTIndex;
+  end;
+  CRT_DATA:begin
+   result:=fCRTRegs[fCRTIndex];
+  end;
+  GFX_INDEX:begin
+   result:=fGFXIndex;
+  end;
+  GFX_DATA:begin
+   result:=fGFXRegs[fGFXIndex];
+  end;
+  VGA_DAC_MASK:begin
+   // Hidden DAC register: 4 consecutive reads reveal the HDR value
+   inc(fHDRReadCount);
+   if fHDRReadCount>=4 then begin
+    result:=fHDR;
+    fHDRReadCount:=0;
+   end else begin
+    result:=$ff; // normal DAC mask
+   end;
+  end;
+  else begin
+   result:=0;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TCirrusDevice.OnMMIOStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+    Value8:TPasRISCVUInt8;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ Value8:=TPasRISCVUInt8(aValue);
+ // Reset HDR read count on any non-DAC_MASK access
+ if Address<>VGA_DAC_MASK then begin
+  fHDRReadCount:=0;
+ end;
+ case Address of
+  SEQ_INDEX:begin
+   fSEQIndex:=Value8;
+  end;
+  SEQ_DATA:begin
+   fSEQRegs[fSEQIndex]:=Value8;
+   if fSEQIndex=$07 then begin
+    // Format register changed — update mode
+    UpdateDerivedState;
+   end;
+  end;
+  CRT_INDEX:begin
+   fCRTIndex:=Value8;
+  end;
+  CRT_DATA:begin
+   fCRTRegs[fCRTIndex]:=Value8;
+   // Update on writes to display-relevant registers
+   case fCRTIndex of
+    $01,$07,$12,$13,$1b:begin
+     UpdateDerivedState;
+    end;
+    $0c,$0d,$1d:begin
+     // Start address — update and signal new frame
+     UpdateDerivedState;
+{$ifdef FrameBufferDeviceDirtyMarking}
+     fFrameBuffer.fDirty:=true;
+{$endif}
+     if assigned(fMachine.OnNewFrame) then begin
+      fMachine.OnNewFrame();
+     end;
+    end;
+   end;
+  end;
+  GFX_INDEX:begin
+   fGFXIndex:=Value8;
+  end;
+  GFX_DATA:begin
+   fGFXRegs[fGFXIndex]:=Value8;
+  end;
+  VGA_DAC_MASK:begin
+   // Hidden DAC register write (after 4 reads)
+   fHDR:=Value8;
+   fHDRReadCount:=0;
   end;
  end;
 end;
@@ -22955,7 +23369,7 @@ begin
  fResources:=nil;
  fResourceCount:=0;
 
- FillChar(fScanouts,SizeOf(fScanouts),#0);
+ FillChar(fScanouts,SizeOf(TGPUScanouts),#0);
  fScanouts[0].Rect.Width:=fFrameBuffer.fWidth;
  fScanouts[0].Rect.Height:=fFrameBuffer.fHeight;
  fScanouts[0].Enabled:=true;
@@ -22981,7 +23395,7 @@ end;
 procedure TPasRISCV.TVirtIOGPUDevice.DeviceReset;
 begin
  DestroyAllResources;
- FillChar(fScanouts,SizeOf(fScanouts),#0);
+ FillChar(fScanouts,SizeOf(TGPUScanouts),#0);
  fScanouts[0].Rect.Width:=fFrameBuffer.fWidth;
  fScanouts[0].Rect.Height:=fFrameBuffer.fHeight;
  fScanouts[0].Enabled:=true;
@@ -23083,30 +23497,30 @@ end;
 procedure TPasRISCV.TVirtIOGPUDevice.SendOKNoData(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader);
 var Response:TVirtIOGPUCtrlHeader;
 begin
- FillChar(Response,SizeOf(Response),#0);
+ FillChar(Response,SizeOf(TVirtIOGPUCtrlHeader),#0);
  Response.CtrlType:=VIRTIO_GPU_RESP_OK_NODATA;
  Response.Flags:=aHeader^.Flags;
  Response.FenceID:=aHeader^.FenceID;
  Response.CtxID:=aHeader^.CtxID;
- SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(TVirtIOGPUCtrlHeader));
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.SendError(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader;const aErrorCode:TPasRISCVUInt32);
 var Response:TVirtIOGPUCtrlHeader;
 begin
- FillChar(Response,SizeOf(Response),#0);
+ FillChar(Response,SizeOf(TVirtIOGPUCtrlHeader),#0);
  Response.CtrlType:=aErrorCode;
  Response.Flags:=aHeader^.Flags;
  Response.FenceID:=aHeader^.FenceID;
  Response.CtxID:=aHeader^.CtxID;
- SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(TVirtIOGPUCtrlHeader));
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleGetDisplayInfo(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PVirtIOGPUCtrlHeader);
 var Response:TVirtIOGPURespDisplayInfo;
     Index:TPasRISCVSizeInt;
 begin
- FillChar(Response,SizeOf(Response),#0);
+ FillChar(Response,SizeOf(TVirtIOGPURespDisplayInfo),#0);
  Response.Header.CtrlType:=VIRTIO_GPU_RESP_OK_DISPLAY_INFO;
  Response.Header.Flags:=aHeader^.Flags;
  Response.Header.FenceID:=aHeader^.FenceID;
@@ -23116,7 +23530,7 @@ begin
   Response.PModes[Index].Enabled:=ord(fScanouts[Index].Enabled);
   Response.PModes[Index].Flags:=0;
  end;
- SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(TVirtIOGPURespDisplayInfo));
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleResourceCreate2D(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUResourceCreate2D);
@@ -23302,7 +23716,7 @@ var Cmd:TVirtIOGPUResourceAttachBacking;
     Index:TPasRISCVSizeInt;
     EntriesSize:TPasRISCVUInt64;
 begin
- if not CopyMemoryFromQueue(@Cmd,aQueueIndex,aDescriptorIndex,0,SizeOf(Cmd)) then begin
+ if not CopyMemoryFromQueue(@Cmd,aQueueIndex,aDescriptorIndex,0,SizeOf(TVirtIOGPUResourceAttachBacking)) then begin
   NotifyDeviceNeedsReset;
   exit;
  end;
@@ -23314,7 +23728,7 @@ begin
  MemEntries:=nil;
  SetLength(MemEntries,Cmd.NrEntries);
  EntriesSize:=TPasRISCVUInt64(Cmd.NrEntries)*SizeOf(TVirtIOGPUMemEntry);
- if not CopyMemoryFromQueue(@MemEntries[0],aQueueIndex,aDescriptorIndex,SizeOf(Cmd),EntriesSize) then begin
+ if not CopyMemoryFromQueue(@MemEntries[0],aQueueIndex,aDescriptorIndex,SizeOf(TVirtIOGPUResourceAttachBacking),EntriesSize) then begin
   MemEntries:=nil;
   NotifyDeviceNeedsReset;
   exit;
@@ -23350,7 +23764,7 @@ begin
   SendError(aQueueIndex,aDescriptorIndex,@aCmd^.Header,VIRTIO_GPU_RESP_ERR_INVALID_SCANOUT_ID);
   exit;
  end;
- FillChar(Response,SizeOf(Response),#0);
+ FillChar(Response,SizeOf(TVirtIOGPURespEDID),#0);
  Response.Header.CtrlType:=VIRTIO_GPU_RESP_OK_EDID;
  Response.Header.Flags:=aCmd^.Header.Flags;
  Response.Header.FenceID:=aCmd^.Header.FenceID;
@@ -23450,7 +23864,7 @@ begin
   inc(CheckSum,Response.EDID[Index]);
  end;
  Response.EDID[127]:=TPasRISCVUInt8(256-CheckSum);
- SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(Response));
+ SendResponse(aQueueIndex,aDescriptorIndex,@Response,SizeOf(TVirtIOGPURespEDID));
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleUpdateCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
@@ -23501,7 +23915,7 @@ begin
   NotifyDeviceNeedsReset;
   exit;
  end;
- Move(fRecvBuffer[0],Header,SizeOf(Header));
+ Move(fRecvBuffer[0],Header,SizeOf(TVirtIOGPUCtrlHeader));
  case aQueueIndex of
   VIRTIO_GPU_VQ_CONTROL:begin
    case Header.CtrlType of
@@ -41179,6 +41593,16 @@ begin
   end;
  end;
 
+ case fConfiguration.fDisplayMode of
+  TDisplayMode.Cirrus:begin
+   fCirrusDevice:=TCirrusDevice.Create(fPCIBusDevice,fFrameBufferDevice);
+   fPCIBusDevice.AddBusDevice(fCirrusDevice);
+  end;
+  else begin
+   fCirrusDevice:=nil;
+  end;
+ end;
+
  fHARTs:=nil;
  SetLength(fHARTs,fCountHARTs);
  for Index:=0 to length(fHARTs)-1 do begin
@@ -41243,6 +41667,11 @@ begin
  if assigned(fBochsVBEDevice) then begin
   fPCIBusDevice.RemoveBusDevice(fBochsVBEDevice);
   FreeAndNil(fBochsVBEDevice);
+ end;
+
+ if assigned(fCirrusDevice) then begin
+  fPCIBusDevice.RemoveBusDevice(fCirrusDevice);
+  FreeAndNil(fCirrusDevice);
  end;
 
  fPCIBusDevice.RemoveBusDevice(fIVSHMEMDevice);
@@ -42857,6 +43286,10 @@ begin
 
  if assigned(fBochsVBEDevice) then begin
   fBochsVBEDevice.Reset;
+ end;
+
+ if assigned(fCirrusDevice) then begin
+  fCirrusDevice.Reset;
  end;
 
  for Index:=0 to length(fHARTs)-1 do begin
