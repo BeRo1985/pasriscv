@@ -4813,35 +4813,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
             end;
-            { TDS1307I2CBusDevice }
-            TDS1307I2CBusDevice=class(TI2CBusDevice)
-             public
-              const DS1307_ADDRESS=$68;
-                    REG_SECONDS=$00;
-                    REG_MINUTES=$01;
-                    REG_HOURS=$02;
-                    REG_DAY=$03;
-                    REG_DATE=$04;
-                    REG_MONTH=$05;
-                    REG_YEAR=$06;
-                    REG_CONTROL=$07;
-                    BIT_CH=$80; // Clock Halt (bit 7 of seconds register)
-                    COUNT_REGS=8;
-             private
-              fRegisters:array[0..63] of TPasRISCVUInt8; // 8 time regs + 56 bytes NVRAM
-              fRegPointer:TPasRISCVUInt8;
-              fWriteState:TPasRISCVUInt8; // 0=expect reg pointer, 1=writing data
-              class function ToBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8; static;
-              class function FromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8; static;
-              procedure UpdateRegisters;
-             public
-              constructor Create(const aI2CDevice:TI2CDevice); override;
-              destructor Destroy; override;
-              function Start(const aIsWrite:Boolean):Boolean; override;
-              procedure Stop; override;
-              function Read(out aValue:TPasRISCVUInt8):Boolean; override;
-              function Write(const aValue:TPasRISCVUInt8):Boolean; override;
-            end;
             { TFrameBufferDevice }
             TFrameBufferDevice=class
              public
@@ -5113,6 +5084,35 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function WriteReport(const aReportType,aReportID:TPasRISCVUInt8;const aOffset:TPasRISCVUInt32;const aValue:TPasRISCVUInt8):Boolean;
               function ReadRegister(const aRegister:TPasRISCVUInt16;const aOffset:TPasRISCVUInt32):TPasRISCVUInt8;
               function WriteRegister(const aRegister:TPasRISCVUInt16;const aOffset:TPasRISCVUInt32;const aValue:TPasRISCVUInt8):Boolean;
+              function Start(const aIsWrite:Boolean):Boolean; override;
+              procedure Stop; override;
+              function Read(out aValue:TPasRISCVUInt8):Boolean; override;
+              function Write(const aValue:TPasRISCVUInt8):Boolean; override;
+            end;
+            { TDS1307I2CBusDevice }
+            TDS1307I2CBusDevice=class(TI2CBusDevice)
+             public
+              const DS1307_ADDRESS=$68;
+                    REG_SECONDS=$00;
+                    REG_MINUTES=$01;
+                    REG_HOURS=$02;
+                    REG_DAY=$03;
+                    REG_DATE=$04;
+                    REG_MONTH=$05;
+                    REG_YEAR=$06;
+                    REG_CONTROL=$07;
+                    BIT_CH=$80; // Clock Halt (bit 7 of seconds register)
+                    COUNT_REGS=8;
+             private
+              fRegisters:array[0..63] of TPasRISCVUInt8; // 8 time regs + 56 bytes NVRAM
+              fRegPointer:TPasRISCVUInt8;
+              fWriteState:TPasRISCVUInt8; // 0=expect reg pointer, 1=writing data
+              class function ToBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8; static;
+              class function FromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8; static;
+              procedure UpdateRegisters;
+             public
+              constructor Create(const aI2CDevice:TI2CDevice); override;
+              destructor Destroy; override;
               function Start(const aIsWrite:Boolean):Boolean; override;
               procedure Stop; override;
               function Read(out aValue:TPasRISCVUInt8):Boolean; override;
@@ -25804,85 +25804,6 @@ begin
  end;
 end;
 
-{ TPasRISCV.TDS1307I2CBusDevice }
-
-constructor TPasRISCV.TDS1307I2CBusDevice.Create(const aI2CDevice:TI2CDevice);
-begin
- inherited Create(aI2CDevice);
- fAddress:=DS1307_ADDRESS;
- FillChar(fRegisters,SizeOf(fRegisters),#0);
- fRegPointer:=0;
- fWriteState:=0;
- UpdateRegisters;
-end;
-
-destructor TPasRISCV.TDS1307I2CBusDevice.Destroy;
-begin
- inherited Destroy;
-end;
-
-class function TPasRISCV.TDS1307I2CBusDevice.ToBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
-begin
- result:=((aValue div 10) shl 4) or (aValue mod 10);
-end;
-
-class function TPasRISCV.TDS1307I2CBusDevice.FromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
-begin
- result:=((aValue shr 4)*10)+(aValue and $f);
-end;
-
-procedure TPasRISCV.TDS1307I2CBusDevice.UpdateRegisters;
-var CurrentTime:TDateTime;
-    Year,Month,Day,DayOfWeek,Hour,Minute,Second,Millisecond:TPasRISCVUInt16;
-begin
- CurrentTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
- DecodeDateFully(CurrentTime,Year,Month,Day,DayOfWeek);
- DecodeTime(CurrentTime,Hour,Minute,Second,Millisecond);
- fRegisters[REG_SECONDS]:=ToBCD(Min(59,Second)); // bit 7 (CH) = 0, clock running
- fRegisters[REG_MINUTES]:=ToBCD(Minute);
- fRegisters[REG_HOURS]:=ToBCD(Hour); // 24h mode (bit 6 = 0)
- fRegisters[REG_DAY]:=ToBCD(DayOfWeek);
- fRegisters[REG_DATE]:=ToBCD(Day);
- fRegisters[REG_MONTH]:=ToBCD(Month);
- fRegisters[REG_YEAR]:=ToBCD(Year mod 100);
-end;
-
-function TPasRISCV.TDS1307I2CBusDevice.Start(const aIsWrite:Boolean):Boolean;
-begin
- fWriteState:=0;
- if not aIsWrite then begin
-  // Read start — refresh time registers
-  UpdateRegisters;
- end;
- result:=true;
-end;
-
-procedure TPasRISCV.TDS1307I2CBusDevice.Stop;
-begin
- // Nothing special needed
-end;
-
-function TPasRISCV.TDS1307I2CBusDevice.Read(out aValue:TPasRISCVUInt8):Boolean;
-begin
- aValue:=fRegisters[fRegPointer and $3f];
- fRegPointer:=(fRegPointer+1) and $3f; // auto-increment with wrap
- result:=true;
-end;
-
-function TPasRISCV.TDS1307I2CBusDevice.Write(const aValue:TPasRISCVUInt8):Boolean;
-begin
- if fWriteState=0 then begin
-  // First byte after START+W is the register pointer
-  fRegPointer:=aValue and $3f;
-  fWriteState:=1;
- end else begin
-  // Subsequent bytes are data writes
-  fRegisters[fRegPointer and $3f]:=aValue;
-  fRegPointer:=(fRegPointer+1) and $3f;
- end;
- result:=true;
-end;
-
 { TPasRISCV.TFrameBufferDevice }
 
 constructor TPasRISCV.TFrameBufferDevice.Create(const aMachine:TPasRISCV);
@@ -27088,6 +27009,85 @@ begin
   end;
  finally
   fLock.Release;
+ end;
+ result:=true;
+end;
+
+{ TPasRISCV.TDS1307I2CBusDevice }
+
+constructor TPasRISCV.TDS1307I2CBusDevice.Create(const aI2CDevice:TI2CDevice);
+begin
+ inherited Create(aI2CDevice);
+ fAddress:=DS1307_ADDRESS;
+ FillChar(fRegisters,SizeOf(fRegisters),#0);
+ fRegPointer:=0;
+ fWriteState:=0;
+ UpdateRegisters;
+end;
+
+destructor TPasRISCV.TDS1307I2CBusDevice.Destroy;
+begin
+ inherited Destroy;
+end;
+
+class function TPasRISCV.TDS1307I2CBusDevice.ToBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
+begin
+ result:=((aValue div 10) shl 4) or (aValue mod 10);
+end;
+
+class function TPasRISCV.TDS1307I2CBusDevice.FromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
+begin
+ result:=((aValue shr 4)*10)+(aValue and $f);
+end;
+
+procedure TPasRISCV.TDS1307I2CBusDevice.UpdateRegisters;
+var CurrentTime:TDateTime;
+    Year,Month,Day,DayOfWeek,Hour,Minute,Second,Millisecond:TPasRISCVUInt16;
+begin
+ CurrentTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
+ DecodeDateFully(CurrentTime,Year,Month,Day,DayOfWeek);
+ DecodeTime(CurrentTime,Hour,Minute,Second,Millisecond);
+ fRegisters[REG_SECONDS]:=ToBCD(Min(59,Second)); // bit 7 (CH) = 0, clock running
+ fRegisters[REG_MINUTES]:=ToBCD(Minute);
+ fRegisters[REG_HOURS]:=ToBCD(Hour); // 24h mode (bit 6 = 0)
+ fRegisters[REG_DAY]:=ToBCD(DayOfWeek);
+ fRegisters[REG_DATE]:=ToBCD(Day);
+ fRegisters[REG_MONTH]:=ToBCD(Month);
+ fRegisters[REG_YEAR]:=ToBCD(Year mod 100);
+end;
+
+function TPasRISCV.TDS1307I2CBusDevice.Start(const aIsWrite:Boolean):Boolean;
+begin
+ fWriteState:=0;
+ if not aIsWrite then begin
+  // Read start — refresh time registers
+  UpdateRegisters;
+ end;
+ result:=true;
+end;
+
+procedure TPasRISCV.TDS1307I2CBusDevice.Stop;
+begin
+ // Nothing special needed
+end;
+
+function TPasRISCV.TDS1307I2CBusDevice.Read(out aValue:TPasRISCVUInt8):Boolean;
+begin
+ aValue:=fRegisters[fRegPointer and $3f];
+ fRegPointer:=(fRegPointer+1) and $3f; // auto-increment with wrap
+ result:=true;
+end;
+
+function TPasRISCV.TDS1307I2CBusDevice.Write(const aValue:TPasRISCVUInt8):Boolean;
+begin
+ if fWriteState=0 then begin
+  // First byte after START+W is the register pointer
+  fRegPointer:=aValue and $3f;
+  fWriteState:=1;
+ end else begin
+  // Subsequent bytes are data writes
+  fRegisters[fRegPointer and $3f]:=aValue;
+  fRegPointer:=(fRegPointer+1) and $3f;
  end;
  result:=true;
 end;
