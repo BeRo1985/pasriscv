@@ -2816,6 +2816,30 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure LowerIRQ(const aMSIID:TPasRISCVUInt32); overload;
             end;
             TPCIHostBridgeDevice=class;
+            { TPCIIODevice }
+            TPCIIODevice=class(TBusDevice)
+             public
+              type TOnIOLoad=function(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64 of object;
+                   TOnIOStore=procedure(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64) of object;
+                   PIORange=^TIORange;
+                   TIORange=record
+                    fPort:TPasRISCVUInt16;
+                    fSize:TPasRISCVUInt16;
+                    fOnLoad:TOnIOLoad;
+                    fOnStore:TOnIOStore;
+                   end;
+             private
+              fRanges:array of TIORange;
+              fCountRanges:TPasRISCVSizeInt;
+              function FindRange(const aPort:TPasRISCVUInt16):PIORange;
+             public
+              constructor Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64); override;
+              destructor Destroy; override;
+              procedure RegisterIORange(const aPort,aSize:TPasRISCVUInt16;const aOnLoad:TOnIOLoad;const aOnStore:TOnIOStore);
+              procedure UnregisterIORange(const aPort:TPasRISCVUInt16);
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+            end;
             { TPCIBusDevice }
             TPCIBusDevice=class(TBusDevice)
              public
@@ -3368,6 +3392,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure OnFBStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               function OnMMIOLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnMMIOStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function OnVGAIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnVGAIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              procedure RegisterVGAIO;
              public
               property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
             end;
@@ -6568,7 +6595,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fPCIBusDevice:TPCIBusDevice;
 
-       fPCIIODevice:TBusDevice;
+       fPCIIODevice:TPCIIODevice;
 
        fNVMeDevice:TNVMeDevice;
 
@@ -6729,6 +6756,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property DS1742Device:TDS1742Device read fDS1742Device;
 
        property PCIBusDevice:TPCIBusDevice read fPCIBusDevice;
+
+       property PCIIODevice:TPCIIODevice read fPCIIODevice;
 
        property NVMeDevice:TNVMeDevice read fNVMeDevice;
 
@@ -16723,6 +16752,106 @@ begin
  LowerIRQ;
 end;
 
+{ TPasRISCV.TPCIIODevice }
+
+constructor TPasRISCV.TPCIIODevice.Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64);
+begin
+ inherited Create(aMachine,aBase,aSize);
+ fRanges:=nil;
+ fCountRanges:=0;
+ fUnalignedAccessSupport:=true;
+ fMinOpSize:=1;
+ fMaxOpSize:=4;
+end;
+
+destructor TPasRISCV.TPCIIODevice.Destroy;
+begin
+ fRanges:=nil;
+ fCountRanges:=0;
+ inherited Destroy;
+end;
+
+function TPasRISCV.TPCIIODevice.FindRange(const aPort:TPasRISCVUInt16):PIORange;
+var Index:TPasRISCVSizeInt;
+begin
+ for Index:=0 to fCountRanges-1 do begin
+  result:=@fRanges[Index];
+  if (aPort>=result^.fPort) and (aPort<(result^.fPort+result^.fSize)) then begin
+   exit;
+  end;
+ end;
+ result:=nil;
+end;
+
+procedure TPasRISCV.TPCIIODevice.RegisterIORange(const aPort,aSize:TPasRISCVUInt16;const aOnLoad:TOnIOLoad;const aOnStore:TOnIOStore);
+var Index:TPasRISCVSizeInt;
+    Range:PIORange;
+begin
+ Index:=fCountRanges;
+ inc(fCountRanges);
+ if length(fRanges)<fCountRanges then begin
+  SetLength(fRanges,fCountRanges+((fCountRanges+1) shr 1));
+ end;
+ Range:=@fRanges[Index];
+ Range^.fPort:=aPort;
+ Range^.fSize:=aSize;
+ Range^.fOnLoad:=aOnLoad;
+ Range^.fOnStore:=aOnStore;
+end;
+
+procedure TPasRISCV.TPCIIODevice.UnregisterIORange(const aPort:TPasRISCVUInt16);
+var Index:TPasRISCVSizeInt;
+begin
+ for Index:=0 to fCountRanges-1 do begin
+  if fRanges[Index].fPort=aPort then begin
+   if (Index+1)<fCountRanges then begin
+    fRanges[Index]:=fRanges[fCountRanges-1];
+   end;
+   dec(fCountRanges);
+   exit;
+  end;
+ end;
+end;
+
+function TPasRISCV.TPCIIODevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Port:TPasRISCVUInt16;
+    Range:PIORange;
+begin
+ Port:=TPasRISCVUInt16(aAddress-fBase);
+ Range:=FindRange(Port);
+ if assigned(Range) and assigned(Range^.fOnLoad) then begin
+  result:=Range^.fOnLoad(Port,aSize);
+ end else begin
+  // Unassigned I/O port reads return all-ones (like QEMU/x86 behavior)
+  case aSize of
+   1:begin
+    result:=TPasRISCVUInt64($ff);
+   end;
+   2:begin
+    result:=TPasRISCVUInt64($ffff);
+   end; 
+   4:begin
+    result:=TPasRISCVUInt64($ffffffff);
+   end;
+   else begin
+    result:=TPasRISCVUInt64($ffffffffffffffff);
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TPCIIODevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Port:TPasRISCVUInt16;
+    Range:PIORange;
+begin
+ Port:=TPasRISCVUInt16(aAddress-fBase);
+ Range:=FindRange(Port);
+ if assigned(Range) and assigned(Range^.fOnStore) then begin
+  Range^.fOnStore(Port,aValue,aSize);
+ end;
+ // Unassigned I/O port writes are silently ignored
+end;
+
 { TPasRISCV.TPCIBusDevice }
 
 constructor TPasRISCV.TPCIBusDevice.Create(const aMachine:TPasRISCV);
@@ -18900,10 +19029,19 @@ begin
 
  fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
 
+ RegisterVGAIO;
+
 end;
 
 destructor TPasRISCV.TCirrusDevice.Destroy;
+var PCIIODevice:TPCIIODevice;
 begin
+ if assigned(fBus) and assigned(fBus.fMachine) then begin
+  PCIIODevice:=fBus.fMachine.fPCIIODevice;
+  if assigned(PCIIODevice) then begin
+   PCIIODevice.UnregisterIORange($3c0);
+  end;
+ end;
  fFrameBuffer:=nil;
  FreeAndNil(fFuncs[0]);
  inherited Destroy;
@@ -19177,6 +19315,106 @@ begin
   end;
   VGA_DAC_MASK:begin
    // Hidden DAC register write (after 4 reads)
+   fHDR:=Value8;
+   fHDRReadCount:=0;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TCirrusDevice.RegisterVGAIO;
+var PCIIODevice:TPCIIODevice;
+begin
+ PCIIODevice:=fBus.fMachine.fPCIIODevice;
+ if assigned(PCIIODevice) then begin
+  // VGA I/O range $3C0-$3DF (32 bytes)
+  PCIIODevice.RegisterIORange($3c0,$20,OnVGAIOLoad,OnVGAIOStore);
+ end;
+end;
+
+function TPasRISCV.TCirrusDevice.OnVGAIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Offset:TPasRISCVUInt16;
+begin
+ Offset:=aPort-$3c0;
+ case Offset of
+  SEQ_INDEX:begin
+   result:=fSEQIndex;
+  end;
+  SEQ_DATA:begin
+   result:=fSEQRegs[fSEQIndex];
+  end;
+  CRT_INDEX:begin
+   result:=fCRTIndex;
+  end;
+  CRT_DATA:begin
+   result:=fCRTRegs[fCRTIndex];
+  end;
+  GFX_INDEX:begin
+   result:=fGFXIndex;
+  end;
+  GFX_DATA:begin
+   result:=fGFXRegs[fGFXIndex];
+  end;
+  VGA_DAC_MASK:begin
+   inc(fHDRReadCount);
+   if fHDRReadCount>=4 then begin
+    result:=fHDR;
+    fHDRReadCount:=0;
+   end else begin
+    result:=$ff;
+   end;
+  end;
+  else begin
+   result:=$ff;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TCirrusDevice.OnVGAIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt16;
+    Value8:TPasRISCVUInt8;
+begin
+ Offset:=aPort-$3c0;
+ Value8:=TPasRISCVUInt8(aValue);
+ if Offset<>VGA_DAC_MASK then begin
+  fHDRReadCount:=0;
+ end;
+ case Offset of
+  SEQ_INDEX:begin
+   fSEQIndex:=Value8;
+  end;
+  SEQ_DATA:begin
+   fSEQRegs[fSEQIndex]:=Value8;
+   if fSEQIndex=$07 then begin
+    UpdateDerivedState;
+   end;
+  end;
+  CRT_INDEX:begin
+   fCRTIndex:=Value8;
+  end;
+  CRT_DATA:begin
+   fCRTRegs[fCRTIndex]:=Value8;
+   case fCRTIndex of
+    $01,$07,$12,$13,$1b:begin
+     UpdateDerivedState;
+    end;
+    $0c,$0d,$1d:begin
+     UpdateDerivedState;
+{$ifdef FrameBufferDeviceDirtyMarking}
+     fFrameBuffer.fDirty:=true;
+{$endif}
+     if assigned(fMachine.OnNewFrame) then begin
+      fMachine.OnNewFrame();
+     end;
+    end;
+   end;
+  end;
+  GFX_INDEX:begin
+   fGFXIndex:=Value8;
+  end;
+  GFX_DATA:begin
+   fGFXRegs[fGFXIndex]:=Value8;
+  end;
+  VGA_DAC_MASK:begin
    fHDR:=Value8;
    fHDRReadCount:=0;
   end;
@@ -41507,10 +41745,7 @@ begin
  fPCIBusDevice:=TPCIBusDevice.Create(self);
 
  if TPCI.PCI_IO_DEFAULT_SIZE<>0 then begin
-  fPCIIODevice:=TBusDevice.Create(self,TPCI.PCI_IO_DEFAULT_ADDR,TPCI.PCI_IO_DEFAULT_SIZE);
-  fPCIIODevice.UnalignedAccessSupport:=true;
-  fPCIIODevice.MinOpSize:=1;
-  fPCIIODevice.MaxOpSize:=4;
+  fPCIIODevice:=TPCIIODevice.Create(self,TPCI.PCI_IO_DEFAULT_ADDR,TPCI.PCI_IO_DEFAULT_SIZE);
  end else begin
   fPCIIODevice:=nil;
  end;
