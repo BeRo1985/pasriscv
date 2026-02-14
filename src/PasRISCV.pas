@@ -6344,7 +6344,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TRTCMode=
              (
               DS1742,
-              GoldfishRTC,
+              Goldfish,
               DS1307
              );
             { TConfiguration }
@@ -42204,7 +42204,7 @@ begin
    fGoldfishRTCDevice:=nil;
    fDS1307Device:=nil;
   end;
-  TRTCMode.GoldfishRTC:begin
+  TRTCMode.Goldfish:begin
    fDS1742Device:=nil;
    fGoldfishRTCDevice:=TGoldfishRTCDevice.Create(self);
    fDS1307Device:=nil;
@@ -43197,7 +43197,7 @@ begin
       SoCNode.AddChild(RTCNode);
      end;
     end;
-    TRTCMode.GoldfishRTC:begin
+    TRTCMode.Goldfish:begin
      RTCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fGoldfishRTCBase);
      try
       RTCNode.AddPropertyReg('reg',fConfiguration.fGoldfishRTCBase,fConfiguration.fGoldfishRTCSize);
