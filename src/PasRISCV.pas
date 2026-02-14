@@ -4392,16 +4392,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
             end;
             { TFrameBufferDevice }
-            TFrameBufferDevice=class(TBusDevice)
-             public
-              const FrameReadyAddress=0;
-                    ActiveAddress=4;
-                    ResolutionAddress=8;
-                    BytesPerPixelAddress=12;
-                    WidthAddress=16;
-                    HeightAddress=20;
-                    FrameBufferAddress=$1000;
+            TFrameBufferDevice=class
              private
+              fMachine:TPasRISCV;
               fLock:TPasMPMultipleReaderSingleWriterLock;
               fActive:Boolean;
               fAutomaticRefresh:Boolean;
@@ -4415,13 +4408,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               destructor Destroy; override;
-              procedure ResizeFrameBuffer;
+              procedure ResizeFrameBuffer(const aWidth,aHeight,aBytesPerPixel:TPasRISCVUInt32);
               procedure ClearFrameBuffer;
               function CheckDirtyAndFlush:Boolean;
-              function GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer; override;
-              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
-              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+              procedure MarkDirty;
              public
+              property Machine:TPasRISCV read fMachine;
               property Data:TPasRISCVUInt8DynamicArray read fData write fData;
               property Active:Boolean read fActive write fActive;
               property AutomaticRefresh:Boolean read fAutomaticRefresh write fAutomaticRefresh;
@@ -4432,6 +4424,27 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef FrameBufferDeviceDirtyMarking}
               property Dirty:TPasMPBool32 read fDirty write fDirty;
 {$endif}
+            end;
+            { TSimpleFBDevice }
+            TSimpleFBDevice=class(TBusDevice)
+             public
+              const FrameReadyAddress=0;
+                    ActiveAddress=4;
+                    ResolutionAddress=8;
+                    BytesPerPixelAddress=12;
+                    WidthAddress=16;
+                    HeightAddress=20;
+                    FrameBufferAddress=$1000;
+             private
+              fFrameBuffer:TFrameBufferDevice;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              function GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer; override;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+             public
+              property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
             end;
             { TSharedMemoryDevice }
             TSharedMemoryDevice=class(TBusDevice)
@@ -5837,6 +5850,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property OnError:TOnError read fOnError write fOnError;
               property LocalHARTIndex:TPasRISCVUInt64 read fLocalHARTIndex write SetLocalHARTIndex;
             end;
+            TDisplayMode=
+             (
+              SimpleFB,
+              VirtIOGPU,
+              BochsVBE
+             );
             { TConfiguration }
             TConfiguration=class
              private
@@ -5957,6 +5976,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIOBlockMQ:Boolean;
 
               fNVMeEnabled:Boolean;
+
+              fDisplayMode:TDisplayMode;
 
               fLRSCMaximumCycles:TPasRISCVUInt64;
 
@@ -6092,6 +6113,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property NVMeEnabled:Boolean read fNVMeEnabled write fNVMeEnabled;
 
+              property DisplayMode:TDisplayMode read fDisplayMode write fDisplayMode;
+
               property LRSCMaximumCycles:TPasRISCVUInt64 read fLRSCMaximumCycles write fLRSCMaximumCycles;
 
             end;
@@ -6151,6 +6174,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fIVSHMEMDevice:TIVSHMEMDevice;
 
        fFrameBufferDevice:TFrameBufferDevice;
+
+       fSimpleFBDevice:TSimpleFBDevice;
 
        fSharedMemoryDevice:TSharedMemoryDevice;
 
@@ -6303,6 +6328,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property IVSHMEMDevice:TIVSHMEMDevice read fIVSHMEMDevice;
 
        property FrameBufferDevice:TFrameBufferDevice read fFrameBufferDevice;
+
+       property SimpleFBDevice:TSimpleFBDevice read fSimpleFBDevice;
 
        property SharedMemoryDevice:TSharedMemoryDevice read fSharedMemoryDevice;
 
@@ -23551,7 +23578,8 @@ end;
 
 constructor TPasRISCV.TFrameBufferDevice.Create(const aMachine:TPasRISCV);
 begin
- inherited Create(aMachine,aMachine.fConfiguration.fFrameBufferBase,FrameBufferAddress+aMachine.fConfiguration.fFrameBufferSize);
+ inherited Create;
+ fMachine:=aMachine;
  fLock:=TPasMPMultipleReaderSingleWriterLock.Create;
  fActive:=false;
  fAutomaticRefresh:=false;
@@ -23570,32 +23598,30 @@ begin
  inherited Destroy;
 end;
 
-procedure TPasRISCV.TFrameBufferDevice.ResizeFrameBuffer;
+procedure TPasRISCV.TFrameBufferDevice.ResizeFrameBuffer(const aWidth,aHeight,aBytesPerPixel:TPasRISCVUInt32);
 var NewData:TPasRISCVUInt8DynamicArray;
+    NewSize:TPasRISCVSizeInt;
 begin
- fLock.AcquireRead;
+ fLock.AcquireWrite;
  try
-  if length(fData)<(fWidth*fHeight*fBytesPerPixel) then begin
-   fLock.ReadToWrite;
+  fWidth:=aWidth;
+  fHeight:=aHeight;
+  fBytesPerPixel:=aBytesPerPixel;
+  NewSize:=fWidth*fHeight*fBytesPerPixel;
+  if length(fData)<NewSize then begin
+   NewData:=nil;
    try
-    if length(fData)<(fWidth*fHeight*fBytesPerPixel) then begin
-     NewData:=nil;
-     try
-      SetLength(NewData,(fWidth*fHeight*fBytesPerPixel)*2);
-      Move(fData[0],NewData[0],length(fData));
-     finally
-      fData:=NewData;
-     end;
-    end;
-{$ifdef FrameBufferDeviceDirtyMarking}
-    fDirty:=true;
-{$endif}
+    SetLength(NewData,NewSize*2);
+    Move(fData[0],NewData[0],length(fData));
    finally
-    fLock.WriteToRead;
+    fData:=NewData;
    end;
   end;
+{$ifdef FrameBufferDeviceDirtyMarking}
+  fDirty:=true;
+{$endif}
  finally
-  fLock.ReleaseRead;
+  fLock.ReleaseWrite;
  end;
 end;
 
@@ -23603,10 +23629,12 @@ procedure TPasRISCV.TFrameBufferDevice.ClearFrameBuffer;
 var Index:TPasRISCVSizeInt;
     Pixel:PPasRISCVUInt32;
 begin
- Pixel:=@fData[0];
- for Index:=1 to fWidth*fHeight do begin
-  Pixel^:=$00000000;
-  inc(Pixel);
+ if length(fData)>0 then begin
+  Pixel:=@fData[0];
+  for Index:=1 to fWidth*fHeight do begin
+   Pixel^:=$00000000;
+   inc(Pixel);
+  end;
  end;
 {$ifdef FrameBufferDeviceDirtyMarking}
  fDirty:=true;
@@ -23625,18 +23653,39 @@ begin
 {$endif}
 end;
 
-function TPasRISCV.TFrameBufferDevice.GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
+procedure TPasRISCV.TFrameBufferDevice.MarkDirty;
+begin
+{$ifdef FrameBufferDeviceDirtyMarking}
+ fDirty:=true;
+{$endif}
+end;
+
+{ TPasRISCV.TSimpleFBDevice }
+
+constructor TPasRISCV.TSimpleFBDevice.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fFrameBufferBase,FrameBufferAddress+aMachine.fConfiguration.fFrameBufferSize);
+ fFrameBuffer:=aMachine.fFrameBufferDevice;
+end;
+
+destructor TPasRISCV.TSimpleFBDevice.Destroy;
+begin
+ fFrameBuffer:=nil;
+ inherited Destroy;
+end;
+
+function TPasRISCV.TSimpleFBDevice.GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
 var Address:TPasRISCVUInt64;
 begin
  if (aAddress>=fBase) and ((aAddress-fBase)<fSize) then begin
   Address:=aAddress-fBase;
-  if (Address>=FrameBufferAddress) and ((Address-FrameBufferAddress)<length(fData)) then begin
+  if (Address>=FrameBufferAddress) and ((Address-FrameBufferAddress)<length(fFrameBuffer.fData)) then begin
 {$ifdef FrameBufferDeviceDirtyMarking}
    if aWrite then begin
-    fDirty:=true;
+    fFrameBuffer.fDirty:=true;
    end;
 {$endif}
-   result:=@fData[Address-FrameBufferAddress];
+   result:=@fFrameBuffer.fData[Address-FrameBufferAddress];
   end else begin
    result:=aBounce;
   end;
@@ -23645,7 +23694,7 @@ begin
  end;
 end;
 
-function TPasRISCV.TFrameBufferDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TSimpleFBDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var Address:TPasRISCVUInt64;
 begin
  Address:=aAddress-fBase;
@@ -23654,35 +23703,35 @@ begin
    result:=0;
   end;
   ActiveAddress:begin
-   result:=ord(fActive);
+   result:=ord(fFrameBuffer.fActive);
   end;
   ResolutionAddress:begin
-   result:=(TPasRISCVUInt64(fWidth) or (TPasRISCVUInt64(fHeight) shl 16));
+   result:=(TPasRISCVUInt64(fFrameBuffer.fWidth) or (TPasRISCVUInt64(fFrameBuffer.fHeight) shl 16));
   end;
   BytesPerPixelAddress:begin
-   result:=TPasRISCVUInt64(fBytesPerPixel);
+   result:=TPasRISCVUInt64(fFrameBuffer.fBytesPerPixel);
   end;
   WidthAddress:begin
-   result:=TPasRISCVUInt64(fWidth);
+   result:=TPasRISCVUInt64(fFrameBuffer.fWidth);
   end;
   HeightAddress:begin
-   result:=TPasRISCVUInt64(fHeight);
+   result:=TPasRISCVUInt64(fFrameBuffer.fHeight);
   end;
   else begin
-   if (Address>=FrameBufferAddress) and ((Address+aSize)<=(FrameBufferAddress+length(fData))) then begin
+   if (Address>=FrameBufferAddress) and ((Address+aSize)<=(FrameBufferAddress+length(fFrameBuffer.fData))) then begin
     dec(Address,FrameBufferAddress);
     case aSize of
      1:begin
-      result:=fData[Address];
+      result:=fFrameBuffer.fData[Address];
      end;
      2:begin
-      result:=TPasRISCVUInt16(Pointer(@fData[Address])^);
+      result:=TPasRISCVUInt16(Pointer(@fFrameBuffer.fData[Address])^);
      end;
      4:begin
-      result:=TPasRISCVUInt32(Pointer(@fData[Address])^);
+      result:=TPasRISCVUInt32(Pointer(@fFrameBuffer.fData[Address])^);
      end;
      8:begin
-      result:=TPasRISCVUInt64(Pointer(@fData[Address])^);
+      result:=TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^);
      end;
      else begin
       result:=0;
@@ -23695,7 +23744,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TFrameBufferDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+procedure TPasRISCV.TSimpleFBDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var Address:TPasRISCVUInt64;
 begin
  Address:=aAddress-fBase;
@@ -23706,51 +23755,47 @@ begin
    end;
   end;
   ActiveAddress:begin
-   if fActive<>((aValue and 1)<>0) then begin
-    fActive:=(aValue and 1)<>0;
+   if fFrameBuffer.fActive<>((aValue and 1)<>0) then begin
+    fFrameBuffer.fActive:=(aValue and 1)<>0;
     if (aValue and 2)=0 then begin
-     ClearFrameBuffer;
+     fFrameBuffer.ClearFrameBuffer;
     end;
     if assigned(fMachine.OnNewFrame) then begin
      fMachine.OnNewFrame();
     end;
    end;
-   fAutomaticRefresh:=(aValue and 4)<>0;
+   fFrameBuffer.fAutomaticRefresh:=(aValue and 4)<>0;
   end;
   ResolutionAddress:begin
-   fWidth:=TPasRISCVUInt32(aValue and $ffff);
-   fHeight:=TPasRISCVUInt32((aValue shr 16) and $ffff);
-   ResizeFrameBuffer;
+   fFrameBuffer.ResizeFrameBuffer(TPasRISCVUInt32(aValue and $ffff),TPasRISCVUInt32((aValue shr 16) and $ffff),fFrameBuffer.fBytesPerPixel);
   end;
   BytesPerPixelAddress:begin
-   fBytesPerPixel:=TPasRISCVUInt32(aValue);
+   fFrameBuffer.ResizeFrameBuffer(fFrameBuffer.fWidth,fFrameBuffer.fHeight,TPasRISCVUInt32(aValue));
   end;
   WidthAddress:begin
-   fWidth:=TPasRISCVUInt32(aValue);
-   ResizeFrameBuffer;
+   fFrameBuffer.ResizeFrameBuffer(TPasRISCVUInt32(aValue),fFrameBuffer.fHeight,fFrameBuffer.fBytesPerPixel);
   end;
   HeightAddress:begin
-   fHeight:=TPasRISCVUInt32(aValue);
-   ResizeFrameBuffer;
+   fFrameBuffer.ResizeFrameBuffer(fFrameBuffer.fWidth,TPasRISCVUInt32(aValue),fFrameBuffer.fBytesPerPixel);
   end;
   else begin
-   if (Address>=FrameBufferAddress) and ((Address+aSize)<=(FrameBufferAddress+length(fData))) then begin
+   if (Address>=FrameBufferAddress) and ((Address+aSize)<=(FrameBufferAddress+length(fFrameBuffer.fData))) then begin
     dec(Address,FrameBufferAddress);
 {$ifdef FrameBufferDeviceDirtyMarking}
-    fDirty:=true;
+    fFrameBuffer.fDirty:=true;
 {$endif}
     case aSize of
      1:begin
-      fData[Address]:=TPasRISCVUInt8(aValue);
+      fFrameBuffer.fData[Address]:=TPasRISCVUInt8(aValue);
      end;
      2:begin
-      TPasRISCVUInt16(Pointer(@fData[Address])^):=TPasRISCVUInt16(aValue);
+      TPasRISCVUInt16(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt16(aValue);
      end;
      4:begin
-      TPasRISCVUInt32(Pointer(@fData[Address])^):=TPasRISCVUInt32(aValue);
+      TPasRISCVUInt32(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt32(aValue);
      end;
      8:begin
-      TPasRISCVUInt64(Pointer(@fData[Address])^):=TPasRISCVUInt64(aValue);
+      TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt64(aValue);
      end;
     end;
    end;
@@ -39156,7 +39201,7 @@ begin
  fDS1742Base:=TPasRISCV.TDS1742Device.DefaultBaseAddress;
  fDS1742Size:=TPasRISCV.TDS1742Device.DefaultSize;
 
- fFrameBufferBase:=TPasRISCVUInt64($28000000)-TFrameBufferDevice.FrameBufferAddress;
+ fFrameBufferBase:=TPasRISCVUInt64($28000000)-TSimpleFBDevice.FrameBufferAddress;
  fFrameBufferWidth:=640;
  fFrameBufferHeight:=400;
  fFrameBufferBytesPerPixel:=4;
@@ -39226,6 +39271,8 @@ begin
  fVirtIOBlockMQ:=false;
 
  fNVMeEnabled:=false;
+
+ fDisplayMode:=TDisplayMode.SimpleFB;
 
  fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
 
@@ -39372,6 +39419,8 @@ begin
   aConfiguration.fINITRD.Seek(0,soBeginning);
   fINITRD.CopyFrom(aConfiguration.fINITRD,aConfiguration.fINITRD.Size);
  end;
+
+ fDisplayMode:=aConfiguration.fDisplayMode;
 
 end;
 
@@ -39565,6 +39614,15 @@ begin
 
  fFrameBufferDevice:=TFrameBufferDevice.Create(self);
 
+ case fConfiguration.fDisplayMode of
+  TDisplayMode.SimpleFB:begin
+   fSimpleFBDevice:=TSimpleFBDevice.Create(self);
+  end;
+  else begin
+   fSimpleFBDevice:=nil;
+  end;
+ end;
+
  fSharedMemoryDevice:=TSharedMemoryDevice.Create(self);
 
  fRawKeyboardDevice:=TRawKeyboardDevice.Create(self);
@@ -39615,7 +39673,9 @@ begin
  fBus.AddBusDevice(fUARTDevice);
  fBus.AddBusDevice(fDS1742Device);
  fBus.AddBusDevice(fPCIBusDevice);
- fBus.AddBusDevice(fFrameBufferDevice);
+ if assigned(fSimpleFBDevice) then begin
+  fBus.AddBusDevice(fSimpleFBDevice);
+ end;
  fBus.AddBusDevice(fSharedMemoryDevice);
  fBus.AddBusDevice(fRawKeyboardDevice);
 //fBus.AddBusDevice(fI2CDevice);
@@ -39726,6 +39786,8 @@ begin
  FreeAndNil(fDS1742Device);
 
  FreeAndNil(fPCIBusDevice);
+
+ FreeAndNil(fSimpleFBDevice);
 
  FreeAndNil(fFrameBufferDevice);
 
@@ -40572,21 +40634,25 @@ begin
 
    end;
 
-   SimpleFrameBufferNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'framebuffer',fConfiguration.fFrameBufferBase+TFrameBufferDevice.FrameBufferAddress);
-   try
-    Cells[0]:=0;
-    Cells[1]:=fConfiguration.fFrameBufferBase+TFrameBufferDevice.FrameBufferAddress;
-    Cells[2]:=0;
-    Cells[3]:=fConfiguration.fFrameBufferSize;
-    SimpleFrameBufferNode.AddPropertyCells('reg',@Cells,4);
-    SimpleFrameBufferNode.AddPropertyString('compatible','simple-framebuffer');
-    SimpleFrameBufferNode.AddPropertyString('format','a8b8g8r8');
-    SimpleFrameBufferNode.AddPropertyU32('width',fConfiguration.fFrameBufferWidth);
-    SimpleFrameBufferNode.AddPropertyU32('height',fConfiguration.fFrameBufferHeight);
-    SimpleFrameBufferNode.AddPropertyU32('stride',fConfiguration.fFrameBufferStride);
-   finally
-    SoCNode.AddChild(SimpleFrameBufferNode);
-   end;//}
+   if fConfiguration.fDisplayMode=TDisplayMode.SimpleFB then begin
+
+    SimpleFrameBufferNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'framebuffer',fConfiguration.fFrameBufferBase+TSimpleFBDevice.FrameBufferAddress);
+    try
+     Cells[0]:=0;
+     Cells[1]:=fConfiguration.fFrameBufferBase+TSimpleFBDevice.FrameBufferAddress;
+     Cells[2]:=0;
+     Cells[3]:=fConfiguration.fFrameBufferSize;
+     SimpleFrameBufferNode.AddPropertyCells('reg',@Cells,4);
+     SimpleFrameBufferNode.AddPropertyString('compatible','simple-framebuffer');
+     SimpleFrameBufferNode.AddPropertyString('format','a8b8g8r8');
+     SimpleFrameBufferNode.AddPropertyU32('width',fConfiguration.fFrameBufferWidth);
+     SimpleFrameBufferNode.AddPropertyU32('height',fConfiguration.fFrameBufferHeight);
+     SimpleFrameBufferNode.AddPropertyU32('stride',fConfiguration.fFrameBufferStride);
+    finally
+     SoCNode.AddChild(SimpleFrameBufferNode);
+    end;
+
+   end;
 
    if true then begin
 
@@ -41264,7 +41330,9 @@ begin
  fUARTDevice.Reset;
  fDS1742Device.Reset;
  fPCIBusDevice.Reset;
- fFrameBufferDevice.Reset;
+ if assigned(fSimpleFBDevice) then begin
+  fSimpleFBDevice.Reset;
+ end;
  fRawKeyboardDevice.Reset;
 //fI2CDevice.Reset;
  fPS2KeyboardDevice.Reset;
