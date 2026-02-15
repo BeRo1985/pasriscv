@@ -44059,7 +44059,9 @@ begin
   fVirtIOBlockDevice.Reset;
  end;
  fUARTDevice.Reset;
- fDS1742Device.Reset;
+ if assigned(fDS1742Device) then begin
+  fDS1742Device.Reset;
+ end;
  fPCIBusDevice.Reset;
  if assigned(fSimpleFBDevice) then begin
   fSimpleFBDevice.Reset;
