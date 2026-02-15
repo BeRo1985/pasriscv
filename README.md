@@ -21,6 +21,8 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Svnapot ("NAPOT Translation" Continuity)
   - Zbb/Zcb/Zbs/Zba (Bit Manipulations)
   - Zacas (Atomic Compare-And-Swap)
+  - Zabha (8-bit / 16-bit Atomic Instructions)
+  - Zfa (Additional Floating-Point Instructions)
 - Multi-core SMP support
 - Emulated peripherals
   - ACLINT
@@ -38,19 +40,25 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
     - Sound
     - GPU (2D only, no 3D/virgl support yet)
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
+    - RTC (if RTCMode=VirtIO) — real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
   - Display mode support with three selectable backends:
     - SimpleFB — custom MMIO framebuffer (default, for baremetal and simple guests)
     - VirtIO GPU — standard VirtIO 2D GPU with EDID support (for Linux with virtio-gpu driver)
     - Bochs VBE — PCI VGA adapter with VBE DISPI registers (for Linux with bochs-drm driver)
+    - Cirrus Logic GD 5446 — PCI VGA adapter compatible with QEMU cirrus driver (for Linux with cirrus DRM driver)
   - Framebuffer support
   - Shared memory device for host-guest shared memory communication with doorbell IRQ support
   - PS/2 keyboard and mouse
   - Raw keyboard input with scancode bit-array (for more direct input per polling) 
   - DS1742 real-time clock (read-only, no write support)
+  - Goldfish RTC (default, with interrupt support)
+  - DS1307 I2C RTC (via I2C bus, if RTCMode=DS1307)
+  - VirtIO RTC (VirtIO 1.4 Device ID 17, with UTC/TAI/Monotonic clocks)
   - PCIe Bus
     - NVMe SSD
     - IVSHMEM (Inter-VM Shared Memory) device for host-guest shared memory communication with doorbell interrupts
     - Bochs VBE VGA adapter (if DisplayMode=BochsVBE)
+    - Cirrus Logic GD 5446 VGA adapter (if DisplayMode=Cirrus)
   - I2C bus with two selectable controller modes:
     - OpenCores I2C (opencores,i2c-ocores) — classic register-based I2C controller
     - Synopsys DesignWare I2C (snps,designware-i2c) — default, compatible with Linux i2c-designware driver
