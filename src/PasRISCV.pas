@@ -2652,12 +2652,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               type TOnLoad=function(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64 of object;
                    TOnStore=procedure(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64) of object;
+                   TOnGetDeviceDirectMemoryAccessPointer=function(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer of object;
              private
               fPCIBusDevice:TPCIBusDevice;
               fPCIDevice:TPCIDevice;
               fPCIFunc:TPCIFunc;
               fOnLoad:TOnLoad;
               fOnStore:TOnStore;
+              fOnGetDeviceDirectMemoryAccessPointer:TOnGetDeviceDirectMemoryAccessPointer;
              public
               constructor Create(const aMachine:TPasRISCV;const aPCIDevice:TPCIDevice;const aPCIFunc:TPCIFunc;const aBase,aSize:TPasRISCVUInt64;const aOnLoad:TOnLoad;const aOnStore:TOnStore); reintroduce;
               destructor Destroy; override;
@@ -2670,6 +2672,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property PCIFunc:TPCIFunc read fPCIFunc;
               property OnLoad:TOnLoad read fOnLoad write fOnLoad;
               property OnStore:TOnStore read fOnStore write fOnStore;
+              property OnGetDeviceDirectMemoryAccessPointer:TOnGetDeviceDirectMemoryAccessPointer read fOnGetDeviceDirectMemoryAccessPointer write fOnGetDeviceDirectMemoryAccessPointer;
             end;
             TPCI=class
              public
@@ -3336,6 +3339,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Reset; override;
               function OnFBLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnFBStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function OnFBGetDeviceDirectMemoryAccessPointer(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
               function OnVBELoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnVBEStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
              public
@@ -3392,6 +3396,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Reset; override;
               function OnFBLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnFBStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function OnFBGetDeviceDirectMemoryAccessPointer(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
               function OnMMIOLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnMMIOStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               function OnVGAIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -16833,6 +16838,12 @@ end;
 
 function TPasRISCV.TPCIMemoryDevice.GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
 begin
+ if assigned(fOnGetDeviceDirectMemoryAccessPointer) then begin
+  result:=fOnGetDeviceDirectMemoryAccessPointer(self,aAddress,aSize,aWrite,aBounce);
+  if assigned(result) then begin
+   exit;
+  end;
+ end;
  if assigned(fOnLoad) or assigned(fOnStore) then begin
   result:=aBounce;
  end else begin
@@ -18978,6 +18989,10 @@ begin
 
  fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
 
+ if assigned(fFuncs[0].fBARMemoryDevices[0]) then begin
+  fFuncs[0].fBARMemoryDevices[0].fOnGetDeviceDirectMemoryAccessPointer:=OnFBGetDeviceDirectMemoryAccessPointer;
+ end;
+
 end;
 
 destructor TPasRISCV.TBochsVBEDevice.Destroy;
@@ -19094,6 +19109,20 @@ begin
     TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt64(aValue);
    end;
   end;
+ end;
+end;
+
+function TPasRISCV.TBochsVBEDevice.OnFBGetDeviceDirectMemoryAccessPointer(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if (Address+aSize)<=TPasRISCVUInt64(length(fFrameBuffer.fData)) then begin
+  if aWrite then begin
+   fFrameBuffer.fDirty:=true;
+  end;
+  result:=@fFrameBuffer.fData[Address];
+ end else begin
+  result:=aBounce;
  end;
 end;
 
@@ -19273,6 +19302,10 @@ begin
  BARRegion^.fOnStore:=OnMMIOStore;
 
  fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
+
+ if assigned(fFuncs[0].fBARMemoryDevices[0]) then begin
+  fFuncs[0].fBARMemoryDevices[0].fOnGetDeviceDirectMemoryAccessPointer:=OnFBGetDeviceDirectMemoryAccessPointer;
+ end;
 
  RegisterVGAIO;
 
@@ -19466,6 +19499,20 @@ begin
     TPasRISCVUInt64(Pointer(@fFrameBuffer.fData[Address])^):=TPasRISCVUInt64(aValue);
    end;
   end;
+ end;
+end;
+
+function TPasRISCV.TCirrusDevice.OnFBGetDeviceDirectMemoryAccessPointer(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-aPCIMemoryDevice.fBase;
+ if (Address+aSize)<=TPasRISCVUInt64(length(fFrameBuffer.fData)) then begin
+  if aWrite then begin
+   fFrameBuffer.fDirty:=true;
+  end;
+  result:=@fFrameBuffer.fData[Address];
+ end else begin
+  result:=aBounce;
  end;
 end;
 
