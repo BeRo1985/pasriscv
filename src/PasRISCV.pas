@@ -19227,18 +19227,18 @@ begin
   VBE_DISPI_INDEX_X_OFFSET:begin
    fVBEXOffset:=Value16;
    fFrameBuffer.fDirty:=true;
-   fFrameBuffer.UpdateOutputData;
+{  fFrameBuffer.UpdateOutputData;
    if assigned(fMachine.OnNewFrame) then begin
     fMachine.OnNewFrame();
-   end;
+   end;}
   end;
   VBE_DISPI_INDEX_Y_OFFSET:begin
    fVBEYOffset:=Value16;
    fFrameBuffer.fDirty:=true;
-   fFrameBuffer.UpdateOutputData;
+{  fFrameBuffer.UpdateOutputData;
    if assigned(fMachine.OnNewFrame) then begin
     fMachine.OnNewFrame();
-   end;
+   end;}
   end;
  end;
 end;
@@ -19592,10 +19592,10 @@ begin
      // Start address — update and signal new frame
      UpdateDerivedState;
      fFrameBuffer.fDirty:=true;
-     fFrameBuffer.UpdateOutputData;
+{    fFrameBuffer.UpdateOutputData;
      if assigned(fMachine.OnNewFrame) then begin
       fMachine.OnNewFrame();
-     end;
+     end;}
     end;
    end;
   end;
@@ -19692,10 +19692,10 @@ begin
     $0c,$0d,$1d:begin
      UpdateDerivedState;
      fFrameBuffer.fDirty:=true;
-     fFrameBuffer.UpdateOutputData;
+{    fFrameBuffer.UpdateOutputData;
      if assigned(fMachine.OnNewFrame) then begin
       fMachine.OnNewFrame();
-     end;
+     end;}
     end;
    end;
   end;
