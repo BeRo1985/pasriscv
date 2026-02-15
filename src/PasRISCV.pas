@@ -19230,7 +19230,7 @@ begin
 
  fFrameBuffer:=aFrameBuffer;
  fFrameBuffer.fAutomaticRefresh:=true;
- fFrameBuffer.fSwapColorChannels:=true;
+//fFrameBuffer.fSwapColorChannels:=true;
 
  fSEQIndex:=0;
  FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
