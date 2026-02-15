@@ -26211,10 +26211,10 @@ begin
     if fSwapColorChannels then begin
      for PixelIndex:=1 to PixelCount do begin
       Pixel16:=PPasRISCVUInt16(SrcPtr)^;
-      r:=(Pixel16 shr 11) and $1f;
+      b:=(Pixel16 shr 11) and $1f;
       g:=(Pixel16 shr 5) and $3f;
-      b:=Pixel16 and $1f;
-      DstPtr^:=$ff000000 or ((b shl 3) or (b shr 2)) or (((g shl 2) or (g shr 4)) shl 8) or (((r shl 3) or (r shr 2)) shl 16);
+      r:=Pixel16 and $1f;
+      DstPtr^:=$ff000000 or (((r shl 3) or (r shr 2)) shl 16) or (((g shl 2) or (g shr 4)) shl 8) or ((b shl 3) or (b shr 2));
       inc(SrcPtr,2);
       inc(DstPtr);
      end;
