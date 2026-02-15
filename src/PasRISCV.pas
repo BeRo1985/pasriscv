@@ -4845,9 +4845,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCursorCompositing:Boolean;
               fDirectRGBA32:Boolean;
               fSwapColorChannels:Boolean;
-{$ifdef FrameBufferDeviceDirtyMarking}
               fDirty:TPasMPBool32;
-{$endif}
+              fIgnoreDirty:TPasMPBool32;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               destructor Destroy; override;
@@ -4878,9 +4877,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property Height:TPasRISCVUInt32 read fHeight;
               property BytesPerPixel:TPasRISCVUInt32 read fBytesPerPixel;
               property Lock:TPasMPMultipleReaderSingleWriterLock read fLock;
-{$ifdef FrameBufferDeviceDirtyMarking}
               property Dirty:TPasMPBool32 read fDirty write fDirty;
-{$endif}
+              property IgnoreDirty:TPasMPBool32 read fIgnoreDirty write fIgnoreDirty;
             end;
             { TSimpleFBDevice }
             TSimpleFBDevice=class(TBusDevice)
@@ -19081,9 +19079,7 @@ var Address:TPasRISCVUInt64;
 begin
  Address:=aAddress-aPCIMemoryDevice.fBase;
  if (Address+aSize)<=length(fFrameBuffer.fData) then begin
-{$ifdef FrameBufferDeviceDirtyMarking}
   fFrameBuffer.fDirty:=true;
-{$endif}
   case aSize of
    1:begin
     fFrameBuffer.fData[Address]:=TPasRISCVUInt8(aValue);
@@ -19199,9 +19195,7 @@ begin
   end;
   VBE_DISPI_INDEX_X_OFFSET:begin
    fVBEXOffset:=Value16;
-{$ifdef FrameBufferDeviceDirtyMarking}
    fFrameBuffer.fDirty:=true;
-{$endif}
    fFrameBuffer.UpdateOutputData;
    if assigned(fMachine.OnNewFrame) then begin
     fMachine.OnNewFrame();
@@ -19209,9 +19203,7 @@ begin
   end;
   VBE_DISPI_INDEX_Y_OFFSET:begin
    fVBEYOffset:=Value16;
-{$ifdef FrameBufferDeviceDirtyMarking}
    fFrameBuffer.fDirty:=true;
-{$endif}
    fFrameBuffer.UpdateOutputData;
    if assigned(fMachine.OnNewFrame) then begin
     fMachine.OnNewFrame();
@@ -19231,6 +19223,7 @@ begin
  fFrameBuffer:=aFrameBuffer;
  fFrameBuffer.fAutomaticRefresh:=true;
  fFrameBuffer.fSwapColorChannels:=true;
+ fFrameBuffer.fIgnoreDirty:=false;
 
  fSEQIndex:=0;
  FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
@@ -19458,9 +19451,7 @@ var Address:TPasRISCVUInt64;
 begin
  Address:=aAddress-aPCIMemoryDevice.fBase;
  if (Address+aSize)<=length(fFrameBuffer.fData) then begin
-{$ifdef FrameBufferDeviceDirtyMarking}
   fFrameBuffer.fDirty:=true;
-{$endif}
   case aSize of
    1:begin
     fFrameBuffer.fData[Address]:=TPasRISCVUInt8(aValue);
@@ -19551,9 +19542,7 @@ begin
     $0c,$0d,$1d:begin
      // Start address — update and signal new frame
      UpdateDerivedState;
-{$ifdef FrameBufferDeviceDirtyMarking}
      fFrameBuffer.fDirty:=true;
-{$endif}
      fFrameBuffer.UpdateOutputData;
      if assigned(fMachine.OnNewFrame) then begin
       fMachine.OnNewFrame();
@@ -19653,9 +19642,7 @@ begin
     end;
     $0c,$0d,$1d:begin
      UpdateDerivedState;
-{$ifdef FrameBufferDeviceDirtyMarking}
      fFrameBuffer.fDirty:=true;
-{$endif}
      fFrameBuffer.UpdateOutputData;
      if assigned(fMachine.OnNewFrame) then begin
       fMachine.OnNewFrame();
@@ -23861,6 +23848,8 @@ begin
 
  fFrameBuffer:=aMachine.fFrameBufferDevice;
  fFrameBuffer.fSwapColorChannels:=true;
+ fFrameBuffer.fAutomaticRefresh:=true;
+ fFrameBuffer.fIgnoreDirty:=false;
 
  fGPUConfig.EventsRead:=0;
  fGPUConfig.EventsClear:=0;
@@ -24157,19 +24146,17 @@ begin
       end;
      end;
     end;
-{$ifdef FrameBufferDeviceDirtyMarking}
     fFrameBuffer.fDirty:=true;
-{$endif}
    finally
     fFrameBuffer.fLock.ReleaseWrite;
    end;
   end;
  end;
  // VSync: Notify host that a new frame is ready
- fFrameBuffer.UpdateOutputData;
+{fFrameBuffer.UpdateOutputData;
  if assigned(fMachine.OnNewFrame) then begin
   fMachine.OnNewFrame();
- end;
+ end;}
  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
 end;
 
@@ -24405,18 +24392,14 @@ begin
  end else begin
   fFrameBuffer.SetCursorVisible(false);
  end;
-{$ifdef FrameBufferDeviceDirtyMarking}
  fFrameBuffer.fDirty:=true;
-{$endif}
  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleMoveCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
 begin
  fFrameBuffer.SetCursorPosition(aCmd^.Pos.X,aCmd^.Pos.Y);
-{$ifdef FrameBufferDeviceDirtyMarking}
  fFrameBuffer.fDirty:=true;
-{$endif}
  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
 end;
 
@@ -25980,6 +25963,8 @@ begin
  fCursorCompositing:=false;
  fDirectRGBA32:=false;
  fSwapColorChannels:=false;
+ fDirty:=true;
+ fIgnoreDirty:=false;
  ClearFrameBuffer;
 end;
 
@@ -26017,9 +26002,7 @@ begin
   if fCursorCompositing and (length(fComposited)<(fWidth*fHeight*4)) then begin
    SetLength(fComposited,fWidth*fHeight*4);
   end;
-{$ifdef FrameBufferDeviceDirtyMarking}
   fDirty:=true;
-{$endif}
  finally
   fLock.ReleaseWrite;
  end;
@@ -26036,28 +26019,17 @@ begin
    inc(Pixel);
   end;
  end;
-{$ifdef FrameBufferDeviceDirtyMarking}
  fDirty:=true;
-{$endif}
 end;
 
 function TPasRISCV.TFrameBufferDevice.CheckDirtyAndFlush:Boolean;
 begin
-{$ifdef FrameBufferDeviceDirtyMarking}
- result:=TPasMPInterlocked.CompareExchange(fDirty,TPasMPBool32(false),TPasMPBool32(true));
- if result then begin
-  fMachine.FlushTLB;
- end;
-{$else}
- result:=true;
-{$endif}
+ result:=TPasMPInterlocked.CompareExchange(fDirty,TPasMPBool32(false),TPasMPBool32(true)) or fIgnoreDirty;
 end;
 
 procedure TPasRISCV.TFrameBufferDevice.MarkDirty;
 begin
-{$ifdef FrameBufferDeviceDirtyMarking}
  fDirty:=true;
-{$endif}
 end;
 
 procedure TPasRISCV.TFrameBufferDevice.SetCursorImage(const aData:Pointer;const aSize:TPasRISCVUInt32);
@@ -26071,9 +26043,7 @@ begin
  if CopySize<CURSOR_BYTES then begin
   FillChar(fCursor.Data[CopySize],CURSOR_BYTES-CopySize,#0);
  end;
-{$ifdef FrameBufferDeviceDirtyMarking}
  fDirty:=true;
-{$endif}
 end;
 
 procedure TPasRISCV.TFrameBufferDevice.SetCursorPosition(const aX,aY:TPasRISCVInt32);
@@ -26091,9 +26061,7 @@ end;
 procedure TPasRISCV.TFrameBufferDevice.SetCursorVisible(const aVisible:Boolean);
 begin
  fCursor.Visible:=aVisible;
-{$ifdef FrameBufferDeviceDirtyMarking}
  fDirty:=true;
-{$endif}
 end;
 
 procedure TPasRISCV.TFrameBufferDevice.CompositeCursor;
@@ -26305,6 +26273,7 @@ begin
  fFrameBuffer:=aMachine.fFrameBufferDevice;
  fFrameBuffer.fAutomaticRefresh:=true;
  fFrameBuffer.fDirectRGBA32:=true;
+ fFrameBuffer.fIgnoreDirty:=true;
 end;
 
 destructor TPasRISCV.TSimpleFBDevice.Destroy;
@@ -26319,11 +26288,9 @@ begin
  if (aAddress>=fBase) and ((aAddress-fBase)<fSize) then begin
   Address:=aAddress-fBase;
   if (Address>=FrameBufferAddress) and ((Address-FrameBufferAddress)<length(fFrameBuffer.fData)) then begin
-{$ifdef FrameBufferDeviceDirtyMarking}
    if aWrite then begin
     fFrameBuffer.fDirty:=true;
    end;
-{$endif}
    result:=@fFrameBuffer.fData[Address-FrameBufferAddress];
   end else begin
    result:=aBounce;
@@ -26425,9 +26392,7 @@ begin
   else begin
    if (Address>=FrameBufferAddress) and ((Address+aSize)<=(FrameBufferAddress+length(fFrameBuffer.fData))) then begin
     dec(Address,FrameBufferAddress);
-{$ifdef FrameBufferDeviceDirtyMarking}
     fFrameBuffer.fDirty:=true;
-{$endif}
     case aSize of
      1:begin
       fFrameBuffer.fData[Address]:=TPasRISCVUInt8(aValue);
