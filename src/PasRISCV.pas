@@ -18945,7 +18945,9 @@ begin
  inherited Create(aBus);
 
  fFrameBuffer:=aFrameBuffer;
+ fFrameBuffer.fAutomaticRefresh:=true;
  fFrameBuffer.fSwapColorChannels:=true;
+ fFrameBuffer.fIgnoreDirty:=true;
 
  fVBEEnable:=0;
  fVBEXRes:=640;
@@ -19252,7 +19254,7 @@ begin
  fFrameBuffer:=aFrameBuffer;
  fFrameBuffer.fAutomaticRefresh:=true;
  fFrameBuffer.fSwapColorChannels:=true;
- fFrameBuffer.fIgnoreDirty:=false;
+ fFrameBuffer.fIgnoreDirty:=true;
 
  fSEQIndex:=0;
  FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
@@ -23894,8 +23896,8 @@ begin
  fDeviceID:=TVirtIOGPUDevice.DeviceID;
 
  fFrameBuffer:=aMachine.fFrameBufferDevice;
- fFrameBuffer.fSwapColorChannels:=true;
  fFrameBuffer.fAutomaticRefresh:=true;
+ fFrameBuffer.fSwapColorChannels:=true;
  fFrameBuffer.fIgnoreDirty:=false;
 
  fGPUConfig.EventsRead:=0;
