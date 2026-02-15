@@ -4550,6 +4550,49 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
             end;
+            { TVirtIORTCDevice }
+            TVirtIORTCDevice=class(TVirtIODevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($1005a000);
+                    DefaultSize=TPasRISCVUInt64($1000);
+                    DefaultIRQ=TPasRISCVUInt64($1b);
+                    DeviceID=17;
+                    // Message types
+                    VIRTIO_RTC_REQ_CFG=$1000;
+                    VIRTIO_RTC_REQ_CLOCK_CAP=$1001;
+                    VIRTIO_RTC_REQ_CROSS_CAP=$1002;
+                    VIRTIO_RTC_REQ_READ=$0001;
+                    // Status codes
+                    VIRTIO_RTC_S_OK=0;
+                    VIRTIO_RTC_S_EOPNOTSUPP=2;
+                    VIRTIO_RTC_S_ENODEV=3;
+                    VIRTIO_RTC_S_EINVAL=4;
+                    VIRTIO_RTC_S_EIO=5;
+                    // Clock types
+                    VIRTIO_RTC_CLOCK_UTC=0;
+                    VIRTIO_RTC_CLOCK_TAI=1;
+                    VIRTIO_RTC_CLOCK_MONOTONIC=2;
+                    // Struct sizes (packed)
+                    SIZE_REQ_HEAD=8;     // le16 msg_type + u8 reserved[6]
+                    SIZE_RESP_HEAD=8;    // u8 status + u8 reserved[7]
+                    SIZE_REQ_CFG=8;      // just the head
+                    SIZE_RESP_CFG=16;    // head(8) + le16 num_clocks + u8 reserved[6]
+                    SIZE_REQ_CLOCK_CAP=16; // head(8) + le16 clock_id + u8 reserved[6]
+                    SIZE_RESP_CLOCK_CAP=16; // head(8) + u8 type + u8 leap_second_smearing + u8 flags + u8 reserved[5]
+                    SIZE_REQ_CROSS_CAP=16; // head(8) + le16 clock_id + u8 hw_counter + u8 reserved[5]
+                    SIZE_RESP_CROSS_CAP=16; // head(8) + u8 flags + u8 reserved[7]
+                    SIZE_REQ_READ=16;    // head(8) + le16 clock_id + u8 reserved[6]
+                    SIZE_RESP_READ=16;   // head(8) + le64 clock_reading
+             private
+              fSendBuffer:TPasRISCVUInt8DynamicArray;
+              fReceiveBuffer:TPasRISCVUInt8DynamicArray;
+              fMonotonicEpoch:TDateTime;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure DeviceReset; override;
+              function DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean; override;
+            end;
             { TVirtIOVSockDevice }
             TVirtIOVSockDevice=class(TVirtIODevice)
              public
@@ -6503,7 +6546,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              (
               Goldfish,
               DS1742,
-              DS1307
+              DS1307,
+              VirtIO
              );
             TI2CMode=
              (
@@ -6629,6 +6673,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIOVSockSize:TPasRISCVUInt64;
               fVirtIOVSockIRQ:TPasRISCVUInt64;
               fVirtIOVSockGuestCID:TPasRISCVUInt64;
+
+              fVirtIORTCBase:TPasRISCVUInt64;
+              fVirtIORTCSize:TPasRISCVUInt64;
+              fVirtIORTCIRQ:TPasRISCVUInt64;
 
               fBIOS:TMemoryStream;
 
@@ -6781,6 +6829,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIOVSockIRQ:TPasRISCVUInt64 read fVirtIOVSockIRQ write fVirtIOVSockIRQ;
               property VirtIOVSockGuestCID:TPasRISCVUInt64 read fVirtIOVSockGuestCID write fVirtIOVSockGuestCID;
 
+              property VirtIORTCBase:TPasRISCVUInt64 read fVirtIORTCBase write fVirtIORTCBase;
+              property VirtIORTCSize:TPasRISCVUInt64 read fVirtIORTCSize write fVirtIORTCSize;
+              property VirtIORTCIRQ:TPasRISCVUInt64 read fVirtIORTCIRQ write fVirtIORTCIRQ;
+
               property BIOS:TMemoryStream read fBIOS;
 
               property Kernel:TMemoryStream read fKernel;
@@ -6898,6 +6950,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fVirtIOGPUDevice:TVirtIOGPUDevice;
 
        fVirtIOVSockDevice:TVirtIOVSockDevice;
+
+       fVirtIORTCDevice:TVirtIORTCDevice;
 
        fCountHARTs:TPasRISCVSizeInt;
 
@@ -7064,6 +7118,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property VirtIOGPUDevice:TVirtIOGPUDevice read fVirtIOGPUDevice;
 
        property VirtIOVSockDevice:TVirtIOVSockDevice read fVirtIOVSockDevice;
+
+       property VirtIORTCDevice:TVirtIORTCDevice read fVirtIORTCDevice;
 
        property Debugger:TDebugger read fDebugger;
 
@@ -24597,6 +24653,190 @@ begin
   else begin
    NotifyDeviceNeedsReset;
   end;
+ end;
+end;
+
+{ TPasRISCV.TVirtIORTCDevice }
+
+constructor TPasRISCV.TVirtIORTCDevice.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIORTCBase,aMachine.fConfiguration.fVirtIORTCSize,TVirtIODevice.TKind.MMIO);
+
+ fIRQ:=aMachine.fConfiguration.fVirtIORTCIRQ;
+
+ fDeviceID:=DeviceID;
+
+ fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
+
+ fQueues[0].ManualRecv:=false;
+ fQueues[0].Asynchronous:=false;
+
+ fSendBuffer:=nil;
+ SetLength(fSendBuffer,256);
+
+ fReceiveBuffer:=nil;
+ SetLength(fReceiveBuffer,256);
+
+ fMonotonicEpoch:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
+
+end;
+
+destructor TPasRISCV.TVirtIORTCDevice.Destroy;
+begin
+ fSendBuffer:=nil;
+ fReceiveBuffer:=nil;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TVirtIORTCDevice.DeviceReset;
+begin
+ fMonotonicEpoch:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
+ inherited DeviceReset;
+end;
+
+function TPasRISCV.TVirtIORTCDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
+var MsgType:TPasRISCVUInt16;
+    ClockID:TPasRISCVUInt16;
+    NowTime:TDateTime;
+    UnixEpoch:TDateTime;
+    NanoSeconds:TPasRISCVUInt64;
+    ResponseSize:TPasRISCVUInt64;
+begin
+ result:=true;
+ if aReadSize<SIZE_REQ_HEAD then begin
+  NotifyDeviceNeedsReset;
+  exit;
+ end;
+ if TPasRISCVSizeInt(length(fReceiveBuffer))<TPasRISCVSizeInt(aReadSize) then begin
+  SetLength(fReceiveBuffer,aReadSize+((aReadSize+1) shr 1));
+ end;
+ if not CopyMemoryFromQueue(fReceiveBuffer,aQueueIndex,aDescriptorIndex,0,aReadSize) then begin
+  NotifyDeviceNeedsReset;
+  exit;
+ end;
+ // Read msg_type (le16 at offset 0)
+ MsgType:=TPasRISCVUInt16(fReceiveBuffer[0]) or (TPasRISCVUInt16(fReceiveBuffer[1]) shl 8);
+ // Prepare send buffer
+ if TPasRISCVSizeInt(length(fSendBuffer))<TPasRISCVSizeInt(aWriteSize) then begin
+  SetLength(fSendBuffer,aWriteSize+((aWriteSize+1) shr 1));
+ end;
+ FillChar(fSendBuffer[0],aWriteSize,0);
+ case MsgType of
+  VIRTIO_RTC_REQ_CFG:begin
+   // Response: head(8) + le16 num_clocks + reserved[6] = 16 bytes
+   ResponseSize:=SIZE_RESP_CFG;
+   if aWriteSize<ResponseSize then begin
+    fSendBuffer[0]:=VIRTIO_RTC_S_EINVAL; // status
+   end else begin
+    fSendBuffer[0]:=VIRTIO_RTC_S_OK; // status
+    // num_clocks = 3 (UTC, TAI, MONOTONIC) at offset 8
+    fSendBuffer[8]:=3;
+    fSendBuffer[9]:=0;
+   end;
+  end;
+  VIRTIO_RTC_REQ_CLOCK_CAP:begin
+   // Request: head(8) + le16 clock_id + reserved[6]
+   ResponseSize:=SIZE_RESP_CLOCK_CAP;
+   if (aReadSize<SIZE_REQ_CLOCK_CAP) or (aWriteSize<ResponseSize) then begin
+    fSendBuffer[0]:=VIRTIO_RTC_S_EINVAL;
+   end else begin
+    ClockID:=TPasRISCVUInt16(fReceiveBuffer[8]) or (TPasRISCVUInt16(fReceiveBuffer[9]) shl 8);
+    case ClockID of
+     0:begin // UTC
+      fSendBuffer[0]:=VIRTIO_RTC_S_OK;
+      fSendBuffer[8]:=VIRTIO_RTC_CLOCK_UTC; // type
+     end;
+     1:begin // TAI
+      fSendBuffer[0]:=VIRTIO_RTC_S_OK;
+      fSendBuffer[8]:=VIRTIO_RTC_CLOCK_TAI; // type
+     end;
+     2:begin // MONOTONIC
+      fSendBuffer[0]:=VIRTIO_RTC_S_OK;
+      fSendBuffer[8]:=VIRTIO_RTC_CLOCK_MONOTONIC; // type
+     end;
+     else begin
+      fSendBuffer[0]:=VIRTIO_RTC_S_ENODEV;
+     end;
+    end;
+   end;
+  end;
+  VIRTIO_RTC_REQ_CROSS_CAP:begin
+   // We don't support cross-timestamping
+   ResponseSize:=SIZE_RESP_CROSS_CAP;
+   if aWriteSize<ResponseSize then begin
+    fSendBuffer[0]:=VIRTIO_RTC_S_EINVAL;
+   end else begin
+    fSendBuffer[0]:=VIRTIO_RTC_S_OK;
+    fSendBuffer[8]:=0; // flags: no CROSS_CAP
+   end;
+  end;
+  VIRTIO_RTC_REQ_READ:begin
+   // Request: head(8) + le16 clock_id + reserved[6]
+   ResponseSize:=SIZE_RESP_READ;
+   if (aReadSize<SIZE_REQ_READ) or (aWriteSize<ResponseSize) then begin
+    fSendBuffer[0]:=VIRTIO_RTC_S_EINVAL;
+   end else begin
+    ClockID:=TPasRISCVUInt16(fReceiveBuffer[8]) or (TPasRISCVUInt16(fReceiveBuffer[9]) shl 8);
+    NowTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
+    UnixEpoch:=EncodeDate(1970,1,1);
+    case ClockID of
+     0:begin // UTC — nanoseconds since Unix epoch
+      NanoSeconds:=Round(((NowTime-UnixEpoch)*86400.0)*1000000000.0);
+      fSendBuffer[0]:=VIRTIO_RTC_S_OK;
+      fSendBuffer[8]:=TPasRISCVUInt8(NanoSeconds);
+      fSendBuffer[9]:=TPasRISCVUInt8(NanoSeconds shr 8);
+      fSendBuffer[10]:=TPasRISCVUInt8(NanoSeconds shr 16);
+      fSendBuffer[11]:=TPasRISCVUInt8(NanoSeconds shr 24);
+      fSendBuffer[12]:=TPasRISCVUInt8(NanoSeconds shr 32);
+      fSendBuffer[13]:=TPasRISCVUInt8(NanoSeconds shr 40);
+      fSendBuffer[14]:=TPasRISCVUInt8(NanoSeconds shr 48);
+      fSendBuffer[15]:=TPasRISCVUInt8(NanoSeconds shr 56);
+     end;
+     1:begin // TAI — UTC + 37 leap seconds (as of 2017, still valid)
+      NanoSeconds:=Round(((NowTime-UnixEpoch)*86400.0)*1000000000.0)+(TPasRISCVUInt64(37)*1000000000);
+      fSendBuffer[0]:=VIRTIO_RTC_S_OK;
+      fSendBuffer[8]:=TPasRISCVUInt8(NanoSeconds);
+      fSendBuffer[9]:=TPasRISCVUInt8(NanoSeconds shr 8);
+      fSendBuffer[10]:=TPasRISCVUInt8(NanoSeconds shr 16);
+      fSendBuffer[11]:=TPasRISCVUInt8(NanoSeconds shr 24);
+      fSendBuffer[12]:=TPasRISCVUInt8(NanoSeconds shr 32);
+      fSendBuffer[13]:=TPasRISCVUInt8(NanoSeconds shr 40);
+      fSendBuffer[14]:=TPasRISCVUInt8(NanoSeconds shr 48);
+      fSendBuffer[15]:=TPasRISCVUInt8(NanoSeconds shr 56);
+     end;
+     2:begin // MONOTONIC — nanoseconds since device reset
+      NanoSeconds:=Round(((NowTime-fMonotonicEpoch)*86400.0)*1000000000.0);
+      fSendBuffer[0]:=VIRTIO_RTC_S_OK;
+      fSendBuffer[8]:=TPasRISCVUInt8(NanoSeconds);
+      fSendBuffer[9]:=TPasRISCVUInt8(NanoSeconds shr 8);
+      fSendBuffer[10]:=TPasRISCVUInt8(NanoSeconds shr 16);
+      fSendBuffer[11]:=TPasRISCVUInt8(NanoSeconds shr 24);
+      fSendBuffer[12]:=TPasRISCVUInt8(NanoSeconds shr 32);
+      fSendBuffer[13]:=TPasRISCVUInt8(NanoSeconds shr 40);
+      fSendBuffer[14]:=TPasRISCVUInt8(NanoSeconds shr 48);
+      fSendBuffer[15]:=TPasRISCVUInt8(NanoSeconds shr 56);
+     end;
+     else begin
+      fSendBuffer[0]:=VIRTIO_RTC_S_ENODEV;
+     end;
+    end;
+   end;
+  end;
+  else begin
+   // Unknown message type
+   ResponseSize:=SIZE_RESP_HEAD;
+   if aWriteSize>=ResponseSize then begin
+    fSendBuffer[0]:=VIRTIO_RTC_S_EOPNOTSUPP;
+   end;
+  end;
+ end;
+ if ResponseSize>aWriteSize then begin
+  ResponseSize:=aWriteSize;
+ end;
+ if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],ResponseSize) and
+         ConsumeDescriptor(aQueueIndex,aDescriptorIndex,ResponseSize) and
+         UsedRingSync(aQueueIndex)) then begin
+  NotifyDeviceNeedsReset;
  end;
 end;
 
@@ -42559,6 +42799,10 @@ begin
  fVirtIOVSockIRQ:=TPasRISCV.TVirtIOVSockDevice.DefaultIRQ;
  fVirtIOVSockGuestCID:=TPasRISCV.TVirtIOVSockDevice.DefaultGuestCID;
 
+ fVirtIORTCBase:=TPasRISCV.TVirtIORTCDevice.DefaultBaseAddress;
+ fVirtIORTCSize:=TPasRISCV.TVirtIORTCDevice.DefaultSize;
+ fVirtIORTCIRQ:=TPasRISCV.TVirtIORTCDevice.DefaultIRQ;
+
  fBIOS:=TMemoryStream.Create;
 
  fKernel:=TMemoryStream.Create;
@@ -42707,6 +42951,10 @@ begin
  fVirtIOVSockSize:=aConfiguration.fVirtIOVSockSize;
  fVirtIOVSockIRQ:=aConfiguration.fVirtIOVSockIRQ;
  fVirtIOVSockGuestCID:=aConfiguration.fVirtIOVSockGuestCID;
+
+ fVirtIORTCBase:=aConfiguration.fVirtIORTCBase;
+ fVirtIORTCSize:=aConfiguration.fVirtIORTCSize;
+ fVirtIORTCIRQ:=aConfiguration.fVirtIORTCIRQ;
 
  fIVSHMEMSharedMemorySize:=aConfiguration.fIVSHMEMSharedMemorySize;
 
@@ -43020,6 +43268,12 @@ begin
 
  fVirtIOVSockDevice:=TVirtIOVSockDevice.Create(self);
 
+ if fConfiguration.fRTCMode=TRTCMode.VirtIO then begin
+  fVirtIORTCDevice:=TVirtIORTCDevice.Create(self);
+ end else begin
+  fVirtIORTCDevice:=nil;
+ end;
+
  fBus:=TBus.Create(self);
  fBus.AddBusDevice(fBootMemoryDevice);
  fBus.AddBusDevice(fMemoryDevice);
@@ -43073,6 +43327,10 @@ begin
   fBus.AddBusDevice(fVirtIOGPUDevice);
  end;
  fBus.AddBusDevice(fVirtIOVSockDevice);
+
+ if assigned(fVirtIORTCDevice) then begin
+  fBus.AddBusDevice(fVirtIORTCDevice);
+ end;
 
  if fConfiguration.fNVMeEnabled then begin
   fNVMeDevice:=TNVMeDevice.Create(fPCIBusDevice);
@@ -43230,6 +43488,7 @@ begin
  FreeAndNil(fVirtIORandomGeneratorDevice);
  FreeAndNil(fVirtIOGPUDevice);
  FreeAndNil(fVirtIOVSockDevice);
+ FreeAndNil(fVirtIORTCDevice);
 
  FreeAndNil(fBus);
 
@@ -43320,6 +43579,7 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     VirtIORandomGeneratorNode,
     VirtIOGPUNode,
     VirtIOVSockNode,
+    VirtIORTCNode,
     SimpleFrameBufferNode,
     ReservedMemoryNode,SharedMemoryNode:TPasRISCV.TFDT.TFDTNode;
     AIARegFileMode:TPasRISCV.TAIARegFileMode;
@@ -43960,6 +44220,9 @@ begin
     TRTCMode.DS1307:begin
      // DS1307 is declared as part of the I2C bus node, not as a standalone SoC node
     end;
+    TRTCMode.VirtIO:begin
+     // VirtIO RTC is declared as a VirtIO MMIO node (via requestq virtqueue protocol)
+    end;
    end;
 
    begin
@@ -44277,6 +44540,23 @@ begin
       VirtIOVSockNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
       SoCNode.AddChild(VirtIOVSockNode);
+     end;
+
+     if fConfiguration.fRTCMode=TRTCMode.VirtIO then begin
+      VirtIORTCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIORTCBase);
+      try
+       VirtIORTCNode.AddPropertyString('compatible','virtio,mmio');
+       Cells[0]:=0;
+       Cells[1]:=fConfiguration.fVirtIORTCBase;
+       Cells[2]:=0;
+       Cells[3]:=fConfiguration.fVirtIORTCSize;
+       VirtIORTCNode.AddPropertyCells('reg',@Cells,4);
+       Cells[0]:=INTC0.GetPHandle;
+       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIORTCIRQ);
+       VirtIORTCNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      finally
+       SoCNode.AddChild(VirtIORTCNode);
+      end;
      end;
 
     end;
