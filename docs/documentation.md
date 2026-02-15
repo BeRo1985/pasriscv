@@ -46,6 +46,17 @@ Both controllers share the same base address ($10020000) and IRQ ($0d).
 |-----------------------|-----------|-----------|---------------------------|---------------------------------------------|
 | I2C                   | $10020000 | $14/$100  | $0d                       | I2C controller (size depends on mode)       |
 
+# RTC modes
+
+The emulator supports four RTC modes, selectable via `Configuration.RTCMode`:
+
+| Mode       | Device                  | Type       | Linux driver              | Description                                                                                  |
+|------------|-------------------------|------------|---------------------------|----------------------------------------------------------------------------------------------|
+| Goldfish   | TGoldfishRTCDevice      | MMIO       | goldfish-rtc              | Google Goldfish RTC with interrupt support. Default mode, widely supported by Linux kernels.  |
+| DS1742     | TDS1742Device           | MMIO       | rtc-ds1742                | Maxim DS1742 battery-backed timekeeping RAM. Simple polled interface, no IRQ.                 |
+| DS1307     | TDS1307Device           | I2C        | rtc-ds1307                | Maxim DS1307 I2C RTC. Requires I2C controller (automatically activated).                     |
+| VirtIO     | TVirtIORTCDevice        | VirtIO MMIO| virtio-rtc (staging)      | VirtIO RTC (Device ID 17). Provides UTC, TAI and monotonic clocks with nanosecond precision. |
+
 # VirtIO devices
 
 These devices are the VirtIO devices that are used to connect to the system. They are partly required for the system to boot, but not all of them
