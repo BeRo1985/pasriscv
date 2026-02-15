@@ -293,6 +293,8 @@ unit PasRISCV;
 
 {$define NVMELevelTriggeredPCIEInterrupts}
 
+//{$define I2CDebug} // Enable I2C debug output — remove/comment out when not needed
+
 //{$define PasRISCVCPUFileDumpDebug}
 
 //{$define PasRISCVStepDebugOutput}
@@ -5174,13 +5176,30 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure HIDWriteReport(const aReportType,aReportID:TPasRISCVUInt8;const aOffset:TPasRISCVUInt32;const aValue:TPasRISCVUInt8); override;
               procedure HandleKeyboard(const aKey:TPasRISCVUInt32;const aDown:Boolean);
             end;
-            { TI2CDevice }
+            { TI2CDevice - base class for I2C controllers }
             TI2CDevice=class(TBusDevice)
              public
               const DefaultBaseAddress=TPasRISCVUInt64($10020000);
-                    DefaultSize=TPasRISCVUInt64($14);
                     IRQ=TPasRISCVUInt64($0d);
                     AUTO_ADDR=0;
+             protected
+              fLock:TPasMPSlimReaderWriterLock;
+              fBusDevices:TI2CBusDevices;
+              fCountBusDevices:TPasRISCVSizeInt;
+              fBusDeviceAddressMap:TI2CBusDeviceAddressMap;
+             public
+              constructor Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64); reintroduce; virtual;
+              destructor Destroy; override;
+              procedure AttachBusDevice(const aI2CBusDevice:TI2CBusDevice);
+              procedure DetachBusDevice(const aI2CBusDevice:TI2CBusDevice);
+              function GetBusDevice(const aAddress:TPasRISCVUInt16):TI2CBusDevice;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+            end;
+            { TOpenCoresI2CDevice }
+            TOpenCoresI2CDevice=class(TI2CDevice)
+             public
+              const DefaultSize=TPasRISCVUInt64($14);
                     CLKLO=$00; // Clock prescale low byte
                     CLKHI=$04; // Clock prescale high byte
                     CTR=$08; // Control register
@@ -5201,10 +5220,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     SR_TIP=$02; // Transfer in progress
                     SR_IF=$01; // Interrupt flag
              private
-              fLock:TPasMPSlimReaderWriterLock;
-              fBusDevices:TI2CBusDevices;
-              fCountBusDevices:TPasRISCVSizeInt;
-              fBusDeviceAddressMap:TI2CBusDeviceAddressMap;
               fSelectedAddress:TPasRISCVUInt16;
               fClock:TPasRISCVUInt16;
               fControl:TPasRISCVUInt8;
@@ -5215,9 +5230,132 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               destructor Destroy; override;
-              procedure AttachBusDevice(const aI2CBusDevice:TI2CBusDevice);
-              procedure DetachBusDevice(const aI2CBusDevice:TI2CBusDevice);
-              function GetBusDevice(const aAddress:TPasRISCVUInt16):TI2CBusDevice;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+            end;
+            { TDesignWareI2CDevice - Synopsys DesignWare I2C controller }
+            TDesignWareI2CDevice=class(TI2CDevice)
+             public
+              const DefaultSize=TPasRISCVUInt64($100);
+                    // Register offsets
+                    DW_IC_CON=$00;
+                    DW_IC_TAR=$04;
+                    DW_IC_SAR=$08;
+                    DW_IC_DATA_CMD=$10;
+                    DW_IC_SS_SCL_HCNT=$14;
+                    DW_IC_SS_SCL_LCNT=$18;
+                    DW_IC_FS_SCL_HCNT=$1c;
+                    DW_IC_FS_SCL_LCNT=$20;
+                    DW_IC_INTR_STAT=$2c;
+                    DW_IC_INTR_MASK=$30;
+                    DW_IC_RAW_INTR_STAT=$34;
+                    DW_IC_RX_TL=$38;
+                    DW_IC_TX_TL=$3c;
+                    DW_IC_CLR_INTR=$40;
+                    DW_IC_CLR_RX_UNDER=$44;
+                    DW_IC_CLR_RX_OVER=$48;
+                    DW_IC_CLR_TX_OVER=$4c;
+                    DW_IC_CLR_RD_REQ=$50;
+                    DW_IC_CLR_TX_ABRT=$54;
+                    DW_IC_CLR_RX_DONE=$58;
+                    DW_IC_CLR_ACTIVITY=$5c;
+                    DW_IC_CLR_STOP_DET=$60;
+                    DW_IC_CLR_START_DET=$64;
+                    DW_IC_CLR_GEN_CALL=$68;
+                    DW_IC_ENABLE=$6c;
+                    DW_IC_STATUS=$70;
+                    DW_IC_TXFLR=$74;
+                    DW_IC_RXFLR=$78;
+                    DW_IC_SDA_HOLD=$7c;
+                    DW_IC_TX_ABRT_SOURCE=$80;
+                    DW_IC_SDA_SETUP=$94;
+                    DW_IC_ACK_GENERAL_CALL=$98;
+                    DW_IC_ENABLE_STATUS=$9c;
+                    DW_IC_FS_SPKLEN=$a0;
+                    DW_IC_HS_SPKLEN=$a4;
+                    DW_IC_CLR_RESTART_DET=$a8;
+                    DW_IC_COMP_PARAM_1=$f4;
+                    DW_IC_COMP_VERSION=$f8;
+                    DW_IC_COMP_TYPE=$fc;
+                    // IC_CON bits
+                    IC_CON_MASTER_MODE=$01;
+                    IC_CON_SPEED_SS=$02;
+                    IC_CON_SPEED_FS=$04;
+                    IC_CON_SPEED_MASK=$06;
+                    IC_CON_10BITADDR_SLAVE=$08;
+                    IC_CON_10BITADDR_MASTER=$10;
+                    IC_CON_RESTART_EN=$20;
+                    IC_CON_SLAVE_DISABLE=$40;
+                    IC_CON_STOP_DET_IFADDRESSED=$80;
+                    IC_CON_TX_EMPTY_CTRL=$100;
+                    // IC_DATA_CMD bits
+                    IC_DATA_CMD_READ=$100;
+                    IC_DATA_CMD_STOP=$200;
+                    IC_DATA_CMD_RESTART=$400;
+                    // Interrupt bits
+                    IC_INTR_RX_UNDER=$001;
+                    IC_INTR_RX_OVER=$002;
+                    IC_INTR_RX_FULL=$004;
+                    IC_INTR_TX_OVER=$008;
+                    IC_INTR_TX_EMPTY=$010;
+                    IC_INTR_RD_REQ=$020;
+                    IC_INTR_TX_ABRT=$040;
+                    IC_INTR_RX_DONE=$080;
+                    IC_INTR_ACTIVITY=$100;
+                    IC_INTR_STOP_DET=$200;
+                    IC_INTR_START_DET=$400;
+                    IC_INTR_GEN_CALL=$800;
+                    IC_INTR_RESTART_DET=$1000;
+                    // IC_STATUS bits
+                    IC_STATUS_ACTIVITY=$01;
+                    IC_STATUS_TFNF=$02;
+                    IC_STATUS_TFE=$04;
+                    IC_STATUS_RFNE=$08;
+                    IC_STATUS_RFF=$10;
+                    IC_STATUS_MST_ACTIVITY=$20;
+                    // FIFO depth
+                    RX_FIFO_DEPTH=16;
+                    TX_FIFO_DEPTH=16;
+                    // Component identification
+                    DW_IC_COMP_TYPE_VALUE=TPasRISCVUInt32($44570140);
+                    DW_IC_COMP_VERSION_VALUE=TPasRISCVUInt32($3230312a);
+                    // COMP_PARAM_1: 32-bit APB, fast mode, INTR_IO, encoded params, 16-entry FIFOs
+                    DW_IC_COMP_PARAM_1_VALUE=TPasRISCVUInt32($000f0faa);
+             private
+              fCon:TPasRISCVUInt32;
+              fTar:TPasRISCVUInt16;
+              fSar:TPasRISCVUInt16;
+              fEnable:TPasRISCVUInt32;
+              fIntrMask:TPasRISCVUInt32;
+              fRawIntrStat:TPasRISCVUInt32;
+              fRxTL:TPasRISCVUInt8;
+              fTxTL:TPasRISCVUInt8;
+              fSSHCNT:TPasRISCVUInt16;
+              fSSLCNT:TPasRISCVUInt16;
+              fFSHCNT:TPasRISCVUInt16;
+              fFSLCNT:TPasRISCVUInt16;
+              fSDAHold:TPasRISCVUInt32;
+              fSDASetup:TPasRISCVUInt8;
+              fTxAbrtSource:TPasRISCVUInt32;
+              fFSSpkLen:TPasRISCVUInt8;
+              fHSSpkLen:TPasRISCVUInt8;
+              fAckGeneralCall:TPasRISCVUInt8;
+              // RX FIFO
+              fRxFIFO:array[0..RX_FIFO_DEPTH-1] of TPasRISCVUInt8;
+              fRxFIFOHead:TPasRISCVUInt8;
+              fRxFIFOTail:TPasRISCVUInt8;
+              fRxFIFOCount:TPasRISCVUInt8;
+              // Transaction state
+              fTransactionActive:Boolean;
+              fTransactionIsWrite:Boolean;
+              fSelectedAddress:TPasRISCVUInt16;
+              procedure RxFIFOPush(const aValue:TPasRISCVUInt8);
+              function RxFIFOPop:TPasRISCVUInt8;
+              procedure UpdateInterrupts;
+              procedure ProcessDataCmd(const aValue:TPasRISCVUInt32);
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
               function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
               procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
             end;
@@ -6347,6 +6485,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               DS1742,
               DS1307
              );
+            TI2CMode=
+             (
+              OpenCores,
+              DesignWare
+             );
             { TConfiguration }
             TConfiguration=class
              private
@@ -6418,8 +6561,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fRawKeyboardBase:TPasRISCVUInt64;
               fRawKeyboardSize:TPasRISCVUInt64;
 
-              fI2CBase:TPasRISCVUInt64;
-              fI2CSize:TPasRISCVUInt64;
+              fI2CMode:TI2CMode;
+
+              fOpenCoresI2CBase:TPasRISCVUInt64;
+              fOpenCoresI2CSize:TPasRISCVUInt64;
+
+              fDesignWareI2CBase:TPasRISCVUInt64;
+              fDesignWareI2CSize:TPasRISCVUInt64;
 
               fPS2KeyboardBase:TPasRISCVUInt64;
               fPS2KeyboardSize:TPasRISCVUInt64;
@@ -6564,8 +6712,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property RawKeyboardBase:TPasRISCVUInt64 read fRawKeyboardBase write fRawKeyboardBase;
               property RawKeyboardSize:TPasRISCVUInt64 read fRawKeyboardSize write fRawKeyboardSize;
 
-              property I2CBase:TPasRISCVUInt64 read fI2CBase write fI2CBase;
-              property I2CSize:TPasRISCVUInt64 read fI2CSize write fI2CSize;
+              property I2CMode:TI2CMode read fI2CMode write fI2CMode;
+
+              property OpenCoresI2CBase:TPasRISCVUInt64 read fOpenCoresI2CBase write fOpenCoresI2CBase;
+              property OpenCoresI2CSize:TPasRISCVUInt64 read fOpenCoresI2CSize write fOpenCoresI2CSize;
+
+              property DesignWareI2CBase:TPasRISCVUInt64 read fDesignWareI2CBase write fDesignWareI2CBase;
+              property DesignWareI2CSize:TPasRISCVUInt64 read fDesignWareI2CSize write fDesignWareI2CSize;
 
               property PS2KeyboardBase:TPasRISCVUInt64 read fPS2KeyboardBase write fPS2KeyboardBase;
               property PS2KeyboardSize:TPasRISCVUInt64 read fPS2KeyboardSize write fPS2KeyboardSize;
@@ -27058,6 +27211,9 @@ end;
 
 function TPasRISCV.TDS1307I2CBusDevice.Start(const aIsWrite:Boolean):Boolean;
 begin
+{$ifdef I2CDebug}
+ WriteLn('[DS1307] Start isWrite=',aIsWrite);
+{$endif}
  fWriteState:=0;
  if not aIsWrite then begin
   // Read start — refresh time registers
@@ -27074,6 +27230,9 @@ end;
 function TPasRISCV.TDS1307I2CBusDevice.Read(out aValue:TPasRISCVUInt8):Boolean;
 begin
  aValue:=fRegisters[fRegPointer and $3f];
+{$ifdef I2CDebug}
+ WriteLn('[DS1307] Read reg=0x',HexStr(fRegPointer and $3f,2),' val=0x',HexStr(aValue,2));
+{$endif}
  fRegPointer:=(fRegPointer+1) and $3f; // auto-increment with wrap
  result:=true;
 end;
@@ -27083,9 +27242,15 @@ begin
  if fWriteState=0 then begin
   // First byte after START+W is the register pointer
   fRegPointer:=aValue and $3f;
+{$ifdef I2CDebug}
+  WriteLn('[DS1307] Write regPtr=0x',HexStr(fRegPointer,2));
+{$endif}
   fWriteState:=1;
  end else begin
   // Subsequent bytes are data writes
+{$ifdef I2CDebug}
+  WriteLn('[DS1307] Write reg=0x',HexStr(fRegPointer and $3f,2),' val=0x',HexStr(aValue,2));
+{$endif}
   fRegisters[fRegPointer and $3f]:=aValue;
   fRegPointer:=(fRegPointer+1) and $3f;
  end;
@@ -27207,21 +27372,15 @@ begin
  end;
 end;
 
-{ TPasRISCV.TI2CDevice }
+{ TPasRISCV.TI2CDevice - base class }
 
-constructor TPasRISCV.TI2CDevice.Create(const aMachine:TPasRISCV);
+constructor TPasRISCV.TI2CDevice.Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64);
 begin
- inherited Create(aMachine,aMachine.fConfiguration.fI2CBase,aMachine.fConfiguration.fI2CSize);
+ inherited Create(aMachine,aBase,aSize);
  fLock:=TPasMPSlimReaderWriterLock.Create;
  fBusDevices:=nil;
  fCountBusDevices:=0;
  FillChar(fBusDeviceAddressMap,SizeOf(fBusDeviceAddressMap),#0);
- fSelectedAddress:=0;
- fClock:=0;
- fControl:=0;
- fStatus:=0;
- fTXByte:=0;
- fRXByte:=0;
 end;
 
 destructor TPasRISCV.TI2CDevice.Destroy;
@@ -27290,20 +27449,57 @@ begin
  result:=fBusDeviceAddressMap[aAddress];
 end;
 
-procedure TPasRISCV.TI2CDevice.DispatchInterrupt;
+function TPasRISCV.TI2CDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=0;
+end;
+
+procedure TPasRISCV.TI2CDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+begin
+end;
+
+{ TPasRISCV.TOpenCoresI2CDevice }
+
+constructor TPasRISCV.TOpenCoresI2CDevice.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fOpenCoresI2CBase,aMachine.fConfiguration.fOpenCoresI2CSize);
+ fSelectedAddress:=$ffff;
+ fClock:=0;
+ fControl:=0;
+ fStatus:=0;
+ fTXByte:=0;
+ fRXByte:=0;
+end;
+
+destructor TPasRISCV.TOpenCoresI2CDevice.Destroy;
+begin
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TOpenCoresI2CDevice.DispatchInterrupt;
 begin
  fStatus:=fStatus or SR_IF;
  if (fControl and CTR_IEN)<>0 then begin
+{$ifdef I2CDebug}
+  WriteLn('[I2C-OC] DispatchInterrupt: SendIRQ(',IRQ,') status=0x',HexStr(fStatus,2));
+{$endif}
   fMachine.fInterrupts.SendIRQ(IRQ);
+ end else begin
+{$ifdef I2CDebug}
+  WriteLn('[I2C-OC] DispatchInterrupt: IEN disabled, NOT sending IRQ, status=0x',HexStr(fStatus,2));
+{$endif}
  end;
 end;
 
-function TPasRISCV.TI2CDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TOpenCoresI2CDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var Address:TPasRISCVUInt64;
 begin
  Address:=aAddress-fBase;
  fLock.Acquire;
  try
+{$ifdef I2CDebug}
+  WriteLn('[I2C-OC] Load reg=0x',HexStr(Address,2),' size=',aSize);
+{$endif}
   case Address of
    CLKLO:begin
     result:=fClock and $ff;
@@ -27329,7 +27525,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TI2CDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+procedure TPasRISCV.TOpenCoresI2CDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var Address,Cmd:TPasRISCVUInt64;
     I2CBusDevice:TI2CBusDevice;
     IsWrite,TriggerIRQ:Boolean;
@@ -27337,6 +27533,9 @@ begin
  Address:=aAddress-fBase;
  fLock.Acquire;
  try
+{$ifdef I2CDebug}
+  WriteLn('[I2C-OC] Store reg=0x',HexStr(Address,2),' val=0x',HexStr(aValue,2),' size=',aSize);
+{$endif}
   case Address of
    CLKLO:begin
     fClock:=(fClock and $ff00) or (TPasRISCVUInt16(aValue) and $ff);
@@ -27346,9 +27545,11 @@ begin
    end;
    CTR:begin
     fControl:=TPasRISCVUInt8(aValue) and CTR_MASK;
-{   if (fControl and CTR_IEN)=0 then begin
-     fMachine.fInterrupts.LowerIRQ(IRQ);
-    end;}
+    if (fControl and CTR_IEN)=0 then begin
+     if (fStatus and SR_IF)<>0 then begin
+      fMachine.fInterrupts.LowerIRQ(IRQ);
+     end;
+    end;
    end;
    TXRXR:begin
     fTXByte:=TPasRISCVUInt8(aValue);
@@ -27384,6 +27585,10 @@ begin
       fSelectedAddress:=(fTXByte shr 1) and $7f; // Get I2CBusDevice address, signal start of transaction
 
       I2CBusDevice:=GetBusDevice(fSelectedAddress);
+
+{$ifdef I2CDebug}
+      WriteLn('[I2C-OC] Address phase: TXByte=0x',HexStr(fTXByte,2),' addr=0x',HexStr(fSelectedAddress,4),' found=',assigned(I2CBusDevice));
+{$endif}
 
       IsWrite:=(fTXByte and 1)=0;
 
@@ -27447,6 +27652,456 @@ begin
   fLock.Release;
  end;
 
+end;
+
+{ TPasRISCV.TDesignWareI2CDevice }
+
+constructor TPasRISCV.TDesignWareI2CDevice.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fDesignWareI2CBase,aMachine.fConfiguration.fDesignWareI2CSize);
+ fCon:=IC_CON_MASTER_MODE or IC_CON_SPEED_FS or IC_CON_RESTART_EN or IC_CON_SLAVE_DISABLE;
+ fTar:=0;
+ fSar:=0;
+ fEnable:=0;
+ fIntrMask:=0;
+ fRawIntrStat:=0;
+ fRxTL:=0;
+ fTxTL:=0;
+ fSSHCNT:=$0190;
+ fSSLCNT:=$01d6;
+ fFSHCNT:=$003c;
+ fFSLCNT:=$0082;
+ fSDAHold:=1;
+ fSDASetup:=$64;
+ fTxAbrtSource:=0;
+ fFSSpkLen:=$05;
+ fHSSpkLen:=$01;
+ fAckGeneralCall:=1;
+ fRxFIFOHead:=0;
+ fRxFIFOTail:=0;
+ fRxFIFOCount:=0;
+ fTransactionActive:=false;
+ fTransactionIsWrite:=false;
+ fSelectedAddress:=$ffff;
+end;
+
+destructor TPasRISCV.TDesignWareI2CDevice.Destroy;
+begin
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TDesignWareI2CDevice.RxFIFOPush(const aValue:TPasRISCVUInt8);
+begin
+ if fRxFIFOCount<RX_FIFO_DEPTH then begin
+  fRxFIFO[fRxFIFOTail]:=aValue;
+  fRxFIFOTail:=(fRxFIFOTail+1) mod RX_FIFO_DEPTH;
+  inc(fRxFIFOCount);
+ end else begin
+  // RX FIFO overflow
+  fRawIntrStat:=fRawIntrStat or IC_INTR_RX_OVER;
+ end;
+end;
+
+function TPasRISCV.TDesignWareI2CDevice.RxFIFOPop:TPasRISCVUInt8;
+begin
+ if fRxFIFOCount>0 then begin
+  result:=fRxFIFO[fRxFIFOHead];
+  fRxFIFOHead:=(fRxFIFOHead+1) mod RX_FIFO_DEPTH;
+  dec(fRxFIFOCount);
+ end else begin
+  // RX FIFO underflow
+  fRawIntrStat:=fRawIntrStat or IC_INTR_RX_UNDER;
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TDesignWareI2CDevice.UpdateInterrupts;
+var MaskedStat:TPasRISCVUInt32;
+begin
+ // TX_EMPTY is level-triggered: set when TX FIFO level <= TX_TL
+ // Since we process commands immediately, TX FIFO is always empty
+ if (fEnable and 1)<>0 then begin
+  fRawIntrStat:=fRawIntrStat or IC_INTR_TX_EMPTY;
+ end;
+ // RX_FULL is level-triggered: set when RX FIFO level > RX_TL
+ if fRxFIFOCount>fRxTL then begin
+  fRawIntrStat:=fRawIntrStat or IC_INTR_RX_FULL;
+ end else begin
+  fRawIntrStat:=fRawIntrStat and not IC_INTR_RX_FULL;
+ end;
+ MaskedStat:=fRawIntrStat and fIntrMask;
+ if MaskedStat<>0 then begin
+{$ifdef I2CDebug}
+  WriteLn('[I2C-DW] UpdateInterrupts: SendIRQ(',IRQ,') masked=0x',HexStr(MaskedStat,4));
+{$endif}
+  fMachine.fInterrupts.SendIRQ(IRQ);
+ end else begin
+  fMachine.fInterrupts.LowerIRQ(IRQ);
+ end;
+end;
+
+procedure TPasRISCV.TDesignWareI2CDevice.ProcessDataCmd(const aValue:TPasRISCVUInt32);
+var I2CBusDevice:TI2CBusDevice;
+    ReadByte:TPasRISCVUInt8;
+begin
+ // RESTART flag — end current transaction, start new one
+ if (aValue and IC_DATA_CMD_RESTART)<>0 then begin
+  if fTransactionActive then begin
+   I2CBusDevice:=GetBusDevice(fSelectedAddress);
+   if assigned(I2CBusDevice) then begin
+    I2CBusDevice.Stop;
+   end;
+   fTransactionActive:=false;
+  end;
+ end;
+
+ // Determine if read or write
+ if (aValue and IC_DATA_CMD_READ)<>0 then begin
+  // READ command
+  if (not fTransactionActive) or fTransactionIsWrite then begin
+   // Need to start a read transaction
+   fSelectedAddress:=fTar and $7f;
+   I2CBusDevice:=GetBusDevice(fSelectedAddress);
+{$ifdef I2CDebug}
+   WriteLn('[I2C-DW] Read START addr=0x',HexStr(fSelectedAddress,2),' found=',assigned(I2CBusDevice));
+{$endif}
+   if assigned(I2CBusDevice) then begin
+    I2CBusDevice.Start(false);
+    fTransactionActive:=true;
+    fTransactionIsWrite:=false;
+   end else begin
+    fTxAbrtSource:=fTxAbrtSource or (1 shl 0); // ABRT_7B_ADDR_NOACK
+    fRawIntrStat:=fRawIntrStat or IC_INTR_TX_ABRT;
+    exit;
+   end;
+  end;
+  I2CBusDevice:=GetBusDevice(fSelectedAddress);
+  if assigned(I2CBusDevice) then begin
+   if I2CBusDevice.Read(ReadByte) then begin
+{$ifdef I2CDebug}
+    WriteLn('[I2C-DW] Read byte=0x',HexStr(ReadByte,2));
+{$endif}
+    RxFIFOPush(ReadByte);
+   end;
+  end;
+ end else begin
+  // WRITE command
+  if (not fTransactionActive) or (not fTransactionIsWrite) then begin
+   // Need to start a write transaction
+   fSelectedAddress:=fTar and $7f;
+   I2CBusDevice:=GetBusDevice(fSelectedAddress);
+{$ifdef I2CDebug}
+   WriteLn('[I2C-DW] Write START addr=0x',HexStr(fSelectedAddress,2),' found=',assigned(I2CBusDevice));
+{$endif}
+   if assigned(I2CBusDevice) then begin
+    I2CBusDevice.Start(true);
+    fTransactionActive:=true;
+    fTransactionIsWrite:=true;
+   end else begin
+    fTxAbrtSource:=fTxAbrtSource or (1 shl 0); // ABRT_7B_ADDR_NOACK
+    fRawIntrStat:=fRawIntrStat or IC_INTR_TX_ABRT;
+    exit;
+   end;
+  end;
+  I2CBusDevice:=GetBusDevice(fSelectedAddress);
+  if assigned(I2CBusDevice) then begin
+{$ifdef I2CDebug}
+   WriteLn('[I2C-DW] Write byte=0x',HexStr(aValue and $ff,2));
+{$endif}
+   I2CBusDevice.Write(TPasRISCVUInt8(aValue and $ff));
+  end;
+ end;
+
+ // STOP flag — end transaction
+ if (aValue and IC_DATA_CMD_STOP)<>0 then begin
+  if fTransactionActive then begin
+   I2CBusDevice:=GetBusDevice(fSelectedAddress);
+   if assigned(I2CBusDevice) then begin
+    I2CBusDevice.Stop;
+   end;
+   fTransactionActive:=false;
+  end;
+  fRawIntrStat:=fRawIntrStat or IC_INTR_STOP_DET;
+ end;
+
+ fRawIntrStat:=fRawIntrStat or IC_INTR_ACTIVITY;
+end;
+
+function TPasRISCV.TDesignWareI2CDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-fBase;
+ fLock.Acquire;
+ try
+{$ifdef I2CDebug}
+  WriteLn('[I2C-DW] Load reg=0x',HexStr(Address,2),' size=',aSize);
+{$endif}
+  case Address of
+   DW_IC_CON:begin
+    result:=fCon;
+   end;
+   DW_IC_TAR:begin
+    result:=fTar;
+   end;
+   DW_IC_SAR:begin
+    result:=fSar;
+   end;
+   DW_IC_DATA_CMD:begin
+    result:=RxFIFOPop;
+    UpdateInterrupts;
+   end;
+   DW_IC_SS_SCL_HCNT:begin
+    result:=fSSHCNT;
+   end;
+   DW_IC_SS_SCL_LCNT:begin
+    result:=fSSLCNT;
+   end;
+   DW_IC_FS_SCL_HCNT:begin
+    result:=fFSHCNT;
+   end;
+   DW_IC_FS_SCL_LCNT:begin
+    result:=fFSLCNT;
+   end;
+   DW_IC_INTR_STAT:begin
+    result:=fRawIntrStat and fIntrMask;
+   end;
+   DW_IC_INTR_MASK:begin
+    result:=fIntrMask;
+   end;
+   DW_IC_RAW_INTR_STAT:begin
+    result:=fRawIntrStat;
+   end;
+   DW_IC_RX_TL:begin
+    result:=fRxTL;
+   end;
+   DW_IC_TX_TL:begin
+    result:=fTxTL;
+   end;
+   DW_IC_CLR_INTR:begin
+    fRawIntrStat:=0;
+    result:=fRawIntrStat;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_RX_UNDER:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_RX_UNDER;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_RX_OVER:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_RX_OVER;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_TX_OVER:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_TX_OVER;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_RD_REQ:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_RD_REQ;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_TX_ABRT:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_TX_ABRT;
+    fTxAbrtSource:=0;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_RX_DONE:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_RX_DONE;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_ACTIVITY:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_ACTIVITY;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_STOP_DET:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_STOP_DET;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_START_DET:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_START_DET;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_GEN_CALL:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_GEN_CALL;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_CLR_RESTART_DET:begin
+    fRawIntrStat:=fRawIntrStat and not IC_INTR_RESTART_DET;
+    result:=0;
+    UpdateInterrupts;
+   end;
+   DW_IC_ENABLE:begin
+    result:=fEnable;
+   end;
+   DW_IC_STATUS:begin
+    result:=IC_STATUS_TFNF or IC_STATUS_TFE; // TX FIFO always not-full and empty
+    if fRxFIFOCount>0 then begin
+     result:=result or IC_STATUS_RFNE;
+    end;
+    if fRxFIFOCount>=RX_FIFO_DEPTH then begin
+     result:=result or IC_STATUS_RFF;
+    end;
+   end;
+   DW_IC_TXFLR:begin
+    result:=0; // TX FIFO always empty (commands processed immediately)
+   end;
+   DW_IC_RXFLR:begin
+    result:=fRxFIFOCount;
+   end;
+   DW_IC_SDA_HOLD:begin
+    result:=fSDAHold;
+   end;
+   DW_IC_TX_ABRT_SOURCE:begin
+    result:=fTxAbrtSource;
+   end;
+   DW_IC_SDA_SETUP:begin
+    result:=fSDASetup;
+   end;
+   DW_IC_ACK_GENERAL_CALL:begin
+    result:=fAckGeneralCall;
+   end;
+   DW_IC_ENABLE_STATUS:begin
+    result:=fEnable and 1; // Mirror enable bit
+   end;
+   DW_IC_FS_SPKLEN:begin
+    result:=fFSSpkLen;
+   end;
+   DW_IC_HS_SPKLEN:begin
+    result:=fHSSpkLen;
+   end;
+   DW_IC_COMP_PARAM_1:begin
+    result:=DW_IC_COMP_PARAM_1_VALUE;
+   end;
+   DW_IC_COMP_VERSION:begin
+    result:=DW_IC_COMP_VERSION_VALUE;
+   end;
+   DW_IC_COMP_TYPE:begin
+    result:=DW_IC_COMP_TYPE_VALUE;
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ finally
+  fLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TDesignWareI2CDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address:TPasRISCVUInt64;
+    I2CBusDevice:TI2CBusDevice;
+begin
+ Address:=aAddress-fBase;
+ fLock.Acquire;
+ try
+{$ifdef I2CDebug}
+  WriteLn('[I2C-DW] Store reg=0x',HexStr(Address,2),' val=0x',HexStr(aValue,4),' size=',aSize);
+{$endif}
+  case Address of
+   DW_IC_CON:begin
+    if (fEnable and 1)=0 then begin // Only writable when disabled
+     fCon:=TPasRISCVUInt32(aValue);
+    end;
+   end;
+   DW_IC_TAR:begin
+    if (fEnable and 1)=0 then begin
+     fTar:=TPasRISCVUInt16(aValue) and $3ff;
+    end;
+   end;
+   DW_IC_SAR:begin
+    if (fEnable and 1)=0 then begin
+     fSar:=TPasRISCVUInt16(aValue) and $3ff;
+    end;
+   end;
+   DW_IC_DATA_CMD:begin
+    if (fEnable and 1)<>0 then begin
+     ProcessDataCmd(TPasRISCVUInt32(aValue));
+     UpdateInterrupts;
+    end;
+   end;
+   DW_IC_SS_SCL_HCNT:begin
+    fSSHCNT:=TPasRISCVUInt16(aValue);
+   end;
+   DW_IC_SS_SCL_LCNT:begin
+    fSSLCNT:=TPasRISCVUInt16(aValue);
+   end;
+   DW_IC_FS_SCL_HCNT:begin
+    fFSHCNT:=TPasRISCVUInt16(aValue);
+   end;
+   DW_IC_FS_SCL_LCNT:begin
+    fFSLCNT:=TPasRISCVUInt16(aValue);
+   end;
+   DW_IC_INTR_MASK:begin
+    fIntrMask:=TPasRISCVUInt32(aValue) and $1fff;
+    UpdateInterrupts;
+   end;
+   DW_IC_RX_TL:begin
+    fRxTL:=TPasRISCVUInt8(aValue);
+    if fRxTL>=RX_FIFO_DEPTH then begin
+     fRxTL:=RX_FIFO_DEPTH-1;
+    end;
+   end;
+   DW_IC_TX_TL:begin
+    fTxTL:=TPasRISCVUInt8(aValue);
+    if fTxTL>=TX_FIFO_DEPTH then begin
+     fTxTL:=TX_FIFO_DEPTH-1;
+    end;
+   end;
+   DW_IC_ENABLE:begin
+    if ((aValue and 1)=0) and ((fEnable and 1)<>0) then begin
+     // Disabling controller — abort any active transaction
+     if fTransactionActive then begin
+      I2CBusDevice:=GetBusDevice(fSelectedAddress);
+      if assigned(I2CBusDevice) then begin
+       I2CBusDevice.Stop;
+      end;
+      fTransactionActive:=false;
+     end;
+     fSelectedAddress:=$ffff;
+     // Clear FIFOs
+     fRxFIFOHead:=0;
+     fRxFIFOTail:=0;
+     fRxFIFOCount:=0;
+     // Clear raw interrupt status
+     fRawIntrStat:=0;
+     fTxAbrtSource:=0;
+    end;
+    fEnable:=TPasRISCVUInt32(aValue) and 1;
+    if (fEnable and 1)<>0 then begin
+     // Enabling controller — TX_EMPTY is immediately true
+     fRawIntrStat:=fRawIntrStat or IC_INTR_TX_EMPTY;
+    end;
+    UpdateInterrupts;
+   end;
+   DW_IC_SDA_HOLD:begin
+    fSDAHold:=TPasRISCVUInt32(aValue);
+   end;
+   DW_IC_SDA_SETUP:begin
+    fSDASetup:=TPasRISCVUInt8(aValue);
+   end;
+   DW_IC_ACK_GENERAL_CALL:begin
+    fAckGeneralCall:=TPasRISCVUInt8(aValue) and 1;
+   end;
+   DW_IC_FS_SPKLEN:begin
+    fFSSpkLen:=TPasRISCVUInt8(aValue);
+   end;
+   DW_IC_HS_SPKLEN:begin
+    fHSSpkLen:=TPasRISCVUInt8(aValue);
+   end;
+   // Read-only registers: INTR_STAT, RAW_INTR_STAT, STATUS, TXFLR, RXFLR,
+   // TX_ABRT_SOURCE, ENABLE_STATUS, COMP_* — ignore writes
+  end;
+ finally
+  fLock.Release;
+ end;
 end;
 
 { TPasRTISCV.TPS2Device }
@@ -41795,8 +42450,13 @@ begin
  fRawKeyboardBase:=TPasRISCV.TRawKeyboardDevice.DefaultBaseAddress;
  fRawKeyboardSize:=TPasRISCV.TRawKeyboardDevice.DefaultSize;
 
- fI2CBase:=TPasRISCV.TI2CDevice.DefaultBaseAddress;
- fI2CSize:=TPasRISCV.TI2CDevice.DefaultSize;
+ fI2CMode:=TI2CMode.DesignWare;
+
+ fOpenCoresI2CBase:=TPasRISCV.TI2CDevice.DefaultBaseAddress;
+ fOpenCoresI2CSize:=TPasRISCV.TOpenCoresI2CDevice.DefaultSize;
+
+ fDesignWareI2CBase:=TPasRISCV.TI2CDevice.DefaultBaseAddress;
+ fDesignWareI2CSize:=TPasRISCV.TDesignWareI2CDevice.DefaultSize;
 
  fPS2KeyboardBase:=TPasRISCV.TPS2KeyboardDevice.DefaultBaseAddress;
  fPS2KeyboardSize:=TPasRISCV.TPS2KeyboardDevice.DefaultSize;
@@ -41939,8 +42599,13 @@ begin
  fRawKeyboardBase:=aConfiguration.fRawKeyboardBase;
  fRawKeyboardSize:=aConfiguration.fRawKeyboardSize;
 
- fI2CBase:=aConfiguration.fI2CBase;
- fI2CSize:=aConfiguration.fI2CSize;
+ fI2CMode:=aConfiguration.fI2CMode;
+
+ fOpenCoresI2CBase:=aConfiguration.fOpenCoresI2CBase;
+ fOpenCoresI2CSize:=aConfiguration.fOpenCoresI2CSize;
+
+ fDesignWareI2CBase:=aConfiguration.fDesignWareI2CBase;
+ fDesignWareI2CSize:=aConfiguration.fDesignWareI2CSize;
 
  fPS2KeyboardBase:=aConfiguration.fPS2KeyboardBase;
  fPS2KeyboardSize:=aConfiguration.fPS2KeyboardSize;
@@ -42249,7 +42914,14 @@ begin
  fRawKeyboardDevice:=TRawKeyboardDevice.Create(self);
 
  if fConfiguration.fRTCMode=TRTCMode.DS1307 then begin
-  fI2CDevice:=TI2CDevice.Create(self);
+  case fConfiguration.fI2CMode of
+   TI2CMode.OpenCores:begin
+    fI2CDevice:=TOpenCoresI2CDevice.Create(self);
+   end;
+   else begin
+    fI2CDevice:=TDesignWareI2CDevice.Create(self);
+   end;
+  end;
   fDS1307Device:=TDS1307I2CBusDevice.Create(fI2CDevice);
   fI2CDevice.AttachBusDevice(fDS1307Device);
  end else begin
@@ -43553,7 +44225,7 @@ begin
 
    if fConfiguration.fRTCMode=TRTCMode.DS1307 then begin
 
-    I2CClockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c_oc_osc');
+    I2CClockNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c_clk');
     try
      I2CClockNode.AddPropertyString('compatible','fixed-clock');
      I2CClockNode.AddPropertyU32('#clock-cells',0);
@@ -43563,14 +44235,36 @@ begin
      SoCNode.AddChild(I2CClockNode);
     end;
 
-    I2CNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',fConfiguration.fI2CBase);
+    case fConfiguration.fI2CMode of
+     TI2CMode.OpenCores:begin
+      I2CNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',fConfiguration.fOpenCoresI2CBase);
+     end;
+     else begin
+      I2CNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'i2c',fConfiguration.fDesignWareI2CBase);
+     end;
+    end;
     try
-     Cells[0]:=0;
-     Cells[1]:=fConfiguration.fI2CBase;
-     Cells[2]:=0;
-     Cells[3]:=fConfiguration.fI2CSize;
-     I2CNode.AddPropertyCells('reg',@Cells,4);
-     I2CNode.AddPropertyString('compatible','opencores,i2c-ocores');
+     case fConfiguration.fI2CMode of
+      TI2CMode.OpenCores:begin
+       Cells[0]:=0;
+       Cells[1]:=fConfiguration.fOpenCoresI2CBase;
+       Cells[2]:=0;
+       Cells[3]:=fConfiguration.fOpenCoresI2CSize;
+       I2CNode.AddPropertyCells('reg',@Cells,4);
+       I2CNode.AddPropertyString('compatible','opencores,i2c-ocores');
+       I2CNode.AddPropertyU32('reg-shift',2);
+       I2CNode.AddPropertyU32('reg-io-width',1);
+       I2CNode.AddPropertyU32('opencores,ip-clock-frequency',20000000);
+      end;
+      else begin
+       Cells[0]:=0;
+       Cells[1]:=fConfiguration.fDesignWareI2CBase;
+       Cells[2]:=0;
+       Cells[3]:=fConfiguration.fDesignWareI2CSize;
+       I2CNode.AddPropertyCells('reg',@Cells,4);
+       I2CNode.AddPropertyString('compatible','snps,designware-i2c');
+      end;
+     end;
      I2CNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
      if fConfiguration.fAIA then begin
       // APLIC: #interrupt-cells=2, need IRQ number + trigger type (4 = level high)
@@ -43583,9 +44277,7 @@ begin
      end;
      I2CNode.AddPropertyU32('clocks',I2CClockNode.GetPHandle);
      I2CNode.AddPropertyString('clock-names','clk');
-     I2CNode.AddPropertyU32('reg-shift',2);
-     I2CNode.AddPropertyU32('reg-io-width',1);
-     I2CNode.AddPropertyU32('opencores,ip-clock-frequency',20000000);
+     I2CNode.AddPropertyU32('clock-frequency',100000);
      I2CNode.AddPropertyU32('#address-cells',1);
      I2CNode.AddPropertyU32('#size-cells',0);
      I2CNode.AddPropertyString('status','okay');
@@ -43594,6 +44286,7 @@ begin
      try
       I2CDS1307Node.AddPropertyString('compatible','dallas,ds1307');
       I2CDS1307Node.AddPropertyU32('reg',TDS1307I2CBusDevice.DS1307_ADDRESS);
+      I2CDS1307Node.AddPropertyString('status','okay');
      finally
       I2CNode.AddChild(I2CDS1307Node);
      end;
