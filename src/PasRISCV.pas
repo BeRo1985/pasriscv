@@ -3289,7 +3289,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     BOCHS_VBE_DEVICE_ID=$1111;
                     BOCHS_VBE_CLASS_CODE=$0300; // VGA compatible controller
                     BOCHS_VBE_REVISION=$02;
-                    // VBE DISPI registers (MMIO BAR2 offsets, 16-bit each)
+                    // BAR2 MMIO sub-region offsets (matching QEMU layout)
+                    MMIO_EDID_BASE=$000;   // EDID data region
+                    MMIO_EDID_SIZE=$100;
+                    MMIO_VGA_BASE=$400;    // VGA registers
+                    MMIO_VGA_SIZE=$100;
+                    MMIO_VBE_BASE=$500;    // VBE DISPI registers (bochs.h: MMIO_BASE=0x500)
+                    MMIO_VBE_SIZE=$020;
+                    MMIO_QEXT_BASE=$600;   // QEMU extension registers
+                    MMIO_QEXT_SIZE=$008;
+                    // VBE DISPI registers (relative to MMIO_VBE_BASE, 16-bit each)
                     VBE_DISPI_INDEX_ID=$00;
                     VBE_DISPI_INDEX_XRES=$02;
                     VBE_DISPI_INDEX_YRES=$04;
@@ -3320,7 +3329,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     VBE_DISPI_MAX_BPP=32;
                     // BAR sizes
                     BOCHS_VBE_BAR0_SIZE=TPasRISCVUInt64(16*1024*1024); // 16MB framebuffer
-                    BOCHS_VBE_BAR2_SIZE=TPasRISCVUInt64($1000);        // 4KB VBE DISPI regs
+                    BOCHS_VBE_BAR2_SIZE=TPasRISCVUInt64($1000);        // 4KB MMIO (EDID+VGA+VBE DISPI+QEXT)
+                    // QEMU extension register offsets (relative to MMIO_QEXT_BASE)
+                    PCI_VGA_QEXT_REG_SIZE=$00;
+                    PCI_VGA_QEXT_REG_BYTEORDER=$04;
+                    PCI_VGA_QEXT_SIZE=$08;
+                    PCI_VGA_QEXT_LITTLE_ENDIAN=$1e1e1e1e;
+                    PCI_VGA_QEXT_BIG_ENDIAN=$1e1e1e1f;
+                    // VGA Attribute register
+                    VGA_AR_ENABLE_DISPLAY=$20;
              private
               fFrameBuffer:TFrameBufferDevice;
               fVBEEnable:TPasRISCVUInt16;
@@ -19132,60 +19149,87 @@ function TPasRISCV.TBochsVBEDevice.OnVBELoad(const aPCIMemoryDevice:TPasRISCV.TP
 var Address:TPasRISCVUInt64;
 begin
  Address:=aAddress-aPCIMemoryDevice.fBase;
- if (fVBEEnable and VBE_DISPI_GETCAPS)<>0 then begin
-  // Return maximum capabilities
-  case Address of
-   VBE_DISPI_INDEX_XRES:begin
-    result:=VBE_DISPI_MAX_XRES;
-   end;
-   VBE_DISPI_INDEX_YRES:begin
-    result:=VBE_DISPI_MAX_YRES;
-   end;
-   VBE_DISPI_INDEX_BPP:begin
-    result:=VBE_DISPI_MAX_BPP;
-   end;
-   else begin
-    result:=0;
+ case Address of
+  MMIO_QEXT_BASE..(MMIO_QEXT_BASE+MMIO_QEXT_SIZE)-1:begin
+   case Address-MMIO_QEXT_BASE of
+    PCI_VGA_QEXT_REG_SIZE:begin
+     result:=PCI_VGA_QEXT_SIZE;
+    end;
+    PCI_VGA_QEXT_REG_BYTEORDER:begin
+     result:=PCI_VGA_QEXT_LITTLE_ENDIAN;
+    end;
+    else begin
+     result:=0;
+    end;
    end;
   end;
- end else begin
-  case Address of
-   VBE_DISPI_INDEX_ID:begin
-    result:=VBE_DISPI_ID5;
+  MMIO_VBE_BASE..(MMIO_VBE_BASE+MMIO_VBE_SIZE)-1:begin
+   if (fVBEEnable and VBE_DISPI_GETCAPS)<>0 then begin
+    case Address-MMIO_VBE_BASE of
+     VBE_DISPI_INDEX_XRES:begin
+      result:=VBE_DISPI_MAX_XRES;
+     end;
+     VBE_DISPI_INDEX_YRES:begin
+      result:=VBE_DISPI_MAX_YRES;
+     end;
+     VBE_DISPI_INDEX_BPP:begin
+      result:=VBE_DISPI_MAX_BPP;
+     end;
+     else begin
+      result:=0;
+     end;
+    end;
+   end else begin
+    case Address-MMIO_VBE_BASE of
+     VBE_DISPI_INDEX_ID:begin
+      result:=VBE_DISPI_ID5;
+     end;
+     VBE_DISPI_INDEX_XRES:begin
+      result:=fVBEXRes;
+     end;
+     VBE_DISPI_INDEX_YRES:begin
+      result:=fVBEYRes;
+     end;
+     VBE_DISPI_INDEX_BPP:begin
+      result:=fVBEBPP;
+     end;
+     VBE_DISPI_INDEX_ENABLE:begin
+      result:=fVBEEnable;
+     end;
+     VBE_DISPI_INDEX_BANK:begin
+      result:=fVBEBank;
+     end;
+     VBE_DISPI_INDEX_VIRT_WIDTH:begin
+      result:=fVBEVirtWidth;
+     end;
+     VBE_DISPI_INDEX_VIRT_HEIGHT:begin
+      result:=fVBEVirtHeight;
+     end;
+     VBE_DISPI_INDEX_X_OFFSET:begin
+      result:=fVBEXOffset;
+     end;
+     VBE_DISPI_INDEX_Y_OFFSET:begin
+      result:=fVBEYOffset;
+     end;
+     VBE_DISPI_INDEX_VIDEO_MEMORY_64K:begin
+      result:=BOCHS_VBE_BAR0_SIZE div 65536;
+     end;
+     else begin
+      result:=0;
+     end;
+    end;
    end;
-   VBE_DISPI_INDEX_XRES:begin
-    result:=fVBEXRes;
-   end;
-   VBE_DISPI_INDEX_YRES:begin
-    result:=fVBEYRes;
-   end;
-   VBE_DISPI_INDEX_BPP:begin
-    result:=fVBEBPP;
-   end;
-   VBE_DISPI_INDEX_ENABLE:begin
-    result:=fVBEEnable;
-   end;
-   VBE_DISPI_INDEX_BANK:begin
-    result:=fVBEBank;
-   end;
-   VBE_DISPI_INDEX_VIRT_WIDTH:begin
-    result:=fVBEVirtWidth;
-   end;
-   VBE_DISPI_INDEX_VIRT_HEIGHT:begin
-    result:=fVBEVirtHeight;
-   end;
-   VBE_DISPI_INDEX_X_OFFSET:begin
-    result:=fVBEXOffset;
-   end;
-   VBE_DISPI_INDEX_Y_OFFSET:begin
-    result:=fVBEYOffset;
-   end;
-   VBE_DISPI_INDEX_VIDEO_MEMORY_64K:begin
-    result:=BOCHS_VBE_BAR0_SIZE div 65536;
-   end;
-   else begin
-    result:=0;
-   end;
+  end;
+  MMIO_VGA_BASE..(MMIO_VGA_BASE+MMIO_VGA_SIZE)-1:begin
+   // VGA registers — return safe defaults
+   result:=0;
+  end;
+  MMIO_EDID_BASE..(MMIO_EDID_BASE+MMIO_EDID_SIZE)-1:begin
+   // EDID data — not implemented, return zeros
+   result:=0;
+  end;
+  else begin
+   result:=0;
   end;
  end;
 end;
@@ -19195,51 +19239,48 @@ var Address:TPasRISCVUInt64;
     Value16:TPasRISCVUInt16;
 begin
  Address:=aAddress-aPCIMemoryDevice.fBase;
- Value16:=TPasRISCVUInt16(aValue);
  case Address of
-  VBE_DISPI_INDEX_ID:begin
-   // Guest can write any ID value; we always report VBE_DISPI_ID5 on read
-  end;
-  VBE_DISPI_INDEX_XRES:begin
-   fVBEXRes:=Value16;
-  end;
-  VBE_DISPI_INDEX_YRES:begin
-   fVBEYRes:=Value16;
-  end;
-  VBE_DISPI_INDEX_BPP:begin
-   if Value16 in [8,15,16,24,32] then begin
-    fVBEBPP:=Value16;
+  MMIO_VBE_BASE..(MMIO_VBE_BASE+MMIO_VBE_SIZE)-1:begin
+   Value16:=TPasRISCVUInt16(aValue);
+   case Address-MMIO_VBE_BASE of
+    VBE_DISPI_INDEX_ID:begin
+     // Guest can write any ID value; we always report VBE_DISPI_ID5 on read
+    end;
+    VBE_DISPI_INDEX_XRES:begin
+     fVBEXRes:=Value16;
+    end;
+    VBE_DISPI_INDEX_YRES:begin
+     fVBEYRes:=Value16;
+    end;
+    VBE_DISPI_INDEX_BPP:begin
+     if Value16 in [8,15,16,24,32] then begin
+      fVBEBPP:=Value16;
+     end;
+    end;
+    VBE_DISPI_INDEX_ENABLE:begin
+     fVBEEnable:=Value16;
+     ApplyVideoMode;
+    end;
+    VBE_DISPI_INDEX_BANK:begin
+     fVBEBank:=Value16;
+    end;
+    VBE_DISPI_INDEX_VIRT_WIDTH:begin
+     fVBEVirtWidth:=Value16;
+    end;
+    VBE_DISPI_INDEX_VIRT_HEIGHT:begin
+     fVBEVirtHeight:=Value16;
+    end;
+    VBE_DISPI_INDEX_X_OFFSET:begin
+     fVBEXOffset:=Value16;
+     fFrameBuffer.fDirty:=true;
+    end;
+    VBE_DISPI_INDEX_Y_OFFSET:begin
+     fVBEYOffset:=Value16;
+     fFrameBuffer.fDirty:=true;
+    end;
    end;
   end;
-  VBE_DISPI_INDEX_ENABLE:begin
-   fVBEEnable:=Value16;
-   ApplyVideoMode;
-  end;
-  VBE_DISPI_INDEX_BANK:begin
-   fVBEBank:=Value16;
-  end;
-  VBE_DISPI_INDEX_VIRT_WIDTH:begin
-   fVBEVirtWidth:=Value16;
-  end;
-  VBE_DISPI_INDEX_VIRT_HEIGHT:begin
-   fVBEVirtHeight:=Value16;
-  end;
-  VBE_DISPI_INDEX_X_OFFSET:begin
-   fVBEXOffset:=Value16;
-   fFrameBuffer.fDirty:=true;
-{  fFrameBuffer.UpdateOutputData;
-   if assigned(fMachine.OnNewFrame) then begin
-    fMachine.OnNewFrame();
-   end;}
-  end;
-  VBE_DISPI_INDEX_Y_OFFSET:begin
-   fVBEYOffset:=Value16;
-   fFrameBuffer.fDirty:=true;
-{  fFrameBuffer.UpdateOutputData;
-   if assigned(fMachine.OnNewFrame) then begin
-    fMachine.OnNewFrame();
-   end;}
-  end;
+  // VGA registers at $400, QEMU ext at $600, EDID at $000 — writes ignored for now
  end;
 end;
 
