@@ -33,11 +33,18 @@ The raw keyboard device is a simple device that provides a bit array of scancode
 
 # I2C devices
 
-These devices are the Inter-Integrated Circuit (I2C) devices that are used to connect to the system.
+The emulator includes an I2C bus with two selectable controller modes, configurable via `Configuration.I2CMode`. The I2C bus is activated automatically when `RTCMode=DS1307`.
+
+| Mode       | Device                  | Size   | Compatible string          | Linux driver              | Description                                                    |
+|------------|-------------------------|--------|----------------------------|---------------------------|----------------------------------------------------------------|
+| OpenCores  | TOpenCoresI2CDevice     | $14    | opencores,i2c-ocores       | i2c-ocores                | Classic register-based I2C controller (CLKLO/HI, CTR, TXR/RXR, CR/SR) |
+| DesignWare | TDesignWareI2CDevice    | $100   | snps,designware-i2c        | i2c-designware-platform   | Synopsys DesignWare I2C controller with RX/TX FIFOs (16 entries each), interrupt-driven, COMP_TYPE/VERSION/PARAM_1 identification registers. Default mode. |
+
+Both controllers share the same base address ($10020000) and IRQ ($0d).
 
 | What                  | Where     | Size      | IRQ(s)                    | Description                                 |
 |-----------------------|-----------|-----------|---------------------------|---------------------------------------------|
-| I2C                   | $10020000 | $14       | $0d                       | I2C controller                              |
+| I2C                   | $10020000 | $14/$100  | $0d                       | I2C controller (size depends on mode)       |
 
 # VirtIO devices
 

@@ -51,9 +51,12 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
     - NVMe SSD
     - IVSHMEM (Inter-VM Shared Memory) device for host-guest shared memory communication with doorbell interrupts
     - Bochs VBE VGA adapter (if DisplayMode=BochsVBE)
-  - I2C bus (disabled for now, due to IRQ issues, will be either fixed, removed, or replaced with virtio-i2c later)
-    - HID devices
-      - Keyboard
+  - I2C bus with two selectable controller modes:
+    - OpenCores I2C (opencores,i2c-ocores) — classic register-based I2C controller
+    - Synopsys DesignWare I2C (snps,designware-i2c) — default, compatible with Linux i2c-designware driver
+    - Attached devices:
+      - DS1307 RTC (if RTCMode=DS1307)
+      - HID keyboard (planned, currently disabled)
 - Full MMU support with Sv39, Sv48 and Sv57 page table modes, including support for Svnapot and Svadu extensions
 - Disassembler
   - RV64GC instruction set support
