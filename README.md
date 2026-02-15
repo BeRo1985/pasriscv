@@ -44,6 +44,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Display mode support with three selectable backends:
     - SimpleFB — custom MMIO framebuffer (default, for baremetal and simple guests)
     - VirtIO GPU — standard VirtIO 2D GPU with EDID support (for Linux with virtio-gpu driver)
+      - This is the recommended display mode for Linux guests, as it offers better performance and compatibility than SimpleFB. The guest OS updates the framebuffer via VirtIO and marks it as dirty, so the host only refreshes the output when the content has actually changed, whereas SimpleFB requires polling the entire framebuffer every frame, which is very inefficient for Linux desktop environments with compositing and frequent screen updates.
     - Bochs VBE — PCI VGA adapter with VBE DISPI registers (for Linux with bochs-drm driver)
     - Cirrus Logic GD 5446 — PCI VGA adapter compatible with QEMU cirrus driver (for Linux with cirrus DRM driver)
   - Framebuffer support
