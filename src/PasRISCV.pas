@@ -6343,8 +6343,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              );
             TRTCMode=
              (
-              DS1742,
               Goldfish,
+              DS1742,
               DS1307
              );
             { TConfiguration }
@@ -6396,12 +6396,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fRTCMode:TRTCMode;
 
-              fDS1742Base:TPasRISCVUInt64;
-              fDS1742Size:TPasRISCVUInt64;
-
               fGoldfishRTCBase:TPasRISCVUInt64;
               fGoldfishRTCSize:TPasRISCVUInt64;
               fGoldfishRTCIRQ:TPasRISCVUInt64;
+
+              fDS1742Base:TPasRISCVUInt64;
+              fDS1742Size:TPasRISCVUInt64;
 
               fFrameBufferBase:TPasRISCVUInt64;
               fFrameBufferSize:TPasRISCVUInt64;
@@ -6542,12 +6542,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property RTCMode:TRTCMode read fRTCMode write fRTCMode;
 
-              property DS1742Base:TPasRISCVUInt64 read fDS1742Base write fDS1742Base;
-              property DS1742Size:TPasRISCVUInt64 read fDS1742Size write fDS1742Size;
-
               property GoldfishRTCBase:TPasRISCVUInt64 read fGoldfishRTCBase write fGoldfishRTCBase;
               property GoldfishRTCSize:TPasRISCVUInt64 read fGoldfishRTCSize write fGoldfishRTCSize;
               property GoldfishRTCIRQ:TPasRISCVUInt64 read fGoldfishRTCIRQ write fGoldfishRTCIRQ;
+
+              property DS1742Base:TPasRISCVUInt64 read fDS1742Base write fDS1742Base;
+              property DS1742Size:TPasRISCVUInt64 read fDS1742Size write fDS1742Size;
 
               property FrameBufferBase:TPasRISCVUInt64 read fFrameBufferBase write fFrameBufferBase;
               property FrameBufferSize:TPasRISCVUInt64 read fFrameBufferSize write fFrameBufferSize;
@@ -6676,9 +6676,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fUARTDevice:TUARTDevice;
 
-       fDS1742Device:TDS1742Device;
-
        fGoldfishRTCDevice:TGoldfishRTCDevice;
+
+       fDS1742Device:TDS1742Device;
 
        fDS1307Device:TDS1307I2CBusDevice;
 
@@ -6842,9 +6842,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        property UARTDevice:TUARTDevice read fUARTDevice;
 
-       property DS1742Device:TDS1742Device read fDS1742Device;
-
        property GoldfishRTCDevice:TGoldfishRTCDevice read fGoldfishRTCDevice;
+
+       property DS1742Device:TDS1742Device read fDS1742Device;
 
        property DS1307Device:TDS1307I2CBusDevice read fDS1307Device;
 
@@ -25596,89 +25596,6 @@ begin
  DispatchInterrupt(Poll);
 end;
 
-{ TPasRISCV.TDS1742Device }
-
-constructor TPasRISCV.TDS1742Device.Create(const aMachine:TPasRISCV);
-begin
- inherited Create(aMachine,aMachine.fConfiguration.fDS1742Base,aMachine.fConfiguration.fDS1742Size);
- fCtl:=0;
- FillChar(fRegisters,SizeOf(fRegisters),#0);
- UpdateRegisters;
-end;
-
-destructor TPasRISCV.TDS1742Device.Destroy;
-begin
- inherited Destroy;
-end;
-
-class function TPasRISCV.TDS1742Device.ConvertBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
-begin
- result:=((aValue div 10) shl 4) or (aValue mod 10);
-end;
-
-class function TPasRISCV.TDS1742Device.ConvertFromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
-begin
- result:=((aValue shr 4)*10)+(aValue and $f);
-end;
-
-procedure TPasRISCV.TDS1742Device.UpdateRegisters;
-var CurrentTime:TDateTime;
-//  UnixTime:TPasRISCVInt64;
-    Year,Month,Day,DayOfWeek,Hour,Minute,Second,Millisecond:TPasRISCVUInt16;
-begin
-//UnixTime:=DateTimeToUnix({$if declared(NowUTC)}NowUTC,true{$else}Now,false{$ifend});
- CurrentTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
- DecodeDateFully(CurrentTime,Year,Month,Day,DayOfWeek);
- DecodeTime(CurrentTime,Hour,Minute,Second,Millisecond);
- fRegisters[REG_CTL_CENT]:=ConvertBCD(Year div 100);
- fRegisters[REG_SECONDS]:=ConvertBCD(Min(59,Second));
- fRegisters[REG_MINUTES]:=ConvertBCD(Minute);
- fRegisters[REG_HOURS]:=ConvertBCD(Hour);
- fRegisters[REG_DAY]:=ConvertBCD(DayOfWeek);
- fRegisters[REG_DATE]:=ConvertBCD(Day);
- fRegisters[REG_MONTH]:=ConvertBCD(Month);
- fRegisters[REG_YEAR]:=ConvertBCD(Year mod 100);
-end;
-
-function TPasRISCV.TDS1742Device.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
-var Address:TPasRISCVUInt64;
-begin
- Address:=aAddress-fBase;
-//writeln('DS1742: ',Address);
- case Address of
-  REG_CTL_CENT:begin
-   result:=fRegisters[REG_CTL_CENT] or fCtl;
-  end;
-  REG_DAY:begin
-   result:=fRegisters[REG_DAY] or DAY_BATT;
-  end;
-  else begin
-   if Address<length(fRegisters) then begin
-    result:=fRegisters[Address];
-   end else begin
-    result:=0;
-   end;
-  end;
- end;
-end;
-
-procedure TPasRISCV.TDS1742Device.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
-var Address,NewCtl:TPasRISCVUInt64;
-begin
- Address:=aAddress-fBase;
- case Address of
-  REG_CTL_CENT:begin
-   NewCtl:=aValue and CTL_MASK;
-   if ((fCtl and CTL_READ)=0) and ((NewCtl and CTL_READ)<>0) then begin
-    UpdateRegisters;
-   end;
-   fCtl:=NewCtl;
-  end;
-  else begin
-  end;
- end;
-end;
-
 { TPasRISCV.TGoldfishRTCDevice }
 
 constructor TPasRISCV.TGoldfishRTCDevice.Create(const aMachine:TPasRISCV);
@@ -25800,6 +25717,89 @@ begin
   REG_CLEAR_INTERRUPT:begin
    fIRQPending:=false;
    UpdateIRQ;
+  end;
+ end;
+end;
+
+{ TPasRISCV.TDS1742Device }
+
+constructor TPasRISCV.TDS1742Device.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fDS1742Base,aMachine.fConfiguration.fDS1742Size);
+ fCtl:=0;
+ FillChar(fRegisters,SizeOf(fRegisters),#0);
+ UpdateRegisters;
+end;
+
+destructor TPasRISCV.TDS1742Device.Destroy;
+begin
+ inherited Destroy;
+end;
+
+class function TPasRISCV.TDS1742Device.ConvertBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
+begin
+ result:=((aValue div 10) shl 4) or (aValue mod 10);
+end;
+
+class function TPasRISCV.TDS1742Device.ConvertFromBCD(const aValue:TPasRISCVUInt8):TPasRISCVUInt8;
+begin
+ result:=((aValue shr 4)*10)+(aValue and $f);
+end;
+
+procedure TPasRISCV.TDS1742Device.UpdateRegisters;
+var CurrentTime:TDateTime;
+//  UnixTime:TPasRISCVInt64;
+    Year,Month,Day,DayOfWeek,Hour,Minute,Second,Millisecond:TPasRISCVUInt16;
+begin
+//UnixTime:=DateTimeToUnix({$if declared(NowUTC)}NowUTC,true{$else}Now,false{$ifend});
+ CurrentTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
+ DecodeDateFully(CurrentTime,Year,Month,Day,DayOfWeek);
+ DecodeTime(CurrentTime,Hour,Minute,Second,Millisecond);
+ fRegisters[REG_CTL_CENT]:=ConvertBCD(Year div 100);
+ fRegisters[REG_SECONDS]:=ConvertBCD(Min(59,Second));
+ fRegisters[REG_MINUTES]:=ConvertBCD(Minute);
+ fRegisters[REG_HOURS]:=ConvertBCD(Hour);
+ fRegisters[REG_DAY]:=ConvertBCD(DayOfWeek);
+ fRegisters[REG_DATE]:=ConvertBCD(Day);
+ fRegisters[REG_MONTH]:=ConvertBCD(Month);
+ fRegisters[REG_YEAR]:=ConvertBCD(Year mod 100);
+end;
+
+function TPasRISCV.TDS1742Device.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Address:TPasRISCVUInt64;
+begin
+ Address:=aAddress-fBase;
+//writeln('DS1742: ',Address);
+ case Address of
+  REG_CTL_CENT:begin
+   result:=fRegisters[REG_CTL_CENT] or fCtl;
+  end;
+  REG_DAY:begin
+   result:=fRegisters[REG_DAY] or DAY_BATT;
+  end;
+  else begin
+   if Address<length(fRegisters) then begin
+    result:=fRegisters[Address];
+   end else begin
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TDS1742Device.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Address,NewCtl:TPasRISCVUInt64;
+begin
+ Address:=aAddress-fBase;
+ case Address of
+  REG_CTL_CENT:begin
+   NewCtl:=aValue and CTL_MASK;
+   if ((fCtl and CTL_READ)=0) and ((NewCtl and CTL_READ)<>0) then begin
+    UpdateRegisters;
+   end;
+   fCtl:=NewCtl;
+  end;
+  else begin
   end;
  end;
 end;
@@ -41775,7 +41775,7 @@ begin
  fGoldfishRTCSize:=TPasRISCV.TGoldfishRTCDevice.DefaultSize;
  fGoldfishRTCIRQ:=TPasRISCV.TGoldfishRTCDevice.DefaultIRQ;
 
- fRTCMode:=TRTCMode.DS1742;
+ fRTCMode:=TRTCMode.Goldfish;
 
  fFrameBufferBase:=TPasRISCVUInt64($28000000)-TSimpleFBDevice.FrameBufferAddress;
  fFrameBufferWidth:=640;
