@@ -16499,7 +16499,7 @@ end;
 function TPasRISCV.TPLICDevice.SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 var Mask:TPasRISCVUInt32;
 begin
- if (aIRQ>0) or (aIRQ<PLIC_SOURCE_MAX) then begin
+ if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
   if (TPasMPInterlocked.ExchangeBitwiseOr(fPending[aIRQ shr 5],Mask) and Mask)=0 then begin
    NotifyIRQ(aIRQ);
@@ -16513,7 +16513,7 @@ end;
 function TPasRISCV.TPLICDevice.RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 var Mask:TPasRISCVUInt32;
 begin
- if (aIRQ>0) or (aIRQ<PLIC_SOURCE_MAX) then begin
+ if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
   if (TPasMPInterlocked.ExchangeBitwiseOr(fRaised[aIRQ shr 5],Mask) and Mask)=0 then begin
    SendIRQ(aIRQ);
@@ -16526,7 +16526,7 @@ end;
 
 function TPasRISCV.TPLICDevice.LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 begin
- if (aIRQ>0) or (aIRQ<PLIC_SOURCE_MAX) then begin
+ if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
   TPasMPInterlocked.BitwiseAnd(fRaised[aIRQ shr 5],not (TPasRISCVUInt32(1) shl (aIRQ and 31)));
   result:=true;
  end else begin
@@ -27238,8 +27238,8 @@ begin
   fLock.Acquire;
   try
    Address:=aI2CBusDevice.fAddress;
-   if Address=8 then begin
-    Address:=8;
+   if Address=AUTO_ADDR then begin
+    Address:=8; // Start from address 8 (I2C addresses 0-7 are reserved)
     while ((Address+1)<65535) and assigned(fBusDeviceAddressMap[Address]) do begin
      inc(Address);
     end;
@@ -27366,10 +27366,10 @@ begin
      fStatus:=fStatus and not SR_IF;
     end;
 
-{   begin
-     // Transfer in Progress
+    // Set Transfer in Progress when any bus operation is requested
+    if (Cmd and (CR_STA or CR_WR or CR_RD or CR_STO))<>0 then begin
      fStatus:=fStatus or SR_TIP;
-    end;}
+    end;
 
     if (Cmd and CR_STA)<>0 then begin
      // Start the transaction
@@ -27429,6 +27429,9 @@ begin
      fStatus:=fStatus and not SR_BSY;
      TriggerIRQ:=true;
     end;
+
+    // Transfer complete — clear TIP and dispatch interrupt
+    fStatus:=fStatus and not SR_TIP;
 
     if TriggerIRQ then begin
      DispatchInterrupt;
@@ -43171,7 +43174,15 @@ begin
    UART0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'uart',fConfiguration.fUARTBase);
    try
 
-    UART0.AddPropertyU32('interrupts',fConfiguration.fUARTIRQ);
+    if fConfiguration.fAIA then begin
+     // APLIC: #interrupt-cells=2, need IRQ number + trigger type (4 = level high)
+     Cells[0]:=fConfiguration.fUARTIRQ;
+     Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
+     UART0.AddPropertyCells('interrupts',@Cells,2);
+    end else begin
+     // PLIC: #interrupt-cells=1
+     UART0.AddPropertyU32('interrupts',fConfiguration.fUARTIRQ);
+    end;
     UART0.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
     UART0.AddPropertyU32('clock-frequency',$384000);
 
@@ -43201,7 +43212,13 @@ begin
      RTCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fGoldfishRTCBase);
      try
       RTCNode.AddPropertyReg('reg',fConfiguration.fGoldfishRTCBase,fConfiguration.fGoldfishRTCSize);
-      RTCNode.AddPropertyU32('interrupts',fConfiguration.fGoldfishRTCIRQ);
+      if fConfiguration.fAIA then begin
+       Cells[0]:=fConfiguration.fGoldfishRTCIRQ;
+       Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
+       RTCNode.AddPropertyCells('interrupts',@Cells,2);
+      end else begin
+       RTCNode.AddPropertyU32('interrupts',fConfiguration.fGoldfishRTCIRQ);
+      end;
       RTCNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
       RTCNode.AddPropertyString('compatible','google,goldfish-rtc');
      finally
@@ -43373,7 +43390,13 @@ begin
       PS2KeyboardNode.AddPropertyCells('reg',@Cells,4);
       PS2KeyboardNode.AddPropertyString('compatible','altr,ps2-1.0');
       PS2KeyboardNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
-      PS2KeyboardNode.AddPropertyU32('interrupts',fConfiguration.fPS2KeyboardIRQ);
+      if fConfiguration.fAIA then begin
+       Cells[0]:=fConfiguration.fPS2KeyboardIRQ;
+       Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
+       PS2KeyboardNode.AddPropertyCells('interrupts',@Cells,2);
+      end else begin
+       PS2KeyboardNode.AddPropertyU32('interrupts',fConfiguration.fPS2KeyboardIRQ);
+      end;
      finally
       SoCNode.AddChild(PS2KeyboardNode);
      end;
@@ -43387,7 +43410,13 @@ begin
       PS2MouseNode.AddPropertyCells('reg',@Cells,4);
       PS2MouseNode.AddPropertyString('compatible','altr,ps2-1.0');
       PS2MouseNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
-      PS2MouseNode.AddPropertyU32('interrupts',fConfiguration.fPS2MouseIRQ);
+      if fConfiguration.fAIA then begin
+       Cells[0]:=fConfiguration.fPS2MouseIRQ;
+       Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
+       PS2MouseNode.AddPropertyCells('interrupts',@Cells,2);
+      end else begin
+       PS2MouseNode.AddPropertyU32('interrupts',fConfiguration.fPS2MouseIRQ);
+      end;
      finally
       SoCNode.AddChild(PS2MouseNode);
      end;
@@ -43543,7 +43572,15 @@ begin
      I2CNode.AddPropertyCells('reg',@Cells,4);
      I2CNode.AddPropertyString('compatible','opencores,i2c-ocores');
      I2CNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
-     I2CNode.AddPropertyU32('interrupts',TI2CDevice.IRQ);
+     if fConfiguration.fAIA then begin
+      // APLIC: #interrupt-cells=2, need IRQ number + trigger type (4 = level high)
+      Cells[0]:=TI2CDevice.IRQ;
+      Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
+      I2CNode.AddPropertyCells('interrupts',@Cells,2);
+     end else begin
+      // PLIC: #interrupt-cells=1, just IRQ number
+      I2CNode.AddPropertyU32('interrupts',TI2CDevice.IRQ);
+     end;
      I2CNode.AddPropertyU32('clocks',I2CClockNode.GetPHandle);
      I2CNode.AddPropertyString('clock-names','clk');
      I2CNode.AddPropertyU32('reg-shift',2);
