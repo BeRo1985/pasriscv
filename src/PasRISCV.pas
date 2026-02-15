@@ -19230,7 +19230,7 @@ begin
 
  fFrameBuffer:=aFrameBuffer;
  fFrameBuffer.fAutomaticRefresh:=true;
-//fFrameBuffer.fSwapColorChannels:=true;
+ fFrameBuffer.fSwapColorChannels:=true;
 
  fSEQIndex:=0;
  FillChar(fSEQRegs,SizeOf(fSEQRegs),#0);
@@ -27722,6 +27722,8 @@ begin
  // Since we process commands immediately, TX FIFO is always empty
  if (fEnable and 1)<>0 then begin
   fRawIntrStat:=fRawIntrStat or IC_INTR_TX_EMPTY;
+ end else begin
+  fRawIntrStat:=fRawIntrStat and not IC_INTR_TX_EMPTY;
  end;
  // RX_FULL is level-triggered: set when RX FIFO level > RX_TL
  if fRxFIFOCount>fRxTL then begin
@@ -28078,6 +28080,9 @@ begin
     if (fEnable and 1)<>0 then begin
      // Enabling controller — TX_EMPTY is immediately true
      fRawIntrStat:=fRawIntrStat or IC_INTR_TX_EMPTY;
+    end else begin
+     // Disabling controller — clear TX_EMPTY
+     fRawIntrStat:=fRawIntrStat and not IC_INTR_TX_EMPTY;
     end;
     UpdateInterrupts;
    end;
