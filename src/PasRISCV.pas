@@ -15493,6 +15493,8 @@ begin
  AddInstruction32('sret',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($10200073));
  AddInstruction32('mret',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($30200073));
  AddInstruction32('wfi',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($10500073));
+ AddInstruction32('wrs.nto',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00d00073));
+ AddInstruction32('wrs.sto',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($01d00073));
  AddInstruction32('sfence.vma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$09));
  AddInstruction32('hfence.bvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$11));
  AddInstruction32('hfence.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$51));
@@ -36078,6 +36080,18 @@ begin
             end;
            end;
           end;
+          $0d:begin
+           // wrs.nto (Zawrs) - Wait on Reservation Set, No Timeout
+           // NOP in emulator: no hardware reservation set to poll
+           result:=4;
+           exit;
+          end;
+          $1d:begin
+           // wrs.sto (Zawrs) - Wait on Reservation Set, Short Timeout
+           // NOP in emulator: no hardware reservation set to poll
+           result:=4;
+           exit;
+          end;
          end;
         end;
        end;
@@ -45331,12 +45345,12 @@ begin
   AddISAExtension('zimop');
 //AddISAExtension('zmmul');
   AddISAExtension('za64rs');
-//AddISAExtension('zaamo');
+  AddISAExtension('zaamo');
   AddISAExtension('zabha');
   AddISAExtension('zacas');
-//AddISAExtension('zalrsc');
+  AddISAExtension('zalrsc');
 //AddISAExtension('zama16b');
-//AddISAExtension('zawrs');
+  AddISAExtension('zawrs');
   AddISAExtension('zfa');
   AddISAExtension('zfbfmin');
   AddISAExtension('zfh');
@@ -45367,7 +45381,7 @@ begin
 //AddISAExtension('zks');
 //AddISAExtension('zksed');
 //AddISAExtension('zksh');
-//AddISAExtension('zkt');
+  AddISAExtension('zkt');
 //AddISAExtension('ztso');
 //AddISAExtension('zvbb');
 //AddISAExtension('zvbc');
