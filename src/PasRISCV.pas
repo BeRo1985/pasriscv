@@ -45436,7 +45436,7 @@ begin
 //AddISAExtension('ssccfg');
   AddISAExtension('ssccptr');
 //AddISAExtension('sscofpmf');
-//AddISAExtension('sscounterenw');
+  AddISAExtension('sscounterenw');
 //AddISAExtension('sscsrind');
 //AddISAExtension('ssdbltrp');
 //AddISAExtension('ssnpm');
@@ -45444,7 +45444,7 @@ begin
 //AddISAExtension('ssstateen');
 //AddISAExtension('ssstrict');
   AddISAExtension('sstc');
-//AddISAExtension('sstvala');
+  AddISAExtension('sstvala');
   AddISAExtension('sstvecd');
 //AddISAExtension('ssu64xl');
 //AddISAExtension('supm');

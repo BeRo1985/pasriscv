@@ -29,6 +29,8 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Sstc (RISC-V "stimecmp / vstimecmp" Extension)
   - Ssccptr (Main Memory Page-Table Reads)
   - Sstvecd (stvec Direct Mode)
+  - Sstvala (stval Written on Faults)
+  - Sscounterenw (Writable scounteren)
   - Svnapot ("NAPOT Translation" Continuity)
   - Zba/Zbb/Zbc/Zbs (Bit Manipulations)
   - Zca/Zcb (Compressed sub-extensions)
