@@ -14612,6 +14612,7 @@ begin
 end;
 var Mask:TPasRISCVUInt32;
     Value:TPasRISCVUInt32;
+    Index:TPasRISCVInt32;
 begin
  fCountInstructions32:=0;
  fCountInstructions16:=0;
@@ -14780,6 +14781,25 @@ begin
  AddInstruction32('csrrwi',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,5));
  AddInstruction32('csrrsi',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,6));
  AddInstruction32('csrrci',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,7));
+
+ //////////////////////////////////////////////////////////////////////////////
+ // Zimop                                                                    //
+ //////////////////////////////////////////////////////////////////////////////
+ for Index:=0 to 31 do begin
+  AddInstruction32('mop.r.'+IntToStr(Index),TInstructionFormat.RUnary,
+                   TPasRISCVUInt32($fff0707f),
+                   TPasRISCVUInt32($81c04073) or
+                   TPasRISCVUInt32((Index and 3) shl 20) or
+                   TPasRISCVUInt32(((Index shr 2) and 3) shl 26) or
+                   TPasRISCVUInt32(((Index shr 4) and 1) shl 30));
+ end;
+ for Index:=0 to 7 do begin
+  AddInstruction32('mop.rr.'+IntToStr(Index),TInstructionFormat.R,
+                   TPasRISCVUInt32($fe00707f),
+                   TPasRISCVUInt32($82004073) or
+                   TPasRISCVUInt32((Index and 3) shl 26) or
+                   TPasRISCVUInt32(((Index shr 2) and 1) shl 30));
+ end;
 
  //////////////////////////////////////////////////////////////////////////////
  // AMO                                                                      //
@@ -14959,6 +14979,13 @@ begin
  AddInstruction16('c.li',TCompressedFormat.CI,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,1));
  AddInstruction16('c.addi16sp',TCompressedFormat.CIAddi16sp,TRegisterKind.Integer,MaskCompressedBase or MaskCompressedRd,ValueCompressedBase(3,1) or (TPasRISCVUInt32(2) shl 7));
  AddInstruction16('c.lui',TCompressedFormat.CILui,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,1));
+
+ // Zcmop
+ for Index:=0 to 7 do begin
+  AddInstruction16('c.mop.'+IntToStr((Index shl 1) or 1),TCompressedFormat.None,TRegisterKind.Integer,
+                   TPasRISCVUInt32($ffff),
+                   TPasRISCVUInt32($6081) or TPasRISCVUInt32(Index shl 8));
+ end;
 
  Mask:=MaskCompressedBase or MaskCompressedFunct2;
  Value:=ValueCompressedBase(4,1);
@@ -33187,9 +33214,15 @@ begin
         result:=2;
         exit;
        end else begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
-        result:=2;
-        exit;
+        // Zcmop - c.mop.N (rd is odd, 1..15) => NOP
+        if ((ord(rd) and 1)<>0) and (ord(rd)<=15) then begin
+         result:=2;
+         exit;
+        end else begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
+         result:=2;
+         exit;
+        end;
        end;
       end;
      end;
@@ -35299,6 +35332,21 @@ begin
        fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],TCSROperation.ClearBits);
        result:=4;
        exit;
+      end;
+      {$ifndef TryToForceCaseJumpTableOnLevel2}$4:{$else}$04,$0c,$14,$1c,$24,$2c,$34,$3c,$44,$4c,$54,$5c,$64,$6c,$74,$7c,$84,$8c,$94,$9c,$a4,$ac,$b4,$bc,$c4,$cc,$d4,$dc,$e4,$ec,$f4,$fc:{$endif}begin
+       // Zimop - mop.r.N / mop.rr.N (write 0 to rd)
+       if (aInstruction and $b0000000)=$80000000 then begin // bit[31]=1, bits[29:28]=00
+        rd:=TRegister((aInstruction shr 7) and $1f);
+        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+         fState.Registers[rd]:=0;
+        end;
+        result:=4;
+        exit;
+       end else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
        // csrrwi
@@ -43656,7 +43704,7 @@ begin
 //AddISAExtension('zihintntl');
   AddISAExtension('zihintpause');
 //AddISAExtension('zihpm');
-//AddISAExtension('zimop');
+  AddISAExtension('zimop');
 //AddISAExtension('zmmul');
 //AddISAExtension('za64rs');
 //AddISAExtension('zaamo');
@@ -43676,7 +43724,7 @@ begin
 //AddISAExtension('zcf');
 //AddISAExtension('zcd');
 //AddISAExtension('zce');
-//AddISAExtension('zcmop');
+  AddISAExtension('zcmop');
 //AddISAExtension('zcmp');
 //AddISAExtension('zcmt');
   AddISAExtension('zba');
