@@ -21225,10 +21225,18 @@ begin
   end;
   FM801_IRQ_MASK:begin
    fIRQMask:=TPasRISCVUInt16(aValue);
+   // If masking out all pending sources, lower the IRQ line
+   if (fIRQStatus and (not fIRQMask))=0 then begin
+    LowerIRQ(0);
+   end;
   end;
   FM801_IRQ_STATUS:begin
    // Writing to IRQ_STATUS acknowledges (clears) bits
    fIRQStatus:=fIRQStatus and (not TPasRISCVUInt16(aValue));
+   // Level-triggered PCI IRQ: lower the IRQ line when no unmasked IRQ sources remain pending
+   if (fIRQStatus and (not fIRQMask))=0 then begin
+    LowerIRQ(0);
+   end;
   end;
   FM801_OPL3_BANK0:begin
    // OPL3 address latch bank 0
