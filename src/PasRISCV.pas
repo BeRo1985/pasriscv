@@ -3519,14 +3519,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     FM801_FM_VOL=$02;
                     FM801_I2S_VOL=$04;
                     FM801_REC_SRC=$06;
-                    FM801_PLY_CTRL=$08;
-                    FM801_PLY_COUNT=$0a;
-                    FM801_PLY_BUF1=$0c;
-                    FM801_PLY_BUF2=$10;
-                    FM801_CAP_CTRL=$14;
-                    FM801_CAP_COUNT=$16;
-                    FM801_CAP_BUF1=$18;
-                    FM801_CAP_BUF2=$1c;
+                    FM801_PLAY_CTRL=$08;
+                    FM801_PLAY_COUNT=$0a;
+                    FM801_PLAY_BUF1=$0c;
+                    FM801_PLAY_BUF2=$10;
+                    FM801_CAPTURE_CTRL=$14;
+                    FM801_CAPTURE_COUNT=$16;
+                    FM801_CAPTURE_BUF1=$18;
+                    FM801_CAPTURE_BUF2=$1c;
                     FM801_CODEC_CTRL=$22;
                     FM801_I2S_MODE=$24;
                     FM801_VOLUME=$26;
@@ -3557,8 +3557,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     FM801_STEREO=TPasRISCVUInt16(1 shl 15);
                     FM801_RATE_SHIFT=8;
                     FM801_RATE_MASK=TPasRISCVUInt16($0f shl FM801_RATE_SHIFT);
-                    FM801_BUF1_LAST=TPasRISCVUInt16(1 shl 1);
-                    FM801_BUF2_LAST=TPasRISCVUInt16(1 shl 2);
+                    FM801_BUFFER1_LAST=TPasRISCVUInt16(1 shl 1);
+                    FM801_BUFFER2_LAST=TPasRISCVUInt16(1 shl 2);
                     // AC97 bits
                     FM801_AC97_READ=TPasRISCVUInt16(1 shl 7);
                     FM801_AC97_VALID=TPasRISCVUInt16(1 shl 8);
@@ -3567,6 +3567,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               type TRateEntry=record
                     Rate:TPasRISCVUInt32;
                    end;
+              const FM801_RATES:array[0..10] of TPasRISCVUInt32=
+                     (5500,8000,9600,11025,16000,19200,22050,32000,38400,44100,48000);
              private
               fSoundIO:TSoundIO;
               // Registers
@@ -3574,14 +3576,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fFMVol:TPasRISCVUInt16;
               fI2SVol:TPasRISCVUInt16;
               fRecSrc:TPasRISCVUInt16;
-              fPlyCtrl:TPasRISCVUInt16;
-              fPlyCount:TPasRISCVUInt16;
-              fPlyBuf1:TPasRISCVUInt32;
-              fPlyBuf2:TPasRISCVUInt32;
-              fCapCtrl:TPasRISCVUInt16;
-              fCapCount:TPasRISCVUInt16;
-              fCapBuf1:TPasRISCVUInt32;
-              fCapBuf2:TPasRISCVUInt32;
+              fPlayCtrl:TPasRISCVUInt16;
+              fPlayCount:TPasRISCVUInt16;
+              fPlayBuffer1:TPasRISCVUInt32;
+              fPlayBuffer2:TPasRISCVUInt32;
+              fCaptureCtrl:TPasRISCVUInt16;
+              fCaptureCount:TPasRISCVUInt16;
+              fCaptureBuffer1:TPasRISCVUInt32;
+              fCaptureBuffer2:TPasRISCVUInt32;
               fCodecCtrl:TPasRISCVUInt16;
               fI2SMode:TPasRISCVUInt16;
               fVolume:TPasRISCVUInt16;
@@ -3600,14 +3602,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               // AC97 codec stub
               fAC97Regs:array[0..63] of TPasRISCVUInt16;
               // PCM DMA state
-              fPlyActive:Boolean;
-              fPlyBuf:TPasRISCVUInt32;
-              fPlyPos:TPasRISCVUInt32;
-              fPlySize:TPasRISCVUInt32;
-              fCapActive:Boolean;
-              fCapBuf:TPasRISCVUInt32;
-              fCapPos:TPasRISCVUInt32;
-              fCapSize:TPasRISCVUInt32;
+              fPlayActive:Boolean;
+              fPlayBufferIndex:TPasRISCVUInt32; // 0=buf1, 1=buf2
+              fPlayBuffer:TPasRISCVUInt32;
+              fPlayPosition:TPasRISCVUInt32;
+              fPlaySize:TPasRISCVUInt32;
+              fPlayScratchBuffer:TPasRISCVFloatDynamicArray;
+              fPlayResamplerPosition:TPasRISCVUInt64;
+              fCaptureActive:Boolean;
+              fCaptureBufferIndex:TPasRISCVUInt32;
+              fCaptureBuffer:TPasRISCVUInt32;
+              fCapturePosition:TPasRISCVUInt32;
+              fCaptureSize:TPasRISCVUInt32;
+              fCaptureScratchBuffer:TPasRISCVFloatDynamicArray;
+              fCaptureResamplerPosition:TPasRISCVUInt64;
               // IO BAR callbacks
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
@@ -3615,6 +3623,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
               destructor Destroy; override;
               procedure Reset; override;
+              procedure OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+              procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
               property SoundIO:TSoundIO read fSoundIO;
             end;
@@ -20843,6 +20853,13 @@ begin
  fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
 
  Reset;
+
+ // Register our playback and capture callbacks on the shared TSoundIO
+ if assigned(fSoundIO) then begin
+  fSoundIO.OnOutputFillBuffer:=OutputAudioFillBufferCallback;
+  fSoundIO.OnInputFillBuffer:=InputAudioFillBufferCallback;
+ end;
+
 end;
 
 destructor TPasRISCV.TFM801Device.Destroy;
@@ -20860,14 +20877,14 @@ begin
  fFMVol:=$9f1f;
  fI2SVol:=$8808;
  fRecSrc:=$0000;
- fPlyCtrl:=$0000;
- fPlyCount:=$0000;
- fPlyBuf1:=$00000000;
- fPlyBuf2:=$00000000;
- fCapCtrl:=$0000;
- fCapCount:=$0000;
- fCapBuf1:=$00000000;
- fCapBuf2:=$00000000;
+ fPlayCtrl:=$0000;
+ fPlayCount:=$0000;
+ fPlayBuffer1:=$00000000;
+ fPlayBuffer2:=$00000000;
+ fCaptureCtrl:=$0000;
+ fCaptureCount:=$0000;
+ fCaptureBuffer1:=$00000000;
+ fCaptureBuffer2:=$00000000;
  fCodecCtrl:=$0000;
  fI2SMode:=$0003;
  fVolume:=$0000;
@@ -20901,14 +20918,20 @@ begin
  fAC97Regs[$7e shr 1]:=$5348; // Vendor ID2
 
  // PCM DMA state
- fPlyActive:=false;
- fPlyBuf:=0;
- fPlyPos:=0;
- fPlySize:=0;
- fCapActive:=false;
- fCapBuf:=0;
- fCapPos:=0;
- fCapSize:=0;
+ fPlayActive:=false;
+ fPlayBufferIndex:=0;
+ fPlayBuffer:=0;
+ fPlayPosition:=0;
+ fPlaySize:=0;
+ fPlayScratchBuffer:=nil;
+ fPlayResamplerPosition:=0;
+ fCaptureActive:=false;
+ fCaptureBufferIndex:=0;
+ fCaptureBuffer:=0;
+ fCapturePosition:=0;
+ fCaptureSize:=0;
+ fCaptureScratchBuffer:=nil;
+ fCaptureResamplerPosition:=0;
 end;
 
 function TPasRISCV.TFM801Device.OnLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -20929,29 +20952,29 @@ begin
   FM801_REC_SRC:begin
    result:=fRecSrc;
   end;
-  FM801_PLY_CTRL:begin
-   result:=fPlyCtrl;
+  FM801_PLAY_CTRL:begin
+   result:=fPlayCtrl;
   end;
-  FM801_PLY_COUNT:begin
-   result:=fPlyCount;
+  FM801_PLAY_COUNT:begin
+   result:=fPlayCount;
   end;
-  FM801_PLY_BUF1:begin
-   result:=fPlyBuf1;
+  FM801_PLAY_BUF1:begin
+   result:=fPlayBuffer1;
   end;
-  FM801_PLY_BUF2:begin
-   result:=fPlyBuf2;
+  FM801_PLAY_BUF2:begin
+   result:=fPlayBuffer2;
   end;
-  FM801_CAP_CTRL:begin
-   result:=fCapCtrl;
+  FM801_CAPTURE_CTRL:begin
+   result:=fCaptureCtrl;
   end;
-  FM801_CAP_COUNT:begin
-   result:=fCapCount;
+  FM801_CAPTURE_COUNT:begin
+   result:=fCaptureCount;
   end;
-  FM801_CAP_BUF1:begin
-   result:=fCapBuf1;
+  FM801_CAPTURE_BUF1:begin
+   result:=fCaptureBuffer1;
   end;
-  FM801_CAP_BUF2:begin
-   result:=fCapBuf2;
+  FM801_CAPTURE_BUF2:begin
+   result:=fCaptureBuffer2;
   end;
   FM801_CODEC_CTRL:begin
    result:=fCodecCtrl;
@@ -21019,39 +21042,58 @@ begin
   FM801_REC_SRC:begin
    fRecSrc:=TPasRISCVUInt16(aValue);
   end;
-  FM801_PLY_CTRL:begin
-   fPlyCtrl:=TPasRISCVUInt16(aValue);
-   if (fPlyCtrl and FM801_START)<>0 then begin
-    fPlyActive:=true;
+  FM801_PLAY_CTRL:begin
+   fPlayCtrl:=TPasRISCVUInt16(aValue);
+   if (fPlayCtrl and FM801_IMMED_STOP)<>0 then begin
+    fPlayActive:=false;
+    fPlayCtrl:=fPlayCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
+   end else if (fPlayCtrl and FM801_START)<>0 then begin
+    if not fPlayActive then begin
+     // Starting playback - set up DMA from buf1
+     fPlayBufferIndex:=0;
+     fPlayBuffer:=fPlayBuffer1;
+     fPlayPosition:=0;
+     fPlaySize:=(TPasRISCVUInt32(fPlayCount)+1) shl 2; // count is in 16-bit stereo frames, 4 bytes each
+    end;
+    fPlayActive:=true;
    end else begin
-    fPlyActive:=false;
+    fPlayActive:=false;
    end;
   end;
-  FM801_PLY_COUNT:begin
-   fPlyCount:=TPasRISCVUInt16(aValue);
+  FM801_PLAY_COUNT:begin
+   fPlayCount:=TPasRISCVUInt16(aValue);
   end;
-  FM801_PLY_BUF1:begin
-   fPlyBuf1:=TPasRISCVUInt32(aValue);
+  FM801_PLAY_BUF1:begin
+   fPlayBuffer1:=TPasRISCVUInt32(aValue);
   end;
-  FM801_PLY_BUF2:begin
-   fPlyBuf2:=TPasRISCVUInt32(aValue);
+  FM801_PLAY_BUF2:begin
+   fPlayBuffer2:=TPasRISCVUInt32(aValue);
   end;
-  FM801_CAP_CTRL:begin
-   fCapCtrl:=TPasRISCVUInt16(aValue);
-   if (fCapCtrl and FM801_START)<>0 then begin
-    fCapActive:=true;
+  FM801_CAPTURE_CTRL:begin
+   fCaptureCtrl:=TPasRISCVUInt16(aValue);
+   if (fCaptureCtrl and FM801_IMMED_STOP)<>0 then begin
+    fCaptureActive:=false;
+    fCaptureCtrl:=fCaptureCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
+   end else if (fCaptureCtrl and FM801_START)<>0 then begin
+    if not fCaptureActive then begin
+     fCaptureBufferIndex:=0;
+     fCaptureBuffer:=fCaptureBuffer1;
+     fCapturePosition:=0;
+     fCaptureSize:=(TPasRISCVUInt32(fCaptureCount)+1) shl 2;
+    end;
+    fCaptureActive:=true;
    end else begin
-    fCapActive:=false;
+    fCaptureActive:=false;
    end;
   end;
-  FM801_CAP_COUNT:begin
-   fCapCount:=TPasRISCVUInt16(aValue);
+  FM801_CAPTURE_COUNT:begin
+   fCaptureCount:=TPasRISCVUInt16(aValue);
   end;
-  FM801_CAP_BUF1:begin
-   fCapBuf1:=TPasRISCVUInt32(aValue);
+  FM801_CAPTURE_BUF1:begin
+   fCaptureBuffer1:=TPasRISCVUInt32(aValue);
   end;
-  FM801_CAP_BUF2:begin
-   fCapBuf2:=TPasRISCVUInt32(aValue);
+  FM801_CAPTURE_BUF2:begin
+   fCaptureBuffer2:=TPasRISCVUInt32(aValue);
   end;
   FM801_CODEC_CTRL:begin
    fCodecCtrl:=TPasRISCVUInt16(aValue);
@@ -21126,6 +21168,379 @@ begin
    fPowerDown:=TPasRISCVUInt16(aValue);
   end;
  end;
+end;
+
+procedure TPasRISCV.TFM801Device.OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+var Remain,ToDo,CopyBytes,SampleFrameSize,Channels:TPasRISCVSizeInt;
+    Dest:PPasRISCVUInt8;
+    SrcPtr:Pointer;
+    Is16Bit,IsStereo:Boolean;
+    SrcRate,DstRate:TPasRISCVUInt64;
+    RateIndex:TPasRISCVUInt32;
+    FloatSample:TPasRISCVFloat;
+    SampleIndex:TPasRISCVSizeInt;
+    Sample16:TPasRISCVInt16;
+    Sample8:TPasRISCVUInt8;
+    SrcSamples,DstSamples:TPasRISCVSizeInt;
+    p:PPasRISCVUInt8;
+begin
+
+ // Output format: aCount stereo float frames = aCount * 2 * SizeOf(Float) bytes
+ Remain:=aCount*2*SizeOf(TPasRISCVFloat);
+ FillChar(aBuffer^,Remain,#0);
+
+ if (not fPlayActive) or ((fPlayCtrl and FM801_PAUSE)<>0) then begin
+  exit;
+ end;
+
+ Is16Bit:=(fPlayCtrl and FM801_16BIT)<>0;
+ IsStereo:=(fPlayCtrl and FM801_STEREO)<>0;
+
+ if IsStereo then begin
+  Channels:=2;
+ end else begin
+  Channels:=1;
+ end;
+
+ if Is16Bit then begin
+  SampleFrameSize:=Channels*2; // bytes per frame
+ end else begin
+  SampleFrameSize:=Channels; // bytes per frame
+ end;
+
+ RateIndex:=(fPlayCtrl and FM801_RATE_MASK) shr FM801_RATE_SHIFT;
+ if RateIndex>High(FM801_RATES) then begin
+  RateIndex:=High(FM801_RATES);
+ end;
+ SrcRate:=FM801_RATES[RateIndex];
+ DstRate:=fSoundIO.fSampleRate;
+
+ Dest:=aBuffer;
+
+ while Remain>0 do begin
+
+  if fPlayPosition>=fPlaySize then begin
+   // Current buffer exhausted - fire IRQ and switch to next buffer
+   fIRQStatus:=fIRQStatus or FM801_IRQ_PLAYBACK;
+   if (fIRQMask and FM801_IRQ_PLAYBACK)=0 then begin
+    RaiseIRQ(0,0);
+   end;
+   // Ping-pong: switch buffers
+   if fPlayBufferIndex=0 then begin
+    fPlayBufferIndex:=1;
+    fPlayBuffer:=fPlayBuffer2;
+   end else begin
+    fPlayBufferIndex:=0;
+    fPlayBuffer:=fPlayBuffer1;
+   end;
+   fPlayPosition:=0;
+   fPlaySize:=(TPasRISCVUInt32(fPlayCount)+1) shl 2;
+   // Check BUF_LAST flags - if set, stop after this buffer
+   if fPlayBufferIndex=0 then begin
+    if (fPlayCtrl and FM801_BUFFER1_LAST)<>0 then begin
+     fPlayActive:=false;
+     exit;
+    end;
+   end else begin
+    if (fPlayCtrl and FM801_BUFFER2_LAST)<>0 then begin
+     fPlayActive:=false;
+     exit;
+    end;
+   end;
+  end;
+
+  // Calculate how many source frames we can read from the current DMA buffer
+  ToDo:=fPlaySize-fPlayPosition;
+  if ToDo<=0 then begin
+   break;
+  end;
+
+  // How many source frames available?
+  SrcSamples:=ToDo div SampleFrameSize;
+  if SrcSamples<=0 then begin
+   break;
+  end;
+
+  // How many destination frames do we still need?
+  DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+  if DstSamples<=0 then begin
+   break;
+  end;
+
+  // Limit source samples to what we need (simple 1:1 for now, ignoring resampling for count limiting)
+  if SrcRate=DstRate then begin
+   if SrcSamples>DstSamples then begin
+    SrcSamples:=DstSamples;
+   end;
+  end else begin
+   // Estimate source samples needed for DstSamples output
+   ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+   if SrcSamples>ToDo then begin
+    SrcSamples:=ToDo;
+   end;
+  end;
+
+  CopyBytes:=SrcSamples*SampleFrameSize;
+
+  // DMA: read from guest physical memory
+  SrcPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(fPlayBuffer)+fPlayPosition,CopyBytes,false,nil);
+  if SrcPtr=nil then begin
+   // Can't access guest memory - fill silence and advance
+   inc(fPlayPosition,CopyBytes);
+   break;
+  end;
+
+  // Ensure scratch buffer is large enough (stereo float output)
+  if length(fPlayScratchBuffer)<(SrcSamples*2) then begin
+   SetLength(fPlayScratchBuffer,SrcSamples*4);
+  end;
+
+  // Convert source samples to stereo float
+  p:=SrcPtr;
+  for SampleIndex:=0 to SrcSamples-1 do begin
+   if Is16Bit then begin
+    // Left channel
+    Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+    inc(p,2);
+    FloatSample:=Sample16/32768.0;
+    fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+    // Right channel
+    if IsStereo then begin
+     Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+     inc(p,2);
+     FloatSample:=Sample16/32768.0;
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+    end else begin
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+    end;
+   end else begin
+    // 8-bit unsigned
+    Sample8:=p^;
+    inc(p);
+    FloatSample:=(Sample8-128)/128.0;
+    fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+    if IsStereo then begin
+     Sample8:=p^;
+     inc(p);
+     FloatSample:=(Sample8-128)/128.0;
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+    end else begin
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+    end;
+   end;
+  end;
+
+  inc(fPlayPosition,CopyBytes);
+
+  // Copy to output (no resampling if rates match)
+  if SrcRate=DstRate then begin
+   CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+   if CopyBytes>Remain then begin
+    CopyBytes:=Remain;
+   end;
+   Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
+   inc(Dest,CopyBytes);
+   dec(Remain,CopyBytes);
+  end else begin
+   // Simple linear resampling
+   DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+   ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
+   if ToDo>DstSamples then begin
+    ToDo:=DstSamples;
+   end;
+   if ToDo>0 then begin
+    ResampleLinear(@fPlayScratchBuffer[0],
+                   SrcSamples,
+                   PPasRISCVFloatArray(Dest),
+                   ToDo,
+                   2,
+                   nil,
+                   fPlayResamplerPosition,
+                   ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
+    CopyBytes:=ToDo*2*SizeOf(TPasRISCVFloat);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
+   end;
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+var Remain,ToDo,CopyBytes,SampleFrameSize,Channels:TPasRISCVSizeInt;
+    Src:PPasRISCVUInt8;
+    DstPtr:Pointer;
+    Is16Bit,IsStereo:Boolean;
+    SrcRate,DstRate:TPasRISCVUInt64;
+    RateIndex:TPasRISCVUInt32;
+    FloatSample:TPasRISCVFloat;
+    SampleIndex:TPasRISCVSizeInt;
+    p:PPasRISCVUInt8;
+    SrcSamples,DstSamples:TPasRISCVSizeInt;
+    Sample16:TPasRISCVInt16;
+begin
+
+ // Input: aCount stereo float frames = aCount * 2 * SizeOf(Float) bytes from host
+ Remain:=aCount*2*SizeOf(TPasRISCVFloat);
+
+ if (not fCaptureActive) or ((fCaptureCtrl and FM801_PAUSE)<>0) then begin
+  exit;
+ end;
+
+ Is16Bit:=(fCaptureCtrl and FM801_16BIT)<>0;
+ IsStereo:=(fCaptureCtrl and FM801_STEREO)<>0;
+
+ if IsStereo then begin
+  Channels:=2;
+ end else begin
+  Channels:=1;
+ end;
+
+ if Is16Bit then begin
+  SampleFrameSize:=Channels*2;
+ end else begin
+  SampleFrameSize:=Channels;
+ end;
+
+ RateIndex:=(fCaptureCtrl and FM801_RATE_MASK) shr FM801_RATE_SHIFT;
+ if RateIndex>High(FM801_RATES) then begin
+  RateIndex:=High(FM801_RATES);
+ end;
+ DstRate:=FM801_RATES[RateIndex]; // guest rate
+ SrcRate:=fSoundIO.fSampleRate;   // host rate
+
+ Src:=aBuffer;
+
+ while Remain>0 do begin
+
+  if fCapturePosition>=fCaptureSize then begin
+   // Current buffer full - fire IRQ and switch to next buffer
+   fIRQStatus:=fIRQStatus or FM801_IRQ_CAPTURE;
+   if (fIRQMask and FM801_IRQ_CAPTURE)=0 then begin
+    RaiseIRQ(0,0);
+   end;
+   // Ping-pong
+   if fCaptureBufferIndex=0 then begin
+    fCaptureBufferIndex:=1;
+    fCaptureBuffer:=fCaptureBuffer2;
+   end else begin
+    fCaptureBufferIndex:=0;
+    fCaptureBuffer:=fCaptureBuffer1;
+   end;
+   fCapturePosition:=0;
+   fCaptureSize:=(TPasRISCVUInt32(fCaptureCount)+1) shl 2;
+   // Check BUFFER_LAST flags
+   if fCaptureBufferIndex=0 then begin
+    if (fCaptureCtrl and FM801_BUFFER1_LAST)<>0 then begin
+     fCaptureActive:=false;
+     exit;
+    end;
+   end else begin
+    if (fCaptureCtrl and FM801_BUFFER2_LAST)<>0 then begin
+     fCaptureActive:=false;
+     exit;
+    end;
+   end;
+  end;
+
+  // How many host float frames are available?
+  SrcSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+  if SrcSamples<=0 then begin
+   break;
+  end;
+
+  // How many guest frames fit in the remaining DMA buffer?
+  DstSamples:=(fCaptureSize-fCapturePosition) div SampleFrameSize;
+  if DstSamples<=0 then begin
+   break;
+  end;
+
+  // Determine how many source frames to consume
+  if SrcRate=DstRate then begin
+   if SrcSamples>DstSamples then begin
+    SrcSamples:=DstSamples;
+   end;
+  end else begin
+   // Estimate source frames needed
+   ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+   if SrcSamples>ToDo then begin
+    SrcSamples:=ToDo;
+   end;
+  end;
+
+  // Copy host float data into scratch buffer
+  if length(fCaptureScratchBuffer)<(SrcSamples*2) then begin
+   SetLength(fCaptureScratchBuffer,SrcSamples*4);
+  end;
+
+  CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+  Move(Src^,fCaptureScratchBuffer[0],CopyBytes);
+  inc(Src,CopyBytes);
+  dec(Remain,CopyBytes);
+
+  // TODO: resample if SrcRate<>DstRate (for now, 1:1 only)
+  // After resampling, SrcSamples would change to DstSamples
+
+  // Get DMA pointer to guest memory
+  CopyBytes:=SrcSamples*SampleFrameSize;
+  ToDo:=fCaptureSize-fCapturePosition;
+  if CopyBytes>ToDo then begin
+   CopyBytes:=ToDo;
+   SrcSamples:=CopyBytes div SampleFrameSize;
+  end;
+
+  DstPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(fCaptureBuffer)+fCapturePosition,CopyBytes,true,nil);
+  if DstPtr=nil then begin
+   inc(fCapturePosition,CopyBytes);
+   break;
+  end;
+
+  // Convert stereo float to guest format and write to DMA buffer
+  p:=DstPtr;
+  for SampleIndex:=0 to SrcSamples-1 do begin
+   // Left channel (or mono)
+   FloatSample:=fCaptureScratchBuffer[SampleIndex*2];
+   if FloatSample>1.0 then begin
+    FloatSample:=1.0;
+   end else if FloatSample<-1.0 then begin
+    FloatSample:=-1.0;
+   end;
+   if Is16Bit then begin
+    Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+    p^:=TPasRISCVUInt8(Sample16 and $ff);
+    inc(p);
+    p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+    inc(p);
+   end else begin
+    p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+    inc(p);
+   end;
+   // Right channel (if stereo)
+   if IsStereo then begin
+    FloatSample:=fCaptureScratchBuffer[(SampleIndex*2)+1];
+    if FloatSample>1.0 then begin
+     FloatSample:=1.0;
+    end else if FloatSample<-1.0 then begin
+     FloatSample:=-1.0;
+    end;
+    if Is16Bit then begin
+     Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+     p^:=TPasRISCVUInt8(Sample16 and $ff);
+     inc(p);
+     p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+     inc(p);
+    end else begin
+     p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+     inc(p);
+    end;
+   end;
+  end;
+
+  inc(fCapturePosition,SrcSamples*SampleFrameSize);
+
+ end;
+
 end;
 
 { TPasRISCV.TVirtIODevice }
