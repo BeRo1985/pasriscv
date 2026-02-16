@@ -21117,18 +21117,22 @@ begin
   end;
   FM801_PLAY_CTRL:begin
    fPlayCtrl:=TPasRISCVUInt16(aValue);
-   if (fPlayCtrl and FM801_IMMED_STOP)<>0 then begin
-    fPlayActive:=false;
-    fPlayCtrl:=fPlayCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
-   end else if (fPlayCtrl and FM801_START)<>0 then begin
-    if not fPlayActive then begin
-     // Starting playback - set up DMA from buf1
+   if (fPlayCtrl and FM801_START)<>0 then begin
+    // START takes priority - the Linux driver sets both START and IMMED_STOP
+    // simultaneously to mean "stop current playback immediately and restart fresh"
+    if (not fPlayActive) or ((fPlayCtrl and FM801_IMMED_STOP)<>0) then begin
+     // Starting or restarting playback - set up DMA from buf1
      fPlayBufferIndex:=0;
      fPlayBuffer:=fPlayBuffer1;
      fPlayPosition:=0;
      fPlaySize:=(TPasRISCVUInt32(fPlayCount)+1) shl 2; // count is in 16-bit stereo frames, 4 bytes each
+     fPlayResamplerPosition:=0;
     end;
     fPlayActive:=true;
+    fPlayCtrl:=fPlayCtrl and (not FM801_IMMED_STOP); // clear IMMED_STOP after handling
+   end else if (fPlayCtrl and FM801_IMMED_STOP)<>0 then begin
+    fPlayActive:=false;
+    fPlayCtrl:=fPlayCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
    end else begin
     fPlayActive:=false;
    end;
@@ -21144,17 +21148,20 @@ begin
   end;
   FM801_CAPTURE_CTRL:begin
    fCaptureCtrl:=TPasRISCVUInt16(aValue);
-   if (fCaptureCtrl and FM801_IMMED_STOP)<>0 then begin
-    fCaptureActive:=false;
-    fCaptureCtrl:=fCaptureCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
-   end else if (fCaptureCtrl and FM801_START)<>0 then begin
-    if not fCaptureActive then begin
+   if (fCaptureCtrl and FM801_START)<>0 then begin
+    // START takes priority over IMMED_STOP (same as playback)
+    if (not fCaptureActive) or ((fCaptureCtrl and FM801_IMMED_STOP)<>0) then begin
      fCaptureBufferIndex:=0;
      fCaptureBuffer:=fCaptureBuffer1;
      fCapturePosition:=0;
      fCaptureSize:=(TPasRISCVUInt32(fCaptureCount)+1) shl 2;
+     fCaptureResamplerPosition:=0;
     end;
     fCaptureActive:=true;
+    fCaptureCtrl:=fCaptureCtrl and (not FM801_IMMED_STOP);
+   end else if (fCaptureCtrl and FM801_IMMED_STOP)<>0 then begin
+    fCaptureActive:=false;
+    fCaptureCtrl:=fCaptureCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
    end else begin
     fCaptureActive:=false;
    end;
