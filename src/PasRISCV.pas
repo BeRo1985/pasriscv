@@ -45311,14 +45311,14 @@ begin
  * Not yet implemented and non-implemented ones are commented out
  *
  *)
-//AddISAExtension('zic64b');
+  AddISAExtension('zic64b');
   AddISAExtension('zicbom');
   AddISAExtension('zicbop');
   AddISAExtension('zicboz');
-//AddISAExtension('ziccamoa');
-//AddISAExtension('ziccif');
-//AddISAExtension('zicclsm');
-//AddISAExtension('ziccrse');
+  AddISAExtension('ziccamoa');
+  AddISAExtension('ziccif');
+  AddISAExtension('zicclsm');
+  AddISAExtension('ziccrse');
 //AddISAExtension('zicfilp');
 //AddISAExtension('zicfiss');
   AddISAExtension('zicond');
@@ -45330,8 +45330,8 @@ begin
   AddISAExtension('zihpm');
   AddISAExtension('zimop');
 //AddISAExtension('zmmul');
-//AddISAExtension('za64rs');
-//AddISAExtension('zaamo');#
+  AddISAExtension('za64rs');
+//AddISAExtension('zaamo');
   AddISAExtension('zabha');
   AddISAExtension('zacas');
 //AddISAExtension('zalrsc');
