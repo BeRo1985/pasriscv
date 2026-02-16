@@ -43728,9 +43728,9 @@ begin
   AddISAExtension('zimop');
 //AddISAExtension('zmmul');
 //AddISAExtension('za64rs');
-//AddISAExtension('zaamo');
-//AddISAExtension('zabha');
-//AddISAExtension('zacas');
+//AddISAExtension('zaamo');#
+  AddISAExtension('zabha');
+  AddISAExtension('zacas');
 //AddISAExtension('zalrsc');
 //AddISAExtension('zama16b');
 //AddISAExtension('zawrs');
