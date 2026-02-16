@@ -15496,6 +15496,9 @@ begin
  AddInstruction32('wrs.nto',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00d00073));
  AddInstruction32('wrs.sto',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($01d00073));
  AddInstruction32('sfence.vma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$09));
+ AddInstruction32('sfence.w.inval',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($18000073));
+ AddInstruction32('sfence.inval.ir',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($18100073));
+ AddInstruction32('sinval.vma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$0c));
  AddInstruction32('hfence.bvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$11));
  AddInstruction32('hfence.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$51));
  AddInstruction32('csrrw',TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,1));
@@ -35921,6 +35924,25 @@ begin
          result:=4;
          exit;
         end;
+        $0c:begin
+         // sinval.vma / sfence.w.inval / sfence.inval.ir (Svinval)
+         // sinval.vma treated as sfence.vma; sfence.w.inval/sfence.inval.ir are NOPs
+         if ((fState.Mode>=THART.TMode.Supervisor) and
+             ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0)) or
+            (fState.Mode=THART.TMode.Machine) then begin
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          if rs1<>TRegister.Zero then begin
+           FlushTLBPage(true,fState.Registers[rs1]);
+          end else begin
+           FlushTLB(true);
+          end;
+          State.LRSC:=false;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end;
+         result:=4;
+         exit;
+        end;
         $11:begin
          // HFENCEBVMA7
          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -45455,7 +45477,7 @@ begin
 //AddISAExtension('smctr');
 //AddISAExtension('ssctr');
   AddISAExtension('svadu');
-//AddISAExtension('svinval');
+  AddISAExtension('svinval');
   AddISAExtension('svnapot');
 //AddISAExtension('svpbmt');
 //AddISAExtension('svrsw60t59b');
