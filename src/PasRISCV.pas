@@ -2401,6 +2401,27 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               property Root:TFDTNode read fRoot;
             end;
+            { TSoundIO }
+            TSoundIO=class
+             public
+              type TOnOutputFillBuffer=procedure(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt) of object;
+                   TOnInputFillBuffer=procedure(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt) of object;
+             private
+              fMachine:TPasRISCV;
+              fSampleRate:TPasRISCVUInt64;
+              fOnOutputFillBuffer:TOnOutputFillBuffer;
+              fOnInputFillBuffer:TOnInputFillBuffer;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce; virtual;
+              destructor Destroy; override;
+              procedure OutputFillBuffer(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt); virtual;
+              procedure InputFillBuffer(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt); virtual;
+             public
+              property Machine:TPasRISCV read fMachine;
+              property SampleRate:TPasRISCVUInt64 read fSampleRate write fSampleRate;
+              property OnOutputFillBuffer:TOnOutputFillBuffer read fOnOutputFillBuffer write fOnOutputFillBuffer;
+              property OnInputFillBuffer:TOnInputFillBuffer read fOnInputFillBuffer write fOnInputFillBuffer;
+            end;
             TBusDevice=class;
             TBusDeviceArray=array of TBusDevice;
             { TBusDevice }
@@ -3487,6 +3508,114 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               property FrameBuffer:TFrameBufferDevice read fFrameBuffer;
             end;
+            { TFM801Device }
+            TFM801Device=class(TPCIDevice)
+             public
+              const FM801_VENDOR_ID=TPasRISCVUInt16($1319);
+                    FM801_DEVICE_ID=TPasRISCVUInt16($0801);
+                    FM801_PCM_VOL=$00;
+                    FM801_FM_VOL=$02;
+                    FM801_I2S_VOL=$04;
+                    FM801_REC_SRC=$06;
+                    FM801_PLY_CTRL=$08;
+                    FM801_PLY_COUNT=$0a;
+                    FM801_PLY_BUF1=$0c;
+                    FM801_PLY_BUF2=$10;
+                    FM801_CAP_CTRL=$14;
+                    FM801_CAP_COUNT=$16;
+                    FM801_CAP_BUF1=$18;
+                    FM801_CAP_BUF2=$1c;
+                    FM801_CODEC_CTRL=$22;
+                    FM801_I2S_MODE=$24;
+                    FM801_VOLUME=$26;
+                    FM801_AC97_CMD=$2a;
+                    FM801_AC97_DATA=$2c;
+                    FM801_MPU401_DATA=$30;
+                    FM801_MPU401_CMD=$31;
+                    FM801_GPIO_CTRL=$52;
+                    FM801_GEN_CTRL=$54;
+                    FM801_IRQ_MASK=$56;
+                    FM801_IRQ_STATUS=$5a;
+                    FM801_OPL3_BANK0=$68;
+                    FM801_OPL3_DATA0=$69;
+                    FM801_OPL3_BANK1=$6a;
+                    FM801_OPL3_DATA1=$6b;
+                    FM801_POWERDOWN=$70;
+                    FM801_BAR_SIZE=$80;
+                    // IRQ status bits
+                    FM801_IRQ_PLAYBACK=TPasRISCVUInt16(1 shl 8);
+                    FM801_IRQ_CAPTURE=TPasRISCVUInt16(1 shl 9);
+                    FM801_IRQ_VOLUME=TPasRISCVUInt16(1 shl 14);
+                    FM801_IRQ_MPU=TPasRISCVUInt16(1 shl 15);
+                    // Playback/Capture control bits
+                    FM801_START=TPasRISCVUInt16(1 shl 5);
+                    FM801_PAUSE=TPasRISCVUInt16(1 shl 6);
+                    FM801_IMMED_STOP=TPasRISCVUInt16(1 shl 7);
+                    FM801_16BIT=TPasRISCVUInt16(1 shl 14);
+                    FM801_STEREO=TPasRISCVUInt16(1 shl 15);
+                    FM801_RATE_SHIFT=8;
+                    FM801_RATE_MASK=TPasRISCVUInt16($0f shl FM801_RATE_SHIFT);
+                    FM801_BUF1_LAST=TPasRISCVUInt16(1 shl 1);
+                    FM801_BUF2_LAST=TPasRISCVUInt16(1 shl 2);
+                    // AC97 bits
+                    FM801_AC97_READ=TPasRISCVUInt16(1 shl 7);
+                    FM801_AC97_VALID=TPasRISCVUInt16(1 shl 8);
+                    FM801_AC97_BUSY=TPasRISCVUInt16(1 shl 9);
+                    FM801_AC97_ADDR_SHIFT=10;
+              type TRateEntry=record
+                    Rate:TPasRISCVUInt32;
+                   end;
+             private
+              fSoundIO:TSoundIO;
+              // Registers
+              fPCMVol:TPasRISCVUInt16;
+              fFMVol:TPasRISCVUInt16;
+              fI2SVol:TPasRISCVUInt16;
+              fRecSrc:TPasRISCVUInt16;
+              fPlyCtrl:TPasRISCVUInt16;
+              fPlyCount:TPasRISCVUInt16;
+              fPlyBuf1:TPasRISCVUInt32;
+              fPlyBuf2:TPasRISCVUInt32;
+              fCapCtrl:TPasRISCVUInt16;
+              fCapCount:TPasRISCVUInt16;
+              fCapBuf1:TPasRISCVUInt32;
+              fCapBuf2:TPasRISCVUInt32;
+              fCodecCtrl:TPasRISCVUInt16;
+              fI2SMode:TPasRISCVUInt16;
+              fVolume:TPasRISCVUInt16;
+              fAC97Cmd:TPasRISCVUInt16;
+              fAC97Data:TPasRISCVUInt16;
+              fGPIOCtrl:TPasRISCVUInt16;
+              fGenCtrl:TPasRISCVUInt16;
+              fIRQMask:TPasRISCVUInt16;
+              fIRQStatus:TPasRISCVUInt16;
+              fPowerDown:TPasRISCVUInt16;
+              // OPL3
+              fOPL3AddressLatch:array[0..1] of TPasRISCVUInt8;
+              fOPL3Regs:array[0..1,0..255] of TPasRISCVUInt8;
+              fOPL3Status:TPasRISCVUInt8;
+              fOPL3Enabled:Boolean;
+              // AC97 codec stub
+              fAC97Regs:array[0..63] of TPasRISCVUInt16;
+              // PCM DMA state
+              fPlyActive:Boolean;
+              fPlyBuf:TPasRISCVUInt32;
+              fPlyPos:TPasRISCVUInt32;
+              fPlySize:TPasRISCVUInt32;
+              fCapActive:Boolean;
+              fCapBuf:TPasRISCVUInt32;
+              fCapPos:TPasRISCVUInt32;
+              fCapSize:TPasRISCVUInt32;
+              // IO BAR callbacks
+              function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+             public
+              constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+             public
+              property SoundIO:TSoundIO read fSoundIO;
+            end;
             { TVirtIODevice }
             TVirtIODevice=class(TBusDevice)
              public
@@ -4179,7 +4308,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    end;
                    PVirtIOSndControlCommand=^TVirtIOSndControlCommand;
              private
-              fSampleRate:TPasRISCVUInt64;
+              fSoundIO:TSoundIO;
               fSoundConfig:TVirtIOSoundConfig;
               fCommandQueueLock:TPasMPCriticalSection;
               fPCMStreams:TPCMStreams;
@@ -4187,7 +4316,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fRXScratchBuffer:TPasRISCVFloatDynamicArray;
               fOutputWAVStreamDump:TPasRISCVAudioWAVStreamDump;
              public
-              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              constructor Create(const aMachine:TPasRISCV;const aSoundIO:TSoundIO); reintroduce;
               destructor Destroy; override;
               function SetParams(const aStreamID:TPasRISCVUInt32;const aParams:TVirtIOSoundPCMSetParams):TPasRISCVUInt32;
               procedure DeviceReset; override;
@@ -4199,7 +4328,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
               procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
-              property SampleRate:TPasRISCVUInt64 read fSampleRate write fSampleRate;
+              property SoundIO:TSoundIO read fSoundIO;
             end;
             { TVirtIO9PDevice }
             TVirtIO9PDevice=class(TVirtIODevice)
@@ -6626,6 +6755,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               OpenCores,
               DesignWare
              );
+            TSoundMode=
+             (
+              VirtIO,
+              FM801
+             );
             { TConfiguration }
             TConfiguration=class
              private
@@ -6765,6 +6899,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIOBlockMQ:Boolean;
 
               fNVMeEnabled:Boolean;
+
+              fSoundMode:TSoundMode;
 
               fDisplayMode:TDisplayMode;
 
@@ -6921,6 +7057,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property NVMeEnabled:Boolean read fNVMeEnabled write fNVMeEnabled;
 
+              property SoundMode:TSoundMode read fSoundMode write fSoundMode;
+
               property DisplayMode:TDisplayMode read fDisplayMode write fDisplayMode;
 
               property LRSCMaximumCycles:TPasRISCVUInt64 read fLRSCMaximumCycles write fLRSCMaximumCycles;
@@ -6946,6 +7084,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fStartStackPointer:TPasRiscVUInt64;
 
        fFDTMemoryOffset:TPasRiscVUInt64;
+
+       fSoundIO:TSoundIO;
 
        fBus:TBus;
 
@@ -7006,6 +7146,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fPS2KeyboardDevice:TPS2KeyboardDevice;
 
        fPS2MouseDevice:TPS2MouseDevice;
+
+       fFM801Device:TFM801Device;
 
        fVirtIOInputKeyboardDevice:TVirtIOInputKeyboardDevice;
 
@@ -7117,6 +7259,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        property Configuration:TConfiguration read fConfiguration;
 
+       property SoundIO:TSoundIO read fSoundIO;
+
        property Bus:TBus read fBus;
 
        property Interrupts:TInterrupts read fInterrupts;
@@ -7174,6 +7318,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property PS2KeyboardDevice:TPS2KeyboardDevice read fPS2KeyboardDevice;
 
        property PS2MouseDevice:TPS2MouseDevice read fPS2MouseDevice;
+
+       property FM801Device:TFM801Device read fFM801Device;
 
        property VirtIOInputKeyboardDevice:TVirtIOInputKeyboardDevice read fVirtIOInputKeyboardDevice;
 
@@ -16452,6 +16598,42 @@ begin
  fRoot.GetTreeSize(result);
 end;
 
+{ TPasRISCV.TSoundIO }
+
+constructor TPasRISCV.TSoundIO.Create(const aMachine:TPasRISCV);
+begin
+ inherited Create;
+ fMachine:=aMachine;
+ fSampleRate:=48000;
+ fOnOutputFillBuffer:=nil;
+ fOnInputFillBuffer:=nil;
+end;
+
+destructor TPasRISCV.TSoundIO.Destroy;
+begin
+ fOnOutputFillBuffer:=nil;
+ fOnInputFillBuffer:=nil;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TSoundIO.OutputFillBuffer(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+begin
+ if assigned(fOnOutputFillBuffer) then begin
+  fOnOutputFillBuffer(aBuffer,aCount);
+ end else begin
+  FillChar(aBuffer^,aCount*2*SizeOf(TPasRISCVFloat),#0);
+ end;
+end;
+
+procedure TPasRISCV.TSoundIO.InputFillBuffer(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+begin
+ if assigned(fOnInputFillBuffer) then begin
+  fOnInputFillBuffer(aBuffer,aCount);
+ end else begin
+  FillChar(aBuffer^,aCount*2*SizeOf(TPasRISCVFloat),#0);
+ end;
+end;
+
 { TPasRISCV.TBusDevice }
 
 constructor TPasRISCV.TBusDevice.Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64);
@@ -20618,6 +20800,322 @@ begin
  end;
 end;
 
+{ TPasRISCV.TFM801Device }
+
+constructor TPasRISCV.TFM801Device.Create(const aBus:TPasRISCV.TPCIBusDevice;const aSoundIO:TSoundIO);
+var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
+    BARRegion:TPasRISCV.PPCIBARRegion;
+begin
+ inherited Create(aBus);
+
+ fSoundIO:=aSoundIO;
+
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
+ FuncDesc.fVendorID:=FM801_VENDOR_ID;
+ FuncDesc.fDeviceID:=FM801_DEVICE_ID;
+ FuncDesc.fClassCode:=$0401; // Multimedia Controller, Audio Device
+ FuncDesc.fProgIF:=$00;
+ FuncDesc.fRevisionID:=$b1; // FM801-AU revision (multichannel support flag)
+ FuncDesc.fIRQPin:=TPCI.PCI_IRQ_PIN_INTA;
+
+ BARRegion:=@FuncDesc.fBARRegions[0];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=FM801_BAR_SIZE;
+ BARRegion^.fOnLoad:=OnLoad;
+ BARRegion^.fOnStore:=OnStore;
+
+ fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
+
+ Reset;
+end;
+
+destructor TPasRISCV.TFM801Device.Destroy;
+begin
+ FreeAndNil(fFuncs[0]);
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TFM801Device.Reset;
+begin
+ inherited Reset;
+
+ // Initialize registers to power-on defaults
+ fPCMVol:=$0808;
+ fFMVol:=$9f1f;
+ fI2SVol:=$8808;
+ fRecSrc:=$0000;
+ fPlyCtrl:=$0000;
+ fPlyCount:=$0000;
+ fPlyBuf1:=$00000000;
+ fPlyBuf2:=$00000000;
+ fCapCtrl:=$0000;
+ fCapCount:=$0000;
+ fCapBuf1:=$00000000;
+ fCapBuf2:=$00000000;
+ fCodecCtrl:=$0000;
+ fI2SMode:=$0003;
+ fVolume:=$0000;
+ fAC97Cmd:=$0000;
+ fAC97Data:=$0000;
+ fGPIOCtrl:=$0000;
+ fGenCtrl:=$0000;
+ fIRQMask:=$00c3; // mask everything
+ fIRQStatus:=$0000;
+ fPowerDown:=$0000;
+
+ // OPL3
+ FillChar(fOPL3AddressLatch,SizeOf(fOPL3AddressLatch),#0);
+ FillChar(fOPL3Regs,SizeOf(fOPL3Regs),#0);
+ fOPL3Status:=$00;
+ fOPL3Enabled:=false;
+
+ // AC97 stub - provide a valid codec
+ FillChar(fAC97Regs,SizeOf(fAC97Regs),#0);
+ fAC97Regs[$00 shr 1]:=$0000; // Reset
+ fAC97Regs[$02 shr 1]:=$8000; // Master volume - muted
+ fAC97Regs[$04 shr 1]:=$8000; // Aux out volume - muted
+ fAC97Regs[$06 shr 1]:=$8000; // Mono volume - muted
+ fAC97Regs[$18 shr 1]:=$8808; // PCM out volume
+ fAC97Regs[$1c shr 1]:=$8808; // Record gain
+ fAC97Regs[$26 shr 1]:=$000f; // Power management - all sections ready
+ fAC97Regs[$28 shr 1]:=$0901; // Extended audio ID - VRA, DAC 48kHz
+ fAC97Regs[$2a shr 1]:=$0001; // Extended audio status ctrl - VRA enabled
+ fAC97Regs[$2c shr 1]:=$bb80; // Front DAC rate - 48000
+ fAC97Regs[$7c shr 1]:=$4144; // Vendor ID1 = 'AD' (Analog Devices stub)
+ fAC97Regs[$7e shr 1]:=$5348; // Vendor ID2
+
+ // PCM DMA state
+ fPlyActive:=false;
+ fPlyBuf:=0;
+ fPlyPos:=0;
+ fPlySize:=0;
+ fCapActive:=false;
+ fCapBuf:=0;
+ fCapPos:=0;
+ fCapSize:=0;
+end;
+
+function TPasRISCV.TFM801Device.OnLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Offset:TPasRISCVUInt16;
+begin
+ Offset:=TPasRISCVUInt16(aAddress and $7f);
+ result:=0;
+ case Offset of
+  FM801_PCM_VOL:begin
+   result:=fPCMVol;
+  end;
+  FM801_FM_VOL:begin
+   result:=fFMVol;
+  end;
+  FM801_I2S_VOL:begin
+   result:=fI2SVol;
+  end;
+  FM801_REC_SRC:begin
+   result:=fRecSrc;
+  end;
+  FM801_PLY_CTRL:begin
+   result:=fPlyCtrl;
+  end;
+  FM801_PLY_COUNT:begin
+   result:=fPlyCount;
+  end;
+  FM801_PLY_BUF1:begin
+   result:=fPlyBuf1;
+  end;
+  FM801_PLY_BUF2:begin
+   result:=fPlyBuf2;
+  end;
+  FM801_CAP_CTRL:begin
+   result:=fCapCtrl;
+  end;
+  FM801_CAP_COUNT:begin
+   result:=fCapCount;
+  end;
+  FM801_CAP_BUF1:begin
+   result:=fCapBuf1;
+  end;
+  FM801_CAP_BUF2:begin
+   result:=fCapBuf2;
+  end;
+  FM801_CODEC_CTRL:begin
+   result:=fCodecCtrl;
+  end;
+  FM801_I2S_MODE:begin
+   result:=fI2SMode;
+  end;
+  FM801_VOLUME:begin
+   result:=fVolume;
+  end;
+  FM801_AC97_CMD:begin
+   // Return valid + not busy
+   result:=fAC97Cmd or FM801_AC97_VALID;
+   result:=result and (not FM801_AC97_BUSY);
+  end;
+  FM801_AC97_DATA:begin
+   result:=fAC97Data;
+  end;
+  FM801_MPU401_DATA:begin
+   result:=$fe; // No data available
+  end;
+  FM801_MPU401_CMD:begin
+   result:=$80; // Output ready, input not ready
+  end;
+  FM801_GPIO_CTRL:begin
+   result:=fGPIOCtrl;
+  end;
+  FM801_GEN_CTRL:begin
+   result:=fGenCtrl;
+  end;
+  FM801_IRQ_MASK:begin
+   result:=fIRQMask;
+  end;
+  FM801_IRQ_STATUS:begin
+   result:=fIRQStatus;
+  end;
+  FM801_OPL3_BANK0:begin
+   // OPL3 Status register read
+   result:=fOPL3Status;
+  end;
+  FM801_OPL3_BANK1:begin
+   result:=fOPL3Status;
+  end;
+  FM801_POWERDOWN:begin
+   result:=fPowerDown;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TFM801Device.OnStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt16;
+    AC97Reg:TPasRISCVUInt8;
+begin
+ Offset:=TPasRISCVUInt16(aAddress and $7f);
+ case Offset of
+  FM801_PCM_VOL:begin
+   fPCMVol:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_FM_VOL:begin
+   fFMVol:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_I2S_VOL:begin
+   fI2SVol:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_REC_SRC:begin
+   fRecSrc:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_PLY_CTRL:begin
+   fPlyCtrl:=TPasRISCVUInt16(aValue);
+   if (fPlyCtrl and FM801_START)<>0 then begin
+    fPlyActive:=true;
+   end else begin
+    fPlyActive:=false;
+   end;
+  end;
+  FM801_PLY_COUNT:begin
+   fPlyCount:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_PLY_BUF1:begin
+   fPlyBuf1:=TPasRISCVUInt32(aValue);
+  end;
+  FM801_PLY_BUF2:begin
+   fPlyBuf2:=TPasRISCVUInt32(aValue);
+  end;
+  FM801_CAP_CTRL:begin
+   fCapCtrl:=TPasRISCVUInt16(aValue);
+   if (fCapCtrl and FM801_START)<>0 then begin
+    fCapActive:=true;
+   end else begin
+    fCapActive:=false;
+   end;
+  end;
+  FM801_CAP_COUNT:begin
+   fCapCount:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_CAP_BUF1:begin
+   fCapBuf1:=TPasRISCVUInt32(aValue);
+  end;
+  FM801_CAP_BUF2:begin
+   fCapBuf2:=TPasRISCVUInt32(aValue);
+  end;
+  FM801_CODEC_CTRL:begin
+   fCodecCtrl:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_I2S_MODE:begin
+   fI2SMode:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_AC97_CMD:begin
+   fAC97Cmd:=TPasRISCVUInt16(aValue);
+   AC97Reg:=TPasRISCVUInt8(fAC97Cmd and $7f);
+   if (fAC97Cmd and FM801_AC97_READ)<>0 then begin
+    // AC97 Read
+    if (AC97Reg shr 1)<=High(fAC97Regs) then begin
+     fAC97Data:=fAC97Regs[AC97Reg shr 1];
+    end else begin
+     fAC97Data:=$0000;
+    end;
+   end else begin
+    // AC97 Write
+    if (AC97Reg shr 1)<=High(fAC97Regs) then begin
+     fAC97Regs[AC97Reg shr 1]:=TPasRISCVUInt16(fAC97Data);
+    end;
+   end;
+  end;
+  FM801_AC97_DATA:begin
+   fAC97Data:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_MPU401_DATA:begin
+   // MPU-401 data write (stub)
+  end;
+  FM801_MPU401_CMD:begin
+   // MPU-401 command write (stub)
+  end;
+  FM801_GPIO_CTRL:begin
+   fGPIOCtrl:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_GEN_CTRL:begin
+   fGenCtrl:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_IRQ_MASK:begin
+   fIRQMask:=TPasRISCVUInt16(aValue);
+  end;
+  FM801_IRQ_STATUS:begin
+   // Writing to IRQ_STATUS acknowledges (clears) bits
+   fIRQStatus:=fIRQStatus and (not TPasRISCVUInt16(aValue));
+  end;
+  FM801_OPL3_BANK0:begin
+   // OPL3 address latch bank 0
+   fOPL3AddressLatch[0]:=TPasRISCVUInt8(aValue);
+  end;
+  FM801_OPL3_DATA0:begin
+   // OPL3 data write bank 0
+   fOPL3Regs[0,fOPL3AddressLatch[0]]:=TPasRISCVUInt8(aValue);
+   // Check for OPL3 mode enable (register $05 bank 1 = $01)
+   if (fOPL3AddressLatch[0]=$05) and ((TPasRISCVUInt8(aValue) and $01)<>0) then begin
+    fOPL3Enabled:=true;
+   end;
+  end;
+  FM801_OPL3_BANK1:begin
+   // OPL3 address latch bank 1
+   fOPL3AddressLatch[1]:=TPasRISCVUInt8(aValue);
+  end;
+  FM801_OPL3_DATA1:begin
+   // OPL3 data write bank 1
+   fOPL3Regs[1,fOPL3AddressLatch[1]]:=TPasRISCVUInt8(aValue);
+   // Check for OPL3 mode enable (register $05 bank 1 = $01)
+   if (fOPL3AddressLatch[1]=$05) and ((TPasRISCVUInt8(aValue) and $01)<>0) then begin
+    fOPL3Enabled:=true;
+   end;
+  end;
+  FM801_POWERDOWN:begin
+   fPowerDown:=TPasRISCVUInt16(aValue);
+  end;
+ end;
+end;
+
 { TPasRISCV.TVirtIODevice }
 
 constructor TPasRISCV.TVirtIODevice.Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64;const aKind:TVirtIODevice.TKind);
@@ -22631,7 +23129,7 @@ end;
 
 { TPasRISCV.TVirtIOSoundDevice }
 
-constructor TPasRISCV.TVirtIOSoundDevice.Create(const aMachine:TPasRISCV);
+constructor TPasRISCV.TVirtIOSoundDevice.Create(const aMachine:TPasRISCV;const aSoundIO:TSoundIO);
 var Index:TPasRISCVSizeInt;
     Stream:TPCMStream;
     DefaultParams:TVirtIOSoundPCMSetParams;
@@ -22645,7 +23143,7 @@ begin
 
  fDeviceID:=TVirtIOSoundDevice.DeviceID;
 
- fSampleRate:=48000;
+ fSoundIO:=aSoundIO;
 
  fSoundConfig.Jacks:=2;
  fSoundConfig.Streams:=2;
@@ -22709,7 +23207,13 @@ begin
  fRXScratchBuffer:=nil;
 
  fOutputWAVStreamDump:=nil;
-//fOutputWAVStreamDump:=TPasRISCVAudioWAVStreamDump.Create(fSampleRate,TFileStream.Create('a.wav',fmCreate),true);
+//fOutputWAVStreamDump:=TPasRISCVAudioWAVStreamDump.Create(fSoundIO.fSampleRate,TFileStream.Create('a.wav',fmCreate),true);
+
+ // Register our callbacks on the shared TSoundIO
+ if assigned(fSoundIO) then begin
+  fSoundIO.OnOutputFillBuffer:=OutputAudioFillBufferCallback;
+  fSoundIO.OnInputFillBuffer:=InputAudioFillBufferCallback;
+ end;
 
 end;
 
@@ -23466,8 +23970,8 @@ begin
                    @fTXScratchBuffer[0],
                    CountAudioSamples
                   );
-      if SampleRates[PCMStream.fParams.Rate]<>fSampleRate then begin
-       CountResampledAudioSamples:=ConvertScale(CountAudioSamples,SampleRates[PCMStream.fParams.Rate],fSampleRate);
+      if SampleRates[PCMStream.fParams.Rate]<>fSoundIO.fSampleRate then begin
+       CountResampledAudioSamples:=ConvertScale(CountAudioSamples,SampleRates[PCMStream.fParams.Rate],fSoundIO.fSampleRate);
        Size:=CountResampledAudioSamples*2;
        if length(PCMBuffer.fResampledFloatData)<Size then begin
         SetLength(PCMBuffer.fResampledFloatData,Size*2);
@@ -23482,7 +23986,7 @@ begin
                       2,
                       pointer(@PCMStream.fPreviousFrameEndValues[0]),
                       PCMStream.fResamplerPosition,
-                      ConvertScale(TPasRISCVUInt64($100000000),fSampleRate,SampleRates[PCMStream.fParams.Rate]));
+                      ConvertScale(TPasRISCVUInt64($100000000),fSoundIO.fSampleRate,SampleRates[PCMStream.fParams.Rate]));
        Move(PCMBuffer.fResampledFloatData[0],PCMBuffer.fFloatData[0],CountResampledAudioSamples*2*SizeOf(TPasRISCVFloat));
        CountAudioSamples:=CountResampledAudioSamples;
       end else begin
@@ -44596,6 +45100,8 @@ begin
 
  fDisplayMode:=TDisplayMode.SimpleFB;
 
+ fSoundMode:=TSoundMode.VirtIO;
+
  fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
 
 end;
@@ -44762,6 +45268,8 @@ begin
  end;
 
  fDisplayMode:=aConfiguration.fDisplayMode;
+
+ fSoundMode:=aConfiguration.fSoundMode;
 
 end;
 
@@ -44972,6 +45480,8 @@ begin
    fDS1307Device:=nil;
   end;
  end;
+ 
+ fSoundIO:=TSoundIO.Create(self);
 
  fPCIBusDevice:=TPCIBusDevice.Create(self);
 
@@ -45020,11 +45530,21 @@ begin
 
  fPS2MouseDevice:=TPS2MouseDevice.Create(self);
 
+ case fConfiguration.fSoundMode of
+  TSoundMode.VirtIO:begin
+   fVirtIOSoundDevice:=TVirtIOSoundDevice.Create(self,fSoundIO);
+   fFM801Device:=nil;
+  end;
+  TSoundMode.FM801:begin
+   fVirtIOSoundDevice:=nil;
+   // FM801 is created later after fPCIBusDevice
+   fFM801Device:=nil;
+  end;
+ end;
+
  fVirtIOInputKeyboardDevice:=TVirtIOInputKeyboardDevice.Create(self);
 
  fVirtIOInputMouseDevice:=TVirtIOInputMouseDevice.Create(self);
-
- fVirtIOSoundDevice:=TVirtIOSoundDevice.Create(self);
 
  fVirtIO9PDevice:=TVirtIO9PDevice.Create(self);
 
@@ -45094,7 +45614,9 @@ begin
  fBus.AddBusDevice(fPS2MouseDevice);
  fBus.AddBusDevice(fVirtIOInputKeyboardDevice);
  fBus.AddBusDevice(fVirtIOInputMouseDevice);
- fBus.AddBusDevice(fVirtIOSoundDevice);
+ if assigned(fVirtIOSoundDevice) then begin
+  fBus.AddBusDevice(fVirtIOSoundDevice);
+ end;
  fBus.AddBusDevice(fVirtIO9PDevice);
  fBus.AddBusDevice(fVirtIONetDevice);
  fBus.AddBusDevice(fVirtIORandomGeneratorDevice);
@@ -45135,6 +45657,11 @@ begin
   else begin
    fCirrusDevice:=nil;
   end;
+ end;
+
+ if fConfiguration.fSoundMode=TSoundMode.FM801 then begin
+  fFM801Device:=TFM801Device.Create(fPCIBusDevice,fSoundIO);
+  fPCIBusDevice.AddBusDevice(fFM801Device);
  end;
 
  fHARTs:=nil;
@@ -45208,6 +45735,11 @@ begin
   FreeAndNil(fCirrusDevice);
  end;
 
+ if assigned(fFM801Device) then begin
+  fPCIBusDevice.RemoveBusDevice(fFM801Device);
+  FreeAndNil(fFM801Device);
+ end;
+
  fPCIBusDevice.RemoveBusDevice(fIVSHMEMDevice);
  FreeAndNil(fIVSHMEMDevice);
 
@@ -45266,6 +45798,8 @@ begin
  FreeAndNil(fVirtIORTCDevice);
 
  FreeAndNil(fBus);
+
+ FreeAndNil(fSoundIO);
 
  FreeAndNil(fAtomicCriticalSection);
 
@@ -46228,20 +46762,23 @@ begin
       SoCNode.AddChild(VirtIOInputMouseNode);
      end;
 
-     VirtIOSoundNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOSoundBase);
-     try
-      VirtIOSoundNode.AddPropertyString('compatible','virtio,mmio');
-      Cells[0]:=0;
-      Cells[1]:=fConfiguration.fVirtIOSoundBase;
-      Cells[2]:=0;
-      Cells[3]:=fConfiguration.fVirtIOSoundSize;
-      VirtIOSoundNode.AddPropertyCells('reg',@Cells,4);
-      Cells[0]:=INTC0.GetPHandle;
-      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOSoundIRQ);
-      VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,2);
-     finally
-      SoCNode.AddChild(VirtIOSoundNode);
+     if fConfiguration.fSoundMode=TSoundMode.VirtIO then begin
+      VirtIOSoundNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOSoundBase);
+      try
+       VirtIOSoundNode.AddPropertyString('compatible','virtio,mmio');
+       Cells[0]:=0;
+       Cells[1]:=fConfiguration.fVirtIOSoundBase;
+       Cells[2]:=0;
+       Cells[3]:=fConfiguration.fVirtIOSoundSize;
+       VirtIOSoundNode.AddPropertyCells('reg',@Cells,4);
+       Cells[0]:=INTC0.GetPHandle;
+       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOSoundIRQ);
+       VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      finally
+       SoCNode.AddChild(VirtIOSoundNode);
+      end;
      end;
+     // FM801 is a PCI device - discovered via PCI enumeration, no FDT node needed
 
      VirtIO9PNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIO9PBase);
      try
