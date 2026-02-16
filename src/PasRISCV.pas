@@ -2445,6 +2445,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               constructor Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64); reintroduce; virtual;
               destructor Destroy; override;
               procedure AddSubBusDevice(const aSubBusDevice:TBusDevice);
+              procedure RemoveSubBusDevice(const aSubBusDevice:TBusDevice);
               function FindSubBusDevice(const aAddress:TPasRISCVUInt64):TPasRISCV.TBusDevice;
               procedure Reset; virtual;
               function GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer; virtual;
@@ -16697,6 +16698,21 @@ begin
  fSubBusDevices[Index]:=aSubBusDevice;
 end;
 
+procedure TPasRISCV.TBusDevice.RemoveSubBusDevice(const aSubBusDevice:TBusDevice);
+var Index:TPasRISCVSizeInt;
+begin
+ for Index:=0 to fCountSubBusDevices-1 do begin
+  if fSubBusDevices[Index]=aSubBusDevice then begin
+   if (Index+1)<fCountSubBusDevices then begin
+    fSubBusDevices[Index]:=fSubBusDevices[fCountSubBusDevices-1];
+   end;
+   fSubBusDevices[fCountSubBusDevices-1]:=nil;
+   dec(fCountSubBusDevices);
+   exit;
+  end;
+ end;
+end;
+
 function TPasRISCV.TBusDevice.FindSubBusDevice(const aAddress:TPasRISCVUInt64):TPasRISCV.TBusDevice;
 var Index:TPasRISCVSizeInt;
     SubBusDevice:TBusDevice;
@@ -18034,8 +18050,18 @@ var BarIndex:TPasRISCVUInt32;
 begin
  for BarIndex:=0 to TPCI.PCI_FUNC_BARS-1 do begin
   PCIMemoryDevice:=fBARMemoryDevices[BarIndex];
-  if assigned(PCIMemoryDevice) and assigned(fBus) and assigned(fBus.fMachine) and assigned(fBus.fMachine.fBus) then begin
-   fBus.fMachine.fBus.RemoveBusDevice(PCIMemoryDevice);
+  if assigned(PCIMemoryDevice) and assigned(fBus) and assigned(fBus.fMachine) then begin
+   if fBARIsIO[BarIndex] then begin
+    // I/O BAR: remove from TPCIIODevice sub-bus devices
+    if assigned(fBus.fMachine.fPCIIODevice) then begin
+     fBus.fMachine.fPCIIODevice.RemoveSubBusDevice(PCIMemoryDevice);
+    end;
+   end else begin
+    // MMIO BAR: remove from main bus
+    if assigned(fBus.fMachine.fBus) then begin
+     fBus.fMachine.fBus.RemoveBusDevice(PCIMemoryDevice);
+    end;
+   end;
   end;
   FreeAndNil(fBARMemoryDevices[BarIndex]);
  end;
