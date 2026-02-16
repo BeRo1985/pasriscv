@@ -2854,6 +2854,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TPCIBARRegion=record
              fAddress:TPasRISCVUInt64;
              fSize:TPasRISCVUInt64;
+             fIsIO:Boolean;
              fOnLoad:TPCIMemoryDevice.TOnLoad;
              fOnStore:TPCIMemoryDevice.TOnStore;
             end;
@@ -2895,6 +2896,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fBridgeMem:TPasRISCVUInt32;
               fIRQPin:TPasRISCVUInt8;
               fBARMemoryDevices:TPCIBarMemoryDevices;
+              fBARIsIO:array[0..TPCI.PCI_FUNC_BARS-1] of Boolean;
               fExpansionROM:TPCIMemoryDevice;
              public
               constructor Create(const aBus:TPCIBusDevice;const aDevice:TPCIDevice;const aFuncDesc:TPCIFuncDescriptor);
@@ -2903,6 +2905,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function Is64Bit(const aBarID:TPasRISCVSizeUInt):Boolean;
               function GetEffectiveBar(const aBarID:TPasRISCVSizeUInt):TPCIMemoryDevice;
               function GetBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              function GetIOBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
               procedure RaiseIRQ(const aMSIID:TPasRISCVUInt32);
               procedure LowerIRQ; overload;
@@ -17988,15 +17991,28 @@ begin
 //writeln('PCI Func: ',LowerCase(IntToHex(fVendorID,4)),' ',LowerCase(IntToHex(fDeviceID,4)),' ',LowerCase(IntToHex(fClassCode,6)),' ',LowerCase(IntToHex(fProgIF,2)),' ',LowerCase(IntToHex(fRevisionID,2)),' ',LowerCase(IntToHex(fIRQPin,2)),' ',LowerCase(IntToHex(fIRQLine,2)));
  for BARIndex:=0 to TPCI.PCI_FUNC_BARS-1 do begin
   fBARMemoryDevices[BARIndex]:=nil;
+  fBARIsIO[BARIndex]:=false;
  end;
  for BARIndex:=0 to TPCI.PCI_FUNC_BARS-1 do begin
   BARRegion:=aFuncDesc.fBARRegions[BARIndex];
   if BARRegion.fSize<>0 then begin
+   fBARIsIO[BARIndex]:=BARRegion.fIsIO;
 {$ifdef NewPCI}
-   BARRegion.fAddress:=GetBARAddress(BARRegion.fSize);
+   if BARRegion.fIsIO then begin
+    BARRegion.fAddress:=GetIOBARAddress(BARRegion.fSize);
+   end else begin
+    BARRegion.fAddress:=GetBARAddress(BARRegion.fSize);
+   end;
    PCIMemoryDevice:=TPCIMemoryDevice.Create(fBus.fMachine,aDevice,self,BARRegion.fAddress,BARRegion.fSize,BARRegion.fOnLoad,BARRegion.fOnStore);
    fBARMemoryDevices[BARIndex]:=PCIMemoryDevice;
-   fBus.fMachine.fBus.AddBusDevice(PCIMemoryDevice);
+   if BARRegion.fIsIO then begin
+    // I/O BAR: register as sub-device of TPCIIODevice so FindBusDevice finds it
+    if assigned(fBus.fMachine.fPCIIODevice) then begin
+     fBus.fMachine.fPCIIODevice.AddSubBusDevice(PCIMemoryDevice);
+    end;
+   end else begin
+    fBus.fMachine.fBus.AddBusDevice(PCIMemoryDevice);
+   end;
 {$else}
    BARRegion.fSize:=(BARRegion.fSize+15) and TPasRISCVUInt64($fffffffffffffff0);
    if BARRegion.fSize<>0 then begin
@@ -18059,6 +18075,18 @@ begin
    result:=TemporaryAddress+((AlignSize-TemporaryAddress) and (AlignSize-1));
   end;
  until false;
+end;
+
+function TPasRISCV.TPCIFunc.GetIOBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var AlignSize:TPasRISCVUInt64;
+begin
+ // Align to power of 2, minimum 4 bytes for I/O BARs
+ AlignSize:=RoundUpToPowerOfTwo64(Max(aBARSize,4));
+ // Align fIOAddr up to AlignSize boundary
+ result:=fBus.fIOAddr+((AlignSize-(fBus.fIOAddr and (AlignSize-1))) and (AlignSize-1));
+ // Advance I/O address pointer
+ fBus.fIOAddr:=result+AlignSize;
+ dec(fBus.fIOSize,fBus.fIOAddr-result);
 end;
 
 procedure TPasRISCV.TPCIFunc.SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
@@ -18352,11 +18380,17 @@ begin
        result:=BusDevice.fBase shr 32;
       end else begin
        result:=TPasRISCVUInt32(BusDevice.fBase);
-       if Func.Is64Bit(BarID) then begin
-        result:=result or TPCI.PCI_BAR_64_BIT;
-       end;
-       if BusDevice.fSize>=$10000000 then begin
-        result:=result or TPCI.PCI_BAR_PREFETCH;
+       if Func.fBARIsIO[BarID] then begin
+        // I/O BAR: report port number (offset from I/O base), not physical address
+        result:=TPasRISCVUInt32(BusDevice.fBase-TPCI.PCI_IO_DEFAULT_ADDR);
+        result:=result or TPCI.PCI_BAR_IO_SPACE;
+       end else begin
+        if Func.Is64Bit(BarID) then begin
+         result:=result or TPCI.PCI_BAR_64_BIT;
+        end;
+        if BusDevice.fSize>=$10000000 then begin
+         result:=result or TPCI.PCI_BAR_PREFETCH;
+        end;
        end;
       end;
      end else begin
@@ -18487,7 +18521,12 @@ begin
       if Func.IsUpperHalf(BarID) then begin
        BarAddress:=(BarAddress and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(aValue) shl 32);
       end else begin
-       BarAddress:=(BarAddress and TPasRISCVUInt64($ffffffff00000000)) or (TPasRISCVUInt64(aValue) and TPasRISCVUInt64($00000000fffff000));
+       if Func.fBARIsIO[BarID] then begin
+        // I/O BAR: kernel writes port number, convert to physical address
+        BarAddress:=TPCI.PCI_IO_DEFAULT_ADDR or (TPasRISCVUInt64(aValue) and TPasRISCVUInt64($00000000fffffffc));
+       end else begin
+        BarAddress:=(BarAddress and TPasRISCVUInt64($ffffffff00000000)) or (TPasRISCVUInt64(aValue) and TPasRISCVUInt64($00000000fffff000));
+       end;
       end;
       BarAddress:=BarAddress and TPasRISCVUInt64(not TPasRISCVUInt64(BarSize-1));
       TPasMPInterlocked.Write(BusDevice.fBase,BarAddress);
@@ -18984,6 +19023,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=$4000;
+ BARRegion^.fIsIO:=false;
  BARRegion^.fOnLoad:=OnLoad;
  BARRegion^.fOnStore:=OnStore;
 
@@ -19913,6 +19953,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=IVSHMEM_BAR0_SIZE;
+ BARRegion^.fIsIO:=false;
  BARRegion^.fOnLoad:=OnLoad;
  BARRegion^.fOnStore:=OnStore;
 
@@ -19924,6 +19965,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=fSharedMemorySize;
+ BARRegion^.fIsIO:=false;
  BARRegion^.fOnLoad:=nil;
  BARRegion^.fOnStore:=nil;
 
@@ -20061,6 +20103,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=BOCHS_VBE_BAR0_SIZE;
+ BARRegion^.fIsIO:=false;
  BARRegion^.fOnLoad:=OnFBLoad;
  BARRegion^.fOnStore:=OnFBStore;
 
@@ -20072,6 +20115,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=BOCHS_VBE_BAR2_SIZE;
+ BARRegion^.fIsIO:=false;
  BARRegion^.fOnLoad:=OnVBELoad;
  BARRegion^.fOnStore:=OnVBEStore;
 
@@ -20399,6 +20443,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=CIRRUS_VRAM_SIZE;
+ BARRegion^.fIsIO:=false;
  BARRegion^.fOnLoad:=OnFBLoad;
  BARRegion^.fOnStore:=OnFBStore;
 
@@ -20410,6 +20455,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=CIRRUS_MMIO_SIZE;
+ BARRegion^.fIsIO:=false;
  BARRegion^.fOnLoad:=OnMMIOLoad;
  BARRegion^.fOnStore:=OnMMIOStore;
 
@@ -20847,6 +20893,7 @@ begin
  BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
 {$endif}
  BARRegion^.fSize:=FM801_BAR_SIZE;
+ BARRegion^.fIsIO:=true;
  BARRegion^.fOnLoad:=OnLoad;
  BARRegion^.fOnStore:=OnStore;
 
