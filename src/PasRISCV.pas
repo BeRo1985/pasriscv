@@ -15590,24 +15590,32 @@ begin
  //////////////////////////////////////////////////////////////////////////////
  AddInstruction32('fmadd.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMadd,0));
  AddInstruction32('fmadd.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMadd,1));
+ AddInstruction32('fmadd.h',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMadd,2));
  AddInstruction32('fmsub.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMsub,0));
  AddInstruction32('fmsub.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMsub,1));
+ AddInstruction32('fmsub.h',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeMsub,2));
  AddInstruction32('fnmadd.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmadd,0));
  AddInstruction32('fnmadd.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmadd,1));
+ AddInstruction32('fnmadd.h',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmadd,2));
  AddInstruction32('fnmsub.s',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmsub,0));
  AddInstruction32('fnmsub.d',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmsub,1));
+ AddInstruction32('fnmsub.h',TInstructionFormat.FMA,MaskFma,ValueFma(OpcodeNmsub,2));
 
  //////////////////////////////////////////////////////////////////////////////
  // Floating-Point OP                                                        //
  //////////////////////////////////////////////////////////////////////////////
  AddInstruction32('fadd.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$00));
  AddInstruction32('fadd.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$01));
+ AddInstruction32('fadd.h',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$02));
  AddInstruction32('fsub.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$04));
  AddInstruction32('fsub.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$05));
+ AddInstruction32('fsub.h',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$06));
  AddInstruction32('fmul.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$08));
  AddInstruction32('fmul.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$09));
+ AddInstruction32('fmul.h',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0a));
  AddInstruction32('fdiv.s',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0c));
  AddInstruction32('fdiv.d',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0d));
+ AddInstruction32('fdiv.h',TInstructionFormat.FPBinaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$0e));
 
  AddInstruction32('fsgnj.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,0));
  AddInstruction32('fsgnjn.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$10,1));
@@ -15615,6 +15623,9 @@ begin
  AddInstruction32('fsgnj.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,0));
  AddInstruction32('fsgnjn.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,1));
  AddInstruction32('fsgnjx.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$11,2));
+ AddInstruction32('fsgnj.h',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$12,0));
+ AddInstruction32('fsgnjn.h',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$12,1));
+ AddInstruction32('fsgnjx.h',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$12,2));
 
  AddInstruction32('fmin.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$14,0));
  AddInstruction32('fmax.s',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$14,1));
@@ -15624,6 +15635,10 @@ begin
  AddInstruction32('fmax.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$15,1));
  AddInstruction32('fminm.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$15,2));
  AddInstruction32('fmaxm.d',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$15,3));
+ AddInstruction32('fmin.h',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$16,0));
+ AddInstruction32('fmax.h',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$16,1));
+ AddInstruction32('fminm.h',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$16,2));
+ AddInstruction32('fmaxm.h',TInstructionFormat.FPBinary,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$16,3));
 
  AddInstruction32('fcvt.s.d',TInstructionFormat.FPCvtFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$20,1));
  AddInstruction32('fcvt.s.h',TInstructionFormat.FPCvtFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$20,2));
@@ -15637,8 +15652,11 @@ begin
  AddInstruction32('fcvt.h.s',TInstructionFormat.FPCvtFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$22,0));
  AddInstruction32('fcvt.h.d',TInstructionFormat.FPCvtFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$22,1));
  AddInstruction32('fcvt.bf16.s',TInstructionFormat.FPCvtFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$22,8));
+ AddInstruction32('fround.h',TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$22,4));
+ AddInstruction32('froundnx.h',TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$22,5));
  AddInstruction32('fsqrt.s',TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$2c));
  AddInstruction32('fsqrt.d',TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$2d));
+ AddInstruction32('fsqrt.h',TInstructionFormat.FPUnaryRM,MaskOpcodeFunct7,ValueIShift7(OpcodeOpFP,0,$2e));
 
  AddInstruction32('fle.s',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,0));
  AddInstruction32('flt.s',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$50,1));
@@ -15650,6 +15668,11 @@ begin
  AddInstruction32('feq.d',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,2));
  AddInstruction32('fleq.d',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,4));
  AddInstruction32('fltq.d',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$51,5));
+ AddInstruction32('fle.h',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$52,0));
+ AddInstruction32('flt.h',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$52,1));
+ AddInstruction32('feq.h',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$52,2));
+ AddInstruction32('fleq.h',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$52,4));
+ AddInstruction32('fltq.h',TInstructionFormat.FPCompare,MaskOpcodeFunct7Funct3,ValueOpFpFunct3(OpcodeOpFP,$52,5));
 
  AddInstruction32('fcvt.w.s',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,0));
  AddInstruction32('fcvt.wu.s',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$60,1));
@@ -15661,6 +15684,10 @@ begin
  AddInstruction32('fcvt.l.d',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,2));
  AddInstruction32('fcvt.lu.d',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,3));
  AddInstruction32('fcvtmod.w.d',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$61,8));
+ AddInstruction32('fcvt.w.h',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$62,0));
+ AddInstruction32('fcvt.wu.h',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$62,1));
+ AddInstruction32('fcvt.l.h',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$62,2));
+ AddInstruction32('fcvt.lu.h',TInstructionFormat.FPCvtIntFromFP,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$62,3));
 
  AddInstruction32('fcvt.s.w',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,0));
  AddInstruction32('fcvt.s.wu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$68,1));
@@ -15671,18 +15698,24 @@ begin
  AddInstruction32('fcvt.d.wu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,1));
  AddInstruction32('fcvt.d.l',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,2));
  AddInstruction32('fcvt.d.lu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$69,3));
+ AddInstruction32('fcvt.h.w',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$6a,0));
+ AddInstruction32('fcvt.h.wu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$6a,1));
+ AddInstruction32('fcvt.h.l',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$6a,2));
+ AddInstruction32('fcvt.h.lu',TInstructionFormat.FPCvtFPFromInt,MaskOpcodeFunct7Rs2,ValueOpFpRs2(OpcodeOpFP,$6a,3));
 
  AddInstruction32('fmv.x.w',TInstructionFormat.FPMoveToInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$70,0,0));
  AddInstruction32('fclass.s',TInstructionFormat.FPClass,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$70,1,0));
  AddInstruction32('fmv.x.d',TInstructionFormat.FPMoveToInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$71,0,0));
  AddInstruction32('fclass.d',TInstructionFormat.FPClass,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$71,1,0));
  AddInstruction32('fmv.x.h',TInstructionFormat.FPMoveToInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$72,0,0));
+ AddInstruction32('fclass.h',TInstructionFormat.FPClass,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$72,1,0));
 
  AddInstruction32('fmv.w.x',TInstructionFormat.FPMoveFromInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$78,0,0));
  AddInstruction32('fli.s',TInstructionFormat.FPLoadImm,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$78,0,1));
  AddInstruction32('fmv.d.x',TInstructionFormat.FPMoveFromInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$79,0,0));
  AddInstruction32('fli.d',TInstructionFormat.FPLoadImm,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$79,0,1));
  AddInstruction32('fmv.h.x',TInstructionFormat.FPMoveFromInt,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$7a,0,0));
+ AddInstruction32('fli.h',TInstructionFormat.FPLoadImm,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOpFP,$7a,0,1));
 
  //////////////////////////////////////////////////////////////////////////////
  // Compressed                                                               //
@@ -36295,6 +36328,23 @@ begin
         result:=4;
         exit;
        end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
+        // fmadd.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        frs3:=TFPURegister((aInstruction shr 27) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)+ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat);
+        fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
        else begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -36339,6 +36389,23 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
         fState.FPURegisters[frd].f64:=(fState.FPURegisters[frs1].f64*fState.FPURegisters[frs2].f64)-fState.FPURegisters[frs3].f64;
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
+        // fmsub.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        frs3:=TFPURegister((aInstruction shr 27) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)-ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat);
+        fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
         SetFPUExceptions;
@@ -36423,6 +36490,23 @@ begin
         result:=4;
         exit;
        end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
+        // fnmadd.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        frs3:=TFPURegister((aInstruction shr 27) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat(((-ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat)*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)+ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat);
+        fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
        else begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -36467,6 +36551,23 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
         fState.FPURegisters[frd].f64:=((-fState.FPURegisters[frs1].f64)*fState.FPURegisters[frs2].f64)-fState.FPURegisters[frs3].f64;
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
+        // fnmsub.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        frs3:=TFPURegister((aInstruction shr 27) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat(((-ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat)*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)-ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat);
+        fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
         SetFPUExceptions;
@@ -36533,6 +36634,23 @@ begin
         result:=4;
         exit;
        end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$02:{$else}$02,$82:{$endif}begin
+        // fadd.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat+ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end else begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$04:{$else}$04,$84:{$endif}begin
         // fsub.s
         frd:=TFPURegister((aInstruction shr 7) and $1f);
@@ -36573,6 +36691,23 @@ begin
         result:=4;
         exit;
        end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$06:{$else}$06,$86:{$endif}begin
+        // fsub.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat-ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end else begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$08:{$else}$08,$88:{$endif}begin
         // fmul.s
         frd:=TFPURegister((aInstruction shr 7) and $1f);
@@ -36602,6 +36737,23 @@ begin
         result:=4;
         exit;
        end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$0a:{$else}$0a,$8a:{$endif}begin
+        // fmul.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end else begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$0c:{$else}$0c,$8c:{$endif}begin
         // fdiv.s
         frd:=TFPURegister((aInstruction shr 7) and $1f);
@@ -36625,6 +36777,23 @@ begin
         fState.FPURegisters[frd].f64:=fState.FPURegisters[frs1].f64/fState.FPURegisters[frs2].f64;
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$0e:{$else}$0e,$8e:{$endif}begin
+        // fdiv.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        frs2:=TFPURegister((aInstruction shr 20) and $1f);
+        HalfFloat:=TPasRISCVHalfFloat.FromFloat(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat/ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat);
+        if HalfFloat.IsNaN then begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+        end else begin
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
         end;
         SetFPUExceptions;
         fState.CSR.SetFSDirty;
@@ -36705,6 +36874,49 @@ begin
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
           fState.FPURegisters[frd].ui64:=(fState.FPURegisters[frs1].ui64 and TPasRISCVUInt64($7fffffffffffffff)) or ((fState.FPURegisters[frs1].ui64 xor fState.FPURegisters[frs2].ui64) and TPasRISCVUInt64($8000000000000000));
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$12:{$else}$12,$92:{$endif}begin
+        // fsgnj.h (Zfh)
+        case (aInstruction shr 12) and 7 of
+         $0:begin
+          // fsgnj.h
+          frd:=TFPURegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt16($7fff)) or (ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64) and TPasRISCVUInt16($8000))) or TPasRISCVUInt64($ffffffffffff0000);
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         $1:begin
+          // fsgnjn.h
+          frd:=TFPURegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt16($7fff)) or ((not ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) and TPasRISCVUInt16($8000))) or TPasRISCVUInt64($ffffffffffff0000);
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         $2:begin
+          // fsgnjx.h
+          frd:=TFPURegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt16($7fff)) or ((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) xor ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) and TPasRISCVUInt16($8000))) or TPasRISCVUInt64($ffffffffffff0000);
           SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
@@ -36984,6 +37196,98 @@ begin
              fState.FPURegisters[frd].ui64:=fState.FPURegisters[frs1].ui64;
             end;
            end;
+          end;
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$16:{$else}$16,$96:{$endif}begin
+        // fminmax.h (Zfh)
+        case (aInstruction shr 12) and 7 of
+         $0:begin
+          // fmin.h
+          frd:=TFPURegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN and ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+           end else if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN then begin
+            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+           end else begin
+            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+           end;
+          end else if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end else begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end;
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         $1:begin
+          // fmax.h
+          frd:=TFPURegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN and ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+           end else if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN then begin
+            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+           end else begin
+            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+           end;
+          end else if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat>ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end else begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end;
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         $2:begin
+          // fminm.h (Zfa) - IEEE 754-2019 minimum
+          frd:=TFPURegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end else if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end else begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end;
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         $3:begin
+          // fmaxm.h (Zfa) - IEEE 754-2019 maximum
+          frd:=TFPURegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end else if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat>ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end else begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
           end;
           SetFPUExceptions;
           fState.CSR.SetFSDirty;
@@ -37320,6 +37624,93 @@ begin
           result:=4;
           exit;
          end;
+         $04:begin
+          // fround.h (Zfa)
+          HalfFloat:=ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64);
+          if HalfFloat.IsNaN then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+          end else if HalfFloat.IsInfinity then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end else begin
+           f32:=HalfFloat.ToFloat;
+           Immediate:=(aInstruction shr 12) and 7;
+           if Immediate=TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
+            Immediate:=fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.Mask);
+           end;
+           case Immediate of
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+             f32n:=RoundToNearestTiesToEven32(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+             f32n:=Trunc(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+             f32n:=Floor(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+             f32n:=Ceil(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+             f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
+            end;
+            else begin
+             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+             result:=4;
+             exit;
+            end;
+           end;
+           HalfFloat:=TPasRISCVHalfFloat.FromFloat(f32n);
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+          end;
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         $05:begin
+          // froundnx.h (Zfa)
+          HalfFloat:=ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64);
+          if HalfFloat.IsNaN then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
+          end else if HalfFloat.IsInfinity then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64)) or TPasRISCVUInt64($ffffffffffff0000);
+          end else begin
+           f32:=HalfFloat.ToFloat;
+           Immediate:=(aInstruction shr 12) and 7;
+           if Immediate=TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
+            Immediate:=fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.Mask);
+           end;
+           case Immediate of
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+             f32n:=RoundToNearestTiesToEven32(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+             f32n:=Trunc(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+             f32n:=Floor(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+             f32n:=Ceil(f32);
+            end;
+            TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+             f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
+            end;
+            else begin
+             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+             result:=4;
+             exit;
+            end;
+           end;
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
+           HalfFloat:=TPasRISCVHalfFloat.FromFloat(f32n);
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+          end;
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
          $08:begin
           // fcvt.bf16.s (Zfbfmin)
           // BFloat16 = upper 16 bits of float32 (with rounding)
@@ -37370,6 +37761,23 @@ begin
          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000); // Canonical NaN
         end else begin
          fState.FPURegisters[frd].f64:=sqrt(fState.FPURegisters[frs1].f64);
+        end;
+        SetFPUExceptions;
+        fState.CSR.SetFSDirty;
+        result:=4;
+        exit;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$2e:{$else}$2e,$ae:{$endif}begin
+        // fsqrt.h (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        HalfFloat:=ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64);
+        if HalfFloat.ToFloat<0.0 then begin
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00); // Canonical f16 NaN
+        end else begin
+         HalfFloat:=TPasRISCVHalfFloat.FromFloat(sqrt(HalfFloat.ToFloat));
+         fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
         end;
         SetFPUExceptions;
         fState.CSR.SetFSDirty;
@@ -37534,6 +37942,85 @@ begin
           end;
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=ord(fState.FPURegisters[frs1].f64<fState.FPURegisters[frs2].f64) and 1;
+          end;
+          SetFPUExceptions;
+          result:=4;
+          exit;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$52:{$else}$52,$d2:{$endif}begin
+        // fc.h (Zfh)
+        case (aInstruction shr 12) and 7 of
+         $0:begin
+          // fle.h
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=ord(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<=ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat) and 1;
+          end;
+          SetFPUExceptions;
+          result:=4;
+          exit;
+         end;
+         $1:begin
+          // flt.h
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=ord(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat) and 1;
+          end;
+          SetFPUExceptions;
+          result:=4;
+          exit;
+         end;
+         $2:begin
+          // feq.h
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           // feq signals Invalid only for sNaN (simplified: skip sNaN check for f16)
+          end;
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=ord(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat=ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat) and 1;
+          end;
+          SetFPUExceptions;
+          result:=4;
+          exit;
+         end;
+         $4:begin
+          // fleq.h (Zfa) - quiet LE: Invalid only for sNaN
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=ord(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<=ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat) and 1;
+          end;
+          SetFPUExceptions;
+          result:=4;
+          exit;
+         end;
+         $5:begin
+          // fltq.h (Zfa) - quiet LT: Invalid only for sNaN
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          frs1:=TFPURegister((aInstruction shr 15) and $1f);
+          frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=ord(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat) and 1;
           end;
           SetFPUExceptions;
           result:=4;
@@ -37840,6 +38327,122 @@ begin
         result:=4;
         exit;
        end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$62:{$else}$62,$e2:{$endif}begin
+        // fcvt.{w,wu,l,lu}.h (Zfh)
+        rd:=TRegister((aInstruction shr 7) and $1f);
+        frs1:=TFPURegister((aInstruction shr 15) and $1f);
+        f32:=ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat;
+        Immediate:=(aInstruction shr 12) and 7;
+        if Immediate=TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
+         Immediate:=fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask);
+        end;
+        case Immediate of
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+          f32n:=RoundToNearestTiesToEven32(f32);
+         end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+          f32n:=Trunc(f32);
+         end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+          f32n:=Floor(f32);
+         end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+          f32n:=Ceil(f32);
+         end;
+         TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+          f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        if f32n<>f32 then begin
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
+        end;
+        case (aInstruction shr 20) and $1f of
+         0:begin
+          // fcvt.w.h
+          if IsFloat32NaN(f32) then begin
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($7fffffff)));
+           end;
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end else begin
+           if f32n>TPasRISCVFloat(TPasRISCVInt32($7fffffff)) then begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($7fffffff)));
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end else if f32n<TPasRISCVFloat(TPasRISCVInt32($80000000)) then begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($80000000)));
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end else begin
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Trunc(f32n))));
+            end;
+           end;
+          end;
+         end;
+         1:begin
+          // fcvt.wu.h
+          if IsFloat32NaN(f32) then begin
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($ffffffff)));
+           end;
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end else begin
+           if f32n>=TPasRISCVFloat(TPasRISCVUInt32($ffffffff))+1.0 then begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($ffffffff)));
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end else if f32n<0 then begin
+            fState.Registers[rd]:=0;
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end else begin
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(Trunc(f32n)))));
+            end;
+           end;
+          end;
+         end;
+         2:begin
+          // fcvt.l.h
+          if IsFloat32NaN(f32) then begin
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64($7fffffffffffffff);
+           end;
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end else begin
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(f32n)));
+           end;
+          end;
+         end;
+         3:begin
+          // fcvt.lu.h
+          if IsFloat32NaN(f32) then begin
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
+           end;
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end else begin
+           if f32n<0 then begin
+            fState.Registers[rd]:=0;
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end else begin
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt64(Trunc(f32n));
+            end;
+           end;
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end;
+        end;
+        SetFPUExceptions;
+        result:=4;
+        exit;
+       end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$68:{$else}$68,$e8:{$endif}begin
         // fcvtsdw.s
         frd:=TFPURegister((aInstruction shr 7) and $1f);
@@ -37896,6 +38499,42 @@ begin
          3:begin
           // fcvt3
           fState.FPURegisters[frd].f64:=TPasRISCVUInt64(fState.Registers[rs1]);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end;
+        end;
+        SetFPUExceptions;
+        if fState.ExceptionValue<>TExceptionValue.IllegalInstruction then begin
+         fState.CSR.SetFSDirty;
+        end;
+        result:=4;
+        exit;
+       end;
+       {$ifndef TryToForceCaseJumpTableOnLevel2}$6a:{$else}$6a,$ea:{$endif}begin
+        // fcvt.h.{w,wu,l,lu} (Zfh)
+        frd:=TFPURegister((aInstruction shr 7) and $1f);
+        rs1:=TRegister((aInstruction shr 15) and $1f);
+        case (aInstruction shr 20) and $1f of
+         0:begin
+          // fcvt.h.w
+          HalfFloat:=TPasRISCVHalfFloat.FromFloat(TPasRISCVFloat(TPasRISCVInt32(fState.Registers[rs1])));
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+         end;
+         1:begin
+          // fcvt.h.wu
+          HalfFloat:=TPasRISCVHalfFloat.FromFloat(TPasRISCVFloat(TPasRISCVUInt32(fState.Registers[rs1])));
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+         end;
+         2:begin
+          // fcvt.h.l
+          HalfFloat:=TPasRISCVHalfFloat.FromFloat(TPasRISCVFloat(TPasRISCVInt64(fState.Registers[rs1])));
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+         end;
+         3:begin
+          // fcvt.h.lu
+          HalfFloat:=TPasRISCVHalfFloat.FromFloat(TPasRISCVFloat(TPasRISCVUInt64(fState.Registers[rs1])));
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
          end;
          else begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -38051,15 +38690,80 @@ begin
         end;
        end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$72:{$else}$72,$f2:{$endif}begin
-        // fmv.x.h (Zfhmin)
-        rd:=TRegister((aInstruction shr 7) and $1f);
-        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-         frs1:=TFPURegister((aInstruction shr 15) and $1f);
-         fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(fState.FPURegisters[frs1].ui16)));
+        // fmv.x.h / fclass.h (Zfh)
+        case (aInstruction shr 12) and 7 of
+         0:begin
+          // fmv.x.h
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           frs1:=TFPURegister((aInstruction shr 15) and $1f);
+           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(fState.FPURegisters[frs1].ui16)));
+          end;
+          SetFPUExceptions;
+          result:=4;
+          exit;
+         end;
+         1:begin
+          // fclass.h (Zfh)
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           frs1:=TFPURegister((aInstruction shr 15) and $1f);
+           HalfFloat:=ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64);
+           Temporary:=TPasRISCVUInt64(HalfFloat.Value);
+           // f16 layout: sign[15], exp[14:10], frac[9:0]
+           if (Temporary and $7c00)=$7c00 then begin
+            // exponent all ones
+            if (Temporary and $03ff)<>0 then begin
+             // NaN
+             if (Temporary and $0200)<>0 then begin
+              fState.Registers[rd]:=TFClass.NAN_QUIET;
+             end else begin
+              fState.Registers[rd]:=TFClass.NAN_SIG;
+             end;
+            end else begin
+             // infinity
+             if (Temporary and $8000)<>0 then begin
+              fState.Registers[rd]:=TFClass.NEG_INF;
+             end else begin
+              fState.Registers[rd]:=TFClass.POS_INF;
+             end;
+            end;
+           end else if (Temporary and $7c00)=0 then begin
+            // exponent zero
+            if (Temporary and $03ff)=0 then begin
+             // zero
+             if (Temporary and $8000)<>0 then begin
+              fState.Registers[rd]:=TFClass.NEG_ZERO;
+             end else begin
+              fState.Registers[rd]:=TFClass.POS_ZERO;
+             end;
+            end else begin
+             // subnormal
+             if (Temporary and $8000)<>0 then begin
+              fState.Registers[rd]:=TFClass.NEG_SUBNORMAL;
+             end else begin
+              fState.Registers[rd]:=TFClass.POS_SUBNORMAL;
+             end;
+            end;
+           end else begin
+            // normal
+            if (Temporary and $8000)<>0 then begin
+             fState.Registers[rd]:=TFClass.NEG_NORMAL;
+            end else begin
+             fState.Registers[rd]:=TFClass.POS_NORMAL;
+            end;
+           end;
+          end;
+          SetFPUExceptions;
+          result:=4;
+          exit;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
         end;
-        SetFPUExceptions;
-        result:=4;
-        exit;
        end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$78:{$else}$78,$f8:{$endif}begin
         // fmvwx / fli.s (Zfa)
@@ -38130,14 +38834,44 @@ begin
         end;
        end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$7a:{$else}$7a,$fa:{$endif}begin
-        // fmv.h.x (Zfhmin)
+        // fmv.h.x / fli.h (Zfh + Zfa)
         frd:=TFPURegister((aInstruction shr 7) and $1f);
-        rs1:=TRegister((aInstruction shr 15) and $1f);
-        fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(fState.Registers[rs1] and $ffff) or TPasRISCVUInt64($ffffffffffff0000);
-        SetFPUExceptions;
-        fState.CSR.SetFSDirty;
-        result:=4;
-        exit;
+        case (aInstruction shr 20) and $1f of
+         $00:begin
+          // fmv.h.x
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(fState.Registers[rs1] and $ffff) or TPasRISCVUInt64($ffffffffffff0000);
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         $01:begin
+          // fli.h (Zfa): load floating-point immediate from table
+          Immediate:=(aInstruction shr 15) and $1f;
+          if Immediate=1 then begin
+           // Minimum positive normal for f16: 2^(-14) = $0400
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($0400) or TPasRISCVUInt64($ffffffffffff0000);
+          end else if Immediate=31 then begin
+           // Canonical NaN for f16
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7e00) or TPasRISCVUInt64($ffffffffffff0000);
+          end else begin
+           // Convert from f32 FLI table to f16 via f32 intermediate
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(PasRISCVFLITable[Immediate]) or TPasRISCVUInt64($ffffffff00000000);
+           HalfFloat:=TPasRISCVHalfFloat.FromFloat(fState.FPURegisters[frd].f32);
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
+          end;
+          SetFPUExceptions;
+          fState.CSR.SetFSDirty;
+          result:=4;
+          exit;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
        end;
        else begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -44603,7 +45337,7 @@ begin
 //AddISAExtension('zawrs');
   AddISAExtension('zfa');
   AddISAExtension('zfbfmin');
-//AddISAExtension('zfh');
+  AddISAExtension('zfh');
   AddISAExtension('zfhmin');
 //AddISAExtension('zfinx');
 //AddISAExtension('zdinx');
