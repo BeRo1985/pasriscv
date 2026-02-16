@@ -19,10 +19,14 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Svadu (Hardware Updating of PTE A/D Bits) 
   - Sstc (RISC-V "stimecmp / vstimecmp" Extension)
   - Svnapot ("NAPOT Translation" Continuity)
-  - Zbb/Zcb/Zbs/Zba (Bit Manipulations)
+  - Zba/Zbb/Zbc/Zbs (Bit Manipulations)
+  - Zca/Zcb (Compressed sub-extensions)
   - Zacas (Atomic Compare-And-Swap)
   - Zabha (8-bit / 16-bit Atomic Instructions)
   - Zfa (Additional Floating-Point Instructions)
+  - Zimop (May-Be-Operations)
+  - Zcmop (Compressed May-Be-Operations)
+  - Zihintpause (Pause Hint)
 - Multi-core SMP support
 - Emulated peripherals
   - ACLINT
