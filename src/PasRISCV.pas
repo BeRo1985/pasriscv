@@ -5767,7 +5767,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            CSR_MIDELEG_MASK=TPasRISCVUInt64($0222);
                            CSR_MEIP_MASK=TPasRISCVUInt64($aaa);
                            CSR_SEIP_MASK=TPasRISCVUInt64($222);
-                           CSR_MENVCFG_MASK=TPasRISCVUInt64($a0000000000000d0); //e
+                           CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000000000000d0); //e
                            CSR_SENVCFG_MASK=TPasRISCVUInt64($d0);
                            CSR_MSECCFG_MASK=$300;
                            MNSTATUS_NMIE=$8;
@@ -30794,7 +30794,7 @@ begin
 
  fData[TAddress.MSTATUS]:=TPasRISCVUInt64($200000000);
 
- fData[TAddress.MENVCFG]:=TPasRISCVUInt64($a0000000000000d0); // $e
+ fData[TAddress.MENVCFG]:=TPasRISCVUInt64($e0000000000000d0); // $e
  fData[TAddress.MENVCFGH]:=fData[TAddress.MENVCFG] shr 32;
 
  fData[TAddress.SENVCFG]:=TPasRISCVUInt64($00000000000000d0);
@@ -30851,7 +30851,7 @@ begin
    result:=fHART.fState.Cycle shr 32;
   end;
   TAddress.MENVCFG:begin
-   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($80000000000000d0)));
+   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($e0000000000000d0)));
   end;
 { TAddress.MENVCFGH:begin
    result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($80000000000000d0)) shr 32);
@@ -30880,7 +30880,7 @@ begin
    fData[TAddress.MSTATUS]:=Value;
   end;
   TAddress.MENVCFG:begin
-   fData[TAddress.MENVCFG]:=aValue and TPasRISCVUInt64($80000000000000d0);
+   fData[TAddress.MENVCFG]:=aValue and TPasRISCVUInt64($e0000000000000d0);
   end;
 { TAddress.MENVCFG:begin
    fData[TAddress.MENVCFG]:=((fData[TAddress.MENVCFG] and TPasRISCVUInt64($ffffffff00000000)) or
@@ -31647,6 +31647,15 @@ begin
       exit;
      end;
 
+     if PBMTE and ((PageTableEntry and TMMU.TPTEMasks.PBMT)=TMMU.TPTEMasks.PBMT) then begin
+      // PBMT mode 3 (11) is reserved even with Svpbmt
+      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+       RaisePageFault(aVirtualAddress,aAccessType);
+      end;
+      result:=0;
+      exit;
+     end;
+
      if (not NAPOT) and ((PageTableEntry and TMMU.TPTEMasks.N)<>0) then begin
       // Reserved without Svnapot
       if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
@@ -31753,6 +31762,14 @@ begin
        end;
 
       end else if (PageTableEntry and TMMU.TPTEMasks.Write_)=0 then begin
+       if PBMTE and ((PageTableEntry and TMMU.TPTEMasks.PBMT)<>0) then begin
+        // Non-leaf PTE must have PBMT=0
+        if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+         RaisePageFault(aVirtualAddress,aAccessType);
+        end;
+        result:=0;
+        exit;
+       end;
        PageTable:=((PageTableEntry shr 10) shl TMMU.PAGE_SHIFT) and TMMU.PHYSICAL_MASK;
        dec(BitOffset,TMMU.VPN_BITS);
       end;
@@ -45479,7 +45496,7 @@ begin
   AddISAExtension('svadu');
   AddISAExtension('svinval');
   AddISAExtension('svnapot');
-//AddISAExtension('svpbmt');
+  AddISAExtension('svpbmt');
 //AddISAExtension('svrsw60t59b');
 //AddISAExtension('svukte');
 //AddISAExtension('svvptc');
