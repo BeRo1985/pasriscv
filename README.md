@@ -25,6 +25,8 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Zacas (Atomic Compare-And-Swap)
   - Zabha (8-bit / 16-bit Atomic Instructions)
   - Zfa (Additional Floating-Point Instructions)
+  - Zfhmin (Half-Precision Float Minimal)
+  - Zfbfmin (BFloat16 Minimal)
   - Zimop (May-Be-Operations)
   - Zcmop (Compressed May-Be-Operations)
   - Zihintpause (Pause Hint)
