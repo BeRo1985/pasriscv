@@ -5754,6 +5754,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      const ENVCFG_CBIE=TPasRISCVUInt64(1) shl 4;
                            ENVCFG_CBCFE=TPasRISCVUInt64(1) shl 6;
                            ENVCFG_CBZE=TPasRISCVUInt64(1) shl 7;
+                           ENVCFG_PMM=TPasRISCVUInt64($300000000); // bits 33:32
                            ENVCFG_ADUE=TPasRISCVUInt64(1) shl 61;
                            ENVCFG_PBMTE=TPasRISCVUInt64(1) shl 62;
                            ENVCFG_STCE=TPasRISCVUInt64(1) shl 63;
@@ -5767,8 +5768,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            CSR_MIDELEG_MASK=TPasRISCVUInt64($0222);
                            CSR_MEIP_MASK=TPasRISCVUInt64($aaa);
                            CSR_SEIP_MASK=TPasRISCVUInt64($222);
-                           CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000000000000d0); //e
-                           CSR_SENVCFG_MASK=TPasRISCVUInt64($d0);
+                           CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000003000000d0);
+                           CSR_SENVCFG_MASK=TPasRISCVUInt64($3000000d0);
                            CSR_MSECCFG_MASK=$300;
                            MNSTATUS_NMIE=$8;
                            MNSTATUS_MNPV=$80;
@@ -6254,7 +6255,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPCG32:TPCG32;
               procedure UpdateMMU;
               function CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
-              function AddressTranslate(const aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
+              function AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
               procedure FlushTLB(const aInterrupt:Boolean);
               procedure FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
               procedure TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
@@ -30851,13 +30852,13 @@ begin
    result:=fHART.fState.Cycle shr 32;
   end;
   TAddress.MENVCFG:begin
-   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($e0000000000000d0)));
+   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($e0000003000000d0)));
   end;
 { TAddress.MENVCFGH:begin
    result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($80000000000000d0)) shr 32);
   end;}
   TAddress.SENVCFG:begin
-   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.SENVCFG] and TPasRISCVUInt64($00000000000000d0)));
+   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.SENVCFG] and TPasRISCVUInt64($00000003000000d0)));
   end;
   TAddress.STIMECMP:begin
    result:=fHART.fSTIMECMP;
@@ -30880,7 +30881,7 @@ begin
    fData[TAddress.MSTATUS]:=Value;
   end;
   TAddress.MENVCFG:begin
-   fData[TAddress.MENVCFG]:=aValue and TPasRISCVUInt64($e0000000000000d0);
+   fData[TAddress.MENVCFG]:=aValue and TPasRISCVUInt64($e0000003000000d0);
   end;
 { TAddress.MENVCFG:begin
    fData[TAddress.MENVCFG]:=((fData[TAddress.MENVCFG] and TPasRISCVUInt64($ffffffff00000000)) or
@@ -30892,7 +30893,7 @@ begin
    fData[TAddress.MENVCFGH]:=fData[TAddress.MENVCFG] shr 32;
   end;}
   TAddress.SENVCFG:begin
-   fData[TAddress.SENVCFG]:=aValue and TPasRISCVUInt64($00000000000000d0);
+   fData[TAddress.SENVCFG]:=aValue and TPasRISCVUInt64($00000003000000d0);
   end;
   TAddress.STIMECMP:begin
    fHART.fSTIMECMP:=aValue;
@@ -31540,10 +31541,10 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.AddressTranslate(const aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
+function TPasRISCV.THART.AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
 var Index:TPasRISCVSizeInt;
     CPUMode:THART.TMode;
-    MSTATUS,Levels:TPasRISCVUInt64;
+    MSTATUS,Levels,PMM:TPasRISCVUInt64;
     EffectiveAccessType:TMMU.TAccessType;
     PageTable,BitOffset,PageTableOffset,PageTableEntry,VirtualMask,PhysicalMask,
     PageTableEntryShift,PageTableEntryAccessDirty,PhysicalAddress,PPN,
@@ -31567,6 +31568,33 @@ begin
  if (EffectiveAccessType<>TMMU.TAccessType.Instruction) and
     ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MPRV))<>0) then begin
   CPUMode:=TPasRISCV.THART.TMode(TPasRISCVUInt64((fState.CSR.fData[TCSR.TAddress.MSTATUS] shr 11) and 3));
+ end;
+
+ // Pointer masking (Supm/Ssnpm)
+ // TODO-Optimize: TLB fast-paths in Load32/Store32 etc. see the unmasked address and will
+ // always miss when pointer masking is active, falling through to AddressTranslate. This is
+ // performance-neutral when PMM=0, but could be optimized for PMM<>0 by masking the address
+ // before the TLB lookup in the fast-paths as well.
+ if EffectiveAccessType<>TMMU.TAccessType.Instruction then begin
+  case CPUMode of
+   THART.TMode.User:begin
+    PMM:=(fState.CSR.fData[TCSR.TAddress.SENVCFG] shr 32) and 3;
+   end;
+   THART.TMode.Supervisor:begin
+    PMM:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] shr 32) and 3;
+   end;
+   else begin
+    PMM:=0;
+   end;
+  end;
+  case PMM of
+   2:begin // PMLEN=7
+    aVirtualAddress:=TPasRISCVUInt64(SARInt64(TPasRISCVInt64(aVirtualAddress shl 7),7));
+   end;
+   3:begin // PMLEN=16
+    aVirtualAddress:=TPasRISCVUInt64(SARInt64(TPasRISCVInt64(aVirtualAddress shl 16),16));
+   end;
+  end;
  end;
 
  if (EffectiveAccessType=TMMU.TAccessType.Load) and
@@ -45478,7 +45506,7 @@ begin
   AddISAExtension('sscounterenw');
 //AddISAExtension('sscsrind');
 //AddISAExtension('ssdbltrp');
-//AddISAExtension('ssnpm');
+  AddISAExtension('ssnpm');
 //AddISAExtension('sspm');
 //AddISAExtension('ssstateen');
 //AddISAExtension('ssstrict');
@@ -45489,7 +45517,7 @@ begin
   AddISAExtension('svbare');
   AddISAExtension('ss1p13');
   AddISAExtension('sm1p13');
-//AddISAExtension('supm');
+  AddISAExtension('supm');
 //AddISAExtension('svade');
 //AddISAExtension('smctr');
 //AddISAExtension('ssctr');

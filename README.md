@@ -34,6 +34,8 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Ssu64xl (UXLEN=64)
   - Svbare (satp Bare Mode)
   - Ss1p13 (Supervisor Architecture v1.13)
+  - Supm (User-Mode Pointer Masking)
+  - Ssnpm (Supervisor-Mode Pointer Masking)
   - Svpbmt (Page-Based Memory Types)
   - Svinval (Fine-Grained TLB Invalidation)
   - Svnapot ("NAPOT Translation" Continuity)
