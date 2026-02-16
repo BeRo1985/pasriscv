@@ -563,6 +563,65 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        Zero
       );
 
+     TPasRISCVCPUFeatures=TPasRISCVUInt32;
+
+     PPPasRISCVHalfFloat=^PPasRISCVHalfFloat;
+     PPasRISCVHalfFloat=^TPasRISCVHalfFloat;
+     TPasRISCVHalfFloat=record
+      private
+       const ToFloatMagic:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(254-15) shl 23);
+             ToFloatWasInfNAN:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(127+16) shl 23);
+      public
+       Value:TPasRISCVUInt16;
+       class function FromFloat(const aValue:TPasRISCVFloat):TPasRISCVHalfFloat; static; {$if defined(CAN_INLINE) and not (defined(cpu386) or defined(cpuamd64) or defined(cpux64) or defined(cpux86_64))}inline;{$elseif defined(cpu386)}stdcall;{$ifend}
+       constructor Create(const aValue:TPasRISCVFloat);
+       function ToFloat:TPasRISCVFloat; {$if defined(CAN_INLINE) and not (defined(cpu386) or defined(cpuamd64) or defined(cpux64) or defined(cpux86_64))}inline;{$elseif defined(cpu386)}stdcall;{$ifend}
+       class operator Implicit(const a:TPasRISCVFloat):TPasRISCVHalfFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Implicit(const a:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Explicit(const a:TPasRISCVFloat):TPasRISCVHalfFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Explicit(const a:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Equal(const a,b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Equal(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Equal(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator NotEqual(const a,b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator NotEqual(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator NotEqual(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator GreaterThan(const a,b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator GreaterThan(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator GreaterThan(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator GreaterThanOrEqual(const a,b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator GreaterThanOrEqual(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator GreaterThanOrEqual(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator LessThan(const a,b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator LessThan(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator LessThan(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator LessThanOrEqual(const a,b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator LessThanOrEqual(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator LessThanOrEqual(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Inc(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Dec(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Add(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Add(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Add(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Subtract(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Subtract(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Subtract(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Multiply(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Multiply(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Multiply(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Divide(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Divide(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Divide(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Modulus(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Negative(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       class operator Positive(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       function Abs:TPasRISCVHalfFloat; {$ifdef CAN_INLINE}inline;{$endif}
+       function IsNaN:boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       function IsInfinity:boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       function IsNegativeInfinity:boolean; {$ifdef CAN_INLINE}inline;{$endif}
+       function IsPositiveInfinity:boolean; {$ifdef CAN_INLINE}inline;{$endif}
+     end;
+
      EPasRISCV=class(Exception);
 
      { TPasRISCVDynamicQueue<T> }
@@ -7148,6 +7207,19 @@ const fmCreateTemporary=4;
       feInvalidHandle=TPasRISCVInt32(-1);
 {$endif}
 
+      CPUFeatures_X86_F16C_Mask=1 shl 0;
+      CPUFeatures_X86_SSE42_Mask=1 shl 1;
+      CPUFeatures_X86_PCLMUL_Mask=1 shl 2;
+
+var CPUFeatures:TPasRISCVCPUFeatures=0;
+
+    FloatToHalfFloatBaseTable:array[0..511] of TPasRISCVUInt16;
+    FloatToHalfFloatShiftTable:array[0..511] of TPasRISCVUInt8;
+
+    HalfFloatToFloatMantissaTable:array[0..2047] of TPasRISCVUInt32;
+    HalfFloatToFloatExponentTable:array[0..63] of TPasRISCVUInt32;
+    HalfFloatToFloatOffsetTable:array[0..63] of TPasRISCVUInt32;
+
 function IntLog2(x:TPasRISCVUInt32):TPasRISCVUInt32; {$ifdef fpc}{$ifdef CAN_INLINE}inline;{$endif}{$endif}
 function IntLog264(x:TPasRISCVUInt64):TPasRISCVUInt32; {$ifdef fpc}{$ifdef CAN_INLINE}inline;{$endif}{$endif}
 
@@ -10318,6 +10390,615 @@ begin
    result:=0.0;
   end;
  end;
+end;
+
+{ TPasRISCVHalfFloat }
+
+class function TPasRISCVHalfFloat.FromFloat(const aValue:TPasRISCVFloat):TPasRISCVHalfFloat;
+{$if defined(cpu386)}{$ifdef fpc}assembler; nostackframe;{$endif}
+{$if defined(PasRISCVPICCode)}
+asm
+
+ mov ecx,dword ptr aValue
+
+ mov edx,ecx
+
+ and ecx,$80000000
+
+ xor edx,ecx
+
+ cmp edx,$7f800000
+ jb @NormalCase
+
+//@InfNANCase:
+
+ mov eax,$7f800000
+ cmp eax,edx
+ sbb eax,eax
+
+ and eax,$200
+ add eax,$7c00
+
+ jmp @Done
+
+@NormalCase:
+
+ and edx,$fffff000
+ mov dword ptr [esp-4],edx
+
+ mov edx,$0f800000
+ movss xmm0,dword ptr [esp-4]
+ mov dword ptr [esp-8],15 shl 23 // $07800000
+ mulss xmm0,dword ptr [esp-8]
+ movss dword ptr [esp-4],xmm0
+ mov eax,dword ptr [esp-4]
+ add eax,4096
+ cmp eax,edx
+ cmova eax,edx
+
+ shr eax,13
+
+@Done:
+
+ shr ecx,16
+ or ax,cx
+ movzx eax,ax
+
+end;
+{$else}
+const Magic:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(15) shl 23);
+asm
+
+ test dword ptr [CPUFeatures],CPUFeatures_X86_F16C_Mask
+ jz @Bittwiddling
+
+//@x86_F16C:
+ movss xmm0,dword ptr aValue
+ db $c4,$e3,$79,$1d,$c0,$00 // vcvtps2ph xmm0,xmm0,0
+ movss dword ptr [esp-4],xmm0
+ movzx eax,word ptr [esp-4]
+ jmp @Done
+
+@Bittwiddling:
+ mov ecx,dword ptr aValue
+
+ mov edx,ecx
+
+ and ecx,$80000000
+
+ xor edx,ecx
+
+ cmp edx,$7f800000
+ jb @NormalCase
+
+//@InfNANCase:
+
+ mov eax,$7f800000
+ cmp eax,edx
+ sbb eax,eax
+
+ and eax,$200
+ add eax,$7c00
+
+ jmp @BittwiddlingDone
+
+@NormalCase:
+
+ and edx,$fffff000
+ mov dword ptr [esp-4],edx
+
+ mov edx,$0f800000
+ movss xmm0,dword ptr [esp-4]
+ mulss xmm0,dword ptr Magic
+ movss dword ptr [esp-4],xmm0
+ mov eax,dword ptr [esp-4]
+ add eax,4096
+ cmp eax,edx
+ cmova eax,edx
+
+ shr eax,13
+
+@BittwiddlingDone:
+
+ shr ecx,16
+ or ax,cx
+ movzx eax,ax
+
+@Done:
+
+end;
+{$ifend}
+{$elseif defined(cpuamd64) or defined(cpux64) or defined(cpux86_64)}
+const Magic:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(15) shl 23);
+var TemporaryValue:TPasRISCVUInt32;
+asm
+
+{$ifdef fpc}
+ test dword ptr [rip+CPUFeatures],CPUFeatures_X86_F16C_Mask
+{$else}
+ test dword ptr [rel CPUFeatures],CPUFeatures_X86_F16C_Mask
+{$endif}
+ jz @Bittwiddling
+
+//@x86_F16C:
+ db $c4,$e3,$79,$1d,$c0,$00 // vcvtps2ph xmm0,xmm0,0
+ movss dword ptr TemporaryValue,xmm0
+ movzx eax,word ptr TemporaryValue
+ jmp @Done
+
+@Bittwiddling:
+ movss dword ptr TemporaryValue,xmm0
+
+ mov ecx,dword ptr TemporaryValue
+
+ mov edx,ecx
+
+ and ecx,$80000000
+
+ xor edx,ecx
+
+ cmp edx,$7f800000
+ jb @NormalCase
+
+//@InfNANCase:
+
+ mov eax,$7f800000
+ cmp eax,edx
+ sbb eax,eax
+
+ and eax,$200
+ add eax,$7c00
+
+ jmp @BittwiddlingDone
+
+@NormalCase:
+
+ and edx,$fffff000
+ mov dword ptr TemporaryValue,edx
+
+ mov edx,$0f800000
+ movss xmm0,dword ptr TemporaryValue
+{$ifdef fpc}
+ mulss xmm0,dword ptr [rip+Magic]
+{$else}
+ mulss xmm0,dword ptr [rel Magic]
+{$endif}
+ movss dword ptr TemporaryValue,xmm0
+ mov eax,dword ptr TemporaryValue
+ add eax,4096
+ cmp eax,edx
+ cmova eax,edx
+
+ shr eax,13
+
+@BittwiddlingDone:
+
+ shr ecx,16
+ or ax,cx
+ movzx eax,ax
+
+@Done:
+
+end;
+{$else}
+{$if true}
+var CastedValue:TPasRISCVUInt32 absolute aValue;
+begin
+ result.Value:=FloatToHalfFloatBaseTable[CastedValue shr 23]+TPasRISCVUInt16((CastedValue and $007fffff) shr FloatToHalfFloatShiftTable[CastedValue shr 23]);
+end;
+{$else}
+const Magic:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(15) shl 23);
+var FloatValue:TPasRISCVFloat;
+    CastedFloatValue:TPasRISCVUInt32 absolute FloatValue;
+    SignValue:TPasRISCVUInt32;
+begin
+ FloatValue:=aValue;
+ SignValue:=CastedFloatValue and $80000000;
+ CastedFloatValue:=CastedFloatValue xor SignValue;
+ if CastedFloatValue>=$7f800000 then begin
+  result.Value:=($7c00+((ord(CastedFloatValue>$7f800000) and 1) shl 9)) or (SignValue shr 16);
+ end else begin
+  CastedFloatValue:=CastedFloatValue and $fffff000;
+  FloatValue:=FloatValue*TPasRISCVFloat(pointer(@Magic)^);
+  dec(CastedFloatValue,$fffff000);
+  if CastedFloatValue>$0f800000 then begin
+   CastedFloatValue:=$0f800000;
+  end;
+  result.Value:=(CastedFloatValue shr 13) or (SignValue shr 16);
+ end;
+end;
+{$ifend}
+{$ifend}
+
+constructor TPasRISCVHalfFloat.Create(const aValue:TPasRISCVFloat);
+begin
+ self:=TPasRISCVHalfFloat.FromFloat(aValue);
+end;
+
+function TPasRISCVHalfFloat.ToFloat:TPasRISCVFloat;
+{$if defined(cpu386)}{$ifdef fpc}assembler; nostackframe;{$endif}
+{$if defined(PasRISCVPICCode)}
+asm
+
+ movzx ecx,word ptr [eax+TPasRISCVHalfFloat.Value]
+
+ mov eax,ecx
+ and eax,$7fff
+ shl eax,13
+
+ mov dword ptr [esp-4],eax
+
+ fld dword ptr [esp-4]
+ mov dword ptr [esp-8],(254-15) shl 23
+ mov dword ptr [esp-16],(127+16) shl 23
+ fmul dword ptr [esp-8]
+ fld dword ptr [esp-16]
+ xor eax,eax
+ mov edx,$7f800000
+ fcomip st(0),st(1)
+ cmova edx,eax
+ fstp dword ptr [esp-4]
+ mov eax,dword ptr [esp-4]
+ or eax,edx
+
+ and ecx,$8000
+ shl ecx,16
+ or eax,ecx
+
+ mov dword ptr [esp-4],eax
+
+ fld dword ptr [esp-4]
+
+end;
+{$else}
+const ToFloatMagic:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(254-15) shl 23);
+      ToFloatWasInfNAN:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(127+16) shl 23);
+asm
+
+ movzx ecx,word ptr [eax+TPasRISCVHalfFloat.Value]
+
+ test dword ptr [CPUFeatures],CPUFeatures_X86_F16C_Mask
+ jz @Bittwiddling
+
+ mov dword ptr [esp-4],ecx
+ movss xmm0,dword ptr [esp-4]
+ db $c4,$e2,$79,$13,$c0 // vcvtph2ps xmm0,xmm0
+ movss dword ptr [esp-4],xmm0
+ jmp @Done
+
+@Bittwiddling:
+
+ mov eax,ecx
+ and eax,$7fff
+ shl eax,13
+
+ mov dword ptr [esp-4],eax
+
+ fld dword ptr [esp-4]
+ fmul dword ptr ToFloatMagic
+ fld dword ptr ToFloatWasInfNAN
+ xor eax,eax
+ mov edx,$7f800000
+ fcomip st(0),st(1)
+ cmova edx,eax
+ fstp dword ptr [esp-4]
+ mov eax,dword ptr [esp-4]
+ or eax,edx
+
+ and ecx,$8000
+ shl ecx,16
+ or eax,ecx
+
+ mov dword ptr [esp-4],eax
+
+@Done:
+
+ fld dword ptr [esp-4]
+
+end;
+{$ifend}
+{$elseif defined(cpuamd64) or defined(cpux64) or defined(cpux86_64)}
+const ToFloatMagic:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(254-15) shl 23);
+      ToFloatWasInfNAN:TPasRISCVUInt32=TPasRISCVUInt32(TPasRISCVUInt32(127+16) shl 23);
+var TemporaryValue:TPasRISCVUInt32;
+asm
+
+{$if defined(Windows)}
+ movzx ecx,word ptr [rcx+TPasRISCVHalfFloat.Value]
+{$else}
+ movzx ecx,word ptr [rdi+TPasRISCVHalfFloat.Value]
+{$ifend}
+
+{$ifdef fpc}
+ test dword ptr [rip+CPUFeatures],CPUFeatures_X86_F16C_Mask
+{$else}
+ test dword ptr [rel CPUFeatures],CPUFeatures_X86_F16C_Mask
+{$endif}
+ jz @Bittwiddling
+
+//@x86_F16C:
+ mov dword ptr TemporaryValue,ecx
+ movss xmm0,dword ptr TemporaryValue
+ db $c4,$e2,$79,$13,$c0 // vcvtph2ps xmm0,xmm0
+ jmp @Done
+
+@Bittwiddling:
+
+ mov eax,ecx
+ and eax,$7fff
+ shl eax,13
+
+ mov dword ptr TemporaryValue,eax
+
+ movss xmm0,dword ptr TemporaryValue
+{$ifdef fpc}
+ mulss xmm0,dword ptr [rip+ToFloatMagic]
+{$else}
+ mulss xmm0,dword ptr [rel ToFloatMagic]
+{$endif}
+ xor eax,eax
+ mov edx,$7f800000
+{$ifdef fpc}
+ comiss xmm0,dword ptr [rip+ToFloatWasInfNAN]
+{$else}
+ comiss xmm0,dword ptr [rel ToFloatWasInfNAN]
+{$endif}
+ cmovb edx,eax
+ movss dword ptr TemporaryValue,xmm0
+ mov eax,dword ptr TemporaryValue
+ or eax,edx
+
+ and ecx,$8000
+ shl ecx,16
+ or eax,ecx
+
+ mov dword ptr TemporaryValue,eax
+
+ movss xmm0,dword ptr TemporaryValue
+
+@Done:
+
+end;
+{$else}
+var f:TPasRISCVUInt32;
+begin
+{$if true}
+ f:=HalfFloatToFloatMantissaTable[HalfFloatToFloatOffsetTable[Value shr 10]+
+                                  (Value and $3ff)]+
+    HalfFloatToFloatExponentTable[Value shr 10];
+{$else}
+ f:=(Value and $7fff) shl 13; // exponent/mantissa bits
+ TPasRISCVFloat(pointer(@f)^):=TPasRISCVFloat(pointer(@f)^)*TPasRISCVFloat(pointer(@TPasRISCVHalfFloat.ToFloatMagic)^); // exponent adjust
+ if TPasRISCVFloat(pointer(@f)^)>=TPasRISCVFloat(pointer(@TPasRISCVHalfFloat.ToFloatWasInfNAN)^) then begin // make sure Inf/NaN survive
+  f:=f or TPasRISCVUInt32(TPasRISCVUInt32(255) shl 23);
+ end;
+ f:=f or ((Value and $8000) shl 16); // sign bit
+{$ifend}
+ result:=TPasRISCVFloat(pointer(@f)^);
+end;
+{$ifend}
+
+class operator TPasRISCVHalfFloat.Implicit(const a:TPasRISCVFloat):TPasRISCVHalfFloat;
+begin
+ result:=TPasRISCVHalfFloat.FromFloat(a);
+end;
+
+class operator TPasRISCVHalfFloat.Implicit(const a:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Explicit(const a:TPasRISCVFloat):TPasRISCVHalfFloat;
+begin
+ result:=TPasRISCVHalfFloat.FromFloat(a);
+end;
+
+class operator TPasRISCVHalfFloat.Explicit(const a:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Equal(const a,b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a.ToFloat=b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Equal(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean;
+begin
+ result:=a.ToFloat=b;
+end;
+
+class operator TPasRISCVHalfFloat.Equal(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a=b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.NotEqual(const a,b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a.ToFloat=b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.NotEqual(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean;
+begin
+ result:=a.ToFloat<>b;
+end;
+
+class operator TPasRISCVHalfFloat.NotEqual(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a<>b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.GreaterThan(const a,b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a.ToFloat>b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.GreaterThan(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean;
+begin
+ result:=a.ToFloat>b;
+end;
+
+class operator TPasRISCVHalfFloat.GreaterThan(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a>b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.GreaterThanOrEqual(const a,b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a.ToFloat>=b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.GreaterThanOrEqual(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean;
+begin
+ result:=a.ToFloat>=b;
+end;
+
+class operator TPasRISCVHalfFloat.GreaterThanOrEqual(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a>=b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.LessThan(const a,b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a.ToFloat<b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.LessThan(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean;
+begin
+ result:=a.ToFloat<b;
+end;
+
+class operator TPasRISCVHalfFloat.LessThan(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a<b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.LessThanOrEqual(const a,b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a.ToFloat<=b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.LessThanOrEqual(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):boolean;
+begin
+ result:=a.ToFloat<=b;
+end;
+
+class operator TPasRISCVHalfFloat.LessThanOrEqual(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):boolean;
+begin
+ result:=a<=b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Inc(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat;
+begin
+ result:=TPasRISCVHalfFloat.FromFloat(a.ToFloat+1.0);
+end;
+
+class operator TPasRISCVHalfFloat.Dec(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat;
+begin
+ result:=TPasRISCVHalfFloat.FromFloat(a.ToFloat-1.0);
+end;
+
+class operator TPasRISCVHalfFloat.Add(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat+b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Add(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat+b;
+end;
+
+class operator TPasRISCVHalfFloat.Add(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a+b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Subtract(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat-b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Subtract(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat-b;
+end;
+
+class operator TPasRISCVHalfFloat.Subtract(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a-b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Multiply(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat*b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Multiply(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat*b;
+end;
+
+class operator TPasRISCVHalfFloat.Multiply(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a*b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Divide(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat/b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Divide(const a:TPasRISCVHalfFloat;const b:TPasRISCVFloat):TPasRISCVFloat;
+begin
+ result:=a.ToFloat/b;
+end;
+
+class operator TPasRISCVHalfFloat.Divide(const a:TPasRISCVFloat;const b:TPasRISCVHalfFloat):TPasRISCVFloat;
+begin
+ result:=a/b.ToFloat;
+end;
+
+class operator TPasRISCVHalfFloat.Modulus(const a,b:TPasRISCVHalfFloat):TPasRISCVFloat;
+var x,y:TPasRISCVFloat;
+begin
+ x:=a.ToFloat;
+ y:=b.ToFloat;
+ result:=x-(floor(x/y)*y);
+end;
+
+class operator TPasRISCVHalfFloat.Negative(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat;
+begin
+ result.Value:=a.Value xor $8000;
+end;
+
+class operator TPasRISCVHalfFloat.Positive(const a:TPasRISCVHalfFloat):TPasRISCVHalfFloat;
+begin
+ result:=a;
+end;
+
+function TPasRISCVHalfFloat.Abs:TPasRISCVHalfFloat;
+begin
+ result.Value:=Value and $7fff;
+end;
+
+function TPasRISCVHalfFloat.IsNaN:boolean;
+begin
+ result:=(Value and $7fff)>$7c00;
+end;
+
+function TPasRISCVHalfFloat.IsInfinity:boolean;
+begin
+ result:=(Value and $7fff)=$7c00;
+end;
+
+function TPasRISCVHalfFloat.IsNegativeInfinity:boolean;
+begin
+ result:=Value=$fc00;
+end;
+
+function TPasRISCVHalfFloat.IsPositiveInfinity:boolean;
+begin
+ result:=Value=$7c00;
 end;
 
 { TPasRISCVDynamicQueue<T> }
@@ -45758,6 +46439,182 @@ begin
 
 end;
 
+procedure GenerateHalfFloatLookUpTables;
+var i,e:TPasRISCVInt32;
+    Mantissa,Exponent:TPasRISCVUInt32;
+begin
+ for i:=0 to 255 do begin
+  e:=i-127;
+  case e of
+   -127..-25:begin
+    // Very small numbers maps to zero
+    FloatToHalfFloatBaseTable[i or $000]:=$0000;
+    FloatToHalfFloatBaseTable[i or $100]:=$8000;
+    FloatToHalfFloatShiftTable[i or $000]:=24;
+    FloatToHalfFloatShiftTable[i or $100]:=24;
+   end;
+   -24..-15:begin
+    // Small numbers maps to denormals
+    FloatToHalfFloatBaseTable[i or $000]:=($0400 shr ((-e)-14)) or $0000;
+    FloatToHalfFloatBaseTable[i or $100]:=($0400 shr ((-e)-14)) or $8000;
+    FloatToHalfFloatShiftTable[i or $000]:=(-e)-1;
+    FloatToHalfFloatShiftTable[i or $100]:=(-e)-1;
+   end;
+   -14..15:begin
+    // Normal numbers just loses precision
+    FloatToHalfFloatBaseTable[i or $000]:=((e+15) shl 10) or $0000;
+    FloatToHalfFloatBaseTable[i or $100]:=((e+15) shl 10) or $8000;
+    FloatToHalfFloatShiftTable[i or $000]:=13;
+    FloatToHalfFloatShiftTable[i or $100]:=13;
+   end;
+   16..127:begin
+    // Large numbers maps to infinity
+    FloatToHalfFloatBaseTable[i or $000]:=$7c00;
+    FloatToHalfFloatBaseTable[i or $100]:=$fc00;
+    FloatToHalfFloatShiftTable[i or $000]:=24;
+    FloatToHalfFloatShiftTable[i or $100]:=24;
+   end;
+   else begin
+    // Infinity and NaN's stay infinity and NaN's
+    FloatToHalfFloatBaseTable[i or $000]:=$7c00;
+    FloatToHalfFloatBaseTable[i or $100]:=$fc00;
+    FloatToHalfFloatShiftTable[i or $000]:=13;
+    FloatToHalfFloatShiftTable[i or $100]:=13;
+   end;
+  end;
+ end;
+ begin
+  begin
+   HalfFloatToFloatMantissaTable[0]:=0;
+   for i:=1 to 1023 do begin
+    Mantissa:=i shl 13;
+    Exponent:=0;
+    while (Mantissa and $00800000)=0 do begin // While not normalized
+     dec(Exponent,$00800000);                 // Decrement exponent by 1 shl 23
+     Mantissa:=Mantissa shl 1;                // Shift mantissa
+    end;
+    Mantissa:=Mantissa and not $00800000;     // Clear leading 1 bit
+    inc(Exponent,$38800000);                  // Adjust bias by (127-14) shl 23
+    HalfFloatToFloatMantissaTable[i]:=Mantissa or Exponent;
+   end;
+   for i:=1024 to 2047 do begin
+    HalfFloatToFloatMantissaTable[i]:=TPasRISCVUInt32($38000000)+TPasRISCVUInt32(TPasRISCVUInt32(i-1024) shl 13);
+   end;
+  end;
+  begin
+   HalfFloatToFloatExponentTable[0]:=0;
+   for i:=1 to 30 do begin
+    HalfFloatToFloatExponentTable[i]:=i shl 23;
+   end;
+   HalfFloatToFloatExponentTable[31]:=$47800000;
+   HalfFloatToFloatExponentTable[32]:=0;
+   for i:=33 to 62 do begin
+    HalfFloatToFloatExponentTable[i]:=TPasRISCVUInt32(TPasRISCVUInt32(i-32) shl 23) or TPasRISCVUInt32($80000000);
+   end;
+   HalfFloatToFloatExponentTable[63]:=$c7800000;
+  end;
+  begin
+   HalfFloatToFloatOffsetTable[0]:=0;
+   for i:=1 to 31 do begin
+    HalfFloatToFloatOffsetTable[i]:=1024;
+   end;
+   HalfFloatToFloatOffsetTable[32]:=0;
+   for i:=33 to 63 do begin
+    HalfFloatToFloatOffsetTable[i]:=1024;
+   end;
+  end;
+ end;
+end;
+
+var CPUChecked:TPasMPBool32=false;
+
+{$if defined(cpu386) or defined(cpuamd64) or defined(cpux86_64) or defined(cpux64)}
+type TCPUIDData=record
+      case TPasRISCVUInt32 of
+       0:(
+        Data:array[0..3] of TPasRISCVUInt32;
+       );
+       1:(
+        EAX,EBX,EDX,ECX:TPasRISCVUInt32;
+       );
+       2:(
+        String_:array[0..15] of AnsiChar;
+       );
+      end;
+
+      PCPUIDData=^TCPUIDData;
+
+procedure GetCPUID(Value:TPasRISCVUInt32;out Data:TCPUIDData); assembler;
+asm
+{$if defined(cpuamd64) or defined(cpux86_64) or defined(cpux64)}
+ push rbx
+{$if defined(Windows) or defined(Win32) or defined(Win64)}
+ // Win64 ABI (rcx, rdx, ...)
+ mov eax,ecx
+ mov r8,rdx
+{$else}
+ // SysV x64 ABI (rdi, rsi, ...)
+ mov eax,edi
+ mov r8,rsi
+{$ifend}
+{$else}
+ // register (eax, edx, ...)
+ push ebx
+ push edi
+ mov edi,edx
+{$ifend}
+ cpuid
+{$if defined(cpuamd64) or defined(cpux86_64) or defined(cpux64)}
+ mov dword ptr [r8+0],eax
+ mov dword ptr [r8+4],ebx
+ mov dword ptr [r8+8],edx
+ mov dword ptr [r8+12],ecx
+ pop rbx
+{$else}
+ mov dword ptr [edi+0],eax
+ mov dword ptr [edi+4],ebx
+ mov dword ptr [edi+8],edx
+ mov dword ptr [edi+12],ecx
+ pop edi
+ pop ebx
+{$ifend}
+end;
+{$ifend}
+
+procedure DoCheckCPU;
+{$if defined(cpu386) or defined(cpuamd64) or defined(cpux86_64) or defined(cpux64)}
+var CPUIDData:TCPUIDData;
+begin
+ CPUFeatures:=0;
+ begin
+  GetCPUID(0,CPUIDData);
+ end;
+ begin
+  GetCPUID(1,CPUIDData);
+  if (CPUIDData.ECX and (TPasRISCVUInt32(1) shl 1))<>0 then begin
+   CPUFeatures:=CPUFeatures or CPUFeatures_X86_PCLMUL_Mask;
+  end;
+  if (CPUIDData.ECX and (TPasRISCVUInt32(1) shl 20))<>0 then begin
+   CPUFeatures:=CPUFeatures or CPUFeatures_X86_SSE42_Mask;
+  end;
+  if (CPUIDData.ECX and (TPasRISCVUInt32(1) shl 29))<>0 then begin
+   CPUFeatures:=CPUFeatures or CPUFeatures_X86_F16C_Mask;
+  end;
+ end;
+end;
+{$else}
+begin
+end;
+{$ifend}
+
+procedure CheckCPU;
+begin
+ if (not CPUChecked) and
+    (not TPasMPInterlocked.CompareExchange(CPUChecked,TPasMPBool32(true),TPasMPBool32(false))) then begin
+  DoCheckCPU;
+ end;
+end;
+
 initialization
 {$ifdef windows}
  KERNEL32LibHandle:=LoadLibrary('kernel32.dll');
@@ -45791,4 +46648,6 @@ initialization
  GlobalSleepGranularity:=ConvertScale(GlobalSleepGranularity,10000000,CLOCK_FREQUENCY);
  GlobalSleepThreshold:=GlobalSleepGranularity*4;
  FillChar(ZeroBuffer,SizeOf(TZeroBuffer),#0);
+ CheckCPU;
+ GenerateHalfFloatLookUpTables;
 end.
