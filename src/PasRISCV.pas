@@ -31184,6 +31184,8 @@ begin
    $321..$33f, // mhpmevent1 - mhpmevent31
    $b03..$b1f, // mhpmcounter3..mhpmcounter31
    $b83..$b9f, // mhpmcounter3h..mhpmcounter31h
+   $c03..$c1f, // hpmcounter3..hpmcounter31 (U-Mode read-only mirrors, Zihpm)
+   $c83..$c9f, // hpmcounter3h..hpmcounter31h (U-Mode read-only mirrors, Zihpm)
 
    TCSR.TAddress.MCOUNTINHIBIT:begin
 
@@ -45320,12 +45322,12 @@ begin
 //AddISAExtension('zicfilp');
 //AddISAExtension('zicfiss');
   AddISAExtension('zicond');
-//AddISAExtension('zicntr');
+  AddISAExtension('zicntr');
   AddISAExtension('zicsr');
   AddISAExtension('zifencei');
   AddISAExtension('zihintntl');
   AddISAExtension('zihintpause');
-//AddISAExtension('zihpm');
+  AddISAExtension('zihpm');
   AddISAExtension('zimop');
 //AddISAExtension('zmmul');
 //AddISAExtension('za64rs');
