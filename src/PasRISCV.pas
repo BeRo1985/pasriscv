@@ -5765,9 +5765,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            CSR_FCSR_MASK=$ff;
                            CSR_STATUS_FS_MASK=$6000;
                            CSR_MEDELEG_MASK=TPasRISCVUInt64($b109);
-                           CSR_MIDELEG_MASK=TPasRISCVUInt64($0222);
-                           CSR_MEIP_MASK=TPasRISCVUInt64($aaa);
-                           CSR_SEIP_MASK=TPasRISCVUInt64($222);
+                           CSR_MIDELEG_MASK=TPasRISCVUInt64($2222);
+                           CSR_MEIP_MASK=TPasRISCVUInt64($2aaa);
+                           CSR_SEIP_MASK=TPasRISCVUInt64($2222);
                            CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000003000000d0);
                            CSR_SENVCFG_MASK=TPasRISCVUInt64($3000000d0);
                            CSR_MSECCFG_MASK=$300;
@@ -5817,6 +5817,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   SIREG7=$157;
                                   STOPEI=$15c;
                                   STIMECMPH=$15d;
+                                  SCOUNTOVF=$da0; // Sscofpmf: Counter overflow status
                                   SATP=$180;
                                   HSTATUS=$600;
                                   HENVCFG=$60a;
@@ -31136,6 +31137,8 @@ begin
 
    TCSR.TAddress.SENVCFG,
 
+   TCSR.TAddress.SCOUNTOVF, // Sscofpmf
+
    TCSR.TAddress.SSCRATCH,
    TCSR.TAddress.SEPC,
    TCSR.TAddress.SCAUSE,
@@ -45521,7 +45524,7 @@ begin
   end;
 //AddISAExtension('ssccfg');
   AddISAExtension('ssccptr');
-//AddISAExtension('sscofpmf');
+  AddISAExtension('sscofpmf');
   AddISAExtension('sscounterenw');
 //AddISAExtension('sscsrind');
 //AddISAExtension('ssdbltrp');

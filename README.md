@@ -27,6 +27,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Za64rs (64-Byte Reservation Set)
   - Svadu (Hardware Updating of PTE A/D Bits) 
   - Svade (Page-Fault on A/D Bit Violations)
+  - Sscofpmf (Count Overflow and Mode-Based Filtering)
   - Sstc (RISC-V "stimecmp / vstimecmp" Extension)
   - Ssccptr (Main Memory Page-Table Reads)
   - Sstvecd (stvec Direct Mode)
