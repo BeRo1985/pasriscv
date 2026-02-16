@@ -21029,7 +21029,12 @@ begin
    result:=fPlayCtrl;
   end;
   FM801_PLAY_COUNT:begin
-   result:=fPlayCount;
+   // Hardware counts down from (period_bytes-1) to 0; return remaining bytes in current period
+   if fPlayActive and (fPlaySize>0) then begin
+    result:=TPasRISCVUInt16((fPlaySize-fPlayPosition)-1);
+   end else begin
+    result:=fPlayCount;
+   end;
   end;
   FM801_PLAY_BUF1:begin
    result:=fPlayBuffer1;
@@ -21041,7 +21046,12 @@ begin
    result:=fCaptureCtrl;
   end;
   FM801_CAPTURE_COUNT:begin
-   result:=fCaptureCount;
+   // Hardware counts down from (period_bytes-1) to 0; return remaining bytes in current period
+   if fCaptureActive and (fCaptureSize>0) then begin
+    result:=TPasRISCVUInt16((fCaptureSize-fCapturePosition)-1);
+   end else begin
+    result:=fCaptureCount;
+   end;
   end;
   FM801_CAPTURE_BUF1:begin
    result:=fCaptureBuffer1;
@@ -21125,7 +21135,7 @@ begin
      fPlayBufferIndex:=0;
      fPlayBuffer:=fPlayBuffer1;
      fPlayPosition:=0;
-     fPlaySize:=(TPasRISCVUInt32(fPlayCount)+1) shl 2; // count is in 16-bit stereo frames, 4 bytes each
+     fPlaySize:=TPasRISCVUInt32(fPlayCount)+1; // count register = period_bytes - 1
      fPlayResamplerPosition:=0;
     end;
     fPlayActive:=true;
@@ -21154,7 +21164,7 @@ begin
      fCaptureBufferIndex:=0;
      fCaptureBuffer:=fCaptureBuffer1;
      fCapturePosition:=0;
-     fCaptureSize:=(TPasRISCVUInt32(fCaptureCount)+1) shl 2;
+     fCaptureSize:=TPasRISCVUInt32(fCaptureCount)+1; // count register = period_bytes - 1
      fCaptureResamplerPosition:=0;
     end;
     fCaptureActive:=true;
@@ -21314,7 +21324,7 @@ begin
     fPlayBuffer:=fPlayBuffer1;
    end;
    fPlayPosition:=0;
-   fPlaySize:=(TPasRISCVUInt32(fPlayCount)+1) shl 2;
+   fPlaySize:=TPasRISCVUInt32(fPlayCount)+1; // count register = period_bytes - 1
    // Check BUF_LAST flags - if set, stop after this buffer
    if fPlayBufferIndex=0 then begin
     if (fPlayCtrl and FM801_BUFFER1_LAST)<>0 then begin
@@ -21509,7 +21519,7 @@ begin
     fCaptureBuffer:=fCaptureBuffer1;
    end;
    fCapturePosition:=0;
-   fCaptureSize:=(TPasRISCVUInt32(fCaptureCount)+1) shl 2;
+   fCaptureSize:=TPasRISCVUInt32(fCaptureCount)+1; // count register = period_bytes - 1
    // Check BUFFER_LAST flags
    if fCaptureBufferIndex=0 then begin
     if (fCaptureCtrl and FM801_BUFFER1_LAST)<>0 then begin
