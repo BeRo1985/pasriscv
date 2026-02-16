@@ -2416,6 +2416,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               destructor Destroy; override;
               procedure OutputFillBuffer(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt); virtual;
               procedure InputFillBuffer(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt); virtual;
+              procedure OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+              procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
               property Machine:TPasRISCV read fMachine;
               property SampleRate:TPasRISCVUInt64 read fSampleRate write fSampleRate;
@@ -16632,6 +16634,16 @@ begin
  end else begin
   FillChar(aBuffer^,aCount*2*SizeOf(TPasRISCVFloat),#0);
  end;
+end;
+
+procedure TPasRISCV.TSoundIO.OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+begin
+ OutputFillBuffer(aBuffer,aCount);
+end;
+
+procedure TPasRISCV.TSoundIO.InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+begin
+ InputFillBuffer(aBuffer,aCount);
 end;
 
 { TPasRISCV.TBusDevice }
