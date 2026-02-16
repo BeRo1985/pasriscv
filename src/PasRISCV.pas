@@ -36315,7 +36315,6 @@ begin
           end else if (ReadNormalizedFloatUI32(fState.FPURegisters[frs1].ui64) and $7f800000)>=TPasRISCVUInt32($4b000000) then begin
            // |value| >= 2^23, already an integer
            fState.FPURegisters[frd].ui32:=ReadNormalizedFloatUI32(fState.FPURegisters[frs1].ui64);
-           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
           end else begin
            Immediate:=(aInstruction shr 12) and 7;
            if Immediate=TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
@@ -36439,7 +36438,6 @@ begin
           end else if (fState.FPURegisters[frs1].ui64 and $7ff0000000000000)>=TPasRISCVUInt64($4330000000000000) then begin
            // |value| >= 2^52, already an integer
            fState.FPURegisters[frd].f64:=f64;
-           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
           end else begin
            Immediate:=(aInstruction shr 12) and 7;
            if Immediate=TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
@@ -43713,13 +43711,13 @@ begin
 //AddISAExtension('zalrsc');
 //AddISAExtension('zama16b');
 //AddISAExtension('zawrs');
-//AddISAExtension('zfa');
+  AddISAExtension('zfa');
 //AddISAExtension('zfbfmin');
 //AddISAExtension('zfh');
 //AddISAExtension('zfhmin');
 //AddISAExtension('zfinx');
 //AddISAExtension('zdinx');
-//AddISAExtension('zca');
+  AddISAExtension('zca');
   AddISAExtension('zcb');
 //AddISAExtension('zcf');
 //AddISAExtension('zcd');
@@ -43733,7 +43731,7 @@ begin
 //AddISAExtension('zbkb');
 //AddISAExtension('zbkc');
 //AddISAExtension('zbkx');
-//AddISAExtension('zbs');
+  AddISAExtension('zbs');
 //AddISAExtension('zk');
 //AddISAExtension('zkn');
 //AddISAExtension('zknd');
