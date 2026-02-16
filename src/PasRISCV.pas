@@ -47884,7 +47884,9 @@ begin
  fPS2MouseDevice.Reset;
  fVirtIOInputKeyboardDevice.Reset;
  fVirtIOInputMouseDevice.Reset;
- fVirtIOSoundDevice.Reset;
+ if assigned(fVirtIOSoundDevice) then begin
+  fVirtIOSoundDevice.Reset;
+ end;
  fVirtIO9PDevice.Reset;
  fVirtIONetDevice.Reset;
  fVirtIORandomGeneratorDevice.Reset;
