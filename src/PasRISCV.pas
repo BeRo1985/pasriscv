@@ -45446,7 +45446,10 @@ begin
   AddISAExtension('sstc');
   AddISAExtension('sstvala');
   AddISAExtension('sstvecd');
-//AddISAExtension('ssu64xl');
+  AddISAExtension('ssu64xl');
+  AddISAExtension('svbare');
+  AddISAExtension('ss1p13');
+  AddISAExtension('sm1p13');
 //AddISAExtension('supm');
 //AddISAExtension('svade');
 //AddISAExtension('smctr');
