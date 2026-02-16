@@ -5818,6 +5818,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   STOPEI=$15c;
                                   STIMECMPH=$15d;
                                   SATP=$180;
+                                  HSTATUS=$600;
+                                  HENVCFG=$60a;
+                                  HENVCFGH=$61a;
+                                  HGATP=$680;
                                   MSTATUS=$300;
                                   MISA=$301;
                                   MEDELEG=$302;
@@ -6019,6 +6023,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 //                   LastPC:TPasRISCVUInt64;
                      PC:TPasRISCVUInt64;
                      Mode:TPasRISCV.THART.TMode;
+                     VirtualMode:TPasMPBool32; // H-extension: VS/VU mode (prepared for Sha, always false until H-extension)
                      CSR:TCSR;
                      Sleep:TPasMPBool32;
                      EnablePaging:TPasMPBool32;
@@ -30800,6 +30805,9 @@ begin
 
  fData[TAddress.SENVCFG]:=TPasRISCVUInt64($00000000000000d0);
 
+ fData[TAddress.HENVCFG]:=TPasRISCVUInt64($e0000003000000d0); // All features enabled by default (no-op until Sha/H-extension)
+ fData[TAddress.HENVCFGH]:=fData[TAddress.HENVCFG] shr 32;
+
  fData[TAddress.STIMECMP]:=TPasRISCVUInt64($ffffffffffffffff);
 
 end;
@@ -31544,7 +31552,7 @@ end;
 function TPasRISCV.THART.AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
 var Index:TPasRISCVSizeInt;
     CPUMode:THART.TMode;
-    MSTATUS,Levels,PMM:TPasRISCVUInt64;
+    MSTATUS,Levels,PMM,CSRHENVCFGMask:TPasRISCVUInt64;
     EffectiveAccessType:TMMU.TAccessType;
     PageTable,BitOffset,PageTableOffset,PageTableEntry,VirtualMask,PhysicalMask,
     PageTableEntryShift,PageTableEntryAccessDirty,PhysicalAddress,PPN,
@@ -31557,25 +31565,33 @@ begin
 
  MSTATUS:=fState.CSR.fData[THART.TCSR.TAddress.MSTATUS];
 
- PBMTE:=IsCSRENVCFGEnabled(THART.TCSR.ENVCFG_PBMTE);
+ // When running in virtualized mode (VS/VU), gate with henvcfg (prepared for Sha/H-extension)
+ // Currently a no-op since henvcfg is initialized with all features enabled
+ if fState.VirtualMode then begin
+  CSRHENVCFGMask:=fState.CSR.fData[THART.TCSR.TAddress.HENVCFG];
+ end else begin
+  CSRHENVCFGMask:=TPasRISCVUInt64($ffffffffffffffff);
+ end;
 
- ADUE:=IsCSRENVCFGEnabled(THART.TCSR.ENVCFG_ADUE);
+ PBMTE:=((fState.CSR.fData[THART.TCSR.TAddress.MENVCFG] and CSRHENVCFGMask) and THART.TCSR.ENVCFG_PBMTE)<>0;
+
+ ADUE:=((fState.CSR.fData[THART.TCSR.TAddress.MENVCFG] and CSRHENVCFGMask) and THART.TCSR.ENVCFG_ADUE)<>0;
 
  NAPOT:=true;
 
  EffectiveAccessType:=aAccessType;
 
- if (EffectiveAccessType<>TMMU.TAccessType.Instruction) and
-    ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MPRV))<>0) then begin
-  CPUMode:=TPasRISCV.THART.TMode(TPasRISCVUInt64((fState.CSR.fData[TCSR.TAddress.MSTATUS] shr 11) and 3));
- end;
-
- // Pointer masking (Supm/Ssnpm)
- // TODO-Optimize: TLB fast-paths in Load32/Store32 etc. see the unmasked address and will
- // always miss when pointer masking is active, falling through to AddressTranslate. This is
- // performance-neutral when PMM=0, but could be optimized for PMM<>0 by masking the address
- // before the TLB lookup in the fast-paths as well.
  if EffectiveAccessType<>TMMU.TAccessType.Instruction then begin
+
+  if (MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MPRV))<>0 then begin
+   CPUMode:=TPasRISCV.THART.TMode(TPasRISCVUInt64((fState.CSR.fData[TCSR.TAddress.MSTATUS] shr 11) and 3));
+  end;
+
+  // Pointer masking (Supm/Ssnpm)
+  // TODO-Optimize: TLB fast-paths in Load32/Store32 etc. see the unmasked address and will
+  // always miss when pointer masking is active, falling through to AddressTranslate. This is
+  // performance-neutral when PMM=0, but could be optimized for PMM<>0 by masking the address
+  // before the TLB lookup in the fast-paths as well.
   case CPUMode of
    THART.TMode.User:begin
     PMM:=(fState.CSR.fData[TCSR.TAddress.SENVCFG] shr 32) and 3;
@@ -31595,6 +31611,7 @@ begin
     aVirtualAddress:=TPasRISCVUInt64(SARInt64(TPasRISCVInt64(aVirtualAddress shl 16),16));
    end;
   end;
+ 
  end;
 
  if (EffectiveAccessType=TMMU.TAccessType.Load) and
@@ -31790,8 +31807,10 @@ begin
        end;
 
       end else if (PageTableEntry and TMMU.TPTEMasks.Write_)=0 then begin
-       if PBMTE and ((PageTableEntry and TMMU.TPTEMasks.PBMT)<>0) then begin
-        // Non-leaf PTE must have PBMT=0
+{      if PBMTE and ((PageTableEntry and TMMU.TPTEMasks.PBMT)<>0) then begin
+        // Non-leaf PTE must have PBMT=0 }      
+       if (PageTableEntry and (TMMU.TPTEMasks.Dirty or TMMU.TPTEMasks.Accessed or TMMU.TPTEMasks.User or TMMU.TPTEMasks.Attr))<>0 then begin
+        // Non-leaf PTE: D, A, U, PBMT, N bits are reserved
         if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
          RaisePageFault(aVirtualAddress,aAccessType);
         end;
@@ -45518,7 +45537,7 @@ begin
   AddISAExtension('ss1p13');
   AddISAExtension('sm1p13');
   AddISAExtension('supm');
-//AddISAExtension('svade');
+  AddISAExtension('svade');
 //AddISAExtension('smctr');
 //AddISAExtension('ssctr');
   AddISAExtension('svadu');
