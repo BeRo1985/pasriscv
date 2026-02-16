@@ -1583,7 +1583,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      FPCvtFP,
                      FPMoveToInt,
                      FPMoveFromInt,
-                     FPLoadImm
+                     FPLoadImm,
+                     Prefetch
                     );
                    TInstruction=record
                     Mask:TPasRISCVUInt32;
@@ -14654,6 +14655,11 @@ begin
  AddInstruction32('ori',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,6));
  AddInstruction32('andi',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm,7));
 
+ // Zicbop: Prefetch hints (encoded as ORI with rd=x0)
+ AddInstruction32('prefetch.i',TInstructionFormat.Prefetch,TPasRISCVUInt32($01f07fff),TPasRISCVUInt32($00006013));
+ AddInstruction32('prefetch.r',TInstructionFormat.Prefetch,TPasRISCVUInt32($01f07fff),TPasRISCVUInt32($00106013));
+ AddInstruction32('prefetch.w',TInstructionFormat.Prefetch,TPasRISCVUInt32($01f07fff),TPasRISCVUInt32($00306013));
+
  AddInstruction32('slli',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$00));
  AddInstruction32('bseti',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$14));
  AddInstruction32('bclri',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,1,$24));
@@ -14682,6 +14688,13 @@ begin
  AddInstruction32('roriw',TInstructionFormat.IShiftW,MaskOpcodeFunct7Funct3,ValueIShift7(OpcodeOpImm32,5,$30));
 
  AddInstruction32('add',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$00));
+
+ // Zihintntl: Non-temporal locality hints (encoded as ADD x0, x0, xN)
+ AddInstruction32('ntl.p1',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00200033));
+ AddInstruction32('ntl.pall',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00300033));
+ AddInstruction32('ntl.s1',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00400033));
+ AddInstruction32('ntl.all',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($00500033));
+
  AddInstruction32('mul',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$01));
  AddInstruction32('sub',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,0,$20));
 
@@ -15030,6 +15043,12 @@ begin
  AddInstruction16('c.mv',TCompressedFormat.CR,TRegisterKind.Integer,MaskCompressedBase or MaskCompressedBit12,ValueCompressedBase(4,2));
  AddInstruction16('c.jalr',TCompressedFormat.CJR,TRegisterKind.Integer,Mask,Value or MaskCompressedBit12);
  AddInstruction16('c.add',TCompressedFormat.CR,TRegisterKind.Integer,MaskCompressedBase or MaskCompressedBit12,ValueCompressedBase(4,2) or MaskCompressedBit12);
+
+ // Zihintntl: Compressed NTL hints (encoded as C.ADD x0, xN)
+ AddInstruction16('c.ntl.p1',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($900a));
+ AddInstruction16('c.ntl.pall',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($900e));
+ AddInstruction16('c.ntl.s1',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($9012));
+ AddInstruction16('c.ntl.all',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($9016));
 
  AddInstruction16('c.fsdsp',TCompressedFormat.CSDSP,TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(5,2));
  AddInstruction16('c.swsp',TCompressedFormat.CSWSP,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,2));
@@ -39805,6 +39824,10 @@ begin
   TInstructionSetArchitecture.TInstructionFormat.Cbo:begin
    result:=Mnemonic+' '+GetRegisterName(rs1);
   end;
+  TInstructionSetArchitecture.TInstructionFormat.Prefetch:begin
+   Immediate:=SignExtend(aInstruction shr 25,7);
+   result:=Mnemonic+' '+FormatImmediate(Immediate shl 5)+'('+GetRegisterName(rs1)+')';
+  end;
   TInstructionSetArchitecture.TInstructionFormat.CSR:begin
    CSRValue:=(aInstruction shr 20) and $fff;
    result:=Mnemonic+' '+GetRegisterName(rd)+', '+FormatCSR(CSRValue)+', '+GetRegisterName(rs1);
@@ -43687,7 +43710,7 @@ begin
  *)
 //AddISAExtension('zic64b');
   AddISAExtension('zicbom');
-//AddISAExtension('zicbop');
+  AddISAExtension('zicbop');
   AddISAExtension('zicboz');
 //AddISAExtension('ziccamoa');
 //AddISAExtension('ziccif');
@@ -43699,7 +43722,7 @@ begin
 //AddISAExtension('zicntr');
   AddISAExtension('zicsr');
   AddISAExtension('zifencei');
-//AddISAExtension('zihintntl');
+  AddISAExtension('zihintntl');
   AddISAExtension('zihintpause');
 //AddISAExtension('zihpm');
   AddISAExtension('zimop');

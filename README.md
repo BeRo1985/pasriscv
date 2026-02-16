@@ -14,8 +14,9 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Zifencei (Instruction-Fetch Fence)
   - Zicond (Conditional stuff)
   - Zkr (Entropy source)
-  - Zicboz (Cache-Block Zero Instructions)
   - Zicbom (Cache-Block Management Instructions)
+  - Zicbop (Prefetch Hints)
+  - Zicboz (Cache-Block Zero Instructions)
   - Svadu (Hardware Updating of PTE A/D Bits) 
   - Sstc (RISC-V "stimecmp / vstimecmp" Extension)
   - Svnapot ("NAPOT Translation" Continuity)
@@ -27,6 +28,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Zimop (May-Be-Operations)
   - Zcmop (Compressed May-Be-Operations)
   - Zihintpause (Pause Hint)
+  - Zihintntl (Non-Temporal Locality Hints)
 - Multi-core SMP support
 - Emulated peripherals
   - ACLINT
