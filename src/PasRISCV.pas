@@ -33801,7 +33801,7 @@ begin
   PartSize:=PAGE_SIZE-(aAddress and PAGE_MASK);
   Store(aAddress,aValue and ((TPasRISCVUInt64(1) shl (PartSize shl 3))-1),PartSize);
   if fState.ExceptionValue=TExceptionValue.None then begin
-   Store(aAddress,(aValue shr PartSize) and ((TPasRISCVUInt64(1) shl ((aSize-PartSize) shl 3))-1),aSize-PartSize);
+   Store(aAddress+PartSize,(aValue shr (PartSize shl 3)) and ((TPasRISCVUInt64(1) shl ((aSize-PartSize) shl 3))-1),aSize-PartSize);
   end;
  end;
 end;
@@ -33944,7 +33944,7 @@ begin
  end else begin
   PartSize:=PAGE_SIZE-(aAddress and PAGE_MASK);
   if StoreEx(aAddress,aValue and ((TPasRISCVUInt64(1) shl (PartSize shl 3))-1),PartSize) and
-     StoreEx(aAddress,(aValue shr PartSize) and ((TPasRISCVUInt64(1) shl ((aSize-PartSize) shl 3))-1),aSize-PartSize) then begin
+     StoreEx(aAddress+PartSize,(aValue shr (PartSize shl 3)) and ((TPasRISCVUInt64(1) shl ((aSize-PartSize) shl 3))-1),aSize-PartSize) then begin
    result:=true;
   end;
  end;
