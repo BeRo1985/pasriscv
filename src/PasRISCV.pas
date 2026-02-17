@@ -34128,13 +34128,19 @@ var HGATP,PageTable,PageTableEntry,BitOffset,PageTableOffset,
     PageTableEntryPointer:Pointer;
     Levels,Index:TPasRISCVSizeInt;
     GStageMode:TPasRISCVUInt64;
-    ADUE:Boolean;
+    ADUE{$ifdef GStageQEMUParity},PBMTE{$endif}:Boolean;
 begin
  HGATP:=fState.CSR.fData[TCSR.TAddress.HGATP];
  GStageMode:=(HGATP shr 60) and $f;
 
- // ADUE: hardware A/D bit update enabled via henvcfg (gated by menvcfg)
- ADUE:=((fState.CSR.fData[TCSR.TAddress.MENVCFG] and fState.CSR.fData[TCSR.TAddress.HENVCFG]) and TCSR.ENVCFG_ADUE)<>0;
+ // ADUE: hardware A/D bit update for G-stage controlled by menvcfg.ADUE
+ // (Spike uses menvcfg directly for G-stage; henvcfg.ADUE gates VS-stage only)
+ ADUE:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_ADUE)<>0;
+
+{$ifdef GStageQEMUParity}
+ // PBMTE for G-stage: QEMU checks Svpbmt enablement via menvcfg for second-stage
+ PBMTE:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_PBMTE)<>0;
+{$endif}
 
  case GStageMode of
   0:begin // Bare: no G-stage translation
@@ -34196,13 +34202,29 @@ begin
    exit;
   end;
 
-  // Check PBMT: reserved without Svpbmt, mode 3 (11) always reserved
-  if (PageTableEntry and TMMU.TPTEMasks.PBMT)<>0 then begin
-   // G-stage: PBMT is reserved (G-stage PTEs don't support PBMT per spec)
+  // Check PBMT
+{$ifdef GStageQEMUParity}
+  // QEMU behavior: honor Svpbmt via menvcfg.PBMTE for G-stage
+  if (not PBMTE) and ((PageTableEntry and TMMU.TPTEMasks.PBMT)<>0) then begin
+   // Reserved without Svpbmt
    RaiseGuestPageFault(aGuestPhysical,aAccessType);
    result:=0;
    exit;
   end;
+  if PBMTE and ((PageTableEntry and TMMU.TPTEMasks.PBMT)=TMMU.TPTEMasks.PBMT) then begin
+   // PBMT mode 3 (11) is reserved even with Svpbmt
+   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   result:=0;
+   exit;
+  end;
+{$else}
+  // Spike behavior: PBMT bits are always reserved in G-stage PTEs
+  if (PageTableEntry and TMMU.TPTEMasks.PBMT)<>0 then begin
+   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   result:=0;
+   exit;
+  end;
+{$endif}
 
   // Check for leaf
   if (PageTableEntry and TMMU.TPTEMasks.Leaf)<>0 then begin
@@ -34216,7 +34238,16 @@ begin
    end;
 
    // Check permissions (G-stage permissions checked against access type)
-   // Note: G-stage does not check U-bit (U-bit has no meaning in G-stage per spec)
+{$ifdef GStageQEMUParity}
+   // QEMU behavior: G-stage leaf PTE with U=1 is invalid
+   if (PageTableEntry and TMMU.TPTEMasks.User)<>0 then begin
+    RaiseGuestPageFault(aGuestPhysical,aAccessType);
+    result:=0;
+    exit;
+   end;
+{$else}
+   // Spike/Spec behavior: G-stage does not check U-bit (reserved for future use)
+{$endif}
    case aAccessType of
     TMMU.TAccessType.Instruction:begin
      if (PageTableEntry and TMMU.TPTEMasks.Execute)=0 then begin
