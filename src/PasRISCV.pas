@@ -291,6 +291,8 @@ unit PasRISCV;
 
 {$define NewPCI}
 
+{$define GStageQEMUParity}
+
 {$define NVMELevelTriggeredPCIEInterrupts}
 
 //{$define I2CDebug} // Enable I2C debug output — remove/comment out when not needed
@@ -34202,7 +34204,7 @@ begin
    exit;
   end;
 
-  // Check PBMT
+  // Check PBMT: reserved without Svpbmt, mode 3 (11) always reserved
 {$ifdef GStageQEMUParity}
   // QEMU behavior: honor Svpbmt via menvcfg.PBMTE for G-stage
   if (not PBMTE) and ((PageTableEntry and TMMU.TPTEMasks.PBMT)<>0) then begin
@@ -34220,6 +34222,7 @@ begin
 {$else}
   // Spike behavior: PBMT bits are always reserved in G-stage PTEs
   if (PageTableEntry and TMMU.TPTEMasks.PBMT)<>0 then begin
+   // G-stage: PBMT is reserved (G-stage PTEs don't support PBMT per spec)
    RaiseGuestPageFault(aGuestPhysical,aAccessType);
    result:=0;
    exit;
