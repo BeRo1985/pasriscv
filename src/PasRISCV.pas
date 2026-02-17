@@ -1648,7 +1648,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      FPMoveToInt,
                      FPMoveFromInt,
                      FPLoadImm,
-                     Prefetch
+                     Prefetch,
+                     HLV,
+                     HSV
                     );
                    TInstruction=record
                     Mask:TPasRISCVUInt32;
@@ -5948,8 +5950,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               type TMode=
                     (
                      User=0,
-                     Supervisor=1,
-                     Hypervisor=2,
+                     Supervisor=1, // Also used for HS-mode (V=0) and VS-mode (V=1) in the H-extension.
+                                   // The H-extension does not introduce a separate Hypervisor privilege level;
+                                   // instead, HS-mode and VS-mode are distinguished by the VirtualMode (V) bit.
+                     Hypervisor=2, // Reserved/unused in the H-extension — kept for encoding compatibility only.
                      Machine=3,
                      Invalid=255
                     );
@@ -5967,12 +5971,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      StoreAccessFault=7,
                      ECallUMode=8,
                      ECallSMode=9,
-                     ECallHMode=10,
+                     ECallVSMode=10,
                      ECallMMode=11,
                      InstructionPageFault=12,
                      LoadPageFault=13,
                      Reserved=14,
-                     StorePageFault=15
+                     StorePageFault=15,
+                     InstructionGuestPageFault=20,
+                     LoadGuestPageFault=21,
+                     VirtualInstruction=22,
+                     StoreGuestPageFault=23
                     );
                    { TException }
                    TException=class(Exception)
@@ -6053,13 +6061,23 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            CSR_FRM_MASK=$7;
                            CSR_FCSR_MASK=$ff;
                            CSR_STATUS_FS_MASK=$6000;
-                           CSR_MEDELEG_MASK=TPasRISCVUInt64($b109);
+                           CSR_MEDELEG_MASK=TPasRISCVUInt64($f0b3ff); // H-ext: includes guest page faults (20-23) + virtual instruction (22)
+                           CSR_HEDELEG_MASK=TPasRISCVUInt64($b1ff); // Same minus guest page faults and VS ecall
                            CSR_MIDELEG_MASK=TPasRISCVUInt64($2222);
+                           CSR_HIDELEG_MASK=TPasRISCVUInt64($0222); // S-level IRQs delegatable to VS
                            CSR_MEIP_MASK=TPasRISCVUInt64($2aaa);
                            CSR_SEIP_MASK=TPasRISCVUInt64($2222);
                            CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000003000000d0);
                            CSR_SENVCFG_MASK=TPasRISCVUInt64($3000000d0);
                            CSR_MSECCFG_MASK=$300;
+                           HVICTL_VTI=TPasRISCVUInt64(1) shl 30;
+                           HVICTL_IID_MASK=TPasRISCVUInt64($0fff0000); // bits [27:16]
+                           HVICTL_IID_SHIFT=16;
+                           HVICTL_DPR=TPasRISCVUInt64(1) shl 9;
+                           HVICTL_IPRIOM=TPasRISCVUInt64(1) shl 8;
+                           HVICTL_IPRIO_MASK=TPasRISCVUInt64($ff); // bits [7:0]
+                           HVICTL_VALID_MASK=TPasRISCVUInt64($40ff03ff); // VTI | IID | DPR | IPRIOM | IPRIO;
+                           COUNTEREN_TM=TPasRISCVUInt64($2); // Bit 1: TM (Time) counter enable
                            MNSTATUS_NMIE=$8;
                            MNSTATUS_MNPV=$80;
                            MNSTATUS_MNPP=$1800;
@@ -6108,10 +6126,48 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   STIMECMPH=$15d;
                                   SCOUNTOVF=$da0; // Sscofpmf: Counter overflow status
                                   SATP=$180;
+                                  // H-extension CSRs
                                   HSTATUS=$600;
+                                  HEDELEG=$602;
+                                  HIDELEG=$603;
+                                  HIE=$604;
+                                  HTIMEDELTA=$605;
+                                  HCOUNTEREN=$606;
+                                  HGEIE=$607;
+                                  HVICTL=$609;
                                   HENVCFG=$60a;
                                   HENVCFGH=$61a;
+                                  HTIMEDELTAH=$615;
+                                  HTVAL=$643;
+                                  HIP=$644;
+                                  HVIP=$645;
+                                  HTINST=$64a;
                                   HGATP=$680;
+                                  HGEIP=$e12;
+                                  // H-extension: VS-mode CSRs
+                                  VSSTATUS=$200;
+                                  VSIE=$204;
+                                  VSTVEC=$205;
+                                  VSSCRATCH=$240;
+                                  VSEPC=$241;
+                                  VSCAUSE=$242;
+                                  VSTVAL=$243;
+                                  VSIP=$244;
+                                  VSTIMECMP=$24d;
+                                  VSATP=$280;
+                                  // Ssstateen CSRs
+                                  SSTATEEN0=$10c;
+                                  SSTATEEN1=$10d;
+                                  SSTATEEN2=$10e;
+                                  SSTATEEN3=$10f;
+                                  MSTATEEN0=$30c;
+                                  MSTATEEN1=$30d;
+                                  MSTATEEN2=$30e;
+                                  MSTATEEN3=$30f;
+                                  HSTATEEN0=$60c;
+                                  HSTATEEN1=$60d;
+                                  HSTATEEN2=$60e;
+                                  HSTATEEN3=$60f;
                                   MSTATUS=$300;
                                   MISA=$301;
                                   MEDELEG=$302;
@@ -6129,6 +6185,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   MCAUSE=$342;
                                   MTVAL=$343;
                                   MIP=$344;
+                                  MTINST=$34a; // H-extension: M-level trap instruction value
+                                  MTVAL2=$34b; // H-extension: M-level trap value 2 (GPA >> 2)
                                   MISELECT=$350;
                                   MIREG=$351;
                                   MIREG2=$352;
@@ -6173,8 +6231,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           end;
                           TMask=class
                            public
-                            const MSTATUS=TPasRISCVUInt64($f007fffaa);
+                            const MSTATUS=TPasRISCVUInt64($cf007fffaa); // includes MPV (39) and GVA (38)
                                   SSTATUS=TPasRISCVUInt64($3000de722);
+                                  HSTATUS_MASK=TPasRISCVUInt64($007003e0); // SPV, SPVP, HU, GVA, VSBE, VTVM, VTW, VTSR (no VSXL: hardwired to 2)
+                                  MSTATUS_SWAP_MASK=TPasRISCVUInt64($3000de722); // Bits swapped between HS and VS: SIE,SPIE,SPP,FS,VS,SUM,MXR,UXL
                             type TStatus=class
                                   public
                                    const SIE=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 1);
@@ -6210,6 +6270,21 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                          TVM=20;
                                          TW=21;
                                          TSR=22;
+                                         GVA=38;
+                                         MPV=39;
+                                 end;
+                                 THSTATUSBit=class
+                                  public
+                                   const VSBE=5;
+                                         GVA=6;
+                                         SPV=7;
+                                         SPVP=8;
+                                         HU=9;
+                                         VGEIN=12;
+                                         VTVM=20;
+                                         VTW=21;
+                                         VTSR=22;
+                                         VSXL=32;
                                  end;
                           end;
                           TMISA=class
@@ -6313,7 +6388,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 //                   LastPC:TPasRISCVUInt64;
                      PC:TPasRISCVUInt64;
                      Mode:TPasRISCV.THART.TMode;
-                     VirtualMode:TPasMPBool32; // H-extension: VS/VU mode (prepared for Sha, always false until H-extension)
+                     VirtualMode:TPasMPBool32; // H-extension: V bit (VS/VU mode)
                      CSR:TCSR;
                      Sleep:TPasMPBool32;
                      EnablePaging:TPasMPBool32;
@@ -6331,6 +6406,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      CAS128OldValue:TPasMPInt128Record;
                      CAS128NewValue:TPasMPInt128Record;
                      CAS128Result:TPasMPInt128Record;
+                     // H-extension: HS-mode backing store (saved while V=1)
+                     HSMode_MSTATUS:TPasRISCVUInt64;
+                     HSMode_STVEC:TPasRISCVUInt64;
+                     HSMode_SSCRATCH:TPasRISCVUInt64;
+                     HSMode_SEPC:TPasRISCVUInt64;
+                     HSMode_SCAUSE:TPasRISCVUInt64;
+                     HSMode_STVAL:TPasRISCVUInt64;
+                     HSMode_SATP:TPasRISCVUInt64;
                    end;
                    PState=^TState;
                    TCSROperation=
@@ -6510,7 +6593,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                       'Instruction page fault',
                       'Load page fault',
                       'Reserved',
-                      'Store page fault'
+                      'Store page fault',
+                      'Reserved', // 16
+                      'Reserved', // 17
+                      'Reserved', // 18
+                      'Reserved', // 19
+                      'Instruction guest-page fault',
+                      'Load guest-page fault',
+                      'Virtual instruction',
+                      'Store guest-page fault'
                      );
                     InterruptNames:array[TInterruptValue] of TPasRISCVUTF8String=
                      (
@@ -6538,6 +6629,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fACLINTDevice:TACLINTDevice;
               fMTIMECMP:TPasRISCVUInt64;
               fSTIMECMP:TPasRISCVUInt64;
+              fVSTIMECMP:TPasRISCVUInt64;
               fMMUMode:TMMU.TMMUMode;
               fRootPageTable:TPasRISCVUInt64;
               fDirectAccessTLBCache:TMMU.TDirectAccessTLBEntries;
@@ -6548,6 +6640,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fHARTMask:TPasRISCVUInt32;
               fExecutionThread:TExecutionThread;
               fPCG32:TPCG32;
+              fWasVirtual:Boolean;
               procedure UpdateMMU;
               function CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
               function AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
@@ -6557,6 +6650,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               procedure RaisePhysicalFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               procedure RaisePageFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+              procedure RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+              function GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
               function Load8(const aAddress:TPasRISCVUInt64):TPasRISCVUInt8; inline;
               procedure LoadRegisterS8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
               procedure LoadRegisterU8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
@@ -6601,6 +6696,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
@@ -6609,6 +6705,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              // H-extension CSR handlers
+              procedure CSRHandlerHSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerHIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerHIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerHVIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVSCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVSSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerHGATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               class function CSRAtomicHelper(const aValue:PPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean; static;
               function CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aValue:PPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
               function CSRAIAPairHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aReg:TPasRISCVUInt32;const aValue:Pointer;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
@@ -6641,6 +6747,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function GetAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aClaim:Boolean):TPasRISCVUInt32;
               procedure HandleInterrupts;
               procedure ExecuteException;
+              procedure SwapHypervisorRegs; // H-extension: swap S↔VS CSRs on V transition
+              procedure SetVirtualMode(const aEnabled:Boolean); // H-extension: set V bit
               procedure SleepUntilNextInterrupt;
               procedure SleepPause;
               procedure Execute;
@@ -15812,8 +15920,24 @@ begin
  AddInstruction32('sfence.w.inval',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($18000073));
  AddInstruction32('sfence.inval.ir',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($18100073));
  AddInstruction32('sinval.vma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$0c));
- AddInstruction32('hfence.bvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$11));
+ AddInstruction32('hfence.vvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$11));
  AddInstruction32('hfence.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$51));
+ AddInstruction32('hinval.vvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$16));
+ AddInstruction32('hinval.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$66));
+ // H-extension load/store instructions
+ AddInstruction32('hlv.b',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$30) or (0 shl 20));
+ AddInstruction32('hlv.bu',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$30) or (1 shl 20));
+ AddInstruction32('hlv.h',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$32) or (0 shl 20));
+ AddInstruction32('hlv.hu',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$32) or (1 shl 20));
+ AddInstruction32('hlvx.hu',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$32) or (3 shl 20));
+ AddInstruction32('hlv.w',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$34) or (0 shl 20));
+ AddInstruction32('hlv.wu',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$34) or (1 shl 20));
+ AddInstruction32('hlvx.wu',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$34) or (3 shl 20));
+ AddInstruction32('hlv.d',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$36) or (0 shl 20));
+ AddInstruction32('hsv.b',TInstructionFormat.HSV,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,4,$31));
+ AddInstruction32('hsv.h',TInstructionFormat.HSV,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,4,$33));
+ AddInstruction32('hsv.w',TInstructionFormat.HSV,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,4,$35));
+ AddInstruction32('hsv.d',TInstructionFormat.HSV,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,4,$37));
  AddInstruction32('csrrw',TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,1));
  AddInstruction32('csrrs',TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,2));
  AddInstruction32('csrrc',TInstructionFormat.CSR,MaskOpcodeFunct3,ValueI(OpcodeSystem,3));
@@ -33223,6 +33347,7 @@ begin
                        TMISA.TExtension.RV32I_64I_128I or
                        TMISA.TExtension.M_EXT or
                        TMISA.TExtension.SUPERVISOR or
+                       TMISA.TExtension.HYPERVISOR or // Sha: H-extension enabled
                        TMISA.TExtension.USER;
 
  fData[TAddress.MHARTID]:=fHART.fHARTID;
@@ -33243,8 +33368,11 @@ begin
 
  fData[TAddress.SENVCFG]:=TPasRISCVUInt64($00000000000000d0);
 
- fData[TAddress.HENVCFG]:=TPasRISCVUInt64($e0000003000000d0); // All features enabled by default (no-op until Sha/H-extension)
+ fData[TAddress.HENVCFG]:=TPasRISCVUInt64($e0000003000000d0); // All features enabled by default
  fData[TAddress.HENVCFGH]:=fData[TAddress.HENVCFG] shr 32;
+
+ // H-extension: HSTATUS initial value with VSXL=2 (64-bit)
+ fData[TAddress.HSTATUS]:=TPasRISCVUInt64(2) shl 32; // VSXL=2
 
  fData[TAddress.STIMECMP]:=TPasRISCVUInt64($ffffffffffffffff);
 
@@ -33309,6 +33437,9 @@ begin
   TAddress.STIMECMP:begin
    result:=fHART.fSTIMECMP;
   end;
+  TAddress.VSTIMECMP:begin
+   result:=fHART.fVSTIMECMP;
+  end;
 {TAddress.STIMECMPH:begin
    result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.STIMECMP] shr 32));
   end}
@@ -33344,6 +33475,13 @@ begin
   TAddress.STIMECMP:begin
    fHART.fSTIMECMP:=aValue;
    fData[TAddress.STIMECMP]:=aValue;
+  end;
+  TAddress.VSTIMECMP:begin
+   fHART.fVSTIMECMP:=aValue;
+   fData[TAddress.VSTIMECMP]:=aValue;
+  end;
+  TAddress.HVICTL:begin
+   fData[TAddress.HVICTL]:=aValue and HVICTL_VALID_MASK;
   end;
 { TAddress.STIMECMPH:begin
    fData[TAddress.STIMECMP]:=((TPasRISCVUInt64(aValue) shl 32) and TPasRISCVUInt64($ffffffff00000000)) or
@@ -33542,6 +33680,8 @@ begin
 
  fSTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
 
+ fVSTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
+
  fBus:=fMachine.fBus;
 
  fMMUMode:=TMMU.TMMUMode.SV39;
@@ -33586,6 +33726,47 @@ begin
 
    TCSR.TAddress.SATP,
 
+   // H-extension CSRs
+   TCSR.TAddress.HSTATUS,
+   TCSR.TAddress.HEDELEG,
+   TCSR.TAddress.HIDELEG,
+   TCSR.TAddress.HIE,
+   TCSR.TAddress.HTIMEDELTA,
+   TCSR.TAddress.HCOUNTEREN,
+   TCSR.TAddress.HGEIE,
+   TCSR.TAddress.HVICTL,
+   TCSR.TAddress.HENVCFG,
+   TCSR.TAddress.HTVAL,
+   TCSR.TAddress.HIP,
+   TCSR.TAddress.HVIP,
+   TCSR.TAddress.HTINST,
+   TCSR.TAddress.HGATP,
+   TCSR.TAddress.HGEIP,
+   // VS-mode CSRs
+   TCSR.TAddress.VSSTATUS,
+   TCSR.TAddress.VSIE,
+   TCSR.TAddress.VSTVEC,
+   TCSR.TAddress.VSSCRATCH,
+   TCSR.TAddress.VSEPC,
+   TCSR.TAddress.VSCAUSE,
+   TCSR.TAddress.VSTVAL,
+   TCSR.TAddress.VSIP,
+   TCSR.TAddress.VSTIMECMP,
+   TCSR.TAddress.VSATP,
+   // Ssstateen CSRs
+   TCSR.TAddress.MSTATEEN0,
+   TCSR.TAddress.MSTATEEN1,
+   TCSR.TAddress.MSTATEEN2,
+   TCSR.TAddress.MSTATEEN3,
+   TCSR.TAddress.SSTATEEN0,
+   TCSR.TAddress.SSTATEEN1,
+   TCSR.TAddress.SSTATEEN2,
+   TCSR.TAddress.SSTATEEN3,
+   TCSR.TAddress.HSTATEEN0,
+   TCSR.TAddress.HSTATEEN1,
+   TCSR.TAddress.HSTATEEN2,
+   TCSR.TAddress.HSTATEEN3,
+
    TCSR.TAddress.MVENDORID,
    TCSR.TAddress.MARCHID,
    TCSR.TAddress.MIMPID,
@@ -33606,6 +33787,8 @@ begin
    TCSR.TAddress.MEPC,
    TCSR.TAddress.MCAUSE,
    TCSR.TAddress.MTVAL,
+   TCSR.TAddress.MTINST, // H-extension
+   TCSR.TAddress.MTVAL2, // H-extension
 // TCSR.TAddress.MIP,
 
    TCSR.TAddress.MCYCLE,
@@ -33671,6 +33854,7 @@ begin
  fCSRHandlerMap[TCSR.TAddress.FCSR]:=CSRHandlerFCSR; // FCSR
 
  fCSRHandlerMap[TCSR.TAddress.STIMECMP]:=CSRHandlerSTIMECMP; // STIMECMP
+ fCSRHandlerMap[TCSR.TAddress.VSTIMECMP]:=CSRHandlerVSTIMECMP; // VSTIMECMP
 
  fCSRHandlerMap[TCSR.TAddress.SATP]:=CSRHandlerSATP; // SATP
 
@@ -33690,6 +33874,46 @@ begin
 
  fCSRHandlerMap[TCSR.TAddress.MIP]:=CSRHandlerMIP; // MIP
  fCSRHandlerMap[TCSR.TAddress.SIP]:=CSRHandlerSIP; // SIP
+
+ // H-extension CSR handlers
+ fCSRHandlerMap[TCSR.TAddress.HSTATUS]:=CSRHandlerHSTATUS;
+ fCSRHandlerMap[TCSR.TAddress.HEDELEG]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HIDELEG]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HIE]:=CSRHandlerHIE;
+ fCSRHandlerMap[TCSR.TAddress.HTIMEDELTA]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HCOUNTEREN]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HGEIE]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HVICTL]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HENVCFG]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HTVAL]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HIP]:=CSRHandlerHIP;
+ fCSRHandlerMap[TCSR.TAddress.HVIP]:=CSRHandlerHVIP;
+ fCSRHandlerMap[TCSR.TAddress.HTINST]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HGATP]:=CSRHandlerHGATP;
+ fCSRHandlerMap[TCSR.TAddress.HGEIP]:=CSRHandlerPrivilegedReadOnly;
+ // VS-mode CSR handlers
+ fCSRHandlerMap[TCSR.TAddress.VSSTATUS]:=CSRHandlerVSSTATUS;
+ fCSRHandlerMap[TCSR.TAddress.VSIE]:=CSRHandlerVSIE;
+ fCSRHandlerMap[TCSR.TAddress.VSTVEC]:=CSRHandlerVSCSR;
+ fCSRHandlerMap[TCSR.TAddress.VSSCRATCH]:=CSRHandlerVSCSR;
+ fCSRHandlerMap[TCSR.TAddress.VSEPC]:=CSRHandlerVSCSR;
+ fCSRHandlerMap[TCSR.TAddress.VSCAUSE]:=CSRHandlerVSCSR;
+ fCSRHandlerMap[TCSR.TAddress.VSTVAL]:=CSRHandlerVSCSR;
+ fCSRHandlerMap[TCSR.TAddress.VSIP]:=CSRHandlerVSIP;
+ fCSRHandlerMap[TCSR.TAddress.VSATP]:=CSRHandlerVSCSR;
+ // Ssstateen CSR handlers
+ fCSRHandlerMap[TCSR.TAddress.MSTATEEN0]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.MSTATEEN1]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.MSTATEEN2]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.MSTATEEN3]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.SSTATEEN0]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.SSTATEEN1]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.SSTATEEN2]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.SSTATEEN3]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HSTATEEN0]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HSTATEEN1]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HSTATEEN2]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HSTATEEN3]:=CSRHandlerPrivileged;
 
  if fMachine.fConfiguration.fAIA then begin
 
@@ -33768,6 +33992,8 @@ begin
  fMTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
 
  fSTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
+
+ fVSTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
 
  fMachine.fRandomGeneratorLock.Acquire;
  try
@@ -33856,6 +34082,167 @@ begin
   end;
  end;
  FlushTLB(true);
+end;
+
+procedure TPasRISCV.THART.RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+begin
+ // Guest page faults: set htval to faulting GPA >> 2
+ fState.CSR.fData[TCSR.TAddress.HTVAL]:=aGuestAddress shr 2;
+ fState.CSR.fData[TCSR.TAddress.HTINST]:=0;
+ case aAccessType of
+  TMMU.TAccessType.LoadInstruction,
+  TMMU.TAccessType.Load:begin
+   SetException(TExceptionValue.LoadGuestPageFault,aGuestAddress,fState.PC);
+  end;
+  TMMU.TAccessType.Store:begin
+   SetException(TExceptionValue.StoreGuestPageFault,aGuestAddress,fState.PC);
+  end;
+  TMMU.TAccessType.Instruction:begin
+   SetException(TExceptionValue.InstructionGuestPageFault,aGuestAddress,fState.PC);
+  end;
+ end;
+ FlushTLB(true);
+end;
+
+function TPasRISCV.THART.GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
+// G-stage address translation: Guest Physical Address → Host Physical Address using hgatp
+// aIsImplicit: true when translating PTE addresses during VS-stage page walk
+var HGATP,PageTable,PageTableEntry,BitOffset,PageTableOffset,
+    VirtualMask,PhysicalMask,PageTableEntryShift,
+    PhysicalAddress:TPasRISCVUInt64;
+    PageTableEntryPointer:Pointer;
+    Levels,Index:TPasRISCVSizeInt;
+    GStageMode:TPasRISCVUInt64;
+begin
+ HGATP:=fState.CSR.fData[TCSR.TAddress.HGATP];
+ GStageMode:=(HGATP shr 60) and $f;
+
+ case GStageMode of
+  0:begin // Bare: no G-stage translation
+   result:=aGuestPhysical;
+   exit;
+  end;
+  8:begin // Sv39x4
+   Levels:=3;
+  end;
+  9:begin // Sv48x4
+   Levels:=4;
+  end;
+  10:begin // Sv57x4
+   Levels:=5;
+  end;
+  else begin
+   // Invalid mode: guest page fault
+   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   result:=0;
+   exit;
+  end;
+ end;
+
+ // Root page table from hgatp.PPN
+ PageTable:=(HGATP and $00000fffffffffff) shl TMMU.PAGE_SHIFT; // PPN field (44 bits)
+
+ // G-stage first level has 2 extra bits (16 KiB root page table)
+ BitOffset:=(Levels*TMMU.VPN_BITS)+(TMMU.PAGE_SHIFT-TMMU.VPN_BITS);
+
+ for Index:=0 to Levels-1 do begin
+
+  if Index=0 then begin
+   // First level of G-stage: 11 bits instead of 9 (2 extra bits)
+   PageTableOffset:=((aGuestPhysical shr BitOffset) and $7ff) shl 3;
+  end else begin
+   PageTableOffset:=((aGuestPhysical shr BitOffset) and TMMU.VPN_MASK) shl 3;
+  end;
+
+  PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(PageTable+PageTableOffset,SizeOf(TPasRISCVUInt64),true,nil);
+  if not assigned(PageTableEntryPointer) then begin
+   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   result:=0;
+   exit;
+  end;
+
+  PageTableEntry:=PPasRISCVUInt64(PageTableEntryPointer)^;
+
+  // Check Valid bit
+  if (PageTableEntry and TMMU.TPTEMasks.Valid)=0 then begin
+   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   result:=0;
+   exit;
+  end;
+
+  // Check for leaf
+  if (PageTableEntry and TMMU.TPTEMasks.Leaf)<>0 then begin
+   // Leaf PTE found
+   // Check permissions (G-stage permissions checked against access type)
+   case aAccessType of
+    TMMU.TAccessType.Instruction:begin
+     if (PageTableEntry and TMMU.TPTEMasks.Execute)=0 then begin
+      RaiseGuestPageFault(aGuestPhysical,aAccessType);
+      result:=0;
+      exit;
+     end;
+    end;
+    TMMU.TAccessType.Store:begin
+     if (PageTableEntry and TMMU.TPTEMasks.Write_)=0 then begin
+      RaiseGuestPageFault(aGuestPhysical,aAccessType);
+      result:=0;
+      exit;
+     end;
+    end;
+    else begin // Load, LoadInstruction
+     if (PageTableEntry and TMMU.TPTEMasks.Read_)=0 then begin
+      RaiseGuestPageFault(aGuestPhysical,aAccessType);
+      result:=0;
+      exit;
+     end;
+    end;
+   end;
+
+   // Check A/D bits
+   if (PageTableEntry and TMMU.TPTEMasks.Accessed)=0 then begin
+    RaiseGuestPageFault(aGuestPhysical,aAccessType);
+    result:=0;
+    exit;
+   end;
+   if (aAccessType=TMMU.TAccessType.Store) and ((PageTableEntry and TMMU.TPTEMasks.Dirty)=0) then begin
+    RaiseGuestPageFault(aGuestPhysical,aAccessType);
+    result:=0;
+    exit;
+   end;
+
+   // Check superpage alignment
+   VirtualMask:=(TPasRISCVUInt64(1) shl BitOffset)-1;
+   PhysicalMask:=((TPasRISCVUInt64(1) shl (TMMU.PHYSICAL_BITS-BitOffset))-1) shl BitOffset;
+   PageTableEntryShift:=PageTableEntry shl 2;
+
+   if ((PageTableEntryShift and VirtualMask) and TMMU.PAGE_PNMASK)<>0 then begin
+    // Misaligned superpage
+    RaiseGuestPageFault(aGuestPhysical,aAccessType);
+    result:=0;
+    exit;
+   end;
+
+   PhysicalAddress:=(PageTableEntryShift and PhysicalMask) or (aGuestPhysical and VirtualMask);
+   result:=PhysicalAddress;
+   exit;
+
+  end else begin
+   // Non-leaf PTE: follow to next level
+   if (PageTableEntry and TMMU.TPTEMasks.Write_)<>0 then begin
+    // Non-leaf with W set is invalid
+    RaiseGuestPageFault(aGuestPhysical,aAccessType);
+    result:=0;
+    exit;
+   end;
+   PageTable:=((PageTableEntry shr 10) shl TMMU.PAGE_SHIFT) and TMMU.PHYSICAL_MASK;
+   dec(BitOffset,TMMU.VPN_BITS);
+  end;
+
+ end;
+
+ // No leaf found after all levels
+ RaiseGuestPageFault(aGuestPhysical,aAccessType);
+ result:=0;
 end;
 
 procedure TPasRISCV.THART.FlushTLB(const aInterrupt:Boolean);
@@ -33996,17 +34383,19 @@ var Index:TPasRISCVSizeInt;
     EffectiveAccessType:TMMU.TAccessType;
     PageTable,BitOffset,PageTableOffset,PageTableEntry,VirtualMask,PhysicalMask,
     PageTableEntryShift,PageTableEntryAccessDirty,PhysicalAddress,PPN,
-    NAPOTBits,NAPOTMask:TPasRISCVUInt64;
+    NAPOTBits,NAPOTMask,PTEFetchAddress:TPasRISCVUInt64;
     PageTableEntryPointer:Pointer;
-    PBMTE,ADUE,NAPOT:boolean;
+    PBMTE,ADUE,NAPOT,TwoStage:boolean;
 begin
 
  CPUMode:=fState.Mode;
 
  MSTATUS:=fState.CSR.fData[THART.TCSR.TAddress.MSTATUS];
 
- // When running in virtualized mode (VS/VU), gate with henvcfg (prepared for Sha/H-extension)
- // Currently a no-op since henvcfg is initialized with all features enabled
+ // H-extension: two-stage translation when running in virtual mode
+ TwoStage:=fState.VirtualMode;
+
+ // When running in virtualized mode (VS/VU), gate with henvcfg
  if fState.VirtualMode then begin
   CSRHENVCFGMask:=fState.CSR.fData[THART.TCSR.TAddress.HENVCFG];
  end else begin
@@ -34076,6 +34465,19 @@ begin
      Levels:=5;
     end;
     else {TMMU.TMMUMode.None:}begin
+     // No VS-stage paging; but in virtual mode, still need G-stage
+     if TwoStage then begin
+      PhysicalAddress:=GStageTranslate(aVirtualAddress,aAccessType,false);
+      if fState.ExceptionValue<>TExceptionValue.None then begin
+       result:=0;
+       exit;
+      end;
+      if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
+       TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,PhysicalAddress and PAGE_ADDRESS_MASK,aAccessType);
+      end;
+      result:=PhysicalAddress;
+      exit;
+     end;
      if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
       TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,aVirtualAddress and PAGE_ADDRESS_MASK,aAccessType);
      end;
@@ -34100,7 +34502,19 @@ begin
 
     PageTableOffset:=((aVirtualAddress shr BitOffset) and TMMU.VPN_MASK) shl 3;
 
-    PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(PageTable+PageTableOffset,SizeOf(TPasRISCVUInt64),true,nil);
+    // H-extension: G-stage translate PTE fetch addresses during VS-stage walk
+    PTEFetchAddress:=PageTable+PageTableOffset;
+    if TwoStage then begin
+     PTEFetchAddress:=GStageTranslate(PTEFetchAddress,TMMU.TAccessType.Load,true);
+     if fState.ExceptionValue<>TExceptionValue.None then begin
+      // G-stage fault during PTE fetch: htinst encodes implicit access
+      fState.CSR.fData[TCSR.TAddress.HTINST]:=$3000; // pseudoinstruction for implicit G-stage fault
+      result:=0;
+      exit;
+     end;
+    end;
+
+    PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(PTEFetchAddress,SizeOf(TPasRISCVUInt64),true,nil);
     if not assigned(PageTableEntryPointer) then begin
      // Physical fault
      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
@@ -34236,6 +34650,15 @@ begin
 
          PhysicalAddress:=(PageTableEntryShift and PhysicalMask) or (aVirtualAddress and VirtualMask);
 
+        end;
+
+        // H-extension: G-stage translate the final guest physical address
+        if TwoStage then begin
+         PhysicalAddress:=GStageTranslate(PhysicalAddress,aAccessType,false);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          result:=0;
+          exit;
+         end;
         end;
 
         if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
@@ -35463,6 +35886,9 @@ begin
  if fState.Mode<TPasRISCV.THART.TMode.Machine then begin
   Mask:=Mask and fState.CSR.fData[TCSR.TAddress.MENVCFG];
  end;
+ if fState.VirtualMode then begin
+  Mask:=Mask and fState.CSR.fData[TCSR.TAddress.HENVCFG];
+ end;
  if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
   Mask:=Mask and fState.CSR.fData[TCSR.TAddress.SENVCFG];
  end;
@@ -35624,7 +36050,10 @@ procedure TPasRISCV.THART.CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRI
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if (fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))<>0 then begin
+ if fState.VirtualMode and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTVM))<>0) then begin
+  // VS-mode with VTVM: VirtualInstruction trap
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if (not fState.VirtualMode) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))<>0) then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
@@ -35713,8 +36142,37 @@ var rd:TRegister;
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else if fState.VirtualMode then begin
+  // V=1: sstc predicate - need mcounteren.TM && menvcfg.STCE && hcounteren.TM && henvcfg.STCE
+  if ((fState.CSR.fData[TCSR.TAddress.MCOUNTEREN] and TCSR.COUNTEREN_TM)=0) or
+     ((fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_STCE)=0) then begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  end else if ((fState.CSR.fData[TCSR.TAddress.HCOUNTEREN] and TCSR.COUNTEREN_TM)=0) or
+              ((fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_STCE)=0) then begin
+   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  end else if (fState.CSR.fData[TCSR.TAddress.HVICTL] and TCSR.HVICTL_VTI)<>0 then begin
+   // hvictl.VTI=1: trap instead of redirect
+   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  end else begin
+   rd:=TRegister((aInstruction shr 7) and $1f);
+   CSRValue:=fVSTIMECMP;
+   fState.CSR.Store(TCSR.TAddress.VSTIMECMP,CSROperation(aOperation,CSRValue,aRHS));
+   if (fMachine.fACLINTDevice.GetTime+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=fVSTIMECMP then begin
+    RaiseInterrupt(TInterruptValue.HypervisorTimer);
+   end else begin
+    ClearInterrupt(TInterruptValue.HypervisorTimer);
+   end;
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=CSRValue;
+   end;
+  end;
  end else begin
-  if IsCSRENVCFGEnabled(TCSR.ENVCFG_STCE) then begin
+  // Non-virtual S/HS/M-mode: sstc predicate - M-mode always allowed, S-mode needs mcounteren.TM && menvcfg.STCE
+  if (fState.Mode<TPasRISCV.THART.TMode.Machine) and
+     (((fState.CSR.fData[TCSR.TAddress.MCOUNTEREN] and TCSR.COUNTEREN_TM)=0) or
+      ((fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_STCE)=0)) then begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  end else begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    CSRValue:=fState.CSR.Load(aCSR);
    fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
@@ -35722,6 +36180,38 @@ begin
     RaiseInterrupt(TInterruptValue.SupervisorTimer);
    end else begin
     ClearInterrupt(TInterruptValue.SupervisorTimer);
+   end;
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=CSRValue;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  // VS-mode cannot directly access VSTIMECMP CSR
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  // HS/M-mode: sstc predicate for VSTIMECMP - M-mode always allowed, HS needs mcounteren.TM && menvcfg.STCE
+  if (fState.Mode<TPasRISCV.THART.TMode.Machine) and
+     (((fState.CSR.fData[TCSR.TAddress.MCOUNTEREN] and TCSR.COUNTEREN_TM)=0) or
+      ((fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_STCE)=0)) then begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  end else begin
+   // HS-mode access to VSTIMECMP (hypervisor sets guest timer)
+   rd:=TRegister((aInstruction shr 7) and $1f);
+   CSRValue:=fVSTIMECMP;
+   fState.CSR.Store(TCSR.TAddress.VSTIMECMP,CSROperation(aOperation,CSRValue,aRHS));
+   if (fMachine.fACLINTDevice.GetTime+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=fVSTIMECMP then begin
+    RaiseInterrupt(TInterruptValue.HypervisorTimer);
+   end else begin
+    ClearInterrupt(TInterruptValue.HypervisorTimer);
    end;
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=CSRValue;
@@ -35752,10 +36242,25 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue:TPasRISCVUInt64;
+    Value,CSRValue,AliasMask:TPasRISCVUInt64;
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else if fState.VirtualMode then begin
+  // V=1: sie redirects to vsie (MIE bits filtered by HIDELEG)
+  if (fState.CSR.fData[TCSR.TAddress.HVICTL] and TCSR.HVICTL_VTI)<>0 then begin
+   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  end else begin
+   rd:=TRegister((aInstruction shr 7) and $1f);
+   AliasMask:=fState.CSR.fData[TCSR.TAddress.HIDELEG] and $222; // VS-level interrupt enable bits
+   Value:=fState.CSR.fData[TCSR.TAddress.MIE] and AliasMask;
+   CSRValue:=CSROperation(aOperation,Value,aRHS) and AliasMask;
+   fState.CSR.fData[TCSR.TAddress.MIE]:=(fState.CSR.fData[TCSR.TAddress.MIE] and not AliasMask) or CSRValue;
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=Value;
+   end;
+   Checkinterrupts;
+  end;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.fData[TCSR.TAddress.MIE];
@@ -35793,6 +36298,20 @@ var rd:TRegister;
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else if fState.VirtualMode then begin
+  // V=1: sip redirects to vsip (HVIP bits filtered by HIDELEG), only VSSIP writable
+  if (fState.CSR.fData[TCSR.TAddress.HVICTL] and TCSR.HVICTL_VTI)<>0 then begin
+   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  end else begin
+   rd:=TRegister((aInstruction shr 7) and $1f);
+   Value:=fState.CSR.fData[TCSR.TAddress.MIP] and fState.CSR.fData[TCSR.TAddress.HIDELEG] and $222;
+   CSRValue:=CSROperation(aOperation,Value,aRHS) and $4; // Only VSSIP (bit 2) writable
+   fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=Value;
+   end;
+   Checkinterrupts;
+  end;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.fData[TCSR.TAddress.MIP];
@@ -35803,6 +36322,199 @@ begin
    fState.Registers[rd]:=CSRValue;
   end;
   Checkinterrupts;
+ end;
+end;
+
+// ============================================================================
+// H-extension CSR handlers
+// ============================================================================
+
+procedure TPasRISCV.THART.CSRHandlerHSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  // Mask writable bits; force VSXL=2 on read
+  CSRValue:=(CSRValue and TCSR.TMask.HSTATUS_MASK) or (TPasRISCVUInt64(2) shl TCSR.TMask.THSTATUSBit.VSXL);
+  fState.CSR.fData[TCSR.TAddress.HSTATUS]:=CSRValue;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value or (TPasRISCVUInt64(2) shl TCSR.TMask.THSTATUSBit.VSXL);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerHIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  // hip reflects VS-level pending interrupts projected from hvip/mip
+  Value:=fState.CSR.fData[TCSR.TAddress.HVIP] and fState.CSR.fData[TCSR.TAddress.HIDELEG];
+  // Only VSSIP (bit 2) is writable via hip
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and $4;
+  fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+  CheckInterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerHIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.HIE];
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and $1444;
+  fState.CSR.fData[TCSR.TAddress.HIE]:=CSRValue;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+  CheckInterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerHVIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.HVIP];
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  // Only VS-level interrupt bits (2, 6, 10) are writable
+  fState.CSR.fData[TCSR.TAddress.HVIP]:=CSRValue and $444;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+  CheckInterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVSCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+// Generic handler for VS-mode CSRs: vstvec, vsscratch, vsepc, vscause, vstval, vsatp
+// When V=1, these alias to actual S-CSRs (swap already done). When V=0, they access VS backing store.
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  // VS-mode cannot access VS* CSRs directly (they're S-CSRs from VS perspective)
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.Load(aCSR);
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  fState.CSR.Store(aCSR,CSRValue);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVSSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.VSSTATUS];
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and TCSR.TMask.SSTATUS;
+  // Force UXL=2
+  CSRValue:=(CSRValue and not TPasRISCVUInt64($300000000)) or TPasRISCVUInt64($200000000);
+  fState.CSR.fData[TCSR.TAddress.VSSTATUS]:=CSRValue;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  // vsip shows hvip & hideleg bits (QEMU: mip & HS_MODE_INTERRUPTS)
+  Value:=fState.CSR.fData[TCSR.TAddress.MIP] and $444;
+  // Only VSSIP (bit 2) writable
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and $4;
+  fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+  CheckInterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.VSIE];
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  fState.CSR.fData[TCSR.TAddress.VSIE]:=CSRValue;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+  CheckInterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerHGATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.HGATP];
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  fState.CSR.fData[TCSR.TAddress.HGATP]:=CSRValue;
+  FlushTLB(true);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
  end;
 end;
 
@@ -35834,6 +36546,7 @@ begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
+  // TODO-AIA: For V=1, redirect STOPI access to VSTOPI (guest view) instead of HS STOPI semantics.
   rd:=TRegister((aInstruction shr 7) and $1f);
   PendingValue:=InterruptsPending and TCSR.CSR_SEIP_MASK;
   if PendingValue<>0 then begin
@@ -35874,6 +36587,7 @@ begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
+  // TODO-AIA: For V=1, redirect STOPEI access to VSTOPEI (guest IMSIC file) instead of HS STOPEI semantics.
   rd:=TRegister((aInstruction shr 7) and $1f);
   IsWrite:=(rd<>TRegister.Zero) or (aOperation=TCSROperation.Swap);
   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
@@ -38411,10 +39125,23 @@ begin
        // Environment call instructions
        case (aInstruction shr 25) and $7f of
         $09:begin
-         // SFENCEVMA7
-         if ((fState.Mode>=THART.TMode.Supervisor) and
-             ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0)) or
-            (fState.Mode=THART.TMode.Machine) then begin
+         // SFENCEVMA
+         if fState.VirtualMode then begin
+          // In VS-mode: check hstatus.VTVM
+          if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTVM))<>0 then begin
+           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          end else begin
+           rs1:=TRegister((aInstruction shr 15) and $1f);
+           if rs1<>TRegister.Zero then begin
+            FlushTLBPage(true,fState.Registers[rs1]);
+           end else begin
+            FlushTLB(true);
+           end;
+           State.LRSC:=false;
+          end;
+         end else if ((fState.Mode>=THART.TMode.Supervisor) and
+                      ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0)) or
+                     (fState.Mode=THART.TMode.Machine) then begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           if rs1<>TRegister.Zero then begin
            FlushTLBPage(true,fState.Registers[rs1]);
@@ -38431,9 +39158,22 @@ begin
         $0c:begin
          // sinval.vma / sfence.w.inval / sfence.inval.ir (Svinval)
          // sinval.vma treated as sfence.vma; sfence.w.inval/sfence.inval.ir are NOPs
-         if ((fState.Mode>=THART.TMode.Supervisor) and
-             ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0)) or
-            (fState.Mode=THART.TMode.Machine) then begin
+         if fState.VirtualMode then begin
+          // In VS-mode: check hstatus.VTVM for sinval.vma
+          if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTVM))<>0 then begin
+           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          end else begin
+           rs1:=TRegister((aInstruction shr 15) and $1f);
+           if rs1<>TRegister.Zero then begin
+            FlushTLBPage(true,fState.Registers[rs1]);
+           end else begin
+            FlushTLB(true);
+           end;
+           State.LRSC:=false;
+          end;
+         end else if ((fState.Mode>=THART.TMode.Supervisor) and
+                      ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))=0)) or
+                     (fState.Mode=THART.TMode.Machine) then begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           if rs1<>TRegister.Zero then begin
            FlushTLBPage(true,fState.Registers[rs1]);
@@ -38448,14 +39188,56 @@ begin
          exit;
         end;
         $11:begin
-         // HFENCEBVMA7
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         // HFENCE.VVMA (was HFENCEBVMA)
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          // Flush TLB for VS-stage entries
+          FlushTLB(true);
+          fState.LRSC:=false;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end;
          result:=4;
          exit;
         end;
         $51:begin
-         // HFENCEGVMA7
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         // HFENCE.GVMA
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          // Flush TLB for G-stage entries
+          FlushTLB(true);
+          fState.LRSC:=false;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end;
+         result:=4;
+         exit;
+        end;
+        $16:begin
+         // HINVAL.VVMA (Svinval H-extension)
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          FlushTLB(true);
+          fState.LRSC:=false;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end;
+         result:=4;
+         exit;
+        end;
+        $66:begin
+         // HINVAL.GVMA (Svinval H-extension)
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          FlushTLB(true);
+          fState.LRSC:=false;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end;
          result:=4;
          exit;
         end;
@@ -38470,12 +39252,16 @@ begin
              exit;
             end;
             THART.TMode.Supervisor:begin
-             SetException(TExceptionValue.ECallSMode,fState.PC,fState.PC);
+             if fState.VirtualMode then begin
+              SetException(TExceptionValue.ECallVSMode,fState.PC,fState.PC);
+             end else begin
+              SetException(TExceptionValue.ECallSMode,fState.PC,fState.PC);
+             end;
              result:=4;
              exit;
             end;
             THART.TMode.Hypervisor:begin
-             SetException(TExceptionValue.ECallHMode,fState.PC,fState.PC);
+             SetException(TExceptionValue.ECallVSMode,fState.PC,fState.PC);
              result:=4;
              exit;
             end;
@@ -38507,24 +39293,53 @@ begin
              exit;
             end;
             $08:begin
-             // sret7
-             if ((fState.Mode>=THART.TMode.Supervisor) and
-                 ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TSR))=0)) or
-                (fState.Mode=THART.TMode.Machine) then begin
+             // sret
+             if fState.VirtualMode then begin
+              // In VS-mode: check hstatus.VTSR
+              if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTSR))<>0 then begin
+               SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+               result:=4;
+               exit;
+              end;
+              // VS-mode SRET: return within virtual world
+              Temporary:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+              SetMode(THART.TMode((Temporary shr TCSR.TMask.TSSTATUSBit.SPP) and 1));
+              // V stays 1
+              Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((ord(THART.TMode.User) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+              Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE)) or (((Temporary shr TCSR.TMask.TSSTATUSBit.SPIE) and 1) shl TCSR.TMask.TSSTATUSBit.SIE);
+              Temporary:=Temporary or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE); // SPIE=1 per spec
+              fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
+              fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
+              CheckInterrupts;
+              result:=4;
+              exit;
+             end else if ((fState.Mode>=THART.TMode.Supervisor) and
+                          ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TSR))=0)) or
+                         (fState.Mode=THART.TMode.Machine) then begin
 
+              // HS-mode SRET (V=0) — QEMU ordering: modify MSTATUS before swap
               Temporary:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
 
               SetMode(THART.TMode((Temporary shr TCSR.TMask.TSSTATUSBit.SPP) and 1));
 
-              // Set SPP to U
+              // Set SPP to U (before swap, so this lands in HS-mode backing)
               Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((ord(THART.TMode.User) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
 
-              // Set SIE to SPIE
+              // Set SIE to SPIE (before swap)
               Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE)) or (((Temporary shr TCSR.TMask.TSSTATUSBit.SPIE) and 1) shl TCSR.TMask.TSSTATUSBit.SIE);
 
-//            Temporary:=Temporary or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE);
+              // Set SPIE to 1 (spec requirement)
+              Temporary:=Temporary or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE);
 
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
+
+              // Check hstatus.SPV: should we return to virtual mode?
+              if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV))<>0 then begin
+               // Return to VS/VU mode: swap HS→VS CSRs
+               // Clear SPV first
+               fState.CSR.fData[TCSR.TAddress.HSTATUS]:=fState.CSR.fData[TCSR.TAddress.HSTATUS] and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV);
+               SetVirtualMode(true);
+              end;
 
               // Set PC to CSR.SEPC
               fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
@@ -38541,7 +39356,7 @@ begin
              end;
             end;
             $18:begin
-             // mret7
+             // mret
              if fState.Mode=THART.TMode.Machine then begin
 
               Temporary:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
@@ -38553,13 +39368,24 @@ begin
                Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPRV);
               end;
 
-              // Set MPP to U
+              // Determine if returning to virtual mode
+              fWasVirtual:=(Temporary and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV))<>0;
+
+              // Set MPP to U (before swap, so this lands in M-mode persistent state)
               Temporary:=(Temporary and not (TPasRISCVUInt64(3) shl TCSR.TMask.TMSTATUSBit.MPP)) or ((ord(THART.TMode.User) and 3) shl TCSR.TMask.TMSTATUSBit.MPP);
 
-              // Set MIE to MPIE
+              // Set MIE to MPIE (before swap)
               Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE)) or (((Temporary shr TCSR.TMask.TMSTATUSBit.MPIE) and 1) shl TCSR.TMask.TMSTATUSBit.MIE);
 
+              // Clear MPV (before swap)
+              Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
+
+              // Check MPV: should we return to virtual mode?
+              if fWasVirtual and (fState.Mode<>THART.TMode.Machine) then begin
+               SetVirtualMode(true);
+              end;
 
               // Set PC to CSR.MEPC
               fState.PC:=fState.CSR.fData[TCSR.TAddress.MEPC]-4;
@@ -38586,10 +39412,19 @@ begin
            // wfi
            case (aInstruction shr 25) and $7f of
             $08:begin
-             // wfi7
-             if ((fState.Mode>=THART.TMode.Supervisor) and
-                 ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))=0)) or
-                (fState.Mode=THART.TMode.Machine) then begin
+             // wfi
+             if fState.VirtualMode then begin
+              // In VS-mode: check hstatus.VTW
+              if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTW))<>0 then begin
+               SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+              end else begin
+               if InterruptsPending=0 then begin
+                SleepUntilNextInterrupt;
+               end;
+              end;
+             end else if ((fState.Mode>=THART.TMode.Supervisor) and
+                          ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))=0)) or
+                         (fState.Mode=THART.TMode.Machine) then begin
               if InterruptsPending=0 then begin
                SleepUntilNextInterrupt;
               end;
@@ -38647,18 +39482,265 @@ begin
        exit;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$4:{$else}$04,$0c,$14,$1c,$24,$2c,$34,$3c,$44,$4c,$54,$5c,$64,$6c,$74,$7c,$84,$8c,$94,$9c,$a4,$ac,$b4,$bc,$c4,$cc,$d4,$dc,$e4,$ec,$f4,$fc:{$endif}begin
-       // Zimop - mop.r.N / mop.rr.N (write 0 to rd)
-       if (aInstruction and $b0000000)=$80000000 then begin // bit[31]=1, bits[29:28]=00
-        rd:=TRegister((aInstruction shr 7) and $1f);
-        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-         fState.Registers[rd]:=0;
+       // funct3=4: HLV/HSV (H-extension) and Zimop
+       case (aInstruction shr 25) and $7f of
+        $30:begin
+         // HLV.B (rs2=0) / HLV.BU (rs2=1)
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          if ((aInstruction shr 20) and $1f)=0 then begin
+           // HLV.B - signed byte
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.Load(self,Address,1)))));
+           end;
+          end else begin
+           // HLV.BU - unsigned byte
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt8(fBus.Load(self,Address,1));
+           end;
+          end;
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
         end;
-        result:=4;
-        exit;
-       end else begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
+        $31:begin
+         // HSV.B
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          rs2:=TRegister((aInstruction shr 20) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])),1);
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        $32:begin
+         // HLV.H / HLV.HU / HLVX.HU
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          case (aInstruction shr 20) and $1f of
+           0:begin // HLV.H - signed half
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.Load(self,Address,2)))));
+            end;
+           end;
+           1:begin // HLV.HU - unsigned half
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt16(fBus.Load(self,Address,2));
+            end;
+           end;
+           3:begin // HLVX.HU - execute-permission unsigned half
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt16(fBus.Load(self,Address,2));
+            end;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           end;
+          end;
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        $33:begin
+         // HSV.H
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          rs2:=TRegister((aInstruction shr 20) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])),2);
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        $34:begin
+         // HLV.W / HLV.WU / HLVX.WU
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          case (aInstruction shr 20) and $1f of
+           0:begin // HLV.W - signed word
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.Load(self,Address,4)))));
+            end;
+           end;
+           1:begin // HLV.WU - unsigned word
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt32(fBus.Load(self,Address,4));
+            end;
+           end;
+           3:begin // HLVX.WU - execute-permission unsigned word
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             fState.Registers[rd]:=TPasRISCVUInt32(fBus.Load(self,Address,4));
+            end;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           end;
+          end;
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        $35:begin
+         // HSV.W
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          rs2:=TRegister((aInstruction shr 20) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs2])),4);
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        $36:begin
+         // HLV.D
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=fBus.Load(self,Address,8);
+          end;
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        $37:begin
+         // HSV.D
+         if fState.VirtualMode then begin
+          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end else if fState.Mode>=THART.TMode.Supervisor then begin
+          rs1:=TRegister((aInstruction shr 15) and $1f);
+          rs2:=TRegister((aInstruction shr 20) and $1f);
+          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          fBus.Store(self,Address,fState.Registers[rs2],8);
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+        else begin
+         // Zimop - mop.r.N / mop.rr.N (write 0 to rd)
+         if (aInstruction and $b0000000)=$80000000 then begin // bit[31]=1, bits[29:28]=00
+          rd:=TRegister((aInstruction shr 7) and $1f);
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=0;
+          end;
+          result:=4;
+          exit;
+         end else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
        end;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
@@ -42908,14 +43990,18 @@ begin
 end;
 
 procedure TPasRISCV.THART.HandleInterrupts;
-var PC,Status,PendingIRQs,IRQs,IDELEG:TPasRISCVUInt64;
+var PC,Status,HStatus,PendingIRQs,IRQs,IDELEG,HIDELEG_Val:TPasRISCVUInt64;
     Mode,Privilege:THART.TMode;
     InterruptValue:TPasRISCV.THART.TInterruptValue;
+    WasVirtual,DelegateToVS:Boolean;
 begin
 
  PendingIRQs:=InterruptsPending;
 
  if PendingIRQs<>0 then begin
+
+  WasVirtual:=fState.VirtualMode;
+  DelegateToVS:=false;
 
   Privilege:=TMode.Machine;
   IDELEG:=fState.CSR.fData[TCSR.TAddress.MIDELEG];
@@ -42924,10 +44010,11 @@ begin
 
   if IRQs=0 then begin
 
+   // All remaining interrupts are delegated from M to S/HS
    Privilege:=TMode.Supervisor;
-   IDELEG:=fState.CSR.fData[TCSR.TAddress.SIDELEG];
+{  IDELEG:=fState.CSR.fData[TCSR.TAddress.SIDELEG];
    IRQs:=PendingIRQs and not IDELEG;
-   PendingIRQs:=PendingIRQs and IDELEG;
+   PendingIRQs:=PendingIRQs and IDELEG;}
 
    // No TMode.User here, since User-level interrupts are optional for implementation were part of the
    // "n" extension that has been removed from the RISC-V specs.
@@ -42935,6 +44022,18 @@ begin
     Privilege:=TMode.User;
    end;}
 
+   // If in virtual mode, check hideleg for further delegation M→HS→VS
+   if WasVirtual then begin
+    HIDELEG_Val:=fState.CSR.fData[TCSR.TAddress.HIDELEG];
+    IRQs:=PendingIRQs and not HIDELEG_Val;
+    if IRQs=0 then begin
+     // All delegated to VS
+     IRQs:=PendingIRQs;
+     DelegateToVS:=true;
+    end;
+   end else begin
+    IRQs:=PendingIRQs;
+   end;
   end;
 
   Mode:=fState.Mode;
@@ -42952,6 +44051,9 @@ begin
 
     TMode.Machine:begin
 
+     if WasVirtual then begin
+      SetVirtualMode(false);
+     end;
      SetMode(THART.TMode.Machine);
 
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
@@ -42962,29 +44064,65 @@ begin
 
      fState.CSR.fData[TCSR.TAddress.MTVAL]:=0;
 
+     // H-extension: clear MTVAL2 and MTINST for M-mode interrupt traps
+     fState.CSR.fData[TCSR.TAddress.MTVAL2]:=0;
+     fState.CSR.fData[TCSR.TAddress.MTINST]:=0;
+
      Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
      Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE))) or (((Status shr TCSR.TMask.TMSTATUSBit.MIE) and 1) shl TCSR.TMask.TMSTATUSBit.MPIE);
      Status:=(Status and not (TPasRISCVUInt64(3) shl 11)) or (TPasRISCVUInt64(TPasRISCVUInt64(Mode) and 3) shl 11);
+     // Set MPV
+     if WasVirtual then begin
+      Status:=Status or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+     end else begin
+      Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+     end;
      fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
     end;
 
     TMode.Supervisor:begin
 
-     SetMode(THART.TMode.Supervisor);
+     if DelegateToVS then begin
+      // Trap to VS-mode (V stays 1, S-CSRs already contain VS values)
+      SetMode(THART.TMode.Supervisor);
 
-     fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
+      fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
+      fState.CSR.fData[TCSR.TAddress.SEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
+      fState.CSR.fData[TCSR.TAddress.SCAUSE]:=(TPasRISCVUInt64(1) shl 63) or TPasRISCVUInt64(InterruptValue);
+      fState.CSR.fData[TCSR.TAddress.STVAL]:=0;
 
-     fState.CSR.fData[TCSR.TAddress.SEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
+      Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+      Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
+      Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+      fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
-     fState.CSR.fData[TCSR.TAddress.SCAUSE]:=(TPasRISCVUInt64(1) shl 63) or TPasRISCVUInt64(InterruptValue);
+     end else begin
+      // Trap to HS-mode
+      if WasVirtual then begin
+       SetVirtualMode(false);
+       HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
+       HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV)) or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV);
+       HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP)) or ((TPasRISCVUInt64(Mode) and 1) shl TCSR.TMask.THSTATUSBit.SPVP);
+       fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
+      end;
 
-     fState.CSR.fData[TCSR.TAddress.STVAL]:=0;
+      SetMode(THART.TMode.Supervisor);
 
-     Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
-     Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
-     Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
-     fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
+      fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
+
+      fState.CSR.fData[TCSR.TAddress.SEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
+
+      fState.CSR.fData[TCSR.TAddress.SCAUSE]:=(TPasRISCVUInt64(1) shl 63) or TPasRISCVUInt64(InterruptValue);
+
+      fState.CSR.fData[TCSR.TAddress.STVAL]:=0;
+
+      Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+      Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
+      Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+      fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
+
+     end;
 
     end;
 
@@ -42999,9 +44137,100 @@ begin
 
 end;
 
+procedure TPasRISCV.THART.SwapHypervisorRegs;
+var MStatus,SavedMStatus:TPasRISCVUInt64;
+    Temp:TPasRISCVUInt64;
+begin
+ // Swap S-mode CSRs between HS-mode and VS-mode backing store.
+ // Called on every V transition (enter/exit virtualized mode).
+ // This follows the QEMU approach: actual swapping using separate backing fields.
+ MStatus:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+
+ if fState.VirtualMode then begin
+  // V=1 → V=0: save VS state, restore HS state
+  // Save current (VS) mstatus bits to vsstatus
+  fState.CSR.fData[TCSR.TAddress.VSSTATUS]:=MStatus and TCSR.TMask.MSTATUS_SWAP_MASK;
+  // Restore HS mstatus bits
+  fState.CSR.fData[TCSR.TAddress.MSTATUS]:=(MStatus and not TCSR.TMask.MSTATUS_SWAP_MASK) or fState.HSMode_MSTATUS;
+
+  // Swap stvec
+  Temp:=fState.CSR.fData[TCSR.TAddress.STVEC];
+  fState.CSR.fData[TCSR.TAddress.STVEC]:=fState.HSMode_STVEC;
+  fState.CSR.fData[TCSR.TAddress.VSTVEC]:=Temp;
+
+  // Swap sscratch
+  Temp:=fState.CSR.fData[TCSR.TAddress.SSCRATCH];
+  fState.CSR.fData[TCSR.TAddress.SSCRATCH]:=fState.HSMode_SSCRATCH;
+  fState.CSR.fData[TCSR.TAddress.VSSCRATCH]:=Temp;
+
+  // Swap sepc
+  Temp:=fState.CSR.fData[TCSR.TAddress.SEPC];
+  fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.HSMode_SEPC;
+  fState.CSR.fData[TCSR.TAddress.VSEPC]:=Temp;
+
+  // Swap scause
+  Temp:=fState.CSR.fData[TCSR.TAddress.SCAUSE];
+  fState.CSR.fData[TCSR.TAddress.SCAUSE]:=fState.HSMode_SCAUSE;
+  fState.CSR.fData[TCSR.TAddress.VSCAUSE]:=Temp;
+
+  // Swap stval
+  Temp:=fState.CSR.fData[TCSR.TAddress.STVAL];
+  fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.HSMode_STVAL;
+  fState.CSR.fData[TCSR.TAddress.VSTVAL]:=Temp;
+
+  // Swap satp
+  Temp:=fState.CSR.fData[TCSR.TAddress.SATP];
+  fState.CSR.fData[TCSR.TAddress.SATP]:=fState.HSMode_SATP;
+  fState.CSR.fData[TCSR.TAddress.VSATP]:=Temp;
+
+ end else begin
+  // V=0 → V=1: save HS state, restore VS state
+  // Save current (HS) mstatus bits to HSMode backing store
+  fState.HSMode_MSTATUS:=MStatus and TCSR.TMask.MSTATUS_SWAP_MASK;
+  // Restore VS mstatus bits
+  fState.CSR.fData[TCSR.TAddress.MSTATUS]:=(MStatus and not TCSR.TMask.MSTATUS_SWAP_MASK) or fState.CSR.fData[TCSR.TAddress.VSSTATUS];
+
+  // Swap stvec
+  fState.HSMode_STVEC:=fState.CSR.fData[TCSR.TAddress.STVEC];
+  fState.CSR.fData[TCSR.TAddress.STVEC]:=fState.CSR.fData[TCSR.TAddress.VSTVEC];
+
+  // Swap sscratch
+  fState.HSMode_SSCRATCH:=fState.CSR.fData[TCSR.TAddress.SSCRATCH];
+  fState.CSR.fData[TCSR.TAddress.SSCRATCH]:=fState.CSR.fData[TCSR.TAddress.VSSCRATCH];
+
+  // Swap sepc
+  fState.HSMode_SEPC:=fState.CSR.fData[TCSR.TAddress.SEPC];
+  fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.CSR.fData[TCSR.TAddress.VSEPC];
+
+  // Swap scause
+  fState.HSMode_SCAUSE:=fState.CSR.fData[TCSR.TAddress.SCAUSE];
+  fState.CSR.fData[TCSR.TAddress.SCAUSE]:=fState.CSR.fData[TCSR.TAddress.VSCAUSE];
+
+  // Swap stval
+  fState.HSMode_STVAL:=fState.CSR.fData[TCSR.TAddress.STVAL];
+  fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.CSR.fData[TCSR.TAddress.VSTVAL];
+
+  // Swap satp (HS satp ↔ vsatp)
+  fState.HSMode_SATP:=fState.CSR.fData[TCSR.TAddress.SATP];
+  fState.CSR.fData[TCSR.TAddress.SATP]:=fState.CSR.fData[TCSR.TAddress.VSATP];
+
+ end;
+end;
+
+procedure TPasRISCV.THART.SetVirtualMode(const aEnabled:Boolean);
+begin
+ if fState.VirtualMode<>aEnabled then begin
+  SwapHypervisorRegs;
+  fState.VirtualMode:=aEnabled;
+  FlushTLB(true);
+  UpdateMMU;
+ end;
+end;
+
 procedure TPasRISCV.THART.ExecuteException;
-var Status:TPasRISCVUInt64;
+var Status,ExceptionBit,HStatus:TPasRISCVUInt64;
     Mode,Privilege:THART.TMode;
+    WasVirtual,DelegateToVS:Boolean;
 begin
 
  if fState.ExceptionValue=TExceptionValue.DebuggerBreakpoint then begin
@@ -43025,13 +44254,17 @@ begin
  // "n" extension that has been removed from the RISC-V specs.
 
  Mode:=fState.Mode;
+ WasVirtual:=fState.VirtualMode;
+ ExceptionBit:=TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue);
 
- if (THART.TMode.Machine>Mode) and ((fState.CSR.fData[TCSR.TAddress.MEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
-//if (THART.TMode.Hypervisor>Mode) and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and (TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue)))<>0) then begin
-   Privilege:=THART.TMode.Supervisor;
-{ end else begin
-   Privilege:=THART.TMode.Hypervisor;
-  end;}
+ // Determine target privilege level
+ // Step 1: Check if delegated M→S via medeleg
+ if (THART.TMode.Machine>Mode) and ((fState.CSR.fData[TCSR.TAddress.MEDELEG] and ExceptionBit)<>0) then begin
+//if (THART.TMode.Hypervisor>Mode) and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and ExceptionBit)<>0) then begin
+  // Delegated to S-mode
+  Privilege:=THART.TMode.Supervisor;
+  // Step 2: If virtual mode, check if further delegated HS→VS via hedeleg
+  DelegateToVS:=WasVirtual and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and ExceptionBit)<>0);
  end else begin
   Privilege:=THART.TMode.Machine;
  end;
@@ -43040,25 +44273,66 @@ begin
 
   THART.TMode.Supervisor:begin
 
-   SetMode(THART.TMode.Supervisor);
+   if DelegateToVS then begin
+    // Trap to VS-mode: S-CSRs already contain VS values (no swap needed)
+    // Mode and VirtualMode stay as-is for VS
+    SetMode(THART.TMode.Supervisor);
+    // V remains 1
 
-   fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+    fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+    fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
+    fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
+    fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.ExceptionData;
 
-   fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
+    Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+    Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
+    Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+    fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
-   fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
+   end else begin
+    // Trap to HS-mode
+    if WasVirtual then begin
+     // Coming from virtual mode: swap VS→HS CSRs, set hstatus.SPV/SPVP
+     SetVirtualMode(false);
+     HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
+     HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV)) or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV); // SPV=1
+     HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP)) or ((TPasRISCVUInt64(Mode) and 1) shl TCSR.TMask.THSTATUSBit.SPVP); // SPVP=prev priv
+     // GVA: set if this was a guest-page-fault or virtual instruction fault
+     if (fState.ExceptionValue=TExceptionValue.InstructionGuestPageFault) or
+        (fState.ExceptionValue=TExceptionValue.LoadGuestPageFault) or
+        (fState.ExceptionValue=TExceptionValue.StoreGuestPageFault) or
+        (fState.ExceptionValue=TExceptionValue.VirtualInstruction) then begin
+      HStatus:=HStatus or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.GVA);
+     end else begin
+      HStatus:=HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.GVA);
+     end;
+     fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
+    end else begin
+     // Coming from HS/U mode: clear hstatus.SPV
+     HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
+     HStatus:=HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV);
+     fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
+    end;
 
-   fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.ExceptionData;
+    SetMode(THART.TMode.Supervisor);
 
-   Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
-   Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
-   Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
-   fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
+    fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+    fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
+    fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
+    fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.ExceptionData;
+
+    Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+    Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
+    Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+    fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
+   end;
 
   end;
 
   else {THART.TMode.Machine:}begin
 
+   // Trap to M-mode: set MPV to previous virtual state
+   SetVirtualMode(false);
    SetMode(THART.TMode.Machine);
 
    fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
@@ -43069,9 +44343,19 @@ begin
 
    fState.CSR.fData[TCSR.TAddress.MTVAL]:=fState.ExceptionData;
 
+   // H-extension: MTVAL2 and MTINST for M-mode traps
+   fState.CSR.fData[TCSR.TAddress.MTVAL2]:=0;
+   fState.CSR.fData[TCSR.TAddress.MTINST]:=0;
+
    Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
    Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE))) or (((Status shr TCSR.TMask.TMSTATUSBit.MIE) and 1) shl TCSR.TMask.TMSTATUSBit.MPIE);
    Status:=(Status and not (TPasRISCVUInt64(3) shl 11)) or (TPasRISCVUInt64(TPasRISCVUInt64(Mode) and 3) shl 11);
+   // Set MPV to indicate whether we came from virtual mode
+   if WasVirtual then begin
+    Status:=Status or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+   end else begin
+    Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+   end;
    fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
   end;
@@ -43091,9 +44375,9 @@ begin
 
  fState.Sleep:=true;
 
- if (InterruptsPending and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer))=0 then begin
+ if (InterruptsPending and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer or TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer))=0 then begin
 
-  ActiveTimers:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIE] and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer);
+  ActiveTimers:=fState.CSR.fData[TPasRISCV.THART.TCSR.TAddress.MIE] and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer or TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer);
 
   if ActiveTimers<>0 then begin
 
@@ -43116,6 +44400,15 @@ begin
       ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and
       (Time<STIMECMP) then begin
     CurrentSleepDuration:=TPasRISCVInt64(STIMECMP)-TPasRISCVInt64(Time);
+    if CurrentSleepDuration<SleepDuration then begin
+     SleepDuration:=CurrentSleepDuration;
+    end;
+   end;
+
+   if (fVSTIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
+      ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer)<>0) and
+      ((Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])<fVSTIMECMP) then begin
+    CurrentSleepDuration:=TPasRISCVInt64(fVSTIMECMP)-TPasRISCVInt64(Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA]);
     if CurrentSleepDuration<SleepDuration then begin
      SleepDuration:=CurrentSleepDuration;
     end;
@@ -43224,7 +44517,7 @@ procedure TPasRISCV.THART.CheckTimers;
 var Interrupts,Time:TPasRISCVUInt64;
     DoInterrupt:Boolean;
 begin
- Interrupts:=InterruptsNotPending and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer);
+ Interrupts:=InterruptsNotPending and (TPasRISCV.THART.TInterruptValueMasks.MachineTimer or TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer or TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer);
  if Interrupts<>0 then begin
   Time:=fACLINTDevice.GetTime;
   DoInterrupt:=false;
@@ -43235,6 +44528,11 @@ begin
   end;
   if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=fSTIMECMP) then begin
    if SetInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorTimer) then begin
+    DoInterrupt:=true;
+   end;
+  end;
+  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer)<>0) and ((Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=fVSTIMECMP) then begin
+   if SetInterrupt(TPasRISCV.THART.TInterruptValue.HypervisorTimer) then begin
     DoInterrupt:=true;
    end;
   end;
@@ -43982,6 +45280,14 @@ begin
   end;
   TInstructionSetArchitecture.TInstructionFormat.SFence:begin
    result:=Mnemonic+' '+GetRegisterName(rs1)+', '+GetRegisterName(rs2);
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.HLV:begin
+   // HLV.x rd, (rs1)
+   result:=Mnemonic+' '+GetRegisterName(rd)+', ('+GetRegisterName(rs1)+')';
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.HSV:begin
+   // HSV.x rs2, (rs1)
+   result:=Mnemonic+' '+GetRegisterName(rs2)+', ('+GetRegisterName(rs1)+')';
   end;
   TInstructionSetArchitecture.TInstructionFormat.AMO:begin
    Suffix:='';
