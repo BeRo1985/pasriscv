@@ -6706,6 +6706,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               // H-extension CSR handlers
+              procedure CSRHandlerHPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerHPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerHSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerHIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerHIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
@@ -33483,6 +33485,18 @@ begin
   TAddress.HVICTL:begin
    fData[TAddress.HVICTL]:=aValue and HVICTL_VALID_MASK;
   end;
+  TAddress.HEDELEG:begin
+   fData[TAddress.HEDELEG]:=aValue and CSR_HEDELEG_MASK;
+  end;
+  TAddress.HIDELEG:begin
+   fData[TAddress.HIDELEG]:=aValue and CSR_HIDELEG_MASK;
+  end;
+  TAddress.MEDELEG:begin
+   fData[TAddress.MEDELEG]:=aValue and CSR_MEDELEG_MASK;
+  end;
+  TAddress.MIDELEG:begin
+   fData[TAddress.MIDELEG]:=aValue and CSR_MIDELEG_MASK;
+  end;
 { TAddress.STIMECMPH:begin
    fData[TAddress.STIMECMP]:=((TPasRISCVUInt64(aValue) shl 32) and TPasRISCVUInt64($ffffffff00000000)) or
                              (fData[TAddress.STIMECMP] and TPasRISCVUInt64($00000000ffffffff));
@@ -33877,20 +33891,20 @@ begin
 
  // H-extension CSR handlers
  fCSRHandlerMap[TCSR.TAddress.HSTATUS]:=CSRHandlerHSTATUS;
- fCSRHandlerMap[TCSR.TAddress.HEDELEG]:=CSRHandlerPrivileged;
- fCSRHandlerMap[TCSR.TAddress.HIDELEG]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HEDELEG]:=CSRHandlerHPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HIDELEG]:=CSRHandlerHPrivileged;
  fCSRHandlerMap[TCSR.TAddress.HIE]:=CSRHandlerHIE;
- fCSRHandlerMap[TCSR.TAddress.HTIMEDELTA]:=CSRHandlerPrivileged;
- fCSRHandlerMap[TCSR.TAddress.HCOUNTEREN]:=CSRHandlerPrivileged;
- fCSRHandlerMap[TCSR.TAddress.HGEIE]:=CSRHandlerPrivileged;
- fCSRHandlerMap[TCSR.TAddress.HVICTL]:=CSRHandlerPrivileged;
- fCSRHandlerMap[TCSR.TAddress.HENVCFG]:=CSRHandlerPrivileged;
- fCSRHandlerMap[TCSR.TAddress.HTVAL]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HTIMEDELTA]:=CSRHandlerHPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HCOUNTEREN]:=CSRHandlerHPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HGEIE]:=CSRHandlerHPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HVICTL]:=CSRHandlerHPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HENVCFG]:=CSRHandlerHPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HTVAL]:=CSRHandlerHPrivileged;
  fCSRHandlerMap[TCSR.TAddress.HIP]:=CSRHandlerHIP;
  fCSRHandlerMap[TCSR.TAddress.HVIP]:=CSRHandlerHVIP;
- fCSRHandlerMap[TCSR.TAddress.HTINST]:=CSRHandlerPrivileged;
+ fCSRHandlerMap[TCSR.TAddress.HTINST]:=CSRHandlerHPrivileged;
  fCSRHandlerMap[TCSR.TAddress.HGATP]:=CSRHandlerHGATP;
- fCSRHandlerMap[TCSR.TAddress.HGEIP]:=CSRHandlerPrivilegedReadOnly;
+ fCSRHandlerMap[TCSR.TAddress.HGEIP]:=CSRHandlerHPrivilegedReadOnly;
  // VS-mode CSR handlers
  fCSRHandlerMap[TCSR.TAddress.VSSTATUS]:=CSRHandlerVSSTATUS;
  fCSRHandlerMap[TCSR.TAddress.VSIE]:=CSRHandlerVSIE;
@@ -34165,6 +34179,13 @@ begin
 
   // Check Valid bit
   if (PageTableEntry and TMMU.TPTEMasks.Valid)=0 then begin
+   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   result:=0;
+   exit;
+  end;
+
+  // Check reserved bits (bits 63:54 excluding PBMT/N)
+  if (PageTableEntry and TMMU.TPTEMasks.Reserved)<>0 then begin
    RaiseGuestPageFault(aGuestPhysical,aAccessType);
    result:=0;
    exit;
@@ -34507,7 +34528,8 @@ begin
     if TwoStage then begin
      PTEFetchAddress:=GStageTranslate(PTEFetchAddress,TMMU.TAccessType.Load,true);
      if fState.ExceptionValue<>TExceptionValue.None then begin
-      // G-stage fault during PTE fetch: htinst encodes implicit access
+      // G-stage fault during PTE fetch: stval should be original VA, not GPA
+      fState.ExceptionData:=aVirtualAddress;
       fState.CSR.fData[TCSR.TAddress.HTINST]:=$3000; // pseudoinstruction for implicit G-stage fault
       result:=0;
       exit;
@@ -34656,6 +34678,8 @@ begin
         if TwoStage then begin
          PhysicalAddress:=GStageTranslate(PhysicalAddress,aAccessType,false);
          if fState.ExceptionValue<>TExceptionValue.None then begin
+          // G-stage fault: stval should be original VA, not GPA
+          fState.ExceptionData:=aVirtualAddress;
           result:=0;
           exit;
          end;
@@ -35967,6 +35991,41 @@ begin
  end;
 end;
 
+procedure TPasRISCV.THART.CSRHandlerHPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  CSRValue:=fState.CSR.Load(aCSR);
+  fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerHPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  CSRValue:=fState.CSR.Load(aCSR);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
 procedure TPasRISCV.THART.CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 begin
 //writeln(aCSR);
@@ -36498,16 +36557,25 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerHGATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue:TPasRISCVUInt64;
+    Value,CSRValue,GStageMode:TPasRISCVUInt64;
 begin
  if fState.VirtualMode then begin
   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
  end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else if (fState.Mode=TPasRISCV.THART.TMode.Supervisor) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))<>0) then begin
+  // TVM=1 in mstatus: hgatp access traps from HS-mode
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.fData[TCSR.TAddress.HGATP];
   CSRValue:=CSROperation(aOperation,Value,aRHS);
+  // WARL: validate mode field - only Bare(0), Sv39x4(8), Sv48x4(9), Sv57x4(10) are valid
+  GStageMode:=(CSRValue shr 60) and $f;
+  if not (GStageMode in [0,8,9,10]) then begin
+   // Invalid mode: write Bare (mode=0) instead
+   CSRValue:=CSRValue and $0fffffffffffffff;
+  end;
   fState.CSR.fData[TCSR.TAddress.HGATP]:=CSRValue;
   FlushTLB(true);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -39203,12 +39271,15 @@ begin
          // HFENCE.GVMA
          if fState.VirtualMode then begin
           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else if fState.Mode<THART.TMode.Supervisor then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end else if (fState.Mode=THART.TMode.Supervisor) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))<>0) then begin
+          // TVM=1 in mstatus: HFENCE.GVMA traps from HS-mode
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end else begin
           // Flush TLB for G-stage entries
           FlushTLB(true);
           fState.LRSC:=false;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          end;
          result:=4;
          exit;
@@ -39230,11 +39301,14 @@ begin
          // HINVAL.GVMA (Svinval H-extension)
          if fState.VirtualMode then begin
           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else if fState.Mode<THART.TMode.Supervisor then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end else if (fState.Mode=THART.TMode.Supervisor) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))<>0) then begin
+          // TVM=1 in mstatus: HINVAL.GVMA traps from HS-mode
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         end else begin
           FlushTLB(true);
           fState.LRSC:=false;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          end;
          result:=4;
          exit;
@@ -39492,11 +39566,14 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           rs1:=TRegister((aInstruction shr 15) and $1f);
           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          if fState.ExceptionValue<>TExceptionValue.None then begin 
+           result:=4; 
+           exit; 
+          end;
           if ((aInstruction shr 20) and $1f)=0 then begin
            // HLV.B - signed byte
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -39508,10 +39585,6 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt8(fBus.Load(self,Address,1));
            end;
           end;
-          result:=4;
-          exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
          end;
@@ -39526,18 +39599,18 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
-          fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])),1);
-          result:=4;
-          exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
+          if fState.ExceptionValue<>TExceptionValue.None then begin
+           result:=4; 
+           exit; 
+          end else begin 
+           fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])),1);
+           result:=4;
+           exit;
+          end; 
          end;
         end;
         $32:begin
@@ -39550,11 +39623,19 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           rs1:=TRegister((aInstruction shr 15) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          // HLVX uses Instruction access type for execute-permission check
+          if ((aInstruction shr 20) and $1f)=3 then begin
+           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction,false);
+          end else begin
+           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          end; 
+          if fState.ExceptionValue<>TExceptionValue.None then begin 
+           result:=4; 
+           exit; 
+          end;
           case (aInstruction shr 20) and $1f of
            0:begin // HLV.H - signed half
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -39577,10 +39658,6 @@ begin
           end;
           result:=4;
           exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
          end;
         end;
         $33:begin
@@ -39593,16 +39670,15 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          if fState.ExceptionValue<>TExceptionValue.None then begin 
+           result:=4; 
+           exit; 
+          end;
           fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])),2);
-          result:=4;
-          exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
          end;
@@ -39617,11 +39693,19 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           rs1:=TRegister((aInstruction shr 15) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          // HLVX uses Instruction access type for execute-permission check
+          if ((aInstruction shr 20) and $1f)=3 then begin
+           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction,false);
+          end else begin
+           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          end; 
+          if fState.ExceptionValue<>TExceptionValue.None then begin 
+           result:=4; 
+           exit; 
+          end;
           case (aInstruction shr 20) and $1f of
            0:begin // HLV.W - signed word
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -39644,10 +39728,6 @@ begin
           end;
           result:=4;
           exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
          end;
         end;
         $35:begin
@@ -39660,16 +39740,15 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          if fState.ExceptionValue<>TExceptionValue.None then begin 
+           result:=4; 
+           exit; 
+          end;
           fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs2])),4);
-          result:=4;
-          exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
          end;
@@ -39684,18 +39763,14 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           rs1:=TRegister((aInstruction shr 15) and $1f);
           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
-          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-           fState.Registers[rd]:=fBus.Load(self,Address,8);
-          end;
-          result:=4;
-          exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+{         if fState.ExceptionValue<>TExceptionValue.None then begin 
+           result:=4; 
+           exit; 
+          end;}
           result:=4;
           exit;
          end;
@@ -39710,16 +39785,15 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
-         end else if fState.Mode>=THART.TMode.Supervisor then begin
+         end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
-          if fState.ExceptionValue<>TExceptionValue.None then begin result:=4; exit; end;
+          if fState.ExceptionValue<>TExceptionValue.None then begin 
+           result:=4; 
+           exit; 
+          end;
           fBus.Store(self,Address,fState.Registers[rs2],8);
-          result:=4;
-          exit;
-         end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
          end;
@@ -44342,8 +44416,15 @@ begin
    fState.CSR.fData[TCSR.TAddress.MTVAL]:=fState.ExceptionData;
 
    // H-extension: MTVAL2 and MTINST for M-mode traps
-   fState.CSR.fData[TCSR.TAddress.MTVAL2]:=0;
-   fState.CSR.fData[TCSR.TAddress.MTINST]:=0;
+   if (fState.ExceptionValue=TExceptionValue.InstructionGuestPageFault) or
+      (fState.ExceptionValue=TExceptionValue.LoadGuestPageFault) or
+      (fState.ExceptionValue=TExceptionValue.StoreGuestPageFault) then begin
+    fState.CSR.fData[TCSR.TAddress.MTVAL2]:=fState.CSR.fData[TCSR.TAddress.HTVAL];
+    fState.CSR.fData[TCSR.TAddress.MTINST]:=fState.CSR.fData[TCSR.TAddress.HTINST];
+   end else begin
+    fState.CSR.fData[TCSR.TAddress.MTVAL2]:=0;
+    fState.CSR.fData[TCSR.TAddress.MTINST]:=0;
+   end;
 
    Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
    Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE))) or (((Status shr TCSR.TMask.TMSTATUSBit.MIE) and 1) shl TCSR.TMask.TMSTATUSBit.MPIE);
