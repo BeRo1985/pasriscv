@@ -34317,8 +34317,8 @@ begin
 
   end else begin
    // Non-leaf PTE: follow to next level
-   // Non-leaf with W set, or with D/A/U bits set, is invalid (QEMU/Spike check these)
-   if (PageTableEntry and (TMMU.TPTEMasks.Write_ or TMMU.TPTEMasks.Dirty or TMMU.TPTEMasks.Accessed or TMMU.TPTEMasks.User))<>0 then begin
+   // Non-leaf with W/D/A/U/PBMT/N bits set is invalid (QEMU/Spike check these)
+   if (PageTableEntry and (TMMU.TPTEMasks.Write_ or TMMU.TPTEMasks.Dirty or TMMU.TPTEMasks.Accessed or TMMU.TPTEMasks.User or TMMU.TPTEMasks.Attr))<>0 then begin
     RaiseGuestPageFault(aGuestPhysical,aAccessType);
     result:=0;
     exit;
