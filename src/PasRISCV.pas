@@ -3548,11 +3548,17 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     FM801_OPL3_DATA1=$6b;
                     FM801_POWERDOWN=$70;
                     FM801_BAR_SIZE=$80;
-                    // IRQ status bits
+                    // IRQ status bits (in IRQ_STATUS register)
                     FM801_IRQ_PLAYBACK=TPasRISCVUInt16(1 shl 8);
                     FM801_IRQ_CAPTURE=TPasRISCVUInt16(1 shl 9);
                     FM801_IRQ_VOLUME=TPasRISCVUInt16(1 shl 14);
                     FM801_IRQ_MPU=TPasRISCVUInt16(1 shl 15);
+                    // IRQ mask bits (in IRQ_MASK register) - SET=disabled, CLEAR=enabled
+                    FM801_IRQ_MASK_PLAYBACK=TPasRISCVUInt16(1 shl 0);
+                    FM801_IRQ_MASK_CAPTURE=TPasRISCVUInt16(1 shl 1);
+                    FM801_IRQ_MASK_VOLUME=TPasRISCVUInt16(1 shl 6);
+                    FM801_IRQ_MASK_MPU=TPasRISCVUInt16(1 shl 7);
+                    FM801_IRQ_MASK_ALL=TPasRISCVUInt16($00c3);
                     // Playback/Capture control bits
                     FM801_START=TPasRISCVUInt16(1 shl 5);
                     FM801_PAUSE=TPasRISCVUInt16(1 shl 6);
@@ -3623,6 +3629,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               // IO BAR callbacks
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              // Check if any unmasked IRQ is pending (mask bit CLEAR = enabled, status bit SET = pending)
+              function IRQPending:Boolean;
              public
               constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
               destructor Destroy; override;
@@ -21007,6 +21015,20 @@ begin
  fCaptureResamplerPosition:=0;
 end;
 
+function TPasRISCV.TFM801Device.IRQPending:Boolean;
+begin
+ // IRQ mask register: bit SET = disabled, bit CLEAR = enabled
+ // Mask bits are at different positions than status bits:
+ //   Mask bit 0 -> Status bit 8 (Playback)
+ //   Mask bit 1 -> Status bit 9 (Capture)
+ //   Mask bit 6 -> Status bit 14 (Volume)
+ //   Mask bit 7 -> Status bit 15 (MPU)
+ result:=(((fIRQMask and FM801_IRQ_MASK_PLAYBACK)=0) and ((fIRQStatus and FM801_IRQ_PLAYBACK)<>0)) or
+         (((fIRQMask and FM801_IRQ_MASK_CAPTURE)=0) and ((fIRQStatus and FM801_IRQ_CAPTURE)<>0)) or
+         (((fIRQMask and FM801_IRQ_MASK_VOLUME)=0) and ((fIRQStatus and FM801_IRQ_VOLUME)<>0)) or
+         (((fIRQMask and FM801_IRQ_MASK_MPU)=0) and ((fIRQStatus and FM801_IRQ_MPU)<>0));
+end;
+
 function TPasRISCV.TFM801Device.OnLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var Offset:TPasRISCVUInt16;
 begin
@@ -21030,7 +21052,7 @@ begin
   end;
   FM801_PLAY_COUNT:begin
    // Hardware counts down from (period_bytes-1) to 0; return remaining bytes in current period
-   if fPlayActive and (fPlaySize>0) then begin
+   if fPlayActive and (fPlaySize>0) and (fPlayPosition<fPlaySize) then begin
     result:=TPasRISCVUInt16((fPlaySize-fPlayPosition)-1);
    end else begin
     result:=fPlayCount;
@@ -21047,7 +21069,7 @@ begin
   end;
   FM801_CAPTURE_COUNT:begin
    // Hardware counts down from (period_bytes-1) to 0; return remaining bytes in current period
-   if fCaptureActive and (fCaptureSize>0) then begin
+   if fCaptureActive and (fCaptureSize>0) and (fCapturePosition<fCaptureSize) then begin
     result:=TPasRISCVUInt16((fCaptureSize-fCapturePosition)-1);
    end else begin
     result:=fCaptureCount;
@@ -21225,8 +21247,8 @@ begin
   end;
   FM801_IRQ_MASK:begin
    fIRQMask:=TPasRISCVUInt16(aValue);
-   // If masking out all pending sources, lower the IRQ line
-   if (fIRQStatus and (not fIRQMask))=0 then begin
+   // Check if any unmasked IRQ sources are still pending; if not, lower the line
+   if not IRQPending then begin
     LowerIRQ(0);
    end;
   end;
@@ -21234,7 +21256,7 @@ begin
    // Writing to IRQ_STATUS acknowledges (clears) bits
    fIRQStatus:=fIRQStatus and (not TPasRISCVUInt16(aValue));
    // Level-triggered PCI IRQ: lower the IRQ line when no unmasked IRQ sources remain pending
-   if (fIRQStatus and (not fIRQMask))=0 then begin
+   if not IRQPending then begin
     LowerIRQ(0);
    end;
   end;
@@ -21320,7 +21342,7 @@ begin
   if fPlayPosition>=fPlaySize then begin
    // Current buffer exhausted - fire IRQ and switch to next buffer
    fIRQStatus:=fIRQStatus or FM801_IRQ_PLAYBACK;
-   if (fIRQMask and FM801_IRQ_PLAYBACK)=0 then begin
+   if (fIRQMask and FM801_IRQ_MASK_PLAYBACK)=0 then begin
     RaiseIRQ(0,0);
    end;
    // Ping-pong: switch buffers
@@ -21515,7 +21537,7 @@ begin
   if fCapturePosition>=fCaptureSize then begin
    // Current buffer full - fire IRQ and switch to next buffer
    fIRQStatus:=fIRQStatus or FM801_IRQ_CAPTURE;
-   if (fIRQMask and FM801_IRQ_CAPTURE)=0 then begin
+   if (fIRQMask and FM801_IRQ_MASK_CAPTURE)=0 then begin
     RaiseIRQ(0,0);
    end;
    // Ping-pong
