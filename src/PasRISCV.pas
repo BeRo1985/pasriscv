@@ -3579,6 +3579,144 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    end;
               const FM801_RATES:array[0..10] of TPasRISCVUInt32=
                      (5500,8000,9600,11025,16000,19200,22050,32000,38400,44100,48000);
+              { TOPL3 - YMF262 OPL3 FM Synthesizer }
+              type TOPL3=class
+                    public
+                     const OPL3_NATIVE_RATE=49716; // 14.318 MHz / 288
+                           OPL3_RSM_FRAC=10;
+                           OPL3_KEY_NORMAL=TPasRISCVUInt8($01);
+                           OPL3_KEY_DRUM=TPasRISCVUInt8($02);
+                    public
+                     type TOPL3EnvelopeState=
+                           (
+                            Attack,
+                            Decay,
+                            Sustain,
+                            Release
+                           );
+                          TOPL3ChannelType=
+                           (
+                            TwoOp,
+                            FourOp,
+                            FourOpSecondary,
+                            Drum
+                           );
+                          POPL3Slot=^TOPL3Slot;
+                          TOPL3Slot=record
+                           fChannelIndex:TPasRISCVUInt8;
+                           fSlotIndex:TPasRISCVUInt8;
+                           fOut:TPasRISCVInt16;
+                           fFeedbackMod:TPasRISCVInt16;
+                           fModSource:PPasRISCVInt16;
+                           fPreviousOut:TPasRISCVInt16;
+                           fEnvelopeRouted:TPasRISCVUInt16;
+                           fEnvelopeOut:TPasRISCVUInt16;
+                           fEnvelopeState:TOPL3EnvelopeState;
+                           fEnvelopeKSL:TPasRISCVUInt8;
+                           fTremoloSource:PPasRISCVUInt8;
+                           fRegVibrato:TPasRISCVUInt8;
+                           fRegSustainType:TPasRISCVUInt8;
+                           fRegKSR:TPasRISCVUInt8;
+                           fRegMultiplier:TPasRISCVUInt8;
+                           fRegKSLMode:TPasRISCVUInt8;
+                           fRegTotalLevel:TPasRISCVUInt8;
+                           fRegAttackRate:TPasRISCVUInt8;
+                           fRegDecayRate:TPasRISCVUInt8;
+                           fRegSustainLevel:TPasRISCVUInt8;
+                           fRegReleaseRate:TPasRISCVUInt8;
+                           fRegWaveform:TPasRISCVUInt8;
+                           fKey:TPasRISCVUInt8;
+                           fPhaseReset:TPasRISCVUInt32;
+                           fPhaseAccumulator:TPasRISCVUInt32;
+                           fPhaseOut:TPasRISCVUInt16;
+                          end;
+                          POPL3Channel=^TOPL3Channel;
+                          TOPL3Channel=record
+                           fSlots:array[0..1] of POPL3Slot;
+                           fPair:POPL3Channel;
+                           fOutputSources:array[0..3] of PPasRISCVInt16;
+                           fChannelType:TOPL3ChannelType;
+                           fFrequencyNumber:TPasRISCVUInt16;
+                           fBlock:TPasRISCVUInt8;
+                           fFeedback:TPasRISCVUInt8;
+                           fConnection:TPasRISCVUInt8;
+                           fAlgorithm:TPasRISCVUInt8;
+                           fKeyScaleValue:TPasRISCVUInt8;
+                           fOutputEnableA:TPasRISCVUInt16;
+                           fOutputEnableB:TPasRISCVUInt16;
+                           fOutputEnableC:TPasRISCVUInt16;
+                           fOutputEnableD:TPasRISCVUInt16;
+                           fChannelIndex:TPasRISCVUInt8;
+                          end;
+                          TOPL3Channels=array[0..17] of TOPL3Channel;
+                          TOPL3Slots=array[0..35] of TOPL3Slot;
+                          TOPL3MixBuffer=array[0..3] of TPasRISCVInt32;
+                          TOPL3StereoSamples=array[0..1] of TPasRISCVInt16;
+                          TOPL3AddressLatch=array[0..1] of TPasRISCVUInt8;
+                    private
+                     fChannels:TOPL3Channels;
+                     fSlots:TOPL3Slots;
+                     fTimer:TPasRISCVUInt16;
+                     fEnvelopeTimer:TPasRISCVUInt64;
+                     fEnvelopeTimerRemainder:TPasRISCVUInt8;
+                     fEnvelopeTimerState:TPasRISCVUInt8;
+                     fEnvelopeAdd:TPasRISCVUInt8;
+                     fEnvelopeTimerLow:TPasRISCVUInt8;
+                     fNewMode:TPasRISCVUInt8;
+                     fNoteSelect:TPasRISCVUInt8;
+                     fRhythm:TPasRISCVUInt8;
+                     fVibratoPosition:TPasRISCVUInt8;
+                     fVibratoShift:TPasRISCVUInt8;
+                     fTremolo:TPasRISCVUInt8;
+                     fTremoloPosition:TPasRISCVUInt8;
+                     fTremoloShift:TPasRISCVUInt8;
+                     fNoiseLFSR:TPasRISCVUInt32;
+                     fZeroMod:TPasRISCVInt16;
+                     fMixBuffer:TOPL3MixBuffer;
+                     fRhythmHHBit2:TPasRISCVUInt8;
+                     fRhythmHHBit3:TPasRISCVUInt8;
+                     fRhythmHHBit7:TPasRISCVUInt8;
+                     fRhythmHHBit8:TPasRISCVUInt8;
+                     fRhythmTCBit3:TPasRISCVUInt8;
+                     fRhythmTCBit5:TPasRISCVUInt8;
+                     fRateRatio:TPasRISCVInt32;
+                     fSampleCounter:TPasRISCVInt32;
+                     fOldSamples:TOPL3StereoSamples;
+                     fCurrentSamples:TOPL3StereoSamples;
+                     function CalcExp(const aLevel:TPasRISCVUInt32):TPasRISCVInt16;
+                     function CalcWaveform(const aWaveform:TPasRISCVUInt8;const aPhase:TPasRISCVUInt16;const aEnvelope:TPasRISCVUInt16):TPasRISCVInt16;
+                     procedure UpdateKSL(const aSlot:POPL3Slot);
+                     procedure ProcessEnvelope(const aSlot:POPL3Slot);
+                     procedure ProcessPhase(const aSlot:POPL3Slot);
+                     procedure GenerateSlotOutput(const aSlot:POPL3Slot);
+                     procedure CalculateSlotFeedback(const aSlot:POPL3Slot);
+                     procedure SetupChannelAlgorithm(const aChannel:POPL3Channel);
+                     procedure UpdateChannelAlgorithm(const aChannel:POPL3Channel);
+                     procedure UpdateRhythmMode(const aData:TPasRISCVUInt8);
+                     procedure ChannelKeyOn(const aChannel:POPL3Channel);
+                     procedure ChannelKeyOff(const aChannel:POPL3Channel);
+                     procedure SlotKeyOn(const aSlot:POPL3Slot;const aKeyType:TPasRISCVUInt8);
+                     procedure SlotKeyOff(const aSlot:POPL3Slot;const aKeyType:TPasRISCVUInt8);
+                     procedure Set4OpMode(const aData:TPasRISCVUInt8);
+                     procedure WriteSlotReg20(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+                     procedure WriteSlotReg40(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+                     procedure WriteSlotReg60(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+                     procedure WriteSlotReg80(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+                     procedure WriteSlotRegE0(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+                     procedure WriteChannelRegA0(const aChannel:POPL3Channel;const aData:TPasRISCVUInt8);
+                     procedure WriteChannelRegB0(const aChannel:POPL3Channel;const aData:TPasRISCVUInt8);
+                     procedure WriteChannelRegC0(const aChannel:POPL3Channel;const aData:TPasRISCVUInt8);
+                     function ClipSample(const aSample:TPasRISCVInt32):TPasRISCVInt16;
+                     procedure ProcessSlot(const aSlot:POPL3Slot);
+                    public
+                     constructor Create;
+                     destructor Destroy; override;
+                     procedure DoReset(const aSampleRate:TPasRISCVUInt32);
+                     procedure WriteRegister(const aRegister:TPasRISCVUInt16;const aValue:TPasRISCVUInt8);
+                     procedure GenerateStereo(const aBuffer:PPasRISCVInt16);
+                     procedure GenerateResampledStereo(const aBuffer:PPasRISCVInt16);
+                     procedure GenerateStream(const aBuffer:PPasRISCVInt16;const aCount:TPasRISCVUInt32);
+                   end;
              private
               fSoundIO:TSoundIO;
               // Registers
@@ -3605,10 +3743,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fIRQStatus:TPasRISCVUInt16;
               fPowerDown:TPasRISCVUInt16;
               // OPL3
-              fOPL3AddressLatch:array[0..1] of TPasRISCVUInt8;
-              fOPL3Regs:array[0..1,0..255] of TPasRISCVUInt8;
-              fOPL3Status:TPasRISCVUInt8;
-              fOPL3Enabled:Boolean;
+              fOPL3AddressLatch:TOPL3.TOPL3AddressLatch;
+              fOPL3:TOPL3;
               // AC97 codec stub
               fAC97Regs:array[0..63] of TPasRISCVUInt16;
               // PCM DMA state
@@ -20957,6 +21093,7 @@ end;
 
 destructor TPasRISCV.TFM801Device.Destroy;
 begin
+ FreeAndNil(fOPL3);
  FreeAndNil(fFuncs[0]);
  inherited Destroy;
 end;
@@ -20990,10 +21127,15 @@ begin
  fPowerDown:=$0000;
 
  // OPL3
- FillChar(fOPL3AddressLatch,SizeOf(fOPL3AddressLatch),#0);
- FillChar(fOPL3Regs,SizeOf(fOPL3Regs),#0);
- fOPL3Status:=$00;
- fOPL3Enabled:=false;
+ FillChar(fOPL3AddressLatch,SizeOf(TOPL3.TOPL3AddressLatch),#0);
+ if not assigned(fOPL3) then begin
+  fOPL3:=TOPL3.Create;
+ end;
+ if assigned(fSoundIO) then begin
+  fOPL3.DoReset(fSoundIO.fSampleRate);
+ end else begin
+  fOPL3.DoReset(48000);
+ end;
 
  // AC97 stub - provide a valid codec
  FillChar(fAC97Regs,SizeOf(fAC97Regs),#0);
@@ -21129,11 +21271,11 @@ begin
    result:=fIRQStatus;
   end;
   FM801_OPL3_BANK0:begin
-   // OPL3 Status register read
-   result:=fOPL3Status;
+   // OPL3 Status register read (timer flags)
+   result:=$00; // No timer emulation, always report ready
   end;
   FM801_OPL3_BANK1:begin
-   result:=fOPL3Status;
+   result:=$00;
   end;
   FM801_POWERDOWN:begin
    result:=fPowerDown;
@@ -21278,10 +21420,8 @@ begin
   end;
   FM801_OPL3_DATA0:begin
    // OPL3 data write bank 0
-   fOPL3Regs[0,fOPL3AddressLatch[0]]:=TPasRISCVUInt8(aValue);
-   // Check for OPL3 mode enable (register $05 bank 1 = $01)
-   if (fOPL3AddressLatch[0]=$05) and ((TPasRISCVUInt8(aValue) and $01)<>0) then begin
-    fOPL3Enabled:=true;
+   if assigned(fOPL3) then begin
+    fOPL3.WriteRegister(TPasRISCVUInt16(fOPL3AddressLatch[0]),TPasRISCVUInt8(aValue));
    end;
   end;
   FM801_OPL3_BANK1:begin
@@ -21290,10 +21430,8 @@ begin
   end;
   FM801_OPL3_DATA1:begin
    // OPL3 data write bank 1
-   fOPL3Regs[1,fOPL3AddressLatch[1]]:=TPasRISCVUInt8(aValue);
-   // Check for OPL3 mode enable (register $05 bank 1 = $01)
-   if (fOPL3AddressLatch[1]=$05) and ((TPasRISCVUInt8(aValue) and $01)<>0) then begin
-    fOPL3Enabled:=true;
+   if assigned(fOPL3) then begin
+    fOPL3.WriteRegister(TPasRISCVUInt16($100) or TPasRISCVUInt16(fOPL3AddressLatch[1]),TPasRISCVUInt8(aValue));
    end;
   end;
   FM801_POWERDOWN:begin
@@ -21315,11 +21453,24 @@ var Remain,ToDo,CopyBytes,SampleFrameSize,Channels:TPasRISCVSizeInt;
     Sample8:TPasRISCVUInt8;
     SrcSamples,DstSamples:TPasRISCVSizeInt;
     p:PPasRISCVUInt8;
+    OPL3Buf:array[0..1] of TPasRISCVInt16;
+    OPL3Index:TPasRISCVSizeInt;
+    OPL3FloatDest:PPasRISCVFloatArray;
 begin
 
  // Output format: aCount stereo float frames = aCount * 2 * SizeOf(Float) bytes
  Remain:=aCount*2*SizeOf(TPasRISCVFloat);
  FillChar(aBuffer^,Remain,#0);
+
+ // Generate OPL3 FM synthesis audio (always active, even without PCM playback)
+ if assigned(fOPL3) then begin
+  OPL3FloatDest:=PPasRISCVFloatArray(aBuffer);
+  for OPL3Index:=0 to aCount-1 do begin
+   fOPL3.GenerateResampledStereo(@OPL3Buf[0]);
+   OPL3FloatDest^[OPL3Index*2]:=OPL3FloatDest^[OPL3Index*2]+(OPL3Buf[0]/32768.0);
+   OPL3FloatDest^[(OPL3Index*2)+1]:=OPL3FloatDest^[(OPL3Index*2)+1]+(OPL3Buf[1]/32768.0);
+  end;
+ end;
 
  if (not fPlayActive) or ((fPlayCtrl and FM801_PAUSE)<>0) then begin
   exit;
@@ -21673,6 +21824,1229 @@ begin
 
  end;
 
+end;
+
+{ TPasRISCV.TFM801Device.TOPL3 }
+
+constructor TPasRISCV.TFM801Device.TOPL3.Create;
+begin
+ inherited Create;
+end;
+
+destructor TPasRISCV.TFM801Device.TOPL3.Destroy;
+begin
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.DoReset(const aSampleRate:TPasRISCVUInt32);
+const ChannelSlotBase:array[0..17] of TPasRISCVUInt8=(0,1,2,6,7,8,12,13,14,18,19,20,24,25,26,30,31,32);
+var SlotIndex:TPasRISCVUInt32;
+    ChannelIndex:TPasRISCVUInt32;
+    BaseSlot:TPasRISCVUInt8;
+begin
+
+ FillChar(fChannels,SizeOf(TOPL3Channels),#0);
+ FillChar(fSlots,SizeOf(TOPL3Slots),#0);
+
+ fTimer:=0;
+ fEnvelopeTimer:=0;
+ fEnvelopeTimerRemainder:=0;
+ fEnvelopeTimerState:=0;
+ fEnvelopeAdd:=0;
+ fEnvelopeTimerLow:=0;
+
+ fNewMode:=0;
+ fNoteSelect:=0;
+ fRhythm:=0;
+
+ fVibratoPosition:=0;
+ fVibratoShift:=1;
+ fTremolo:=0;
+ fTremoloPosition:=0;
+ fTremoloShift:=4;
+
+ fNoiseLFSR:=1;
+ fZeroMod:=0;
+
+ FillChar(fMixBuffer,SizeOf(TOPL3MixBuffer),#0);
+
+ fRhythmHHBit2:=0;
+ fRhythmHHBit3:=0;
+ fRhythmHHBit7:=0;
+ fRhythmHHBit8:=0;
+ fRhythmTCBit3:=0;
+ fRhythmTCBit5:=0;
+
+ // Initialize slots
+ for SlotIndex:=0 to 35 do begin
+  fSlots[SlotIndex].fSlotIndex:=TPasRISCVUInt8(SlotIndex);
+  fSlots[SlotIndex].fModSource:=@fZeroMod;
+  fSlots[SlotIndex].fEnvelopeRouted:=$1ff;
+  fSlots[SlotIndex].fEnvelopeOut:=$1ff;
+  fSlots[SlotIndex].fEnvelopeState:=TOPL3EnvelopeState.Release;
+  fSlots[SlotIndex].fTremoloSource:=PPasRISCVUInt8(@fZeroMod);
+ end;
+
+ // Initialize channels and link slots
+ for ChannelIndex:=0 to 17 do begin
+
+  BaseSlot:=ChannelSlotBase[ChannelIndex];
+  fChannels[ChannelIndex].fSlots[0]:=@fSlots[BaseSlot];
+  fChannels[ChannelIndex].fSlots[1]:=@fSlots[BaseSlot+3];
+  fSlots[BaseSlot].fChannelIndex:=TPasRISCVUInt8(ChannelIndex);
+  fSlots[BaseSlot+3].fChannelIndex:=TPasRISCVUInt8(ChannelIndex);
+
+  // Set up 4-op channel pairs
+  if (ChannelIndex mod 9)<3 then begin
+   fChannels[ChannelIndex].fPair:=@fChannels[ChannelIndex+3];
+  end else if (ChannelIndex mod 9)<6 then begin
+   fChannels[ChannelIndex].fPair:=@fChannels[ChannelIndex-3];
+  end else begin
+   fChannels[ChannelIndex].fPair:=nil;
+  end;
+
+  fChannels[ChannelIndex].fOutputSources[0]:=@fZeroMod;
+  fChannels[ChannelIndex].fOutputSources[1]:=@fZeroMod;
+  fChannels[ChannelIndex].fOutputSources[2]:=@fZeroMod;
+  fChannels[ChannelIndex].fOutputSources[3]:=@fZeroMod;
+  fChannels[ChannelIndex].fChannelType:=TOPL3ChannelType.TwoOp;
+  fChannels[ChannelIndex].fOutputEnableA:=$ffff;
+  fChannels[ChannelIndex].fOutputEnableB:=$ffff;
+  fChannels[ChannelIndex].fOutputEnableC:=0;
+  fChannels[ChannelIndex].fOutputEnableD:=0;
+  fChannels[ChannelIndex].fChannelIndex:=TPasRISCVUInt8(ChannelIndex);
+
+  SetupChannelAlgorithm(@fChannels[ChannelIndex]);
+
+ end;
+
+ // Initialize resampler
+ if aSampleRate>0 then begin
+  fRateRatio:=TPasRISCVInt32((aSampleRate shl OPL3_RSM_FRAC) div OPL3_NATIVE_RATE);
+ end else begin
+  fRateRatio:=TPasRISCVInt32((48000 shl OPL3_RSM_FRAC) div OPL3_NATIVE_RATE);
+ end;
+
+ fSampleCounter:=0;
+ fOldSamples[0]:=0;
+ fOldSamples[1]:=0;
+ fCurrentSamples[0]:=0;
+ fCurrentSamples[1]:=0;
+
+end;
+
+function TPasRISCV.TFM801Device.TOPL3.CalcExp(const aLevel:TPasRISCVUInt32):TPasRISCVInt16;
+const ExpROM:array[0..255] of TPasRISCVUInt16=(
+       $7fa,$7f5,$7ef,$7ea,$7e4,$7df,$7da,$7d4,$7cf,$7c9,$7c4,$7bf,$7b9,$7b4,$7ae,$7a9,
+       $7a4,$79f,$799,$794,$78f,$78a,$784,$77f,$77a,$775,$770,$76a,$765,$760,$75b,$756,
+       $751,$74c,$747,$742,$73d,$738,$733,$72e,$729,$724,$71f,$71a,$715,$710,$70b,$706,
+       $702,$6fd,$6f8,$6f3,$6ee,$6e9,$6e5,$6e0,$6db,$6d6,$6d2,$6cd,$6c8,$6c4,$6bf,$6ba,
+       $6b5,$6b1,$6ac,$6a8,$6a3,$69e,$69a,$695,$691,$68c,$688,$683,$67f,$67a,$676,$671,
+       $66d,$668,$664,$65f,$65b,$657,$652,$64e,$649,$645,$641,$63c,$638,$634,$630,$62b,
+       $627,$623,$61e,$61a,$616,$612,$60e,$609,$605,$601,$5fd,$5f9,$5f5,$5f0,$5ec,$5e8,
+       $5e4,$5e0,$5dc,$5d8,$5d4,$5d0,$5cc,$5c8,$5c4,$5c0,$5bc,$5b8,$5b4,$5b0,$5ac,$5a8,
+       $5a4,$5a0,$59c,$599,$595,$591,$58d,$589,$585,$581,$57e,$57a,$576,$572,$56f,$56b,
+       $567,$563,$560,$55c,$558,$554,$551,$54d,$549,$546,$542,$53e,$53b,$537,$534,$530,
+       $52c,$529,$525,$522,$51e,$51b,$517,$514,$510,$50c,$509,$506,$502,$4ff,$4fb,$4f8,
+       $4f4,$4f1,$4ed,$4ea,$4e7,$4e3,$4e0,$4dc,$4d9,$4d6,$4d2,$4cf,$4cc,$4c8,$4c5,$4c2,
+       $4be,$4bb,$4b8,$4b5,$4b1,$4ae,$4ab,$4a8,$4a4,$4a1,$49e,$49b,$498,$494,$491,$48e,
+       $48b,$488,$485,$482,$47e,$47b,$478,$475,$472,$46f,$46c,$469,$466,$463,$460,$45d,
+       $45a,$457,$454,$451,$44e,$44b,$448,$445,$442,$43f,$43c,$439,$436,$433,$430,$42d,
+       $42a,$428,$425,$422,$41f,$41c,$419,$416,$414,$411,$40e,$40b,$408,$406,$403,$400);
+var Level:TPasRISCVUInt32;
+begin
+ Level:=aLevel;
+ if Level>$1fff then begin
+  Level:=$1fff;
+ end;
+ result:=TPasRISCVInt16((ExpROM[Level and $ff] shl 1) shr (Level shr 8));
+end;
+
+function TPasRISCV.TFM801Device.TOPL3.CalcWaveform(const aWaveform:TPasRISCVUInt8;const aPhase:TPasRISCVUInt16;const aEnvelope:TPasRISCVUInt16):TPasRISCVInt16;
+const LogSinROM:array[0..255] of TPasRISCVUInt16=(
+       $859,$6c3,$607,$58b,$52e,$4e4,$4a6,$471,$443,$41a,$3f5,$3d3,$3b5,$398,$37e,$365,
+       $34e,$339,$324,$311,$2ff,$2ed,$2dc,$2cd,$2bd,$2af,$2a0,$293,$286,$279,$26d,$261,
+       $256,$24b,$240,$236,$22c,$222,$218,$20f,$206,$1fd,$1f5,$1ec,$1e4,$1dc,$1d4,$1cd,
+       $1c5,$1be,$1b7,$1b0,$1a9,$1a2,$19b,$195,$18f,$188,$182,$17c,$177,$171,$16b,$166,
+       $160,$15b,$155,$150,$14b,$146,$141,$13c,$137,$133,$12e,$129,$125,$121,$11c,$118,
+       $114,$10f,$10b,$107,$103,$0ff,$0fb,$0f8,$0f4,$0f0,$0ec,$0e9,$0e5,$0e2,$0de,$0db,
+       $0d7,$0d4,$0d1,$0cd,$0ca,$0c7,$0c4,$0c1,$0be,$0bb,$0b8,$0b5,$0b2,$0af,$0ac,$0a9,
+       $0a7,$0a4,$0a1,$09f,$09c,$099,$097,$094,$092,$08f,$08d,$08a,$088,$086,$083,$081,
+       $07f,$07d,$07a,$078,$076,$074,$072,$070,$06e,$06c,$06a,$068,$066,$064,$062,$060,
+       $05e,$05c,$05b,$059,$057,$055,$053,$052,$050,$04e,$04d,$04b,$04a,$048,$046,$045,
+       $043,$042,$040,$03f,$03e,$03c,$03b,$039,$038,$037,$035,$034,$033,$031,$030,$02f,
+       $02e,$02d,$02b,$02a,$029,$028,$027,$026,$025,$024,$023,$022,$021,$020,$01f,$01e,
+       $01d,$01c,$01b,$01a,$019,$018,$017,$017,$016,$015,$014,$014,$013,$012,$011,$011,
+       $010,$00f,$00f,$00e,$00d,$00d,$00c,$00c,$00b,$00a,$00a,$009,$009,$008,$008,$007,
+       $007,$007,$006,$006,$005,$005,$005,$004,$004,$004,$003,$003,$003,$002,$002,$002,
+       $002,$001,$001,$001,$001,$001,$001,$001,$000,$000,$000,$000,$000,$000,$000,$000);
+var Phase:TPasRISCVUInt16;
+    LogSinValue:TPasRISCVUInt16;
+    Negate:TPasRISCVUInt16;
+begin
+ 
+ Phase:=aPhase and $3ff;
+ 
+ case aWaveform of
+  
+  0:begin // Full sine
+   if (Phase and $200)<>0 then begin
+    Negate:=$ffff;
+   end else begin
+    Negate:=0;
+   end;
+   if (Phase and $100)<>0 then begin
+    LogSinValue:=LogSinROM[(Phase and $ff) xor $ff];
+   end else begin
+    LogSinValue:=LogSinROM[Phase and $ff];
+   end;
+   result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3)) xor TPasRISCVInt16(Negate);
+  end;
+  
+  1:begin // Half sine (positive half only)
+   if (Phase and $200)<>0 then begin
+    LogSinValue:=$1000;
+   end else if (Phase and $100)<>0 then begin
+    LogSinValue:=LogSinROM[(Phase and $ff) xor $ff];
+   end else begin
+    LogSinValue:=LogSinROM[Phase and $ff];
+   end;
+   result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
+  end;
+  
+  2:begin // Absolute sine (rectified)
+   if (Phase and $100)<>0 then begin
+    LogSinValue:=LogSinROM[(Phase and $ff) xor $ff];
+   end else begin
+    LogSinValue:=LogSinROM[Phase and $ff];
+   end;
+   result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
+  end;
+  
+  3:begin // Pseudo-rectified quarter sine
+   if (Phase and $100)<>0 then begin
+    LogSinValue:=$1000;
+   end else begin
+    LogSinValue:=LogSinROM[Phase and $ff];
+   end;
+   result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
+  end;
+  
+  4:begin // Double-rate sine
+   if (Phase and $300)=$100 then begin
+    Negate:=$ffff;
+   end else begin
+    Negate:=0;
+   end;
+   if (Phase and $200)<>0 then begin
+    LogSinValue:=$1000;
+   end else if (Phase and $80)<>0 then begin
+    LogSinValue:=LogSinROM[((Phase xor $ff) shl 1) and $ff];
+   end else begin
+    LogSinValue:=LogSinROM[(Phase shl 1) and $ff];
+   end;
+   result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3)) xor TPasRISCVInt16(Negate);
+  end;
+  
+  5:begin // Double-rate absolute sine
+   if (Phase and $200)<>0 then begin
+    LogSinValue:=$1000;
+   end else if (Phase and $80)<>0 then begin
+    LogSinValue:=LogSinROM[((Phase xor $ff) shl 1) and $ff];
+   end else begin
+    LogSinValue:=LogSinROM[(Phase shl 1) and $ff];
+   end;
+   result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
+  end;
+  
+  6:begin // Square wave
+   if (Phase and $200)<>0 then begin
+    Negate:=$ffff;
+   end else begin
+    Negate:=0;
+   end;
+   result:=CalcExp(TPasRISCVUInt32(aEnvelope) shl 3) xor TPasRISCVInt16(Negate);
+  end;
+  
+  7:begin // Derived sawtooth (exponential ramp)
+   if (Phase and $200)<>0 then begin
+    Negate:=$ffff;
+    Phase:=(Phase and $1ff) xor $1ff;
+   end else begin
+    Negate:=0;
+   end;
+   LogSinValue:=Phase shl 3;
+   result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3)) xor TPasRISCVInt16(Negate);
+  end;
+  
+  else begin
+   result:=0;
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.UpdateKSL(const aSlot:POPL3Slot);
+const KSLRom:array[0..15] of TPasRISCVUInt8=
+       (
+        0,32,40,45,48,51,53,55,56,58,59,60,61,62,63,64
+       );
+var Channel:POPL3Channel;
+    KSLValue:TPasRISCVInt16;
+begin
+ Channel:=@fChannels[aSlot^.fChannelIndex];
+ KSLValue:=TPasRISCVInt16(KSLRom[Channel^.fFrequencyNumber shr 6] shl 2)-TPasRISCVInt16(($08-Channel^.fBlock) shl 5);
+ if KSLValue<0 then begin
+  KSLValue:=0;
+ end;
+ aSlot^.fEnvelopeKSL:=TPasRISCVUInt8(KSLValue);
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.ProcessEnvelope(const aSlot:POPL3Slot);
+const KSLShift:array[0..3] of TPasRISCVUInt8=(8,1,2,0);
+      EGIncStep:array[0..3,0..3] of TPasRISCVUInt8=
+       (
+        (0,0,0,0),
+        (1,0,0,0),
+        (1,0,1,0),
+        (1,1,1,0)
+       );
+var Channel:POPL3Channel;
+    RegRate,KeyScale,Rate,RateHi,RateLo:TPasRISCVUInt8;
+    EGShift,Shift:TPasRISCVUInt8;
+    EnvRouted:TPasRISCVUInt16;
+    EnvInc:TPasRISCVInt16;
+    EnvOff:TPasRISCVUInt8;
+    DoReset:Boolean;
+    NonZero:Boolean;
+begin
+ 
+ Channel:=@fChannels[aSlot^.fChannelIndex];
+ 
+ aSlot^.fEnvelopeOut:=aSlot^.fEnvelopeRouted+(TPasRISCVUInt16(aSlot^.fRegTotalLevel) shl 2)+(aSlot^.fEnvelopeKSL shr KSLShift[aSlot^.fRegKSLMode])+aSlot^.fTremoloSource^;
+ 
+ DoReset:=false;
+ 
+ RegRate:=0;
+
+ if (aSlot^.fKey<>0) and (aSlot^.fEnvelopeState=TOPL3EnvelopeState.Release) then begin
+  
+  DoReset:=true;
+  RegRate:=aSlot^.fRegAttackRate;
+
+ end else begin
+  
+  case aSlot^.fEnvelopeState of
+   
+   TOPL3EnvelopeState.Attack:begin
+    RegRate:=aSlot^.fRegAttackRate;
+   end;
+   
+   TOPL3EnvelopeState.Decay:begin
+    RegRate:=aSlot^.fRegDecayRate;
+   end;
+   
+   TOPL3EnvelopeState.Sustain:begin
+    if aSlot^.fRegSustainType=0 then begin
+     RegRate:=aSlot^.fRegReleaseRate;
+    end;
+   end;
+   
+   TOPL3EnvelopeState.Release:begin
+    RegRate:=aSlot^.fRegReleaseRate;
+   end;
+
+  end;
+
+ end;
+
+ aSlot^.fPhaseReset:=ord(DoReset);
+ KeyScale:=Channel^.fKeyScaleValue shr ((aSlot^.fRegKSR xor 1) shl 1);
+ NonZero:=RegRate<>0;
+
+ Rate:=KeyScale+(RegRate shl 2);
+ RateHi:=Rate shr 2;
+ RateLo:=Rate and $03;
+
+ if (RateHi and $10)<>0 then begin
+  RateHi:=$0f;
+ end;
+
+ EGShift:=RateHi+fEnvelopeAdd;
+ Shift:=0;
+
+ if NonZero then begin
+  if RateHi<12 then begin
+   if fEnvelopeTimerState<>0 then begin
+    
+    case EGShift of
+    
+     12:begin
+      Shift:=1;
+     end;
+    
+     13:begin
+      Shift:=(RateLo shr 1) and $01;
+     end;
+    
+     14:begin
+      Shift:=RateLo and $01;
+     end;
+    
+    end;
+
+   end;
+  
+  end else begin
+
+   Shift:=(RateHi and $03)+EGIncStep[RateLo,fEnvelopeTimerLow];
+   if (Shift and $04)<>0 then begin
+    Shift:=$03;
+   end;
+  
+   if Shift=0 then begin
+    Shift:=fEnvelopeTimerState;
+   end;
+
+  end;
+
+ end;
+
+ EnvRouted:=aSlot^.fEnvelopeRouted;
+ EnvInc:=0;
+ EnvOff:=0;
+
+ // Instant attack
+ if DoReset and (RateHi=$0f) then begin
+  EnvRouted:=$00;
+ end;
+
+ // Envelope off check
+ if (aSlot^.fEnvelopeRouted and $1f8)=$1f8 then begin
+  EnvOff:=1;
+ end;
+
+ if (aSlot^.fEnvelopeState<>TOPL3EnvelopeState.Attack) and (not DoReset) and (EnvOff<>0) then begin
+  EnvRouted:=$1ff;
+ end;
+
+ case aSlot^.fEnvelopeState of
+  
+  TOPL3EnvelopeState.Attack:begin
+   if aSlot^.fEnvelopeRouted=0 then begin
+    aSlot^.fEnvelopeState:=TOPL3EnvelopeState.Decay;
+   end else if (aSlot^.fKey<>0) and (Shift>0) and (RateHi<>$0f) then begin
+    EnvInc:=TPasRISCVInt16((not aSlot^.fEnvelopeRouted) shr (4-Shift));
+   end;
+  end;
+  
+  TOPL3EnvelopeState.Decay:begin
+   if (aSlot^.fEnvelopeRouted shr 4)=aSlot^.fRegSustainLevel then begin
+    aSlot^.fEnvelopeState:=TOPL3EnvelopeState.Sustain;
+   end else if (EnvOff=0) and (not DoReset) and (Shift>0) then begin
+    EnvInc:=1 shl (Shift-1);
+   end;
+  end;
+  
+  TOPL3EnvelopeState.Sustain,
+  TOPL3EnvelopeState.Release:begin
+   if (EnvOff=0) and (not DoReset) and (Shift>0) then begin
+    EnvInc:=1 shl (Shift-1);
+   end;
+  end;
+
+ end;
+
+ aSlot^.fEnvelopeRouted:=(EnvRouted+TPasRISCVUInt16(EnvInc)) and $1ff;
+
+ // Key-on triggers attack
+ if DoReset then begin
+  aSlot^.fEnvelopeState:=TOPL3EnvelopeState.Attack;
+ end;
+
+ // Key-off triggers release
+ if aSlot^.fKey=0 then begin
+  aSlot^.fEnvelopeState:=TOPL3EnvelopeState.Release;
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.ProcessPhase(const aSlot:POPL3Slot);
+const FreqMultiplier:array[0..15] of TPasRISCVUInt8=
+       (
+        1,2,4,6,8,10,12,14,16,18,20,20,24,24,30,30
+       );
+var Channel:POPL3Channel;
+    FreqNum:TPasRISCVUInt16;
+    BaseFreq:TPasRISCVUInt32;
+    Phase:TPasRISCVUInt16;
+    VibRange:TPasRISCVInt8;
+    VibPos:TPasRISCVUInt8;
+    RhythmXOR,NoiseBit:TPasRISCVUInt8;
+begin
+ 
+ Channel:=@fChannels[aSlot^.fChannelIndex];
+ FreqNum:=Channel^.fFrequencyNumber;
+
+ // Vibrato modulation
+ if aSlot^.fRegVibrato<>0 then begin
+ 
+  VibRange:=TPasRISCVInt8((FreqNum shr 7) and 7);
+ 
+  VibPos:=fVibratoPosition;
+  if (VibPos and 3)=0 then begin
+   VibRange:=0;
+  end else if (VibPos and 1)<>0 then begin
+   VibRange:=VibRange shr 1;
+  end;
+ 
+  VibRange:=VibRange shr fVibratoShift;
+  if (VibPos and 4)<>0 then begin
+   VibRange:=-VibRange;
+  end;
+ 
+  FreqNum:=TPasRISCVUInt16(TPasRISCVInt16(FreqNum)+VibRange);
+
+ end;
+
+ BaseFreq:=(TPasRISCVUInt32(FreqNum) shl Channel^.fBlock) shr 1;
+ Phase:=TPasRISCVUInt16(aSlot^.fPhaseAccumulator shr 9);
+
+ if aSlot^.fPhaseReset<>0 then begin
+  aSlot^.fPhaseAccumulator:=0;
+ end;
+ aSlot^.fPhaseAccumulator:=aSlot^.fPhaseAccumulator+((BaseFreq*FreqMultiplier[aSlot^.fRegMultiplier]) shr 1);
+
+ // Store phase output
+ aSlot^.fPhaseOut:=Phase;
+
+ // Rhythm mode phase bits for hi-hat and cymbal
+ if aSlot^.fSlotIndex=13 then begin
+  fRhythmHHBit2:=(Phase shr 2) and 1;
+  fRhythmHHBit3:=(Phase shr 3) and 1;
+  fRhythmHHBit7:=(Phase shr 7) and 1;
+  fRhythmHHBit8:=(Phase shr 8) and 1;
+ end;
+
+ if (aSlot^.fSlotIndex=17) and ((fRhythm and $20)<>0) then begin
+  fRhythmTCBit3:=(Phase shr 3) and 1;
+  fRhythmTCBit5:=(Phase shr 5) and 1;
+ end;
+
+ // Rhythm mode special phase generation
+ if (fRhythm and $20)<>0 then begin
+
+  RhythmXOR:=(fRhythmHHBit2 xor fRhythmHHBit7) or (fRhythmHHBit3 xor fRhythmTCBit5) or (fRhythmTCBit3 xor fRhythmTCBit5);
+  
+  case aSlot^.fSlotIndex of
+  
+   13:begin // Hi-hat
+    aSlot^.fPhaseOut:=RhythmXOR shl 9;
+    if (RhythmXOR xor (fNoiseLFSR and 1))<>0 then begin
+     aSlot^.fPhaseOut:=aSlot^.fPhaseOut or $d0;
+    end else begin
+     aSlot^.fPhaseOut:=aSlot^.fPhaseOut or $34;
+    end;
+   end;
+  
+   16:begin // Snare drum
+    aSlot^.fPhaseOut:=(fRhythmHHBit8 shl 9) or ((fRhythmHHBit8 xor (fNoiseLFSR and 1)) shl 8);
+   end;
+  
+   17:begin // Top cymbal
+    aSlot^.fPhaseOut:=(RhythmXOR shl 9) or $80;
+   end;
+  
+  end;
+
+ end;
+
+ // Advance noise LFSR
+ NoiseBit:=((fNoiseLFSR shr 14) xor fNoiseLFSR) and $01;
+ fNoiseLFSR:=(fNoiseLFSR shr 1) or (TPasRISCVUInt32(NoiseBit) shl 22);
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.GenerateSlotOutput(const aSlot:POPL3Slot);
+begin
+ aSlot^.fOut:=CalcWaveform(aSlot^.fRegWaveform,aSlot^.fPhaseOut+TPasRISCVUInt16(aSlot^.fModSource^),aSlot^.fEnvelopeOut);
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.CalculateSlotFeedback(const aSlot:POPL3Slot);
+var Channel:POPL3Channel;
+begin
+ Channel:=@fChannels[aSlot^.fChannelIndex];
+ if Channel^.fFeedback<>0 then begin
+  aSlot^.fFeedbackMod:=TPasRISCVInt16((TPasRISCVInt16(aSlot^.fPreviousOut)+aSlot^.fOut) shr ($09-Channel^.fFeedback));
+ end else begin
+  aSlot^.fFeedbackMod:=0;
+ end;
+ aSlot^.fPreviousOut:=aSlot^.fOut;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.ProcessSlot(const aSlot:POPL3Slot);
+begin
+ CalculateSlotFeedback(aSlot);
+ ProcessEnvelope(aSlot);
+ ProcessPhase(aSlot);
+ GenerateSlotOutput(aSlot);
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.SlotKeyOn(const aSlot:POPL3Slot;const aKeyType:TPasRISCVUInt8);
+begin
+ aSlot^.fKey:=aSlot^.fKey or aKeyType;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.SlotKeyOff(const aSlot:POPL3Slot;const aKeyType:TPasRISCVUInt8);
+begin
+ aSlot^.fKey:=aSlot^.fKey and (not aKeyType);
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.SetupChannelAlgorithm(const aChannel:POPL3Channel);
+begin
+ 
+ if aChannel^.fChannelType=TOPL3ChannelType.Drum then begin
+ 
+  if (aChannel^.fChannelIndex=7) or (aChannel^.fChannelIndex=8) then begin
+
+   aChannel^.fSlots[0]^.fModSource:=@fZeroMod;
+   aChannel^.fSlots[1]^.fModSource:=@fZeroMod;
+
+  end else begin
+
+   case aChannel^.fAlgorithm and $01 of
+    $00:begin
+     aChannel^.fSlots[0]^.fModSource:=@aChannel^.fSlots[0]^.fFeedbackMod;
+     aChannel^.fSlots[1]^.fModSource:=@aChannel^.fSlots[0]^.fOut;
+    end;
+    $01:begin
+     aChannel^.fSlots[0]^.fModSource:=@aChannel^.fSlots[0]^.fFeedbackMod;
+     aChannel^.fSlots[1]^.fModSource:=@fZeroMod;
+    end;
+   end;
+
+  end;
+
+ end else if (aChannel^.fAlgorithm and $08)=0 then begin // 4-op primary: routing handled by secondary
+   
+  if (aChannel^.fAlgorithm and $04)<>0 then begin
+   
+   // 4-op mode: this is the secondary channel routing all 4 slots
+   
+   if assigned(aChannel^.fPair) then begin
+
+    aChannel^.fPair^.fOutputSources[0]:=@fZeroMod;
+    aChannel^.fPair^.fOutputSources[1]:=@fZeroMod;
+    aChannel^.fPair^.fOutputSources[2]:=@fZeroMod;
+    aChannel^.fPair^.fOutputSources[3]:=@fZeroMod;
+    
+    case aChannel^.fAlgorithm and $03 of
+
+     $00:begin // FM-FM chain
+      aChannel^.fPair^.fSlots[0]^.fModSource:=@aChannel^.fPair^.fSlots[0]^.fFeedbackMod;
+      aChannel^.fPair^.fSlots[1]^.fModSource:=@aChannel^.fPair^.fSlots[0]^.fOut;
+      aChannel^.fSlots[0]^.fModSource:=@aChannel^.fPair^.fSlots[1]^.fOut;
+      aChannel^.fSlots[1]^.fModSource:=@aChannel^.fSlots[0]^.fOut;
+      aChannel^.fOutputSources[0]:=@aChannel^.fSlots[1]^.fOut;
+      aChannel^.fOutputSources[1]:=@fZeroMod;
+      aChannel^.fOutputSources[2]:=@fZeroMod;
+      aChannel^.fOutputSources[3]:=@fZeroMod;
+     end;
+
+     $01:begin // FM-FM + direct
+      aChannel^.fPair^.fSlots[0]^.fModSource:=@aChannel^.fPair^.fSlots[0]^.fFeedbackMod;
+      aChannel^.fPair^.fSlots[1]^.fModSource:=@aChannel^.fPair^.fSlots[0]^.fOut;
+      aChannel^.fSlots[0]^.fModSource:=@fZeroMod;
+      aChannel^.fSlots[1]^.fModSource:=@aChannel^.fSlots[0]^.fOut;
+      aChannel^.fOutputSources[0]:=@aChannel^.fPair^.fSlots[1]^.fOut;
+      aChannel^.fOutputSources[1]:=@aChannel^.fSlots[1]^.fOut;
+      aChannel^.fOutputSources[2]:=@fZeroMod;
+      aChannel^.fOutputSources[3]:=@fZeroMod;
+     end;
+
+     $02:begin // Direct + FM chain
+      aChannel^.fPair^.fSlots[0]^.fModSource:=@aChannel^.fPair^.fSlots[0]^.fFeedbackMod;
+      aChannel^.fPair^.fSlots[1]^.fModSource:=@fZeroMod;
+      aChannel^.fSlots[0]^.fModSource:=@aChannel^.fPair^.fSlots[1]^.fOut;
+      aChannel^.fSlots[1]^.fModSource:=@aChannel^.fSlots[0]^.fOut;
+      aChannel^.fOutputSources[0]:=@aChannel^.fPair^.fSlots[0]^.fOut;
+      aChannel^.fOutputSources[1]:=@aChannel^.fSlots[1]^.fOut;
+      aChannel^.fOutputSources[2]:=@fZeroMod;
+      aChannel^.fOutputSources[3]:=@fZeroMod;
+     end;
+     
+     $03:begin // All additive outputs
+      aChannel^.fPair^.fSlots[0]^.fModSource:=@aChannel^.fPair^.fSlots[0]^.fFeedbackMod;
+      aChannel^.fPair^.fSlots[1]^.fModSource:=@fZeroMod;
+      aChannel^.fSlots[0]^.fModSource:=@aChannel^.fPair^.fSlots[1]^.fOut;
+      aChannel^.fSlots[1]^.fModSource:=@fZeroMod;
+      aChannel^.fOutputSources[0]:=@aChannel^.fPair^.fSlots[0]^.fOut;
+      aChannel^.fOutputSources[1]:=@aChannel^.fSlots[0]^.fOut;
+      aChannel^.fOutputSources[2]:=@aChannel^.fSlots[1]^.fOut;
+      aChannel^.fOutputSources[3]:=@fZeroMod;
+     end;
+
+    end;
+
+   end;
+
+  end else begin
+
+   // 2-op mode
+
+   case aChannel^.fAlgorithm and $01 of
+    
+    $00:begin // FM
+     aChannel^.fSlots[0]^.fModSource:=@aChannel^.fSlots[0]^.fFeedbackMod;
+     aChannel^.fSlots[1]^.fModSource:=@aChannel^.fSlots[0]^.fOut;
+     aChannel^.fOutputSources[0]:=@aChannel^.fSlots[1]^.fOut;
+     aChannel^.fOutputSources[1]:=@fZeroMod;
+     aChannel^.fOutputSources[2]:=@fZeroMod;
+     aChannel^.fOutputSources[3]:=@fZeroMod;
+    end;
+
+    $01:begin // Additive
+     aChannel^.fSlots[0]^.fModSource:=@aChannel^.fSlots[0]^.fFeedbackMod;
+     aChannel^.fSlots[1]^.fModSource:=@fZeroMod;
+     aChannel^.fOutputSources[0]:=@aChannel^.fSlots[0]^.fOut;
+     aChannel^.fOutputSources[1]:=@aChannel^.fSlots[1]^.fOut;
+     aChannel^.fOutputSources[2]:=@fZeroMod;
+     aChannel^.fOutputSources[3]:=@fZeroMod;
+    end;
+
+   end;
+
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.UpdateChannelAlgorithm(const aChannel:POPL3Channel);
+begin
+ aChannel^.fAlgorithm:=aChannel^.fConnection;
+
+ if fNewMode<>0 then begin
+  
+  if aChannel^.fChannelType=TOPL3ChannelType.FourOp then begin
+   
+   if assigned(aChannel^.fPair) then begin
+    aChannel^.fPair^.fAlgorithm:=$04 or (aChannel^.fConnection shl 1) or aChannel^.fPair^.fConnection;
+    aChannel^.fAlgorithm:=$08;
+    SetupChannelAlgorithm(aChannel^.fPair);
+   end;
+
+  end else if aChannel^.fChannelType=TOPL3ChannelType.FourOpSecondary then begin
+   
+   if assigned(aChannel^.fPair) then begin
+    aChannel^.fAlgorithm:=$04 or (aChannel^.fPair^.fConnection shl 1) or aChannel^.fConnection;
+    aChannel^.fPair^.fAlgorithm:=$08;
+    SetupChannelAlgorithm(aChannel);
+   end;
+
+  end else begin
+
+   SetupChannelAlgorithm(aChannel);
+
+  end;
+
+ end else begin
+ 
+  SetupChannelAlgorithm(aChannel);
+
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.UpdateRhythmMode(const aData:TPasRISCVUInt8);
+var ChannelNum:TPasRISCVUInt8;
+begin
+
+ fRhythm:=aData and $3f;
+
+ if (fRhythm and $20)<>0 then begin
+
+  // Rhythm mode enabled: configure channels 6-8 as drums
+  fChannels[6].fOutputSources[0]:=@fChannels[6].fSlots[1]^.fOut;
+  fChannels[6].fOutputSources[1]:=@fChannels[6].fSlots[1]^.fOut;
+  fChannels[6].fOutputSources[2]:=@fZeroMod;
+  fChannels[6].fOutputSources[3]:=@fZeroMod;
+  fChannels[7].fOutputSources[0]:=@fChannels[7].fSlots[0]^.fOut;
+  fChannels[7].fOutputSources[1]:=@fChannels[7].fSlots[0]^.fOut;
+  fChannels[7].fOutputSources[2]:=@fChannels[7].fSlots[1]^.fOut;
+  fChannels[7].fOutputSources[3]:=@fChannels[7].fSlots[1]^.fOut;
+  fChannels[8].fOutputSources[0]:=@fChannels[8].fSlots[0]^.fOut;
+  fChannels[8].fOutputSources[1]:=@fChannels[8].fSlots[0]^.fOut;
+  fChannels[8].fOutputSources[2]:=@fChannels[8].fSlots[1]^.fOut;
+  fChannels[8].fOutputSources[3]:=@fChannels[8].fSlots[1]^.fOut;
+
+  for ChannelNum:=6 to 8 do begin
+   fChannels[ChannelNum].fChannelType:=TOPL3ChannelType.Drum;
+  end;
+
+  SetupChannelAlgorithm(@fChannels[6]);
+  SetupChannelAlgorithm(@fChannels[7]);
+  SetupChannelAlgorithm(@fChannels[8]);
+
+  // Key on/off individual drum instruments
+  if (fRhythm and $01)<>0 then begin
+   SlotKeyOn(fChannels[7].fSlots[0],OPL3_KEY_DRUM);
+  end else begin
+   SlotKeyOff(fChannels[7].fSlots[0],OPL3_KEY_DRUM);
+  end;
+  
+  if (fRhythm and $02)<>0 then begin
+   SlotKeyOn(fChannels[8].fSlots[1],OPL3_KEY_DRUM);
+  end else begin
+   SlotKeyOff(fChannels[8].fSlots[1],OPL3_KEY_DRUM);
+  end;
+
+  if (fRhythm and $04)<>0 then begin
+   SlotKeyOn(fChannels[8].fSlots[0],OPL3_KEY_DRUM);
+  end else begin
+   SlotKeyOff(fChannels[8].fSlots[0],OPL3_KEY_DRUM);
+  end;
+  
+  if (fRhythm and $08)<>0 then begin
+   SlotKeyOn(fChannels[7].fSlots[1],OPL3_KEY_DRUM);
+  end else begin
+   SlotKeyOff(fChannels[7].fSlots[1],OPL3_KEY_DRUM);
+  end;
+
+  if (fRhythm and $10)<>0 then begin
+   SlotKeyOn(fChannels[6].fSlots[0],OPL3_KEY_DRUM);
+   SlotKeyOn(fChannels[6].fSlots[1],OPL3_KEY_DRUM);
+  end else begin
+   SlotKeyOff(fChannels[6].fSlots[0],OPL3_KEY_DRUM);
+   SlotKeyOff(fChannels[6].fSlots[1],OPL3_KEY_DRUM);
+  end;
+
+ end else begin
+
+  // Rhythm mode disabled: restore normal 2-op channels
+  for ChannelNum:=6 to 8 do begin
+   fChannels[ChannelNum].fChannelType:=TOPL3ChannelType.TwoOp;
+   SetupChannelAlgorithm(@fChannels[ChannelNum]);
+   SlotKeyOff(fChannels[ChannelNum].fSlots[0],OPL3_KEY_DRUM);
+   SlotKeyOff(fChannels[ChannelNum].fSlots[1],OPL3_KEY_DRUM);
+  end;
+ 
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.ChannelKeyOn(const aChannel:POPL3Channel);
+begin
+ if fNewMode<>0 then begin
+  if aChannel^.fChannelType=TOPL3ChannelType.FourOp then begin
+   SlotKeyOn(aChannel^.fSlots[0],OPL3_KEY_NORMAL);
+   SlotKeyOn(aChannel^.fSlots[1],OPL3_KEY_NORMAL);
+   if assigned(aChannel^.fPair) then begin
+    SlotKeyOn(aChannel^.fPair^.fSlots[0],OPL3_KEY_NORMAL);
+    SlotKeyOn(aChannel^.fPair^.fSlots[1],OPL3_KEY_NORMAL);
+   end;
+  end else if (aChannel^.fChannelType=TOPL3ChannelType.TwoOp) or (aChannel^.fChannelType=TOPL3ChannelType.Drum) then begin
+   SlotKeyOn(aChannel^.fSlots[0],OPL3_KEY_NORMAL);
+   SlotKeyOn(aChannel^.fSlots[1],OPL3_KEY_NORMAL);
+  end;
+ end else begin
+  SlotKeyOn(aChannel^.fSlots[0],OPL3_KEY_NORMAL);
+  SlotKeyOn(aChannel^.fSlots[1],OPL3_KEY_NORMAL);
+ end;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.ChannelKeyOff(const aChannel:POPL3Channel);
+begin
+ if fNewMode<>0 then begin
+  if aChannel^.fChannelType=TOPL3ChannelType.FourOp then begin
+   SlotKeyOff(aChannel^.fSlots[0],OPL3_KEY_NORMAL);
+   SlotKeyOff(aChannel^.fSlots[1],OPL3_KEY_NORMAL);
+   if assigned(aChannel^.fPair) then begin
+    SlotKeyOff(aChannel^.fPair^.fSlots[0],OPL3_KEY_NORMAL);
+    SlotKeyOff(aChannel^.fPair^.fSlots[1],OPL3_KEY_NORMAL);
+   end;
+  end else if (aChannel^.fChannelType=TOPL3ChannelType.TwoOp) or (aChannel^.fChannelType=TOPL3ChannelType.Drum) then begin
+   SlotKeyOff(aChannel^.fSlots[0],OPL3_KEY_NORMAL);
+   SlotKeyOff(aChannel^.fSlots[1],OPL3_KEY_NORMAL);
+  end;
+ end else begin
+  SlotKeyOff(aChannel^.fSlots[0],OPL3_KEY_NORMAL);
+  SlotKeyOff(aChannel^.fSlots[1],OPL3_KEY_NORMAL);
+ end;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.Set4OpMode(const aData:TPasRISCVUInt8);
+var Bit,ChannelNum:TPasRISCVUInt8;
+begin
+
+ for Bit:=0 to 5 do begin
+
+  ChannelNum:=Bit;
+
+  if Bit>=3 then begin
+   inc(ChannelNum,9-3);
+  end;
+
+  if ((aData shr Bit) and $01)<>0 then begin
+   fChannels[ChannelNum].fChannelType:=TOPL3ChannelType.FourOp;
+   fChannels[ChannelNum+3].fChannelType:=TOPL3ChannelType.FourOpSecondary;
+   UpdateChannelAlgorithm(@fChannels[ChannelNum]);
+  end else begin
+   fChannels[ChannelNum].fChannelType:=TOPL3ChannelType.TwoOp;
+   fChannels[ChannelNum+3].fChannelType:=TOPL3ChannelType.TwoOp;
+   UpdateChannelAlgorithm(@fChannels[ChannelNum]);
+   UpdateChannelAlgorithm(@fChannels[ChannelNum+3]);
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteSlotReg20(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+begin
+
+ if ((aData shr 7) and $01)<>0 then begin
+  aSlot^.fTremoloSource:=@fTremolo;
+ end else begin
+  aSlot^.fTremoloSource:=PPasRISCVUInt8(@fZeroMod);
+ end;
+
+ aSlot^.fRegVibrato:=(aData shr 6) and $01;
+ aSlot^.fRegSustainType:=(aData shr 5) and $01;
+ aSlot^.fRegKSR:=(aData shr 4) and $01;
+ aSlot^.fRegMultiplier:=aData and $0f;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteSlotReg40(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+begin
+ aSlot^.fRegKSLMode:=(aData shr 6) and $03;
+ aSlot^.fRegTotalLevel:=aData and $3f;
+ UpdateKSL(aSlot);
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteSlotReg60(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+begin
+ aSlot^.fRegAttackRate:=(aData shr 4) and $0f;
+ aSlot^.fRegDecayRate:=aData and $0f;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteSlotReg80(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+begin
+ aSlot^.fRegSustainLevel:=(aData shr 4) and $0f;
+ if aSlot^.fRegSustainLevel=$0f then begin
+  aSlot^.fRegSustainLevel:=$1f;
+ end;
+ aSlot^.fRegReleaseRate:=aData and $0f;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteSlotRegE0(const aSlot:POPL3Slot;const aData:TPasRISCVUInt8);
+begin
+ aSlot^.fRegWaveform:=aData and $07;
+ if fNewMode=0 then begin
+  aSlot^.fRegWaveform:=aSlot^.fRegWaveform and $03;
+ end;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteChannelRegA0(const aChannel:POPL3Channel;const aData:TPasRISCVUInt8);
+begin
+ 
+ if (fNewMode=0) or (aChannel^.fChannelType<>TOPL3ChannelType.FourOpSecondary) then begin
+ 
+  aChannel^.fFrequencyNumber:=(aChannel^.fFrequencyNumber and $300) or aData;
+  aChannel^.fKeyScaleValue:=(aChannel^.fBlock shl 1) or ((aChannel^.fFrequencyNumber shr ($09-fNoteSelect)) and $01);
+
+  UpdateKSL(aChannel^.fSlots[0]);
+  UpdateKSL(aChannel^.fSlots[1]);
+
+  if (fNewMode<>0) and (aChannel^.fChannelType=TOPL3ChannelType.FourOp) and assigned(aChannel^.fPair) then begin
+   aChannel^.fPair^.fFrequencyNumber:=aChannel^.fFrequencyNumber;
+   aChannel^.fPair^.fKeyScaleValue:=aChannel^.fKeyScaleValue;
+   UpdateKSL(aChannel^.fPair^.fSlots[0]);
+   UpdateKSL(aChannel^.fPair^.fSlots[1]);
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteChannelRegB0(const aChannel:POPL3Channel;const aData:TPasRISCVUInt8);
+begin
+
+ if (fNewMode=0) or (aChannel^.fChannelType<>TOPL3ChannelType.FourOpSecondary) then begin
+ 
+  aChannel^.fFrequencyNumber:=(aChannel^.fFrequencyNumber and $ff) or (TPasRISCVUInt16(aData and $03) shl 8);
+  aChannel^.fBlock:=(aData shr 2) and $07;
+  aChannel^.fKeyScaleValue:=(aChannel^.fBlock shl 1) or ((aChannel^.fFrequencyNumber shr ($09-fNoteSelect)) and $01);
+
+  UpdateKSL(aChannel^.fSlots[0]);
+  UpdateKSL(aChannel^.fSlots[1]);
+
+  if (fNewMode<>0) and (aChannel^.fChannelType=TOPL3ChannelType.FourOp) and assigned(aChannel^.fPair) then begin
+   aChannel^.fPair^.fFrequencyNumber:=aChannel^.fFrequencyNumber;
+   aChannel^.fPair^.fBlock:=aChannel^.fBlock;
+   aChannel^.fPair^.fKeyScaleValue:=aChannel^.fKeyScaleValue;
+   UpdateKSL(aChannel^.fPair^.fSlots[0]);
+   UpdateKSL(aChannel^.fPair^.fSlots[1]);
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteChannelRegC0(const aChannel:POPL3Channel;const aData:TPasRISCVUInt8);
+begin
+
+ aChannel^.fFeedback:=(aData and $0e) shr 1;
+ aChannel^.fConnection:=aData and $01;
+
+ UpdateChannelAlgorithm(aChannel);
+
+ if fNewMode<>0 then begin
+  aChannel^.fOutputEnableA:=TPasRISCVUInt16(((aData shr 4) and $01)*$ffff);
+  aChannel^.fOutputEnableB:=TPasRISCVUInt16(((aData shr 5) and $01)*$ffff);
+  aChannel^.fOutputEnableC:=TPasRISCVUInt16(((aData shr 6) and $01)*$ffff);
+  aChannel^.fOutputEnableD:=TPasRISCVUInt16(((aData shr 7) and $01)*$ffff);
+ end else begin
+  aChannel^.fOutputEnableA:=$ffff;
+  aChannel^.fOutputEnableB:=$ffff;
+  aChannel^.fOutputEnableC:=0;
+  aChannel^.fOutputEnableD:=0;
+ end;
+
+end;
+
+function TPasRISCV.TFM801Device.TOPL3.ClipSample(const aSample:TPasRISCVInt32):TPasRISCVInt16;
+begin
+ if aSample>32767 then begin
+  result:=32767;
+ end else if aSample<-32768 then begin
+  result:=-32768;
+ end else begin
+  result:=TPasRISCVInt16(aSample);
+ end;
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.WriteRegister(const aRegister:TPasRISCVUInt16;const aValue:TPasRISCVUInt8);
+const AddressToSlot:array[0..31] of TPasRISCVInt8=
+       (
+        0,1,2,3,4,5,-1,-1,6,7,8,9,10,11,-1,-1,
+        12,13,14,15,16,17,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+       );
+var Bank:TPasRISCVUInt8;
+    RegM:TPasRISCVUInt8;
+    SlotIdx:TPasRISCVInt8;
+begin
+ 
+ Bank:=(aRegister shr 8) and $01;
+ RegM:=aRegister and $ff;
+
+ case RegM and $f0 of
+  
+  $00:begin
+   
+   if Bank<>0 then begin
+    
+    case RegM and $0f of
+     
+     $04:begin
+      Set4OpMode(aValue);
+     end; 
+     
+     $05:begin
+      fNewMode:=aValue and $01;
+     end;
+
+    end;
+   end else begin
+ 
+    case RegM and $0f of
+ 
+     $08:begin
+      fNoteSelect:=(aValue shr 6) and $01;
+     end; 
+
+    end;
+
+   end;
+
+  end;
+
+  $20,$30:begin
+   if (RegM and $1f)<TPasRISCVUInt8(Length(AddressToSlot)) then begin
+    SlotIdx:=AddressToSlot[RegM and $1f];
+    if SlotIdx>=0 then begin
+     WriteSlotReg20(@fSlots[TPasRISCVUInt32(18)*Bank+TPasRISCVUInt32(SlotIdx)],aValue);
+    end;
+   end;
+  end;
+  
+  $40,$50:begin
+   if (RegM and $1f)<TPasRISCVUInt8(Length(AddressToSlot)) then begin
+    SlotIdx:=AddressToSlot[RegM and $1f];
+    if SlotIdx>=0 then begin
+     WriteSlotReg40(@fSlots[TPasRISCVUInt32(18)*Bank+TPasRISCVUInt32(SlotIdx)],aValue);
+    end;
+   end;
+  end;
+  
+  $60,$70:begin
+   if (RegM and $1f)<TPasRISCVUInt8(Length(AddressToSlot)) then begin
+    SlotIdx:=AddressToSlot[RegM and $1f];
+    if SlotIdx>=0 then begin
+     WriteSlotReg60(@fSlots[TPasRISCVUInt32(18)*Bank+TPasRISCVUInt32(SlotIdx)],aValue);
+    end;
+   end;
+  end;
+  
+  $80,$90:begin
+   if (RegM and $1f)<TPasRISCVUInt8(Length(AddressToSlot)) then begin
+    SlotIdx:=AddressToSlot[RegM and $1f];
+    if SlotIdx>=0 then begin
+     WriteSlotReg80(@fSlots[TPasRISCVUInt32(18)*Bank+TPasRISCVUInt32(SlotIdx)],aValue);
+    end;
+   end;
+  end;
+  
+  $e0,$f0:begin
+   if (RegM and $1f)<TPasRISCVUInt8(Length(AddressToSlot)) then begin
+    SlotIdx:=AddressToSlot[RegM and $1f];
+    if SlotIdx>=0 then begin
+     WriteSlotRegE0(@fSlots[TPasRISCVUInt32(18)*Bank+TPasRISCVUInt32(SlotIdx)],aValue);
+    end;
+   end;
+  end;
+  
+  $a0:begin
+   if (RegM and $0f)<9 then begin
+    WriteChannelRegA0(@fChannels[TPasRISCVUInt32(9)*Bank+(RegM and $0f)],aValue);
+   end;
+  end;
+  
+  $b0:begin
+   if (RegM=$bd) and (Bank=0) then begin
+    fTremoloShift:=(((aValue shr 7) xor 1) shl 1)+2;
+    fVibratoShift:=((aValue shr 6) and $01) xor 1;
+    UpdateRhythmMode(aValue);
+   end else if (RegM and $0f)<9 then begin
+    WriteChannelRegB0(@fChannels[TPasRISCVUInt32(9)*Bank+(RegM and $0f)],aValue);
+    if (aValue and $20)<>0 then begin
+     ChannelKeyOn(@fChannels[TPasRISCVUInt32(9)*Bank+(RegM and $0f)]);
+    end else begin
+     ChannelKeyOff(@fChannels[TPasRISCVUInt32(9)*Bank+(RegM and $0f)]);
+    end;
+   end;
+  end;
+  
+  $c0:begin
+   if (RegM and $0f)<9 then begin
+    WriteChannelRegC0(@fChannels[TPasRISCVUInt32(9)*Bank+(RegM and $0f)],aValue);
+   end;
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.GenerateStereo(const aBuffer:PPasRISCVInt16);
+var SlotIndex:TPasRISCVUInt32;
+    ChannelIndex:TPasRISCVUInt32;
+    Channel:POPL3Channel;
+    Accumulator:TPasRISCVInt16;
+    MixL,MixR:TPasRISCVInt32;
+    Shift:TPasRISCVUInt32;
+begin
+ 
+ // Process all 36 operator slots in hardware order
+ for SlotIndex:=0 to 35 do begin
+  ProcessSlot(@fSlots[SlotIndex]);
+ end;
+ 
+ // Mix all 18 channels to stereo output
+ MixL:=0;
+ MixR:=0;
+ for ChannelIndex:=0 to 17 do begin
+  Channel:=@fChannels[ChannelIndex];
+  Accumulator:=TPasRISCVInt16(Channel^.fOutputSources[0]^)+TPasRISCVInt16(Channel^.fOutputSources[1]^)+TPasRISCVInt16(Channel^.fOutputSources[2]^)+TPasRISCVInt16(Channel^.fOutputSources[3]^);
+  inc(MixL,TPasRISCVInt16(Accumulator and Channel^.fOutputEnableA));
+  inc(MixR,TPasRISCVInt16(Accumulator and Channel^.fOutputEnableB));
+ end;
+
+ PPasRISCVInt16Array(aBuffer)^[0]:=ClipSample(MixL);
+ PPasRISCVInt16Array(aBuffer)^[1]:=ClipSample(MixR);
+
+ // Update tremolo LFO
+ if (fTimer and $3f)=$3f then begin
+  fTremoloPosition:=(fTremoloPosition+1) mod 210;
+ end;
+ if fTremoloPosition<105 then begin
+  fTremolo:=fTremoloPosition shr fTremoloShift;
+ end else begin
+  fTremolo:=(210-fTremoloPosition) shr fTremoloShift;
+ end;
+
+ // Update vibrato LFO
+ if (fTimer and $3ff)=$3ff then begin
+  fVibratoPosition:=(fVibratoPosition+1) and 7;
+ end;
+
+ // Advance timer
+ inc(fTimer);
+
+ // Update envelope generator timer
+ if fEnvelopeTimerState<>0 then begin
+  Shift:=0;
+  while (Shift<13) and (((fEnvelopeTimer shr Shift) and 1)=0) do begin
+   inc(Shift);
+  end;
+  if Shift>12 then begin
+   fEnvelopeAdd:=0;
+  end else begin
+   fEnvelopeAdd:=TPasRISCVUInt8(Shift+1);
+  end;
+  fEnvelopeTimerLow:=TPasRISCVUInt8(fEnvelopeTimer and $3);
+ end;
+
+ if (fEnvelopeTimerRemainder<>0) or (fEnvelopeTimerState<>0) then begin
+  if fEnvelopeTimer=TPasRISCVUInt64($fffffffff) then begin
+   fEnvelopeTimer:=0;
+   fEnvelopeTimerRemainder:=1;
+  end else begin
+   inc(fEnvelopeTimer);
+   fEnvelopeTimerRemainder:=0;
+  end;
+ end;
+
+ fEnvelopeTimerState:=fEnvelopeTimerState xor 1;
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.GenerateResampledStereo(const aBuffer:PPasRISCVInt16);
+begin
+
+ while fSampleCounter>=fRateRatio do begin
+  fOldSamples[0]:=fCurrentSamples[0];
+  fOldSamples[1]:=fCurrentSamples[1];
+  GenerateStereo(@fCurrentSamples[0]);
+  dec(fSampleCounter,fRateRatio);
+ end;
+
+ PPasRISCVInt16Array(aBuffer)^[0]:=TPasRISCVInt16((TPasRISCVInt32(fOldSamples[0])*(fRateRatio-fSampleCounter)+TPasRISCVInt32(fCurrentSamples[0])*fSampleCounter) div fRateRatio);
+ PPasRISCVInt16Array(aBuffer)^[1]:=TPasRISCVInt16((TPasRISCVInt32(fOldSamples[1])*(fRateRatio-fSampleCounter)+TPasRISCVInt32(fCurrentSamples[1])*fSampleCounter) div fRateRatio);
+
+ inc(fSampleCounter,1 shl OPL3_RSM_FRAC);
+
+end;
+
+procedure TPasRISCV.TFM801Device.TOPL3.GenerateStream(const aBuffer:PPasRISCVInt16;const aCount:TPasRISCVUInt32);
+var Index:TPasRISCVUInt32;
+    Ptr:PPasRISCVInt16;
+begin
+ Ptr:=aBuffer;
+ for Index:=0 to aCount-1 do begin
+  GenerateResampledStereo(Ptr);
+  inc(Ptr,2);
+ end;
 end;
 
 { TPasRISCV.TVirtIODevice }
