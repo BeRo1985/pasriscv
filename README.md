@@ -75,7 +75,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
     - Mouse
     - Sound
       - VirtIO Sound (default)
-      - FM801 (PCI sound card)
+      - FM801 (PCI sound card, with PCM and OPL3 YMF262 support, if SoundMode=FM801)
     - GPU (2D only, no 3D/virgl support yet)
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
     - RTC (if RTCMode=VirtIO) — real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
