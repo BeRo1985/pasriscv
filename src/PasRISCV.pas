@@ -49271,13 +49271,13 @@ begin
 //AddISAExtension('zhinx');
 //AddISAExtension('zhinxmin');
 //AddISAExtension('sdtrig');
-//AddISAExtension('shcounterenw');
+  AddISAExtension('shcounterenw');
   AddISAExtension('sha');
-//AddISAExtension('shgatpa');
-//AddISAExtension('shtvala');
-//AddISAExtension('shvsatpa');
-//AddISAExtension('shvstvala');
-//AddISAExtension('shvstvecd');
+  AddISAExtension('shgatpa');
+  AddISAExtension('shtvala');
+  AddISAExtension('shvsatpa');
+  AddISAExtension('shvstvala');
+  AddISAExtension('shvstvecd');
  if fConfiguration.fAIA then begin
   AddISAExtension('smaia');
  end;
@@ -49301,7 +49301,7 @@ begin
 //AddISAExtension('ssdbltrp');
   AddISAExtension('ssnpm');
 //AddISAExtension('sspm');
-//AddISAExtension('ssstateen');
+  AddISAExtension('ssstateen');
 //AddISAExtension('ssstrict');
   AddISAExtension('sstc');
   AddISAExtension('sstvala');
