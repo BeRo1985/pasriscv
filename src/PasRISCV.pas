@@ -39767,10 +39767,13 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           rs1:=TRegister((aInstruction shr 15) and $1f);
           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
-{         if fState.ExceptionValue<>TExceptionValue.None then begin 
-           result:=4; 
-           exit; 
-          end;}
+          if fState.ExceptionValue<>TExceptionValue.None then begin
+           result:=4;
+           exit;
+          end;
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=fBus.Load(self,Address,8);
+          end;
           result:=4;
           exit;
          end;
