@@ -18312,11 +18312,13 @@ end;
 
 class function TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(const aFunc:TPasRISCV.TPCIFunc):TPasRISCVUInt32;
 begin
- result:=GetIRQID(aFunc.fDeviceID,aFunc.fIRQPin);
+ // Use the bus slot number (TPCIDevice.fDeviceID) for IRQ swizzling, not the PCI Device ID
+ result:=GetIRQID(aFunc.fDevice.fDeviceID,aFunc.fIRQPin);
 end;
 
 procedure TPasRISCV.TPCIBusDevice.AddBusDevice(const aDevice:TPasRISCV.TPCIDevice);
-var DeviceID:TPasRISCVUInt32;
+var DeviceID,FuncIndex:TPasRISCVUInt32;
+    Func:TPCIFunc;
 begin
  DeviceID:=0;
  while (DeviceID<TPCI.PCI_BUS_DEVS) and assigned(fDevices[DeviceID]) do begin
@@ -18324,6 +18326,16 @@ begin
  end;
  if DeviceID<TPCI.PCI_BUS_DEVS then begin
   fDevices[DeviceID]:=aDevice;
+  aDevice.fDeviceID:=DeviceID; // Store the bus slot number for IRQ routing
+  // Re-compute IRQ lines for all functions now that the slot is known
+  for FuncIndex:=0 to TPCI.PCI_DEV_FUNCS-1 do begin
+   Func:=aDevice.fFuncs[FuncIndex];
+   if assigned(Func) then begin
+    if Func.fIRQPin<>0 then begin
+     Func.fIRQLine:=fIRQs[PCIFuncIRQPinID(Func)];
+    end;
+   end;
+  end;
   inc(fCountDevices);
  end else begin
   raise EPasRISCV.Create('Too much devices on a single PCI bus');
@@ -21242,7 +21254,7 @@ begin
   FM801_GPIO_CTRL:begin
    fGPIOCtrl:=TPasRISCVUInt16(aValue);
   end;
-  FM801_GEN_CTRL:begin
+  FM801_GEN_CTRL:begin 
    fGenCtrl:=TPasRISCVUInt16(aValue);
   end;
   FM801_IRQ_MASK:begin
