@@ -6652,6 +6652,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure RaisePageFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               procedure RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               function GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
+              function ForcedVirtualTranslate(const aGuestVA:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType):TPasRISCVUInt64;
               function Load8(const aAddress:TPasRISCVUInt64):TPasRISCVUInt8; inline;
               procedure LoadRegisterS8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
               procedure LoadRegisterU8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
@@ -34191,10 +34192,27 @@ begin
    exit;
   end;
 
+  // Check PBMT: reserved without Svpbmt, mode 3 (11) always reserved
+  if (PageTableEntry and TMMU.TPTEMasks.PBMT)<>0 then begin
+   // G-stage: PBMT is reserved (G-stage PTEs don't support PBMT per spec)
+   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   result:=0;
+   exit;
+  end;
+
   // Check for leaf
   if (PageTableEntry and TMMU.TPTEMasks.Leaf)<>0 then begin
    // Leaf PTE found
+
+   // Check for invalid RWX combinations: R=0,W=1 is reserved regardless of X
+   if ((PageTableEntry and TMMU.TPTEMasks.Read_)=0) and ((PageTableEntry and TMMU.TPTEMasks.Write_)<>0) then begin
+    RaiseGuestPageFault(aGuestPhysical,aAccessType);
+    result:=0;
+    exit;
+   end;
+
    // Check permissions (G-stage permissions checked against access type)
+   // Note: G-stage does not check U-bit (U-bit has no meaning in G-stage per spec)
    case aAccessType of
     TMMU.TAccessType.Instruction:begin
      if (PageTableEntry and TMMU.TPTEMasks.Execute)=0 then begin
@@ -34264,6 +34282,60 @@ begin
  // No leaf found after all levels
  RaiseGuestPageFault(aGuestPhysical,aAccessType);
  result:=0;
+end;
+
+function TPasRISCV.THART.ForcedVirtualTranslate(const aGuestVA:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType):TPasRISCVUInt64;
+// HLV/HSV/HLVX: two-stage translation as if V=1, using vsatp for VS-stage and hgatp for G-stage.
+// Effective privilege for VS-stage comes from hstatus.SPVP.
+// MXR/SUM for VS-stage come from vsstatus (not current mstatus).
+// Matches QEMU's forced-virt MMU index and Spike's guest_load/guest_store with forced_virt.
+var SavedMMUMode:TMMU.TMMUMode;
+    SavedRootPageTable:TPasRISCVUInt64;
+    SavedVirtualMode:Boolean;
+    SavedMode:TMode;
+    SavedMSTATUS:TPasRISCVUInt64;
+    VSATP,HStatus,MSTATUS,VsStatus:TPasRISCVUInt64;
+begin
+ // Save current state
+ SavedMMUMode:=fMMUMode;
+ SavedRootPageTable:=fRootPageTable;
+ SavedVirtualMode:=fState.VirtualMode;
+ SavedMode:=fState.Mode;
+ SavedMSTATUS:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+
+ // Set up vsatp-based MMU for VS-stage translation
+ VSATP:=fState.CSR.fData[TCSR.TAddress.VSATP];
+ fMMUMode:=TMMU.TMMUMode(VSATP shr 60);
+ fRootPageTable:=(VSATP and ((TPasRISCVUInt64(1) shl 44)-1)) shl 12;
+
+ // Enable two-stage translation (AddressTranslate checks fState.VirtualMode for TwoStage)
+ fState.VirtualMode:=true;
+
+ // Set effective privilege from hstatus.SPVP
+ HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
+ if (HStatus and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP))<>0 then begin
+  fState.Mode:=TMode.Supervisor;
+ end else begin
+  fState.Mode:=TMode.User;
+ end;
+
+ // Set MXR/SUM from vsstatus instead of current mstatus, clear MPRV
+ MSTATUS:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+ VsStatus:=fState.CSR.fData[TCSR.TAddress.VSSTATUS];
+ MSTATUS:=MSTATUS and not (TCSR.TMask.TStatus.MXR or TCSR.TMask.TStatus.SUM or TCSR.TMask.TStatus.MPRV);
+ MSTATUS:=MSTATUS or (VsStatus and (TCSR.TMask.TStatus.MXR or TCSR.TMask.TStatus.SUM));
+ fState.CSR.fData[TCSR.TAddress.MSTATUS]:=MSTATUS;
+
+ // Perform two-stage translation (VS-stage via vsatp + G-stage via hgatp)
+ // NoTLBUpdate: don't pollute TLB with forced-virt entries
+ result:=AddressTranslate(aGuestVA,aAccessType,[TMMU.TAccessFlag.NoTLBUpdate]);
+
+ // Restore state
+ fState.CSR.fData[TCSR.TAddress.MSTATUS]:=SavedMSTATUS;
+ fState.Mode:=SavedMode;
+ fState.VirtualMode:=SavedVirtualMode;
+ fRootPageTable:=SavedRootPageTable;
+ fMMUMode:=SavedMMUMode;
 end;
 
 procedure TPasRISCV.THART.FlushTLB(const aInterrupt:Boolean);
@@ -36417,8 +36489,8 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  // hip reflects VS-level pending interrupts projected from hvip/mip
-  Value:=fState.CSR.fData[TCSR.TAddress.HVIP] and fState.CSR.fData[TCSR.TAddress.HIDELEG];
+  // hip reflects VS-level pending interrupts: (hvip | mip) projected through hideleg
+  Value:=(fState.CSR.fData[TCSR.TAddress.HVIP] or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
   // Only VSSIP (bit 2) is writable via hip
   CSRValue:=CSROperation(aOperation,Value,aRHS) and $4;
   fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
@@ -36523,8 +36595,8 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  // vsip shows hvip & hideleg bits (QEMU: mip & HS_MODE_INTERRUPTS)
-  Value:=fState.CSR.fData[TCSR.TAddress.MIP] and $444;
+  // vsip shows pending VS-level interrupts: (hvip | mip) filtered by hideleg
+  Value:=(fState.CSR.fData[TCSR.TAddress.HVIP] or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
   // Only VSSIP (bit 2) writable
   CSRValue:=CSROperation(aOperation,Value,aRHS) and $4;
   fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
@@ -36545,9 +36617,11 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  Value:=fState.CSR.fData[TCSR.TAddress.VSIE];
-  CSRValue:=CSROperation(aOperation,Value,aRHS);
-  fState.CSR.fData[TCSR.TAddress.VSIE]:=CSRValue;
+  // vsie shows enabled VS-level interrupts filtered by hideleg
+  Value:=fState.CSR.fData[TCSR.TAddress.HIE] and fState.CSR.fData[TCSR.TAddress.HIDELEG];
+  // Only hideleg-delegated bits are writable
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
+  fState.CSR.fData[TCSR.TAddress.HIE]:=(fState.CSR.fData[TCSR.TAddress.HIE] and not fState.CSR.fData[TCSR.TAddress.HIDELEG]) or CSRValue;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value;
   end;
@@ -36573,8 +36647,8 @@ begin
   // WARL: validate mode field - only Bare(0), Sv39x4(8), Sv48x4(9), Sv57x4(10) are valid
   GStageMode:=(CSRValue shr 60) and $f;
   if not (GStageMode in [0,8,9,10]) then begin
-   // Invalid mode: write Bare (mode=0) instead
-   CSRValue:=CSRValue and $0fffffffffffffff;
+   // Invalid mode: keep old value (QEMU/Spike behavior)
+   CSRValue:=Value;
   end;
   fState.CSR.fData[TCSR.TAddress.HGATP]:=CSRValue;
   FlushTLB(true);
@@ -39569,7 +39643,7 @@ begin
          end else begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           rs1:=TRegister((aInstruction shr 15) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
           if fState.ExceptionValue<>TExceptionValue.None then begin 
            result:=4; 
            exit; 
@@ -39602,7 +39676,7 @@ begin
          end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
           if fState.ExceptionValue<>TExceptionValue.None then begin
            result:=4; 
            exit; 
@@ -39628,9 +39702,9 @@ begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           // HLVX uses Instruction access type for execute-permission check
           if ((aInstruction shr 20) and $1f)=3 then begin
-           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction,false);
+           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction);
           end else begin
-           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
           end; 
           if fState.ExceptionValue<>TExceptionValue.None then begin 
            result:=4; 
@@ -39673,7 +39747,7 @@ begin
          end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
           if fState.ExceptionValue<>TExceptionValue.None then begin 
            result:=4; 
            exit; 
@@ -39698,9 +39772,9 @@ begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           // HLVX uses Instruction access type for execute-permission check
           if ((aInstruction shr 20) and $1f)=3 then begin
-           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction,false);
+           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction);
           end else begin
-           Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
           end; 
           if fState.ExceptionValue<>TExceptionValue.None then begin 
            result:=4; 
@@ -39743,7 +39817,7 @@ begin
          end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
           if fState.ExceptionValue<>TExceptionValue.None then begin 
            result:=4; 
            exit; 
@@ -39766,7 +39840,7 @@ begin
          end else begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           rs1:=TRegister((aInstruction shr 15) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Load,false);
+          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
           if fState.ExceptionValue<>TExceptionValue.None then begin
            result:=4;
            exit;
@@ -39791,7 +39865,7 @@ begin
          end else begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
           rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=GStageTranslate(fState.Registers[rs1],TMMU.TAccessType.Store,false);
+          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
           if fState.ExceptionValue<>TExceptionValue.None then begin 
            result:=4; 
            exit; 
