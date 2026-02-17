@@ -34124,13 +34124,17 @@ function TPasRISCV.THART.GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;co
 // aIsImplicit: true when translating PTE addresses during VS-stage page walk
 var HGATP,PageTable,PageTableEntry,BitOffset,PageTableOffset,
     VirtualMask,PhysicalMask,PageTableEntryShift,
-    PhysicalAddress:TPasRISCVUInt64;
+    PhysicalAddress,PageTableEntryAccessDirty:TPasRISCVUInt64;
     PageTableEntryPointer:Pointer;
     Levels,Index:TPasRISCVSizeInt;
     GStageMode:TPasRISCVUInt64;
+    ADUE:Boolean;
 begin
  HGATP:=fState.CSR.fData[TCSR.TAddress.HGATP];
  GStageMode:=(HGATP shr 60) and $f;
+
+ // ADUE: hardware A/D bit update enabled via henvcfg (gated by menvcfg)
+ ADUE:=((fState.CSR.fData[TCSR.TAddress.MENVCFG] and fState.CSR.fData[TCSR.TAddress.HENVCFG]) and TCSR.ENVCFG_ADUE)<>0;
 
  case GStageMode of
   0:begin // Bare: no G-stage translation
@@ -34237,16 +34241,28 @@ begin
     end;
    end;
 
-   // Check A/D bits
-   if (PageTableEntry and TMMU.TPTEMasks.Accessed)=0 then begin
-    RaiseGuestPageFault(aGuestPhysical,aAccessType);
-    result:=0;
-    exit;
-   end;
-   if (aAccessType=TMMU.TAccessType.Store) and ((PageTableEntry and TMMU.TPTEMasks.Dirty)=0) then begin
-    RaiseGuestPageFault(aGuestPhysical,aAccessType);
-    result:=0;
-    exit;
+   // Check A/D bits with ADUE support
+   if ADUE then begin
+    // Hardware A/D update: set A (and D for stores) automatically
+    PageTableEntryAccessDirty:=PageTableEntry or TMMU.TPTEMasks.Accessed;
+    if aAccessType=TMMU.TAccessType.Store then begin
+     PageTableEntryAccessDirty:=PageTableEntryAccessDirty or TMMU.TPTEMasks.Dirty;
+    end;
+    if PageTableEntry<>PageTableEntryAccessDirty then begin
+     PPasRISCVUInt64(PageTableEntryPointer)^:=PageTableEntryAccessDirty;
+    end;
+   end else begin
+    // No ADUE: fault if A=0 or (store and D=0)
+    if (PageTableEntry and TMMU.TPTEMasks.Accessed)=0 then begin
+     RaiseGuestPageFault(aGuestPhysical,aAccessType);
+     result:=0;
+     exit;
+    end;
+    if (aAccessType=TMMU.TAccessType.Store) and ((PageTableEntry and TMMU.TPTEMasks.Dirty)=0) then begin
+     RaiseGuestPageFault(aGuestPhysical,aAccessType);
+     result:=0;
+     exit;
+    end;
    end;
 
    // Check superpage alignment
@@ -34267,8 +34283,8 @@ begin
 
   end else begin
    // Non-leaf PTE: follow to next level
-   if (PageTableEntry and TMMU.TPTEMasks.Write_)<>0 then begin
-    // Non-leaf with W set is invalid
+   // Non-leaf with W set, or with D/A/U bits set, is invalid (QEMU/Spike check these)
+   if (PageTableEntry and (TMMU.TPTEMasks.Write_ or TMMU.TPTEMasks.Dirty or TMMU.TPTEMasks.Accessed or TMMU.TPTEMasks.User))<>0 then begin
     RaiseGuestPageFault(aGuestPhysical,aAccessType);
     result:=0;
     exit;
@@ -36433,7 +36449,8 @@ begin
    SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
   end else begin
    rd:=TRegister((aInstruction shr 7) and $1f);
-   Value:=fState.CSR.fData[TCSR.TAddress.MIP] and fState.CSR.fData[TCSR.TAddress.HIDELEG] and $222;
+   // V=1: sip reads (hvip | mip) filtered by hideleg (matching QEMU/Spike)
+   Value:=(fState.CSR.fData[TCSR.TAddress.HVIP] or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
    CSRValue:=CSROperation(aOperation,Value,aRHS) and $4; // Only VSSIP (bit 2) writable
    fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -43993,12 +44010,13 @@ end;
 
 function TPasRISCV.THART.InterruptsPending:TPasRISCVUInt64;
 begin
- result:=(TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.MIE];
+ // Include HVIP as active interrupt source (QEMU/Spike treat hvip as alias into pending bits)
+ result:=(TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP] or fState.CSR.fData[TCSR.TAddress.HVIP]) and fState.CSR.fData[TCSR.TAddress.MIE];
 end;
 
 function TPasRISCV.THART.InterruptsNotPending:TPasRISCVUInt64;
 begin
- result:=(not (TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP])) and fState.CSR.fData[TCSR.TAddress.MIE];
+ result:=(not (TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP] or fState.CSR.fData[TCSR.TAddress.HVIP])) and fState.CSR.fData[TCSR.TAddress.MIE];
 end;
 
 procedure TPasRISCV.THART.ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
