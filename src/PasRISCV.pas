@@ -49165,26 +49165,26 @@ begin
   ISA:='rv64imafdcb';
   ISAExtensions:='i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b';
 
-(*
- * Here are the ordering rules of extension naming defined by RISC-V
- * specification :
- * 1. All extensions should be separated from other multi-letter extensions
- *    by an underscore.
- * 2. The first letter following the 'Z' conventionally indicates the most
- *    closely related alphabetical extension category, IMAFDQLCBKJTPVH.
- *    If multiple 'Z' extensions are named, they should be ordered first
- *    by category, then alphabetically within a category.
- * 3. Standard supervisor-level extensions (starts with 'S') should be
- *    listed after standard unprivileged extensions.  If multiple
- *    supervisor-level extensions are listed, they should be ordered
- *    alphabetically.
- * 4. Non-standard extensions (starts with 'X') must be listed after all
- *    standard extensions. They must be separated from other multi-letter
- *    extensions by an underscore.
- *
- * Not yet implemented and non-implemented ones are commented out
- *
- *)
+  (*
+   * Here are the ordering rules of extension naming defined by RISC-V
+   * specification :
+   * 1. All extensions should be separated from other multi-letter extensions
+   *    by an underscore.
+   * 2. The first letter following the 'Z' conventionally indicates the most
+   *    closely related alphabetical extension category, IMAFDQLCBKJTPVH.
+   *    If multiple 'Z' extensions are named, they should be ordered first
+   *    by category, then alphabetically within a category.
+   * 3. Standard supervisor-level extensions (starts with 'S') should be
+   *    listed after standard unprivileged extensions.  If multiple
+   *    supervisor-level extensions are listed, they should be ordered
+   *    alphabetically.
+   * 4. Non-standard extensions (starts with 'X') must be listed after all
+   *    standard extensions. They must be separated from other multi-letter
+   *    extensions by an underscore.
+   *
+   * Not yet implemented and non-implemented ones are commented out
+   *
+   *)
   AddISAExtension('zic64b');
   AddISAExtension('zicbom');
   AddISAExtension('zicbop');
@@ -49272,7 +49272,7 @@ begin
 //AddISAExtension('zhinxmin');
 //AddISAExtension('sdtrig');
 //AddISAExtension('shcounterenw');
-//AddISAExtension('sha');
+  AddISAExtension('sha');
 //AddISAExtension('shgatpa');
 //AddISAExtension('shtvala');
 //AddISAExtension('shvsatpa');
