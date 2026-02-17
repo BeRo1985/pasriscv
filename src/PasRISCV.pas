@@ -25497,6 +25497,7 @@ begin
              TPCMStream.TCommand.None,
              TPCMStream.TCommand.Prepare,
              TPCMStream.TCommand.SetParameters,
+             TPCMStream.TCommand.Stop,
              TPCMStream.TCommand.Release:begin
               if not PCMStream.fActive then begin
                PCMStream.fCommand:=TPCMStream.TCommand.SetParameters;
@@ -25538,13 +25539,18 @@ begin
              TPCMStream.TCommand.None,
              TPCMStream.TCommand.Prepare,
              TPCMStream.TCommand.SetParameters,
+             TPCMStream.TCommand.Stop,
              TPCMStream.TCommand.Release:begin
               PCMStream.fCommand:=TPCMStream.TCommand.Prepare;
-              if not PCMStream.fActive then begin
-               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
-              end else begin
-               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
+              if PCMStream.fActive then begin
+               TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(false));
               end;
+              if SoundPCMHeader.StreamID=0 then begin
+               FlushTX;
+              end else begin
+               FlushRX;
+              end;
+              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
              end;
              else begin
               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
@@ -25948,12 +25954,11 @@ begin
   try
    repeat
     if assigned(PCMStream.fCurrentBuffer) then begin
-//   NotifyTXBuffer(PCMStream.fCurrentBuffer);
      PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
     end;
     if PCMStream.fBufferQueue.Dequeue(PCMStream.fCurrentBuffer) then begin
      if assigned(PCMStream.fCurrentBuffer) then begin
-      NotifyTXBuffer(PCMStream.fCurrentBuffer);
+      PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
      end;
     end else begin
      PCMStream.fCurrentBuffer:=nil;
