@@ -25492,20 +25492,23 @@ begin
           if aWriteSize>=Size then begin
            GetMem(Output,Size);
            try
-            if SoundPCMSetParams^.Header.StreamID<fSoundConfig.Streams then begin
-             PCMStream:=fPCMStreams[SoundPCMSetParams^.Header.StreamID];
-             if PCMStream.fActive then begin
-              TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(false));
+            PCMStream:=fPCMStreams[SoundPCMSetParams^.Header.StreamID];
+            case PCMStream.fCommand of
+             TPCMStream.TCommand.None,
+             TPCMStream.TCommand.Prepare,
+             TPCMStream.TCommand.SetParameters,
+             TPCMStream.TCommand.Stop,
+             TPCMStream.TCommand.Release:begin
+              if not PCMStream.fActive then begin
+               PCMStream.fCommand:=TPCMStream.TCommand.SetParameters;
+               PVirtIOSoundHeader(@Output^[0])^.Code:=SetParams(SoundPCMSetParams^.Header.StreamID,SoundPCMSetParams^);
+              end else begin
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
+              end;
              end;
-             if SoundPCMSetParams^.Header.StreamID=0 then begin
-              FlushTX;
-             end else begin
-              FlushRX;
+             else begin
+              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
              end;
-             PCMStream.fCommand:=TPCMStream.TCommand.SetParameters;
-             PVirtIOSoundHeader(@Output^[0])^.Code:=SetParams(SoundPCMSetParams^.Header.StreamID,SoundPCMSetParams^);
-            end else begin
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_BAD_MSG;
             end;
             if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,Output,Size) and
                     ConsumeDescriptor(aQueueIndex,aDescriptorIndex,Size) and
@@ -25531,20 +25534,27 @@ begin
           if aWriteSize>=Size then begin
            GetMem(Output,Size);
            try
-            if SoundPCMHeader.StreamID<fSoundConfig.Streams then begin
-             PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
-             PCMStream.fCommand:=TPCMStream.TCommand.Prepare;
-             if PCMStream.fActive then begin
-              TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(false));
+            PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
+            case PCMStream.fCommand of
+             TPCMStream.TCommand.None,
+             TPCMStream.TCommand.Prepare,
+             TPCMStream.TCommand.SetParameters,
+             TPCMStream.TCommand.Stop,
+             TPCMStream.TCommand.Release:begin
+              PCMStream.fCommand:=TPCMStream.TCommand.Prepare;
+              if PCMStream.fActive then begin
+               TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(false));
+              end;
+              if SoundPCMHeader.StreamID=0 then begin
+               FlushTX;
+              end else begin
+               FlushRX;
+              end;
+              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
              end;
-             if SoundPCMHeader.StreamID=0 then begin
-              FlushTX;
-             end else begin
-              FlushRX;
+             else begin
+              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
              end;
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
-            end else begin
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_BAD_MSG;
             end;
             if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,Output,Size) and
                     ConsumeDescriptor(aQueueIndex,aDescriptorIndex,Size) and
@@ -25570,20 +25580,25 @@ begin
           if aWriteSize>=Size then begin
            GetMem(Output,Size);
            try
-            if SoundPCMHeader.StreamID<fSoundConfig.Streams then begin
-             PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
-             PCMStream.fCommand:=TPCMStream.TCommand.Release;
-             if PCMStream.fActive then begin
-              TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(false));
+            PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
+            case PCMStream.fCommand of
+             TPCMStream.TCommand.Prepare,
+             TPCMStream.TCommand.Stop:begin
+              PCMStream.fCommand:=TPCMStream.TCommand.Release;
+              if not PCMStream.fActive then begin
+               if SoundPCMHeader.StreamID=0 then begin
+                FlushTX;
+               end else begin
+                FlushRX;
+               end;
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
+              end else begin
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
+              end;
              end;
-             if SoundPCMHeader.StreamID=0 then begin
-              FlushTX;
-             end else begin
-              FlushRX;
+             else begin
+              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
              end;
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
-            end else begin
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_BAD_MSG;
             end;
             if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,Output,Size) and
                     ConsumeDescriptor(aQueueIndex,aDescriptorIndex,Size) and
@@ -25609,15 +25624,20 @@ begin
           if aWriteSize>=Size then begin
            GetMem(Output,Size);
            try
-            if SoundPCMHeader.StreamID<fSoundConfig.Streams then begin
-             PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
-             PCMStream.fCommand:=TPCMStream.TCommand.Start;
-             if not PCMStream.fActive then begin
-              TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(true));
+            PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
+            case PCMStream.fCommand of
+             TPCMStream.TCommand.Prepare,
+             TPCMStream.TCommand.Stop:begin
+              PCMStream.fCommand:=TPCMStream.TCommand.Start;
+              if not TPasMPInterlocked.CompareExchange(PCMStream.fActive,TPasMPBool32(true),TPasMPBool32(false)) then begin
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
+              end else begin
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
+              end;
              end;
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
-            end else begin
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_BAD_MSG;
+             else begin
+              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
+             end;
             end;
             if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,Output,Size) and
                     ConsumeDescriptor(aQueueIndex,aDescriptorIndex,Size) and
@@ -25643,15 +25663,19 @@ begin
           if aWriteSize>=Size then begin
            GetMem(Output,Size);
            try
-            if SoundPCMHeader.StreamID<fSoundConfig.Streams then begin
-             PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
-             PCMStream.fCommand:=TPCMStream.TCommand.Stop;
-             if PCMStream.fActive then begin
-              TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(false));
+            PCMStream:=fPCMStreams[SoundPCMHeader.StreamID];
+            case PCMStream.fCommand of
+             TPCMStream.TCommand.Start:begin
+              PCMStream.fCommand:=TPCMStream.TCommand.Stop;
+              if TPasMPInterlocked.CompareExchange(PCMStream.fActive,TPasMPBool32(false),TPasMPBool32(true)) then begin
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
+              end else begin
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
+              end;
              end;
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
-            end else begin
-             PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_BAD_MSG;
+             else begin
+              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
+             end;
             end;
             if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,Output,Size) and
                     ConsumeDescriptor(aQueueIndex,aDescriptorIndex,Size) and
@@ -25782,43 +25806,39 @@ begin
       Size:=SizeOf(TVirtIOSoundPCMStatus);
       if aWriteSize>=Size then begin
 
-       if SoundPCMXfer.StreamID<fSoundConfig.Streams then begin
-        PCMStream:=fPCMStreams[SoundPCMXfer.StreamID];
+       PCMStream:=fPCMStreams[SoundPCMXfer.StreamID];
 
-        PCMBuffer:=nil;
+       PCMBuffer:=nil;
 
-        PCMStream.fBufferQueueLock.Acquire;
-        try
-         if not PCMStream.fBufferFreeQueue.Dequeue(PCMBuffer) then begin
-          PCMBuffer:=TPCMBuffer.Create(self);
-         end;
-        finally
-         PCMStream.fBufferQueueLock.Release;
+       PCMStream.fBufferQueueLock.Acquire;
+       try
+        if not PCMStream.fBufferFreeQueue.Dequeue(PCMBuffer) then begin
+         PCMBuffer:=TPCMBuffer.Create(self);
         end;
-
-        PCMBuffer.fPopulated:=false;
-        PCMBuffer.fRawSize:=aReadSize-SizeOf(TVirtIOSoundPCMXfer);
-        if length(PCMBuffer.fData)<PCMBuffer.fRawSize then begin
-         SetLength(PCMBuffer.fData,PCMBuffer.fRawSize*2);
-        end;
-        if PCMBuffer.fRawSize>0 then begin
-         Move(Input^[SizeOf(TVirtIOSoundPCMXfer)],PCMBuffer.fData[0],PCMBuffer.fRawSize);
-        end;
-        PCMBuffer.fRemainingSize:=PCMBuffer.fRawSize;
-        PCMBuffer.fOffset:=0;
-        PCMBuffer.fAvailableIndex:=-1;
-
-        PCMStream.fBufferQueueLock.Acquire;
-        try
-         PCMStream.fBufferQueue.Enqueue(PCMBuffer);
-        finally
-         PCMStream.fBufferQueueLock.Release;
-        end;
-
-        SoundPCMStatus.Status:=VIRTIO_SND_S_OK;
-       end else begin
-        SoundPCMStatus.Status:=VIRTIO_SND_S_BAD_MSG;
+       finally
+        PCMStream.fBufferQueueLock.Release;
        end;
+
+       PCMBuffer.fPopulated:=false;
+       PCMBuffer.fRawSize:=aReadSize-SizeOf(TVirtIOSoundPCMXfer);
+       if length(PCMBuffer.fData)<PCMBuffer.fRawSize then begin
+        SetLength(PCMBuffer.fData,PCMBuffer.fRawSize*2);
+       end;
+       if PCMBuffer.fRawSize>0 then begin
+        Move(Input^[SizeOf(TVirtIOSoundPCMXfer)],PCMBuffer.fData[0],PCMBuffer.fRawSize);
+       end;
+       PCMBuffer.fRemainingSize:=PCMBuffer.fRawSize;
+       PCMBuffer.fOffset:=0;
+       PCMBuffer.fAvailableIndex:=-1;
+
+       PCMStream.fBufferQueueLock.Acquire;
+       try
+        PCMStream.fBufferQueue.Enqueue(PCMBuffer);
+       finally
+        PCMStream.fBufferQueueLock.Release;
+       end;
+
+       SoundPCMStatus.Status:=VIRTIO_SND_S_OK;
        SoundPCMStatus.LatencyBytes:=0;
        if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@SoundPCMStatus,SizeOf(TVirtIOSoundPCMStatus)) and
                ConsumeDescriptor(aQueueIndex,aDescriptorIndex,SizeOf(TVirtIOSoundPCMStatus)) and
