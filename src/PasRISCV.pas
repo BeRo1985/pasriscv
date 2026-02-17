@@ -23804,8 +23804,8 @@ begin
   if not Queue^.ManualRecv then begin
    if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
     if Queue^.Asynchronous then begin
-     if not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,aQueueIndex,AvailableIndex) then begin
-      ProcessQueue(aQueueIndex,AvailableIndex);
+     if not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,aQueueIndex,-1) then begin
+      ProcessQueue(aQueueIndex,-1);
      end;
     end else begin
      ProcessQueue(aQueueIndex,AvailableIndex);
@@ -25781,13 +25781,10 @@ begin
   end;
 
   VIRTIO_SND_VQ_EVENT:begin
-   if aReadSize>0 then begin
-    if ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and UsedRingSync(aQueueIndex) then begin
-     result:=true;
-    end else begin
-     NotifyDeviceNeedsReset;
-    end;
+   if ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and UsedRingSync(aQueueIndex) then begin
+    result:=true;
    end else begin
+    NotifyDeviceNeedsReset;
     result:=false;
    end;
   end;
