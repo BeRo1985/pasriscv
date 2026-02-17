@@ -36216,8 +36216,6 @@ begin
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=CSRValue;
    end;
-  end else begin
-   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
   end;
  end;
 end;
