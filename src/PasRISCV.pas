@@ -34752,7 +34752,7 @@ end;
 function TPasRISCV.THART.AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
 var Index:TPasRISCVSizeInt;
     CPUMode:THART.TMode;
-    MSTATUS,Levels,PMM,CSRHENVCFGMask:TPasRISCVUInt64;
+    MSTATUS,Levels,PMM,ENVCFG:TPasRISCVUInt64;
     EffectiveAccessType:TMMU.TAccessType;
     PageTable,BitOffset,PageTableOffset,PageTableEntry,VirtualMask,PhysicalMask,
     PageTableEntryShift,PageTableEntryAccessDirty,PhysicalAddress,PPN,
@@ -34770,14 +34770,16 @@ begin
 
  // When running in virtualized mode (VS/VU), gate with henvcfg
  if fState.VirtualMode then begin
-  CSRHENVCFGMask:=fState.CSR.fData[THART.TCSR.TAddress.HENVCFG];
+  ENVCFG:=fState.CSR.fData[THART.TCSR.TAddress.HENVCFG];
  end else begin
-  CSRHENVCFGMask:=TPasRISCVUInt64($ffffffffffffffff);
+  ENVCFG:=TPasRISCVUInt64($ffffffffffffffff);
  end;
 
- PBMTE:=((fState.CSR.fData[THART.TCSR.TAddress.MENVCFG] and CSRHENVCFGMask) and THART.TCSR.ENVCFG_PBMTE)<>0;
+ ENVCFG:=ENVCFG and fState.CSR.fData[THART.TCSR.TAddress.MENVCFG];
 
- ADUE:=((fState.CSR.fData[THART.TCSR.TAddress.MENVCFG] and CSRHENVCFGMask) and THART.TCSR.ENVCFG_ADUE)<>0;
+ PBMTE:=(ENVCFG and THART.TCSR.ENVCFG_PBMTE)<>0;
+
+ ADUE:=(ENVCFG and THART.TCSR.ENVCFG_ADUE)<>0;
 
  NAPOT:=true;
 
