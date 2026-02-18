@@ -47719,7 +47719,14 @@ begin
     // FPU Load                                                                 //
     //////////////////////////////////////////////////////////////////////////////
     $07{$ifdef TryToForceCaseJumpTableOnLevel1},$87{$endif}:begin
-     // fl
+     // fl / vector load
+     // Route vector loads before FPU check (vector uses separate VS enable)
+     case (aInstruction shr 12) and 7 of
+      $0,$5,$6,$7:begin
+       result:=ExecuteVectorInstruction(aInstruction);
+       exit;
+      end;
+     end;
      if not fState.CSR.IsFPUEnabled then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
@@ -47803,7 +47810,14 @@ begin
     // FPU Store                                                                //
     //////////////////////////////////////////////////////////////////////////////
     $27{$ifdef TryToForceCaseJumpTableOnLevel1},$a7{$endif}:begin
-     // fs
+     // fs / vector store
+     // Route vector stores before FPU check (vector uses separate VS enable)
+     case (aInstruction shr 12) and 7 of
+      $0,$5,$6,$7:begin
+       result:=ExecuteVectorInstruction(aInstruction);
+       exit;
+      end;
+     end;
      if not fState.CSR.IsFPUEnabled then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
