@@ -23753,44 +23753,55 @@ procedure TPasRISCV.TVirtIODevice.ProcessQueue(const aQueueIndex:TPasRISCVUInt64
 var Queue:PQueue;
     AvailableIndex,DescriptorIndex:TPasRISCVUInt16;
     ReadSize,WriteSize:TPasRISCVUInt64;
-    OK:Boolean;
+    OK,Done:Boolean;
 begin
  if fDriverOK then begin
   Queue:=@fQueues[aQueueIndex];
   if not Queue^.ManualRecv then begin
-   if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(Queue^.Lock) then begin
-    try
-     if aAvailableIndex>=0 then begin
-      AvailableIndex:=aAvailableIndex;
-      OK:=true;
-     end else begin
-      OK:=Read16(Queue^.AvailableAddress+2,AvailableIndex);
-     end;
-     if OK then begin
-      while Queue^.ShadowAvailableIndex<>AvailableIndex do begin
-       if Read16((Queue^.AvailableAddress+4)+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
-        if GetDescriptors(ReadSize,WriteSize,aQueueIndex,DescriptorIndex) then begin
-         if DeviceRecv(aQueueIndex,DescriptorIndex,ReadSize,WriteSize) then begin
-          if AdvanceShadowAvailableIndex(aQueueIndex) then begin
-           if (fStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)<>0 then begin
-            break;
-           end else begin
-            continue;
+   repeat
+    Done:=true;
+    if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(Queue^.Lock) then begin
+     try
+      if aAvailableIndex>=0 then begin
+       AvailableIndex:=aAvailableIndex;
+       OK:=true;
+      end else begin
+       OK:=Read16(Queue^.AvailableAddress+2,AvailableIndex);
+      end;
+      if OK then begin
+       while Queue^.ShadowAvailableIndex<>AvailableIndex do begin
+        if Read16((Queue^.AvailableAddress+4)+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
+         if GetDescriptors(ReadSize,WriteSize,aQueueIndex,DescriptorIndex) then begin
+          if DeviceRecv(aQueueIndex,DescriptorIndex,ReadSize,WriteSize) then begin
+           if AdvanceShadowAvailableIndex(aQueueIndex) then begin
+            if (fStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)<>0 then begin
+             break;
+            end else begin
+             continue;
+            end;
            end;
+          end else begin
+           break;
           end;
-         end else begin
-          break;
          end;
         end;
+        NotifyDeviceNeedsReset;
+        break;
        end;
-       NotifyDeviceNeedsReset;
-       break;
+       if aAvailableIndex<0 then begin
+        // Re-check for new descriptors that arrived while we held the lock
+        if Read16(Queue^.AvailableAddress+2,AvailableIndex) and
+           (Queue^.ShadowAvailableIndex<>AvailableIndex) then begin
+         // Retry, since there are now new descriptors to process  
+         Done:=false;
+        end;
+       end;
       end;
+     finally
+      TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
      end;
-    finally
-     TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
     end;
-   end;
+   until Done;
   end;
  end;
 end;
