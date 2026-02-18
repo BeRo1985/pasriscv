@@ -25825,7 +25825,15 @@ begin
        end;
        PCMBuffer.fRemainingSize:=PCMBuffer.fRawSize;
        PCMBuffer.fOffset:=0;
-       PCMBuffer.fAvailableIndex:=fQueues[aQueueIndex].ShadowAvailableIndex;
+       PCMBuffer.fAvailableIndex:=-1;
+
+       SoundPCMStatus.Status:=VIRTIO_SND_S_OK;
+       SoundPCMStatus.LatencyBytes:=0;
+       if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@SoundPCMStatus,SizeOf(TVirtIOSoundPCMStatus)) and
+               ConsumeDescriptor(aQueueIndex,aDescriptorIndex,SizeOf(TVirtIOSoundPCMStatus)) and
+               UsedRingSync(aQueueIndex)) then begin
+        NotifyDeviceNeedsReset;
+       end;
 
        PCMStream.fBufferQueueLock.Acquire;
        try
