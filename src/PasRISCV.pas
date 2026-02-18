@@ -3768,7 +3768,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCapturePosition:TPasRISCVUInt32;
               fCaptureSize:TPasRISCVUInt32;
               fCaptureScratchBuffer:TPasRISCVFloatDynamicArray;
+              fCaptureResampleBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResamplerPosition:TPasRISCVUInt64;
+              fCaptureDMACache:array[0..1] of TPasRISCVUInt8DynamicArray;
+              fCaptureDMACacheSize:array[0..1] of TPasRISCVUInt32;
+              fCaptureDMACachePosition:array[0..1] of TPasRISCVUInt32;
               // IO BAR callbacks
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
@@ -3779,6 +3783,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               destructor Destroy; override;
               procedure Reset; override;
               procedure PrefetchPlayDMA(const aBufferIndex:TPasRISCVUInt32);
+              procedure FlushCaptureDMA(const aBufferIndex:TPasRISCVUInt32);
               procedure OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
               procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
@@ -22449,11 +22454,21 @@ end;
 
 destructor TPasRISCV.TFM801Device.Destroy;
 begin
+ 
  FreeAndNil(fOPL3);
  FreeAndNil(fFuncs[0]);
+
+ fPlayScratchBuffer:=nil;
  fPlayDMACache[0]:=nil;
  fPlayDMACache[1]:=nil;
+
+ fCaptureScratchBuffer:=nil;
+ fCaptureResampleBuffer:=nil;
+ fCaptureDMACache[0]:=nil;
+ fCaptureDMACache[1]:=nil;
+
  inherited Destroy;
+ 
 end;
 
 procedure TPasRISCV.TFM801Device.Reset;
@@ -22530,7 +22545,14 @@ begin
  fCapturePosition:=0;
  fCaptureSize:=0;
  fCaptureScratchBuffer:=nil;
+ fCaptureResampleBuffer:=nil;
  fCaptureResamplerPosition:=0;
+ fCaptureDMACache[0]:=nil;
+ fCaptureDMACache[1]:=nil;
+ fCaptureDMACacheSize[0]:=0;
+ fCaptureDMACacheSize[1]:=0;
+ fCaptureDMACachePosition[0]:=0;
+ fCaptureDMACachePosition[1]:=0;
 end;
 
 function TPasRISCV.TFM801Device.IRQPending:Boolean;
@@ -22719,21 +22741,35 @@ begin
     end;
     fCaptureActive:=true;
     fCaptureCtrl:=fCaptureCtrl and (not FM801_IMMED_STOP);
+    // Initialize capture DMA write caches
+    fCaptureDMACachePosition[0]:=0;
+    fCaptureDMACachePosition[1]:=0;
+    fCaptureDMACacheSize[0]:=TPasRISCVUInt32(fCaptureCount)+1;
+    fCaptureDMACacheSize[1]:=TPasRISCVUInt32(fCaptureCount)+1;
+    if length(fCaptureDMACache[0])<fCaptureDMACacheSize[0] then begin
+     SetLength(fCaptureDMACache[0],fCaptureDMACacheSize[0]);
+    end;
+    if length(fCaptureDMACache[1])<fCaptureDMACacheSize[1] then begin
+     SetLength(fCaptureDMACache[1],fCaptureDMACacheSize[1]);
+    end;
    end else if (fCaptureCtrl and FM801_IMMED_STOP)<>0 then begin
+    FlushCaptureDMA(fCaptureBufferIndex);
     fCaptureActive:=false;
     fCaptureCtrl:=fCaptureCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
    end else begin
+    FlushCaptureDMA(fCaptureBufferIndex);
     fCaptureActive:=false;
-   end;
   end;
   FM801_CAPTURE_COUNT:begin
    fCaptureCount:=TPasRISCVUInt16(aValue);
   end;
   FM801_CAPTURE_BUF1:begin
    fCaptureBuffer1:=TPasRISCVUInt32(aValue);
+   fCaptureDMACachePosition[0]:=0;
   end;
   FM801_CAPTURE_BUF2:begin
    fCaptureBuffer2:=TPasRISCVUInt32(aValue);
+   fCaptureDMACachePosition[1]:=0;
   end;
   FM801_CODEC_CTRL:begin
    fCodecCtrl:=TPasRISCVUInt16(aValue);
@@ -22837,6 +22873,26 @@ begin
   end;
   fPlayDMACacheSize[aBufferIndex]:=BufSize;
   fPlayDMACacheReady[aBufferIndex]:=true;
+ end;
+end;
+
+procedure TPasRISCV.TFM801Device.FlushCaptureDMA(const aBufferIndex:TPasRISCVUInt32);
+var BufAddr:TPasRISCVUInt32;
+    FlushSize:TPasRISCVUInt32;
+    DstPtr:Pointer;
+begin
+ FlushSize:=fCaptureDMACachePosition[aBufferIndex];
+ if FlushSize>0 then begin
+  if aBufferIndex=0 then begin
+   BufAddr:=fCaptureBuffer1;
+  end else begin
+   BufAddr:=fCaptureBuffer2;
+  end;
+  DstPtr:=GetGlobalDirectMemoryAccessPointer(BufAddr,FlushSize,true,nil);
+  if assigned(DstPtr) then begin
+   Move(fCaptureDMACache[aBufferIndex][0],DstPtr^,FlushSize);
+  end;
+  fCaptureDMACachePosition[aBufferIndex]:=0;
  end;
 end;
 
@@ -23073,6 +23129,7 @@ var Remain,ToDo,CopyBytes,SampleFrameSize,Channels:TPasRISCVSizeInt;
     p:PPasRISCVUInt8;
     SrcSamples,DstSamples:TPasRISCVSizeInt;
     Sample16:TPasRISCVInt16;
+    FloatSrc:PPasRISCVFloatArray;
 begin
 
  // Input: aCount stereo float frames = aCount * 2 * SizeOf(Float) bytes from host
@@ -23109,7 +23166,8 @@ begin
  while Remain>0 do begin
 
   if fCapturePosition>=fCaptureSize then begin
-   // Current buffer full - fire IRQ and switch to next buffer
+   // Current buffer full - flush DMA cache to guest memory, fire IRQ and switch
+   FlushCaptureDMA(fCaptureBufferIndex);
    fIRQStatus:=fIRQStatus or FM801_IRQ_CAPTURE;
    if (fIRQMask and FM801_IRQ_MASK_CAPTURE)=0 then begin
     RaiseIRQ(0,0);
@@ -23173,10 +23231,38 @@ begin
   inc(Src,CopyBytes);
   dec(Remain,CopyBytes);
 
-  // TODO: resample if SrcRate<>DstRate (for now, 1:1 only)
-  // After resampling, SrcSamples would change to DstSamples
+  // Resample from host rate to guest rate if needed
+  if SrcRate<>DstRate then begin
+   ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
+   if ToDo>DstSamples then begin
+    ToDo:=DstSamples;
+   end;
+   if ToDo>0 then begin
+    if length(fCaptureResampleBuffer)<(ToDo*2) then begin
+     SetLength(fCaptureResampleBuffer,ToDo*4);
+    end;
+    ResampleLinear(@fCaptureScratchBuffer[0],
+                   SrcSamples,
+                   @fCaptureResampleBuffer[0],
+                   ToDo,
+                   2,
+                   nil,
+                   fCaptureResamplerPosition,
+                   ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
+    SrcSamples:=ToDo;
+   end else begin
+    continue;
+   end;
+  end;
 
-  // Get DMA pointer to guest memory
+  // Select source: resampled data or original scratch buffer
+  if SrcRate<>DstRate then begin
+   FloatSrc:=@fCaptureResampleBuffer[0];
+  end else begin
+   FloatSrc:=@fCaptureScratchBuffer[0];
+  end;
+
+  // Write to DMA cache instead of directly to guest memory
   CopyBytes:=SrcSamples*SampleFrameSize;
   ToDo:=fCaptureSize-fCapturePosition;
   if CopyBytes>ToDo then begin
@@ -23184,17 +23270,21 @@ begin
    SrcSamples:=CopyBytes div SampleFrameSize;
   end;
 
-  DstPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(fCaptureBuffer)+fCapturePosition,CopyBytes,true,nil);
-  if DstPtr=nil then begin
-   inc(fCapturePosition,CopyBytes);
-   break;
+  if fCapturePosition+CopyBytes<=fCaptureDMACacheSize[fCaptureBufferIndex] then begin
+   p:=@fCaptureDMACache[fCaptureBufferIndex][fCapturePosition];
+  end else begin
+   DstPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(fCaptureBuffer)+fCapturePosition,CopyBytes,true,nil);
+   if DstPtr=nil then begin
+    inc(fCapturePosition,CopyBytes);
+    break;
+   end;
+   p:=DstPtr;
   end;
 
   // Convert stereo float to guest format and write to DMA buffer
-  p:=DstPtr;
   for SampleIndex:=0 to SrcSamples-1 do begin
    // Left channel (or mono)
-   FloatSample:=fCaptureScratchBuffer[SampleIndex*2];
+   FloatSample:=FloatSrc^[SampleIndex*2];
    if FloatSample>1.0 then begin
     FloatSample:=1.0;
    end else if FloatSample<-1.0 then begin
@@ -23212,7 +23302,7 @@ begin
    end;
    // Right channel (if stereo)
    if IsStereo then begin
-    FloatSample:=fCaptureScratchBuffer[(SampleIndex*2)+1];
+    FloatSample:=FloatSrc^[(SampleIndex*2)+1];
     if FloatSample>1.0 then begin
      FloatSample:=1.0;
     end else if FloatSample<-1.0 then begin
@@ -23232,6 +23322,9 @@ begin
   end;
 
   inc(fCapturePosition,SrcSamples*SampleFrameSize);
+  if fCapturePosition>fCaptureDMACachePosition[fCaptureBufferIndex] then begin
+   fCaptureDMACachePosition[fCaptureBufferIndex]:=fCapturePosition;
+  end;
 
  end;
 
