@@ -25222,7 +25222,7 @@ begin
  fQueues[VIRTIO_SND_VQ_CONTROL].ManualRecv:=false;
  fQueues[VIRTIO_SND_VQ_CONTROL].Asynchronous:=false;
 
- fQueues[VIRTIO_SND_VQ_EVENT].ManualRecv:=false;
+ fQueues[VIRTIO_SND_VQ_EVENT].ManualRecv:=true;
  fQueues[VIRTIO_SND_VQ_EVENT].Asynchronous:=false;
 
  fQueues[VIRTIO_SND_VQ_TX].ManualRecv:=false;
