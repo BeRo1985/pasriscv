@@ -44655,6 +44655,14 @@ begin
      end;
     end;
 
+    //////////////////////////////////////////////////////////////////////////////
+    // Vector (V, Zvbb, Zvkt, Zvfhmin)                                         //
+    //////////////////////////////////////////////////////////////////////////////
+    $57{$ifdef TryToForceCaseJumpTableOnLevel1},$d7{$endif}:begin
+     result:=ExecuteVectorInstruction(aInstruction);
+     exit;
+    end;
+
     else begin
      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
      result:=4;
