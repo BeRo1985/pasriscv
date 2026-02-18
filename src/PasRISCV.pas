@@ -1392,6 +1392,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              PAGE_MASK=4095;
              PAGE_SHIFT=12;
              PAGE_ADDRESS_MASK=TPasRISCVUInt64($fffffffffffff000);
+             VLEN={$ifdef VLEN128}128{$else}256{$endif};
+             VLENB=VLEN div 8;
              RUNSTATE_POWEROFF=TPasRISCVUInt32(1) shl 16;
              RUNSTATE_RUNNING=TPasRISCVUInt32(1) shl 17;
              RUNSTATE_REBOOT=TPasRISCVUInt32(1) shl 18;
@@ -1587,6 +1589,46 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             PFPURegisterValue=^TFPURegisterValue;
             TFPURegisters=array[TFPURegister] of TFPURegisterValue;
             PFPURegisters=^TFPURegisters;
+            TVectorRegister=
+             (
+              v0=0,
+              v1=1,
+              v2=2,
+              v3=3,
+              v4=4,
+              v5=5,
+              v6=6,
+              v7=7,
+              v8=8,
+              v9=9,
+              v10=10,
+              v11=11,
+              v12=12,
+              v13=13,
+              v14=14,
+              v15=15,
+              v16=16,
+              v17=17,
+              v18=18,
+              v19=19,
+              v20=20,
+              v21=21,
+              v22=22,
+              v23=23,
+              v24=24,
+              v25=25,
+              v26=26,
+              v27=27,
+              v28=28,
+              v29=29,
+              v30=30,
+              v31=31
+             );
+            PVectorRegister=^TVectorRegister;
+            TVectorRegisterValue=packed array[0..VLENB-1] of TPasRISCVUInt8;
+            PVectorRegisterValue=^TVectorRegisterValue;
+            TVectorRegisters=array[TVectorRegister] of TVectorRegisterValue;
+            PVectorRegisters=^TVectorRegisters;
             TInstructionSetArchitecture=class
              public
               const RegisterRawNames:array[TRegister] of TPasRISCVUTF8String=
@@ -1655,7 +1697,29 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      FPLoadImm,
                      Prefetch,
                      HLV,
-                     HSV
+                     HSV,
+                     VSetVLI,
+                     VSetIVLI,
+                     VSetVL,
+                     VLoadUnit,
+                     VStoreUnit,
+                     VLoadStrided,
+                     VStoreStrided,
+                     VLoadIndexed,
+                     VStoreIndexed,
+                     VLoadWholeReg,
+                     VStoreWholeReg,
+                     VVVV,
+                     VVVX,
+                     VVVI,
+                     VVVF,
+                     VUnaryV,
+                     VMaskToScalar,
+                     VScalarToV,
+                     VFScalarToV,
+                     VLoadMask,
+                     VStoreMask,
+                     VLoadFF
                     );
                    TInstruction=record
                     Mask:TPasRISCVUInt32;
@@ -6115,6 +6179,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   FRM=$2;
                                   FCSR=$3;
                                   UVEC=$5;
+                                  // Vector CSRs
+                                  VSTART=$008;
+                                  VXSAT=$009;
+                                  VXRM=$00a;
+                                  VCSR=$00f;
                                   SSP=$11; // (Zicfiss) Shadow Stack Pointer
                                   SEED=$15; // (Zkr)
                                   UEPC=$41;
@@ -6240,6 +6309,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   TIME=$c01;
                                   TIMEMS=$c10;
                                   TIMEH=$c81;
+                                  // Vector CSRs (read-only)
+                                  VL=$c20;
+                                  VTYPE=$c21;
+                                  VLENB_CSR=$c22;
                                   STOPI=$db0;
                                   MVENDORID=$f11;
                                   MARCHID=$f12;
@@ -6262,6 +6335,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                          UBE=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 6);
                                          SPP=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 8);
                                          FS=TPasRISCVUInt64($6000);
+                                         VS=TPasRISCVUInt64($600);
                                          XS=TPasRISCVUInt64($18000);
                                          MPRV=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 17);
                                          SUM=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 18);
@@ -6324,6 +6398,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                          QUAD_EXT=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 16);
                                          SUPERVISOR=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 18);
                                          USER=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 20);
+                                         V_EXT=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 21);
                                          NON_STD_PRESENT=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 22);
                                          XLEN_32=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 31);
                                          XLEN_64=TPasRISCVUInt64(TPasRISCVUInt64(2) shl 62);
@@ -6355,6 +6430,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   Clean=2;
                                   Dirty=3;
                           end;
+                          TVS=class
+                           public
+                            const Off=0;
+                                  Initial=1;
+                                  Clean=2;
+                                  Dirty=3;
+                          end;
                     private
                      fHART:THART;
                      fData:array[0..4095] of TPasRISCVUInt64;
@@ -6371,6 +6453,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure ClearFS;
                      procedure SetFSDirty; //inline;
                      function IsFPUEnabled:Boolean;
+                     procedure SetVSDirty;
+                     function IsVectorEnabled:Boolean;
                    end;
                    PCSR=^TCSR;
                    TState=record
@@ -6406,6 +6490,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     public
                      Registers:TRegisters;
                      FPURegisters:TFPURegisters;
+                     VectorRegisters:TVectorRegisters;
 //                   LastPC:TPasRISCVUInt64;
                      PC:TPasRISCVUInt64;
                      Mode:TPasRISCV.THART.TMode;
@@ -6651,6 +6736,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      );
              private
               fMachine:TPasRISCV;
+              fVector:Boolean;
               fPHandle:TPasRISCVUInt32;
               fBus:TBus;
               fAIARegFiles:TAIARegFiles;
@@ -6754,6 +6840,21 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function CSRAIAHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aValue:PPasRISCVUInt32;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
               function CSRAIAPairHelper(const aMode:TMode;const aAIARegFileMode:TAIARegFileMode;const aReg:TPasRISCVUInt32;const aValue:Pointer;const aRHS:TPasRISCVUInt64;out aDest:TPasRISCVUInt64;const aOperation:TCSROperation):Boolean;
               procedure CSRHandlerIndirect(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              // Vector CSR handlers
+              procedure CSRHandlerVSTART(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVXSAT(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVXRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVL(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVTYPE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVLENB(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              // Vector helpers
+              function VectorGetSEW:TPasRISCVUInt32;
+              function VectorGetLMUL:TPasRISCVInt32; // returns LMUL*8 (e.g. 8=LMUL1, 4=LMUL1/2, 16=LMUL2, etc.)
+              function VectorGetVLMAX:TPasRISCVUInt32;
+              function VectorGetElement(const aVReg:TPasRISCVUInt32;const aIndex,aSEW:TPasRISCVUInt32):TPasRISCVUInt64;
+              procedure VectorSetElement(const aVReg:TPasRISCVUInt32;const aIndex,aSEW:TPasRISCVUInt32;const aValue:TPasRISCVUInt64);
+              function VectorGetMaskBit(const aIndex:TPasRISCVUInt32):Boolean;
               procedure CheckTimers;
               procedure CheckInterrupts;
              public
@@ -6827,6 +6928,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fOptions:TOptions;
               function GetRegisterName(const aRegister:TRegister):TPasRISCVUTF8String;
               function GetFPURegisterName(const aRegister:TFPURegister):TPasRISCVUTF8String;
+              function GetVectorRegisterName(const aRegister:TPasRISCVUInt32):TPasRISCVUTF8String;
               function FormatImmediate(const aValue:TPasRISCVInt64):TPasRISCVUTF8String;
               function FormatUnsignedImmediate(const aValue:TPasRISCVUInt64):TPasRISCVUTF8String;
               function FormatCSR(const aValue:TPasRISCVUInt32):TPasRISCVUTF8String;
@@ -7214,6 +7316,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fLRSCMaximumCycles:TPasRISCVUInt64;
 
+              fVector:Boolean;
+
              public
               constructor Create;
               destructor Destroy; override;
@@ -7371,6 +7475,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property LRSCMaximumCycles:TPasRISCVUInt64 read fLRSCMaximumCycles write fLRSCMaximumCycles;
 
+              property Vector:Boolean read fVector write fVector;
+
             end;
             TOnReboot=procedure of object;
             TOnNewFrame=procedure of object;
@@ -7495,6 +7601,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fAllHARTMask:TPasRISCVUInt32;
 
        fLRSCMaximumCycles:TPasRISCVUInt64;
+
+       fVector:Boolean;
 
        fHARTWakeUpConditionVariableLock:TPasMPConditionVariableLock;
        fHARTWakeUpConditionVariable:TPasMPConditionVariable;
@@ -16315,6 +16423,412 @@ begin
  AddInstruction16('c.fsdsp',TCompressedFormat.CSDSP,TRegisterKind.Float,MaskCompressedBase,ValueCompressedBase(5,2));
  AddInstruction16('c.swsp',TCompressedFormat.CSWSP,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(6,2));
  AddInstruction16('c.sdsp',TCompressedFormat.CSDSP,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(7,2));
+
+ //////////////////////////////////////////////////////////////////////////////
+ // Vector Extension (RVV 1.0)                                               //
+ //////////////////////////////////////////////////////////////////////////////
+
+ // vsetvl family
+ AddInstruction32('vsetvli',TInstructionFormat.VSetVLI,TPasRISCVUInt32($8000707f),TPasRISCVUInt32($00007057));
+ AddInstruction32('vsetivli',TInstructionFormat.VSetIVLI,TPasRISCVUInt32($c000707f),TPasRISCVUInt32($c0007057));
+ AddInstruction32('vsetvl',TInstructionFormat.VSetVL,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($80007057));
+
+ // Vector unit-stride loads
+ AddInstruction32('vle8.v',TInstructionFormat.VLoadUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00000007));
+ AddInstruction32('vle16.v',TInstructionFormat.VLoadUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00005007));
+ AddInstruction32('vle32.v',TInstructionFormat.VLoadUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00006007));
+ AddInstruction32('vle64.v',TInstructionFormat.VLoadUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00007007));
+
+ // Vector unit-stride stores
+ AddInstruction32('vse8.v',TInstructionFormat.VStoreUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00000027));
+ AddInstruction32('vse16.v',TInstructionFormat.VStoreUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00005027));
+ AddInstruction32('vse32.v',TInstructionFormat.VStoreUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00006027));
+ AddInstruction32('vse64.v',TInstructionFormat.VStoreUnit,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($00007027));
+
+ // Vector strided loads
+ AddInstruction32('vlse8.v',TInstructionFormat.VLoadStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08000007));
+ AddInstruction32('vlse16.v',TInstructionFormat.VLoadStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08005007));
+ AddInstruction32('vlse32.v',TInstructionFormat.VLoadStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08006007));
+ AddInstruction32('vlse64.v',TInstructionFormat.VLoadStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08007007));
+
+ // Vector strided stores
+ AddInstruction32('vsse8.v',TInstructionFormat.VStoreStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08000027));
+ AddInstruction32('vsse16.v',TInstructionFormat.VStoreStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08005027));
+ AddInstruction32('vsse32.v',TInstructionFormat.VStoreStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08006027));
+ AddInstruction32('vsse64.v',TInstructionFormat.VStoreStrided,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08007027));
+
+ // Vector indexed loads (unordered)
+ AddInstruction32('vluxei8.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04000007));
+ AddInstruction32('vluxei16.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04005007));
+ AddInstruction32('vluxei32.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04006007));
+ AddInstruction32('vluxei64.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04007007));
+
+ // Vector indexed loads (ordered)
+ AddInstruction32('vloxei8.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c000007));
+ AddInstruction32('vloxei16.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c005007));
+ AddInstruction32('vloxei32.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c006007));
+ AddInstruction32('vloxei64.v',TInstructionFormat.VLoadIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c007007));
+
+ // Vector indexed stores (unordered)
+ AddInstruction32('vsuxei8.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04000027));
+ AddInstruction32('vsuxei16.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04005027));
+ AddInstruction32('vsuxei32.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04006027));
+ AddInstruction32('vsuxei64.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04007027));
+
+ // Vector indexed stores (ordered)
+ AddInstruction32('vsoxei8.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c000027));
+ AddInstruction32('vsoxei16.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c005027));
+ AddInstruction32('vsoxei32.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c006027));
+ AddInstruction32('vsoxei64.v',TInstructionFormat.VStoreIndexed,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c007027));
+
+ // Vector fault-only-first loads
+ AddInstruction32('vle8ff.v',TInstructionFormat.VLoadFF,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($01000007));
+ AddInstruction32('vle16ff.v',TInstructionFormat.VLoadFF,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($01005007));
+ AddInstruction32('vle32ff.v',TInstructionFormat.VLoadFF,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($01006007));
+ AddInstruction32('vle64ff.v',TInstructionFormat.VLoadFF,TPasRISCVUInt32($fdf0707f),TPasRISCVUInt32($01007007));
+
+ // Vector mask load/store
+ AddInstruction32('vlm.v',TInstructionFormat.VLoadMask,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($02b00007));
+ AddInstruction32('vsm.v',TInstructionFormat.VStoreMask,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($02b00027));
+
+ // Vector whole register loads
+ AddInstruction32('vl1r.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($02800007));
+ AddInstruction32('vl1re16.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($02805007));
+ AddInstruction32('vl1re32.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($02806007));
+ AddInstruction32('vl1re64.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($02807007));
+ AddInstruction32('vl2r.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($22800007));
+ AddInstruction32('vl2re16.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($22805007));
+ AddInstruction32('vl2re32.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($22806007));
+ AddInstruction32('vl2re64.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($22807007));
+ AddInstruction32('vl4r.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($62800007));
+ AddInstruction32('vl4re16.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($62805007));
+ AddInstruction32('vl4re32.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($62806007));
+ AddInstruction32('vl4re64.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($62807007));
+ AddInstruction32('vl8r.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($e2800007));
+ AddInstruction32('vl8re16.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($e2805007));
+ AddInstruction32('vl8re32.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($e2806007));
+ AddInstruction32('vl8re64.v',TInstructionFormat.VLoadWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($e2807007));
+
+ // Vector whole register stores
+ AddInstruction32('vs1r.v',TInstructionFormat.VStoreWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($02800027));
+ AddInstruction32('vs2r.v',TInstructionFormat.VStoreWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($22800027));
+ AddInstruction32('vs4r.v',TInstructionFormat.VStoreWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($62800027));
+ AddInstruction32('vs8r.v',TInstructionFormat.VStoreWholeReg,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($e2800027));
+
+ // OPIVV - vector-vector integer arithmetic (funct3=0)
+ AddInstruction32('vadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00000057));
+ AddInstruction32('vandn.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04000057));
+ AddInstruction32('vsub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08000057));
+ AddInstruction32('vminu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($10000057));
+ AddInstruction32('vmin.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($14000057));
+ AddInstruction32('vmaxu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($18000057));
+ AddInstruction32('vmax.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($1c000057));
+ AddInstruction32('vand.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24000057));
+ AddInstruction32('vor.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28000057));
+ AddInstruction32('vxor.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c000057));
+ AddInstruction32('vrgather.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($30000057));
+ AddInstruction32('vrgatherei16.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($38000057));
+ AddInstruction32('vror.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($50000057));
+ AddInstruction32('vrol.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($54000057));
+ AddInstruction32('vmseq.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($60000057));
+ AddInstruction32('vmsne.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($64000057));
+ AddInstruction32('vmsltu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($68000057));
+ AddInstruction32('vmslt.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($6c000057));
+ AddInstruction32('vmsleu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($70000057));
+ AddInstruction32('vmsle.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($74000057));
+ AddInstruction32('vsaddu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($80000057));
+ AddInstruction32('vsadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($84000057));
+ AddInstruction32('vssubu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($88000057));
+ AddInstruction32('vssub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($8c000057));
+ AddInstruction32('vsll.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($94000057));
+ AddInstruction32('vsrl.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a0000057));
+ AddInstruction32('vsra.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a4000057));
+ AddInstruction32('vnsrl.wv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b0000057));
+ AddInstruction32('vnsra.wv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b4000057));
+ AddInstruction32('vnclipu.wv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b8000057));
+ AddInstruction32('vnclip.wv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($bc000057));
+ AddInstruction32('vwredsumu.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c0000057));
+ AddInstruction32('vwredsum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c4000057));
+ AddInstruction32('vwsll.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($d4000057));
+
+ // OPIVV - carry/merge (vm=0)
+ AddInstruction32('vadc.vvm',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($40000057));
+ AddInstruction32('vmadc.vvm',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($44000057));
+ AddInstruction32('vsbc.vvm',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($48000057));
+ AddInstruction32('vmsbc.vvm',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($4c000057));
+ AddInstruction32('vmerge.vvm',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($5c000057));
+ AddInstruction32('vmv.v.v',TInstructionFormat.VVVV,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($5e000057));
+
+ // OPIVX - vector-scalar integer (funct3=4)
+ AddInstruction32('vadd.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00004057));
+ AddInstruction32('vandn.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04004057));
+ AddInstruction32('vsub.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08004057));
+ AddInstruction32('vrsub.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c004057));
+ AddInstruction32('vminu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($10004057));
+ AddInstruction32('vmin.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($14004057));
+ AddInstruction32('vmaxu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($18004057));
+ AddInstruction32('vmax.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($1c004057));
+ AddInstruction32('vand.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24004057));
+ AddInstruction32('vor.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28004057));
+ AddInstruction32('vxor.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c004057));
+ AddInstruction32('vrgather.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($30004057));
+ AddInstruction32('vror.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($50004057));
+ AddInstruction32('vmseq.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($60004057));
+ AddInstruction32('vmsne.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($64004057));
+ AddInstruction32('vmsltu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($68004057));
+ AddInstruction32('vmslt.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($6c004057));
+ AddInstruction32('vmsleu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($70004057));
+ AddInstruction32('vmsle.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($74004057));
+ AddInstruction32('vmsgtu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($78004057));
+ AddInstruction32('vmsgt.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($7c004057));
+ AddInstruction32('vsaddu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($80004057));
+ AddInstruction32('vsadd.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($84004057));
+ AddInstruction32('vssubu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($88004057));
+ AddInstruction32('vssub.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($8c004057));
+ AddInstruction32('vsll.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($94004057));
+ AddInstruction32('vsrl.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a0004057));
+ AddInstruction32('vsra.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a4004057));
+ AddInstruction32('vnsrl.wx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b0004057));
+ AddInstruction32('vnsra.wx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b4004057));
+ AddInstruction32('vnclipu.wx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b8004057));
+ AddInstruction32('vnclip.wx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($bc004057));
+
+ // OPIVX - carry/merge (vm=0)
+ AddInstruction32('vadc.vxm',TInstructionFormat.VVVX,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($40004057));
+ AddInstruction32('vmadc.vxm',TInstructionFormat.VVVX,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($44004057));
+ AddInstruction32('vsbc.vxm',TInstructionFormat.VVVX,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($48004057));
+ AddInstruction32('vmsbc.vxm',TInstructionFormat.VVVX,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($4c004057));
+ AddInstruction32('vmerge.vxm',TInstructionFormat.VVVX,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($5c004057));
+
+ // OPIVI - vector-immediate (funct3=3)
+ AddInstruction32('vadd.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00003057));
+ AddInstruction32('vrsub.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c003057));
+ AddInstruction32('vand.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24003057));
+ AddInstruction32('vor.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28003057));
+ AddInstruction32('vxor.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c003057));
+ AddInstruction32('vrgather.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($30003057));
+ AddInstruction32('vror.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($50003057));
+ AddInstruction32('vmseq.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($60003057));
+ AddInstruction32('vmsne.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($64003057));
+ AddInstruction32('vmsleu.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($70003057));
+ AddInstruction32('vmsle.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($74003057));
+ AddInstruction32('vmsgtu.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($78003057));
+ AddInstruction32('vmsgt.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($7c003057));
+ AddInstruction32('vsaddu.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($80003057));
+ AddInstruction32('vsadd.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($84003057));
+ AddInstruction32('vsll.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($94003057));
+ AddInstruction32('vsrl.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a0003057));
+ AddInstruction32('vsra.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a4003057));
+ AddInstruction32('vnsrl.wi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b0003057));
+ AddInstruction32('vnsra.wi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b4003057));
+ AddInstruction32('vnclipu.wi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b8003057));
+ AddInstruction32('vnclip.wi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($bc003057));
+
+ // OPIVI - carry/merge (vm=0)
+ AddInstruction32('vadc.vim',TInstructionFormat.VVVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($40003057));
+ AddInstruction32('vmadc.vim',TInstructionFormat.VVVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($44003057));
+ AddInstruction32('vmerge.vim',TInstructionFormat.VVVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($5c003057));
+ AddInstruction32('vmv.v.i',TInstructionFormat.VVVI,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($5e003057));
+ AddInstruction32('vslideup.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($38003057));
+ AddInstruction32('vslidedown.vi',TInstructionFormat.VVVI,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($3c003057));
+ AddInstruction32('vslideup.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($38004057));
+ AddInstruction32('vslidedown.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($3c004057));
+
+ // OPFVV - vector-vector floating point (funct3=1)
+ AddInstruction32('vfadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00001057));
+ AddInstruction32('vfredusum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04001057));
+ AddInstruction32('vfsub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08001057));
+ AddInstruction32('vfredosum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c001057));
+ AddInstruction32('vfmin.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($10001057));
+ AddInstruction32('vfredmin.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($14001057));
+ AddInstruction32('vfmax.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($18001057));
+ AddInstruction32('vfredmax.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($1c001057));
+ AddInstruction32('vfsgnj.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($20001057));
+ AddInstruction32('vfsgnjn.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24001057));
+ AddInstruction32('vfsgnjx.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28001057));
+ AddInstruction32('vmfeq.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($60001057));
+ AddInstruction32('vmfle.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($64001057));
+ AddInstruction32('vmflt.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($6c001057));
+ AddInstruction32('vmfne.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($70001057));
+ AddInstruction32('vfdiv.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($80001057));
+ AddInstruction32('vfmul.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($90001057));
+ AddInstruction32('vfmadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a0001057));
+ AddInstruction32('vfnmadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a4001057));
+ AddInstruction32('vfmsub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a8001057));
+ AddInstruction32('vfnmsub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($ac001057));
+ AddInstruction32('vfmacc.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b0001057));
+ AddInstruction32('vfnmacc.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b4001057));
+ AddInstruction32('vfmsac.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b8001057));
+ AddInstruction32('vfnmsac.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($bc001057));
+ AddInstruction32('vfwadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c0001057));
+ AddInstruction32('vfwredosum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($cc001057));
+ AddInstruction32('vfwsub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c8001057));
+ AddInstruction32('vfwredusum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c4001057));
+ AddInstruction32('vfwadd.wv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($d0001057));
+ AddInstruction32('vfwsub.wv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($d8001057));
+ AddInstruction32('vfwmul.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($e0001057));
+ AddInstruction32('vfwmacc.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f0001057));
+ AddInstruction32('vfwnmacc.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f4001057));
+ AddInstruction32('vfwmsac.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f8001057));
+ AddInstruction32('vfwnmsac.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($fc001057));
+ AddInstruction32('vfmv.f.s',TInstructionFormat.VMaskToScalar,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($42001057));
+
+ // VFUNARY0 - FP conversion unary ops (funct6=$12, funct3=1)
+ AddInstruction32('vfcvt.xu.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48001057));
+ AddInstruction32('vfcvt.x.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48009057));
+ AddInstruction32('vfcvt.f.xu.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48011057));
+ AddInstruction32('vfcvt.f.x.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48019057));
+ AddInstruction32('vfcvt.rtz.xu.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48031057));
+ AddInstruction32('vfcvt.rtz.x.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48039057));
+ AddInstruction32('vfwcvt.xu.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48041057));
+ AddInstruction32('vfwcvt.x.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48049057));
+ AddInstruction32('vfwcvt.f.xu.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48051057));
+ AddInstruction32('vfwcvt.f.x.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48059057));
+ AddInstruction32('vfwcvt.f.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48061057));
+ AddInstruction32('vfwcvt.rtz.xu.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48071057));
+ AddInstruction32('vfwcvt.rtz.x.f.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48079057));
+ AddInstruction32('vfncvt.xu.f.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48081057));
+ AddInstruction32('vfncvt.x.f.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48089057));
+ AddInstruction32('vfncvt.f.xu.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48091057));
+ AddInstruction32('vfncvt.f.x.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48099057));
+ AddInstruction32('vfncvt.f.f.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($480a1057));
+ AddInstruction32('vfncvt.rod.f.f.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($480a9057));
+ AddInstruction32('vfncvt.rtz.xu.f.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($480b1057));
+ AddInstruction32('vfncvt.rtz.x.f.w',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($480b9057));
+
+ // VFUNARY1 - FP unary ops (funct6=$13, funct3=1)
+ AddInstruction32('vfsqrt.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4c001057));
+ AddInstruction32('vfrsqrt7.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4c021057));
+ AddInstruction32('vfrec7.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4c029057));
+ AddInstruction32('vfclass.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4c081057));
+
+ // OPFVF - vector-scalar floating point (funct3=5)
+ AddInstruction32('vfadd.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00005057));
+ AddInstruction32('vfsub.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08005057));
+ AddInstruction32('vfrsub.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($9c005057));
+ AddInstruction32('vfmin.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($10005057));
+ AddInstruction32('vfmax.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($18005057));
+ AddInstruction32('vfsgnj.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($20005057));
+ AddInstruction32('vfsgnjn.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24005057));
+ AddInstruction32('vfsgnjx.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28005057));
+ AddInstruction32('vfslide1up.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($38005057));
+ AddInstruction32('vfslide1down.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($3c005057));
+ AddInstruction32('vmfeq.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($60005057));
+ AddInstruction32('vmfle.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($64005057));
+ AddInstruction32('vmfge.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($7c005057));
+ AddInstruction32('vmflt.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($6c005057));
+ AddInstruction32('vmfgt.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($74005057));
+ AddInstruction32('vmfne.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($70005057));
+ AddInstruction32('vfdiv.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($80005057));
+ AddInstruction32('vfrdiv.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($84005057));
+ AddInstruction32('vfmul.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($90005057));
+ AddInstruction32('vfmadd.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a0005057));
+ AddInstruction32('vfnmadd.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a4005057));
+ AddInstruction32('vfmsub.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a8005057));
+ AddInstruction32('vfnmsub.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($ac005057));
+ AddInstruction32('vfmacc.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b0005057));
+ AddInstruction32('vfnmacc.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b4005057));
+ AddInstruction32('vfmsac.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b8005057));
+ AddInstruction32('vfnmsac.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($bc005057));
+ AddInstruction32('vfwadd.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c0005057));
+ AddInstruction32('vfwsub.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c8005057));
+ AddInstruction32('vfwadd.wf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($d0005057));
+ AddInstruction32('vfwsub.wf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($d8005057));
+ AddInstruction32('vfwmul.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($e0005057));
+ AddInstruction32('vfwmacc.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f0005057));
+ AddInstruction32('vfwnmacc.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f4005057));
+ AddInstruction32('vfwmsac.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f8005057));
+ AddInstruction32('vfwnmsac.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($fc005057));
+ AddInstruction32('vfmv.s.f',TInstructionFormat.VFScalarToV,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($42005057));
+ AddInstruction32('vfmerge.vfm',TInstructionFormat.VVVF,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($5c005057));
+
+ // OPMVV - vector-vector multiply/mask (funct3=2)
+ AddInstruction32('vredsum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00002057));
+ AddInstruction32('vredand.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04002057));
+ AddInstruction32('vredor.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($08002057));
+ AddInstruction32('vredxor.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($0c002057));
+ AddInstruction32('vredminu.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($10002057));
+ AddInstruction32('vredmin.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($14002057));
+ AddInstruction32('vredmaxu.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($18002057));
+ AddInstruction32('vredmax.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($1c002057));
+ AddInstruction32('vaaddu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($20002057));
+ AddInstruction32('vaadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24002057));
+ AddInstruction32('vasubu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28002057));
+ AddInstruction32('vasub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c002057));
+ AddInstruction32('vmand.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($64002057));
+ AddInstruction32('vmnand.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($74002057));
+ AddInstruction32('vmandn.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($60002057));
+ AddInstruction32('vmxor.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($6c002057));
+ AddInstruction32('vmor.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($68002057));
+ AddInstruction32('vmnor.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($78002057));
+ AddInstruction32('vmorn.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($70002057));
+ AddInstruction32('vmxnor.mm',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($7c002057));
+ AddInstruction32('vmulhu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($90002057));
+ AddInstruction32('vmul.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($94002057));
+ AddInstruction32('vmulhsu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($98002057));
+ AddInstruction32('vmulh.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($9c002057));
+ AddInstruction32('vdivu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($80002057));
+ AddInstruction32('vdiv.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($84002057));
+ AddInstruction32('vremu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($88002057));
+ AddInstruction32('vrem.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($8c002057));
+ AddInstruction32('vwmulu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($e0002057));
+ AddInstruction32('vwmulsu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($e8002057));
+ AddInstruction32('vwmul.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($ec002057));
+ AddInstruction32('vmacc.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b4002057));
+ AddInstruction32('vnmsac.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($bc002057));
+ AddInstruction32('vmadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a4002057));
+ AddInstruction32('vnmsub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($ac002057));
+ AddInstruction32('vwmaccu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f0002057));
+ AddInstruction32('vwmacc.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f4002057));
+ AddInstruction32('vwmaccsu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($fc002057));
+ AddInstruction32('vcompress.vm',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($5e002057));
+
+ // VWXUNARY0/VXUNARY0/VMUNARY0 - OPMVV unary ops (funct3=2)
+ AddInstruction32('vmv.x.s',TInstructionFormat.VMaskToScalar,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($42002057));
+ AddInstruction32('vcpop.m',TInstructionFormat.VMaskToScalar,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($40082057));
+ AddInstruction32('vfirst.m',TInstructionFormat.VMaskToScalar,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4008a057));
+ AddInstruction32('vzext.vf8',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48012057));
+ AddInstruction32('vsext.vf8',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4801a057));
+ AddInstruction32('vzext.vf4',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48022057));
+ AddInstruction32('vsext.vf4',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4802a057));
+ AddInstruction32('vzext.vf2',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48032057));
+ AddInstruction32('vsext.vf2',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4803a057));
+ AddInstruction32('viota.m',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($50082057));
+ AddInstruction32('vid.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fdfff07f),TPasRISCVUInt32($5008a057));
+ AddInstruction32('vbrev.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48052057));
+ AddInstruction32('vrev8.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4804a057));
+ AddInstruction32('vbrev8.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48042057));
+ AddInstruction32('vclz.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48062057));
+ AddInstruction32('vctz.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4806a057));
+ AddInstruction32('vcpop.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48072057));
+ AddInstruction32('vmv.s.x',TInstructionFormat.VScalarToV,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($42006057));
+
+ // OPMVX - vector-scalar multiply (funct3=6)
+ AddInstruction32('vaaddu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($20006057));
+ AddInstruction32('vaadd.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24006057));
+ AddInstruction32('vasubu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28006057));
+ AddInstruction32('vasub.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c006057));
+ AddInstruction32('vslide1up.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($38006057));
+ AddInstruction32('vslide1down.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($3c006057));
+ AddInstruction32('vmulhu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($90006057));
+ AddInstruction32('vmul.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($94006057));
+ AddInstruction32('vmulhsu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($98006057));
+ AddInstruction32('vmulh.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($9c006057));
+ AddInstruction32('vdivu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($80006057));
+ AddInstruction32('vdiv.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($84006057));
+ AddInstruction32('vremu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($88006057));
+ AddInstruction32('vrem.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($8c006057));
+ AddInstruction32('vwmulu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($e0006057));
+ AddInstruction32('vwmulsu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($e8006057));
+ AddInstruction32('vwmul.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($ec006057));
+ AddInstruction32('vmacc.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($b4006057));
+ AddInstruction32('vnmsac.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($bc006057));
+ AddInstruction32('vmadd.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($a4006057));
+ AddInstruction32('vnmsub.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($ac006057));
+ AddInstruction32('vwmaccu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f0006057));
+ AddInstruction32('vwmacc.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f4006057));
+ AddInstruction32('vwmaccsu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($fc006057));
+ AddInstruction32('vwmaccus.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($f8006057));
 
  SetLength(fInstructions32,fCountInstructions32);
  SetLength(fInstructions16,fCountInstructions16);
@@ -33575,6 +34089,9 @@ begin
                        TMISA.TExtension.SUPERVISOR or
                        TMISA.TExtension.HYPERVISOR or // Sha: H-extension enabled
                        TMISA.TExtension.USER;
+ if fHART.fVector then begin
+  fData[TAddress.MISA]:=fData[TAddress.MISA] or TMISA.TExtension.V_EXT;
+ end;
 
  fData[TAddress.MHARTID]:=fHART.fHARTID;
 
@@ -33587,7 +34104,17 @@ begin
 
  fData[TAddress.MVENDORID]:=0;
 
- fData[TAddress.MSTATUS]:=TPasRISCVUInt64($200000000);
+ fData[TAddress.MSTATUS]:=TPasRISCVUInt64($200000000); // UXL=2 (RV64), VS=Off
+ if fHART.fVector then begin
+  fData[TAddress.MSTATUS]:=fData[TAddress.MSTATUS] or TPasRISCVUInt64($000000200); // VS=Initial
+ end;
+
+ if fHART.fVector then begin
+  // Vector CSR initial state: vtype.vill=1, vl=0, vlenb=VLEN/8
+  fData[TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63; // vill=1
+  fData[TAddress.VL]:=0;
+  fData[TAddress.VLENB_CSR]:=VLENB;
+ end;
 
  fData[TAddress.MENVCFG]:=TPasRISCVUInt64($e0000000000000d0); // LPE/SSE off by default, OS enables via CSR write
  fData[TAddress.MENVCFGH]:=fData[TAddress.MENVCFG] shr 32;
@@ -33824,6 +34351,18 @@ begin
  result:=((fData[TAddress.MSTATUS] shr 13) and 3)<>TFS.Off;
 end;
 
+procedure TPasRISCV.THART.TCSR.SetVSDirty;
+begin
+ if ((fData[TCSR.TAddress.MSTATUS] shr 9) and 3)<>TCSR.TVS.Dirty then begin
+  fData[TCSR.TAddress.MSTATUS]:=fData[TCSR.TAddress.MSTATUS] or (TPasRISCVUInt64(TCSR.TVS.Dirty) shl 9);
+ end;
+end;
+
+function TPasRISCV.THART.TCSR.IsVectorEnabled:Boolean;
+begin
+ result:=((fData[TAddress.MSTATUS] shr 9) and 3)<>TVS.Off;
+end;
+
 { TPasRISCV.THART.TAIARegFile }
 
 constructor TPasRISCV.THART.TAIARegFile.Create(const aMachine:TPasRISCV;const aHART:THART);
@@ -33892,6 +34431,8 @@ begin
 
  fMachine:=aMachine;
 
+ fVector:=fMachine.fVector;
+
  fPHandle:=fMachine.AllocatePHandle;
 
  fHARTID:=aHARTID;
@@ -33945,6 +34486,15 @@ begin
 {$endif}
 
    TCSR.TAddress.SEED,
+
+   // Vector CSRs
+   TCSR.TAddress.VSTART,
+   TCSR.TAddress.VXSAT,
+   TCSR.TAddress.VXRM,
+   TCSR.TAddress.VCSR,
+   TCSR.TAddress.VL,
+   TCSR.TAddress.VTYPE,
+   TCSR.TAddress.VLENB_CSR,
 
    TCSR.TAddress.CYCLE,
 // TCSR.TAddress.CYCLEH,
@@ -34122,6 +34672,17 @@ begin
 
  fCSRHandlerMap[TCSR.TAddress.MIP]:=CSRHandlerMIP; // MIP
  fCSRHandlerMap[TCSR.TAddress.SIP]:=CSRHandlerSIP; // SIP
+
+ // Vector CSR handlers
+ if fVector then begin
+  fCSRHandlerMap[TCSR.TAddress.VSTART]:=CSRHandlerVSTART; // VSTART
+  fCSRHandlerMap[TCSR.TAddress.VXSAT]:=CSRHandlerVXSAT; // VXSAT
+  fCSRHandlerMap[TCSR.TAddress.VXRM]:=CSRHandlerVXRM; // VXRM
+  fCSRHandlerMap[TCSR.TAddress.VCSR]:=CSRHandlerVCSR; // VCSR
+  fCSRHandlerMap[TCSR.TAddress.VL]:=CSRHandlerVL; // VL (read-only)
+  fCSRHandlerMap[TCSR.TAddress.VTYPE]:=CSRHandlerVTYPE; // VTYPE (read-only)
+  fCSRHandlerMap[TCSR.TAddress.VLENB_CSR]:=CSRHandlerVLENB; // VLENB (read-only)
+ end;
 
  // H-extension CSR handlers
  fCSRHandlerMap[TCSR.TAddress.HSTATUS]:=CSRHandlerHSTATUS;
@@ -37283,6 +37844,254 @@ begin
  end;
 end;
 
+//////////////////////////////////////////////////////////////////////////////
+// Vector CSR handlers                                                      //
+//////////////////////////////////////////////////////////////////////////////
+
+procedure TPasRISCV.THART.CSRHandlerVSTART(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue,OperationValue:TPasRISCVUInt64;
+begin
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ CSRValue:=fState.CSR.fData[TCSR.TAddress.VSTART];
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS) and TPasRISCVUInt64(VLEN-1);
+ fState.CSR.fData[TCSR.TAddress.VSTART]:=OperationValue;
+ {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+  fState.Registers[rd]:=CSRValue;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVXSAT(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue,OperationValue:TPasRISCVUInt64;
+begin
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ CSRValue:=fState.CSR.fData[TCSR.TAddress.VXSAT] and 1;
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS) and 1;
+ fState.CSR.fData[TCSR.TAddress.VXSAT]:=OperationValue;
+ fState.CSR.fData[TCSR.TAddress.VCSR]:=(fState.CSR.fData[TCSR.TAddress.VCSR] and not TPasRISCVUInt64(1)) or OperationValue;
+ {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+  fState.Registers[rd]:=CSRValue;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVXRM(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue,OperationValue:TPasRISCVUInt64;
+begin
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ CSRValue:=fState.CSR.fData[TCSR.TAddress.VXRM] and 3;
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS) and 3;
+ fState.CSR.fData[TCSR.TAddress.VXRM]:=OperationValue;
+ fState.CSR.fData[TCSR.TAddress.VCSR]:=(fState.CSR.fData[TCSR.TAddress.VCSR] and not TPasRISCVUInt64(6)) or (OperationValue shl 1);
+ {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+  fState.Registers[rd]:=CSRValue;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVCSR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue,OperationValue:TPasRISCVUInt64;
+begin
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ // vcsr: Bit[0]=vxsat, Bits[2:1]=vxrm
+ CSRValue:=(fState.CSR.fData[TCSR.TAddress.VXSAT] and 1) or ((fState.CSR.fData[TCSR.TAddress.VXRM] and 3) shl 1);
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS) and 7;
+ fState.CSR.fData[TCSR.TAddress.VXSAT]:=OperationValue and 1;
+ fState.CSR.fData[TCSR.TAddress.VXRM]:=(OperationValue shr 1) and 3;
+ fState.CSR.fData[TCSR.TAddress.VCSR]:=OperationValue;
+ {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+  fState.Registers[rd]:=CSRValue;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVL(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue,OperationValue:TPasRISCVUInt64;
+begin
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ CSRValue:=fState.CSR.fData[TCSR.TAddress.VL];
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS);
+ if CSRValue<>OperationValue then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVTYPE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue,OperationValue:TPasRISCVUInt64;
+begin
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ CSRValue:=fState.CSR.fData[TCSR.TAddress.VTYPE];
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS);
+ if CSRValue<>OperationValue then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVLENB(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue,OperationValue:TPasRISCVUInt64;
+begin
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ CSRValue:=VLENB;
+ OperationValue:=CSROperation(aOperation,CSRValue,aRHS);
+ if CSRValue<>OperationValue then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
+//////////////////////////////////////////////////////////////////////////////
+// Vector helpers                                                           //
+//////////////////////////////////////////////////////////////////////////////
+
+function TPasRISCV.THART.VectorGetSEW:TPasRISCVUInt32;
+begin
+ result:=8 shl ((fState.CSR.fData[TCSR.TAddress.VTYPE] shr 3) and 7);
+end;
+
+function TPasRISCV.THART.VectorGetLMUL:TPasRISCVInt32;
+var vlmul:TPasRISCVUInt32;
+begin
+ // Returns LMUL encoded as LMUL*8 to avoid fractions
+ // 0=LMUL1(8), 1=LMUL2(16), 2=LMUL4(32), 3=LMUL8(64)
+ // 5=LMUL1/8(1), 6=LMUL1/4(2), 7=LMUL1/2(4)
+ vlmul:=fState.CSR.fData[TCSR.TAddress.VTYPE] and 7;
+ case vlmul of
+  0:begin
+   result:=8;
+  end;
+  1:begin
+   result:=16;
+  end;
+  2:begin
+   result:=32;
+  end;
+  3:begin
+   result:=64;
+  end;
+  5:begin
+   result:=1;
+  end;
+  6:begin
+   result:=2;
+  end;
+  7:begin
+   result:=4;
+  end;
+  else begin
+   result:=0; // reserved
+  end;
+ end;
+end;
+
+function TPasRISCV.THART.VectorGetVLMAX:TPasRISCVUInt32;
+var SEW:TPasRISCVUInt32;
+    LMUL8:TPasRISCVInt32;
+begin
+ SEW:=VectorGetSEW;
+ LMUL8:=VectorGetLMUL;
+ if (LMUL8<=0) or (SEW=0) then begin
+  result:=0;
+ end else begin
+  result:=(VLEN div SEW)*TPasRISCVUInt32(LMUL8) div 8;
+ end;
+end;
+
+function TPasRISCV.THART.VectorGetElement(const aVReg:TPasRISCVUInt32;const aIndex,aSEW:TPasRISCVUInt32):TPasRISCVUInt64;
+var ByteOffset:TPasRISCVUInt32;
+    RegIndex,RegOffset:TPasRISCVUInt32;
+begin
+ ByteOffset:=aIndex*(aSEW shr 3);
+ RegIndex:=aVReg+(ByteOffset div VLENB);
+ RegOffset:=ByteOffset mod VLENB;
+ case aSEW of
+  8:begin
+   result:=fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset];
+  end;
+  16:begin
+   result:=TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^);
+  end;
+  32:begin
+   result:=TPasRISCVUInt32(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^);
+  end;
+  64:begin
+   result:=TPasRISCVUInt64(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^);
+  end;
+  else begin
+   result:=0;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.VectorSetElement(const aVReg:TPasRISCVUInt32;const aIndex,aSEW:TPasRISCVUInt32;const aValue:TPasRISCVUInt64);
+var ByteOffset:TPasRISCVUInt32;
+    RegIndex,RegOffset:TPasRISCVUInt32;
+begin
+ ByteOffset:=aIndex*(aSEW shr 3);
+ RegIndex:=aVReg+(ByteOffset div VLENB);
+ RegOffset:=ByteOffset mod VLENB;
+ case aSEW of
+  8:begin
+   fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset]:=TPasRISCVUInt8(aValue);
+  end;
+  16:begin
+   TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^):=TPasRISCVUInt16(aValue);
+  end;
+  32:begin
+   TPasRISCVUInt32(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^):=TPasRISCVUInt32(aValue);
+  end;
+  64:begin
+   TPasRISCVUInt64(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^):=aValue;
+  end;
+ end;
+end;
+
+function TPasRISCV.THART.VectorGetMaskBit(const aIndex:TPasRISCVUInt32):Boolean;
+begin
+ result:=(fState.VectorRegisters[TVectorRegister.v0][aIndex shr 3] shr (aIndex and 7)) and 1<>0;
+end;
+
 {$ifdef fpc}
  {$push}
  {$codealign jump=16}
@@ -37290,22 +38099,6364 @@ end;
  {$codealign proc=16}
 {$endif}
 function TPasRISCV.THART.ExecuteVectorInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+var rd,rs1,rs2:TRegister;
+    funct3,funct6:TPasRISCVUInt32;
+    vd,vs1,vs2:TPasRISCVUInt32;
+    VTypeValue,AVL,NewVL,VLMAX:TPasRISCVUInt64;
+    SEW,LMUL8:TPasRISCVUInt32;
+    vsew,vlmul:TPasRISCVUInt32;
+    Unmasked:Boolean;
+    Opcode:TPasRISCVUInt32;
+    Width,MemOpType,NumFields,UnitStrideMop:TPasRISCVUInt32;
+    EEW,EVL:TPasRISCVUInt32;
+    Address,Stride:TPasRISCVUInt64;
+    SubIndex,Index:TPasRISCVUInt32;
+    SourceValue:TPasRISCVUInt64;
+    OperandValue:TPasRISCVUInt64;
+    FloatA,FloatB,FloatC,FloatResult,ScalarFloat:TPasRISCVFloat;
+    DoubleA,DoubleB,DoubleC,DoubleResult,ScalarDouble:TPasRISCVDouble;
+    ScalarFP:TPasRISCVUInt64;
 begin
 
- case {$ifdef TryToForceCaseJumpTableOnLevel1}TPasRISCVUInt8(aInstruction and $7f){$else}aInstruction and 3{$endif} of
+ // Check mstatus.VS
+ if not fState.CSR.IsVectorEnabled then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  result:=4;
+  exit;
+ end;
 
- {$ifdef TryToForceCaseJumpTableOnLevel1}
-  $00,$04,$08,$0c,$10,$14,$18,$1c,$20,$24,$28,$2c,$30,$34,$38,$3c,
-  $40,$44,$48,$4c,$50,$54,$58,$5c,$60,$64,$68,$6c,$70,$74,$78,$7c,
-  $80,$84,$88,$8c,$90,$94,$98,$9c,$a0,$a4,$a8,$ac,$b0,$b4,$b8,$bc,
-  $c0,$c4,$c8,$cc,$d0,$d4,$d8,$dc,$e0,$e4,$e8,$ec,$f0,$f4,$f8,$fc:
- {$else}
-  $00:
- {$endif}begin
-   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-   result:=2;
+ Opcode:=aInstruction and $7f;
+
+ case Opcode of
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Vector Load (opcode $07)                                                 //
+
+  $07:begin
+   //////////////////////////////////////////////////////////////////////////////
+   Width:=(aInstruction shr 12) and 7;
+   vd:=(aInstruction shr 7) and $1f;
+   rs1:=TRegister((aInstruction shr 15) and $1f);
+   MemOpType:=(aInstruction shr 26) and 3;
+   Unmasked:=((aInstruction shr 25) and 1)<>0;
+   NumFields:=((aInstruction shr 29) and 7);
+   UnitStrideMop:=(aInstruction shr 20) and $1f;
+
+   // Determine EEW from width encoding
+   case Width of
+    $0:begin
+     EEW:=8;
+    end;
+
+    $5:begin
+     EEW:=16;
+    end;
+
+    $6:begin
+     EEW:=32;
+    end;
+
+    $7:begin
+     EEW:=64;
+    end;
+    else begin
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+   end;
+
+   // Check vtype.vill
+   if (fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+    if not ((MemOpType=0) and (UnitStrideMop=$08)) then begin
+     // Only whole-register loads are allowed when vill=1
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+   end;
+
+   case MemOpType of
+    $00:begin
+     // Unit-stride
+     case UnitStrideMop of
+      $00:begin
+       // vle8/16/32/64.v — unit-stride load
+       Address:=fState.Registers[rs1];
+       SEW:=VectorGetSEW;
+       EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         // prestart: skip
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         // masked off: undisturbed (do nothing)
+        end else begin
+         OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          result:=4;
+          exit;
+         end;
+         VectorSetElement(vd,Index,EEW,OperandValue);
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $08:begin
+       // vlNre8/16/32/64.v — whole register load
+       // NumFields+1 registers, evl = (NumFields+1)*VLEN/EEW
+       EVL:=(NumFields+1)*(VLEN div EEW);
+       Address:=fState.Registers[rs1];
+       for Index:=0 to EVL-1 do begin
+        OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
+        if fState.ExceptionValue<>TExceptionValue.None then begin
+         result:=4;
+         exit;
+        end;
+        VectorSetElement(vd,Index,EEW,OperandValue);
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $0b:begin
+       // vlm.v — mask load (EEW=8, evl=ceil(vl/8))
+       EVL:=(fState.CSR.fData[TCSR.TAddress.VL]+7) shr 3;
+       Address:=fState.Registers[rs1];
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         // prestart: skip
+        end else begin
+         OperandValue:=Load(Address+TPasRISCVUInt64(Index),1);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          result:=4;
+          exit;
+         end;
+         VectorSetElement(vd,Index,8,OperandValue);
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $10:begin
+       // vle8ff/16ff/32ff/64ff.v — fault-only-first load
+       Address:=fState.Registers[rs1];
+       EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         // prestart: skip
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         // masked off
+        end else begin
+         OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          if Index=0 then begin
+           // Element 0: normal trap
+           result:=4;
+           exit;
+          end else begin
+           // Element >0: trim vl, no trap
+           fState.CSR.fData[TCSR.TAddress.VL]:=Index;
+           ClearException;
+           break;
+          end;
+         end;
+         VectorSetElement(vd,Index,EEW,OperandValue);
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      else begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
+    end;
+
+    $02:begin
+     // Strided load (vlse8/16/32/64.v)
+     rs2:=TRegister((aInstruction shr 20) and $1f);
+     Address:=fState.Registers[rs1];
+     Stride:=fState.Registers[rs2];
+     EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     for Index:=0 to EVL-1 do begin
+      if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       // prestart: skip
+      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       // masked off
+      end else begin
+       OperandValue:=Load(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index)),EEW shr 3);
+       if fState.ExceptionValue<>TExceptionValue.None then begin
+        result:=4;
+        exit;
+       end;
+       VectorSetElement(vd,Index,EEW,OperandValue);
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $01,$03:begin
+     // Indexed load (vluxei/vloxei)
+     vs2:=(aInstruction shr 20) and $1f;
+     Address:=fState.Registers[rs1];
+     SEW:=VectorGetSEW;
+     EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     for Index:=0 to EVL-1 do begin
+      if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       // prestart: skip
+      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       // masked off
+      end else begin
+       // Index from vs2 with EEW
+       SourceValue:=VectorGetElement(vs2,Index,EEW);
+       OperandValue:=Load(Address+SourceValue,SEW shr 3);
+       if fState.ExceptionValue<>TExceptionValue.None then begin
+        result:=4;
+        exit;
+       end;
+       VectorSetElement(vd,Index,SEW,OperandValue);
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+    else begin
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+   end;
+  end;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Vector Store (opcode $27)                                                //
+
+  $27:begin
+   //////////////////////////////////////////////////////////////////////////////
+   Width:=(aInstruction shr 12) and 7;
+   vs2:=(aInstruction shr 20) and $1f;
+   rs1:=TRegister((aInstruction shr 15) and $1f);
+   MemOpType:=(aInstruction shr 26) and 3;
+   Unmasked:=((aInstruction shr 25) and 1)<>0;
+   NumFields:=((aInstruction shr 29) and 7);
+   vd:=(aInstruction shr 7) and $1f; // vs3 (source data register)
+
+   // Determine EEW from width encoding
+   case Width of
+    $0:begin
+     EEW:=8;
+    end;
+
+    $5:begin
+     EEW:=16;
+    end;
+
+    $6:begin
+     EEW:=32;
+    end;
+
+    $7:begin
+     EEW:=64;
+    end;
+    else begin
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+   end;
+
+   // Check vtype.vill
+   if (fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+    UnitStrideMop:=(aInstruction shr 20) and $1f;
+    if not ((MemOpType=0) and (UnitStrideMop=$08)) then begin
+     // Only whole-register stores are valid when vill=1
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+   end;
+
+   case MemOpType of
+    $00:begin
+     // Unit-stride
+     UnitStrideMop:=(aInstruction shr 20) and $1f;
+     case UnitStrideMop of
+      $00:begin
+       // vse8/16/32/64.v — unit-stride store
+       Address:=fState.Registers[rs1];
+       EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         // prestart: skip
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         // masked off
+        end else begin
+         SourceValue:=VectorGetElement(vd,Index,EEW);
+         Store(Address+TPasRISCVUInt64(Index)*(EEW shr 3),SourceValue,EEW shr 3);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $08:begin
+       // vsNr.v — whole register store
+       EVL:=(NumFields+1)*(VLEN div EEW);
+       Address:=fState.Registers[rs1];
+       for Index:=0 to EVL-1 do begin
+        SourceValue:=VectorGetElement(vd,Index,EEW);
+        Store(Address+TPasRISCVUInt64(Index)*(EEW shr 3),SourceValue,EEW shr 3);
+        if fState.ExceptionValue<>TExceptionValue.None then begin
+         result:=4;
+         exit;
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $0b:begin
+       // vsm.v — mask store (EEW=8, evl=ceil(vl/8))
+       EVL:=(fState.CSR.fData[TCSR.TAddress.VL]+7) shr 3;
+       Address:=fState.Registers[rs1];
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         // prestart: skip
+        end else begin
+         SourceValue:=VectorGetElement(vd,Index,8);
+         Store(Address+TPasRISCVUInt64(Index),SourceValue,1);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      else begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
+    end;
+
+    $02:begin
+     // Strided store (vsse8/16/32/64.v)
+     rs2:=TRegister((aInstruction shr 20) and $1f);
+     Address:=fState.Registers[rs1];
+     Stride:=fState.Registers[rs2];
+     EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     for Index:=0 to EVL-1 do begin
+      if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       // prestart: skip
+      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       // masked off
+      end else begin
+       SourceValue:=VectorGetElement(vd,Index,EEW);
+       Store(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index)),SourceValue,EEW shr 3);
+       if fState.ExceptionValue<>TExceptionValue.None then begin
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $01,$03:begin
+     // Indexed store (vsuxei/vsoxei)
+     Address:=fState.Registers[rs1];
+     SEW:=VectorGetSEW;
+     EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     // vs2 field has the index register, vd has the data
+     for Index:=0 to EVL-1 do begin
+      if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       // prestart: skip
+      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       // masked off
+      end else begin
+       SourceValue:=VectorGetElement(vs2,Index,EEW);
+       OperandValue:=VectorGetElement(vd,Index,SEW);
+       Store(Address+SourceValue,OperandValue,SEW shr 3);
+       if fState.ExceptionValue<>TExceptionValue.None then begin
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+    else begin
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+   end;
+  end;
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Vector Arithmetic (opcode $57)                                           //
+
+  $57:begin
+   //////////////////////////////////////////////////////////////////////////////
+
+   funct3:=(aInstruction shr 12) and 7;
+
+   case funct3 of
+
+    //////////////////////////////////////////////////////////////////////////////
+    // OPCFG: vsetvli / vsetivli / vsetvl (funct3=7)                           //
+    //////////////////////////////////////////////////////////////////////////////
+    7:begin
+
+   rd:=TRegister((aInstruction shr 7) and $1f);
+   rs1:=TRegister((aInstruction shr 15) and $1f);
+
+   if (aInstruction and TPasRISCVUInt32($80000000))<>0 then begin
+    // vsetivli: bit31=1
+    // AVL = zero-extended 5-bit immediate from rs1 field
+    AVL:=(aInstruction shr 15) and $1f;
+    VTypeValue:=(aInstruction shr 20) and $3ff; // vtypei[9:0]
+   end else if (aInstruction and TPasRISCVUInt32($40000000))<>0 then begin
+    // vsetvl: bit31=0, bit30=1
+    rs2:=TRegister((aInstruction shr 20) and $1f);
+    VTypeValue:=fState.Registers[rs2];
+    if rs1<>TRegister.Zero then begin
+     AVL:=fState.Registers[rs1];
+    end else if rd<>TRegister.Zero then begin
+     AVL:=TPasRISCVUInt64($ffffffffffffffff); // VLMAX
+    end else begin
+     // rs1=x0, rd=x0: keep vl, only change vtype
+     AVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    end;
+   end else begin
+    // vsetvli: bit31=0, bit30=0
+    VTypeValue:=(aInstruction shr 20) and $7ff; // vtypei[10:0]
+    if rs1<>TRegister.Zero then begin
+     AVL:=fState.Registers[rs1];
+    end else if rd<>TRegister.Zero then begin
+     AVL:=TPasRISCVUInt64($ffffffffffffffff); // VLMAX
+    end else begin
+     // rs1=x0, rd=x0: keep vl, only change vtype
+     AVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    end;
+   end;
+
+   // Validate vtype
+   vsew:=(VTypeValue shr 3) and 7;
+   vlmul:=VTypeValue and 7;
+
+   // Check reserved bits (bits XLEN-2:8 must be zero for valid vtype)
+   if (VTypeValue and (not TPasRISCVUInt64($ff)))<>0 then begin
+    // Invalid: set vill
+    fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
+    fState.CSR.fData[TCSR.TAddress.VL]:=0;
+    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+     fState.Registers[rd]:=0;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   // Check SEW is valid (0=8, 1=16, 2=32, 3=64; >=4 is reserved)
+   if vsew>3 then begin
+    fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
+    fState.CSR.fData[TCSR.TAddress.VL]:=0;
+    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+     fState.Registers[rd]:=0;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   // Check LMUL is valid (4 is reserved)
+   if vlmul=4 then begin
+    fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
+    fState.CSR.fData[TCSR.TAddress.VL]:=0;
+    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+     fState.Registers[rd]:=0;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   // Compute SEW and LMUL*8
+   SEW:=8 shl vsew;
+   case vlmul of
+    0:begin
+     LMUL8:=8;
+    end;
+    1:begin
+     LMUL8:=16;
+    end;
+    2:begin
+     LMUL8:=32;
+    end;
+    3:begin
+     LMUL8:=64;
+    end;
+    5:begin
+     LMUL8:=1;
+    end;
+    6:begin
+     LMUL8:=2;
+    end;
+    7:begin
+     LMUL8:=4;
+    end;
+    else begin
+     LMUL8:=0;
+    end;
+   end;
+
+   // Check fractional LMUL: SEW/LMUL must be <= ELEN (64)
+   // Index.e. SEW*8/LMUL8 <= 64 => SEW*8 <= 64*LMUL8
+   if (LMUL8=0) or (TPasRISCVUInt64(SEW)*8>TPasRISCVUInt64(64)*LMUL8) then begin
+    fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
+    fState.CSR.fData[TCSR.TAddress.VL]:=0;
+    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+     fState.Registers[rd]:=0;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   // Compute VLMAX = (VLEN/SEW) * LMUL
+   VLMAX:=(VLEN div SEW)*LMUL8 div 8;
+
+   // Compute new vl from AVL
+   if AVL<=VLMAX then begin
+    NewVL:=AVL;
+   end else if AVL<(VLMAX*2) then begin
+    // ceil(AVL/2) <= vl <= VLMAX; use VLMAX for simplicity (spec-compliant)
+    NewVL:=VLMAX;
+   end else begin
+    NewVL:=VLMAX;
+   end;
+
+   // Special case: rs1=x0, rd=x0 means keep vl unchanged
+   if (rs1=TRegister.Zero) and (rd=TRegister.Zero) then begin
+    NewVL:=fState.CSR.fData[TCSR.TAddress.VL];
+   end;
+
+   // Set vtype and vl
+   fState.CSR.fData[TCSR.TAddress.VTYPE]:=VTypeValue;
+   fState.CSR.fData[TCSR.TAddress.VL]:=NewVL;
+
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=NewVL;
+   end;
+
+   fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+   fState.CSR.SetVSDirty;
+   result:=4;
    exit;
   end;
+
+
+   //////////////////////////////////////////////////////////////////////////////
+   // OPIVV: Vector-Vector Integer (funct3=0)                                 //
+   //////////////////////////////////////////////////////////////////////////////
+   0:begin
+    vd:=(aInstruction shr 7) and $1f;
+    vs1:=(aInstruction shr 15) and $1f;
+    vs2:=(aInstruction shr 20) and $1f;
+    Unmasked:=((aInstruction shr 25) and 1)<>0;
+    funct6:=(aInstruction shr 26) and $3f;
+    SEW:=VectorGetSEW;
+    EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    case funct6 of
+     $00:begin
+      // vadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $01:begin
+      // vandn.vv (Zvbb)
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and (not VectorGetElement(vs1,Index,SEW)));
+       end;
+      end;
+     end;
+
+     $02:begin
+      // vsub.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $04:begin
+      // vminu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if SourceValue<OperandValue then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,OperandValue);
+        end;
+       end;
+      end;
+     end;
+
+     $05:begin
+      // vmin.vv (signed)
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if SignExtend(SourceValue,SEW)<SignExtend(OperandValue,SEW) then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,OperandValue);
+        end;
+       end;
+      end;
+     end;
+
+     $06:begin
+      // vmaxu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if SourceValue>OperandValue then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,OperandValue);
+        end;
+       end;
+      end;
+     end;
+
+     $07:begin
+      // vmax.vv (signed)
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if SignExtend(SourceValue,SEW)>SignExtend(OperandValue,SEW) then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,OperandValue);
+        end;
+       end;
+      end;
+     end;
+
+     $09:begin
+      // vand.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $0a:begin
+      // vor.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $0b:begin
+      // vxor.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $0c:begin
+      // vrgather.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SubIndex:=VectorGetElement(vs1,Index,SEW);
+        VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+        if SubIndex>=VLMAX then begin
+         VectorSetElement(vd,Index,SEW,0);
+        end else begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
+        end;
+       end;
+      end;
+     end;
+
+      $0e:begin
+       // vrgatherei16.vv: gather with 16-bit indices
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SubIndex:=TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index*2])^);
+         VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+         if SubIndex<VLMAX then begin
+          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
+         end else begin
+          VectorSetElement(vd,Index,SEW,0);
+         end;
+        end;
+       end;
+      end;
+
+     $10:begin
+      // vadc.vvm
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        if VectorGetMaskBit(Index) then begin
+         SourceValue:=1;
+        end else begin
+         SourceValue:=0;
+        end;
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW)+SourceValue);
+       end;
+      end;
+     end;
+
+     $11:begin
+      // vmadc.vvm / vmadc.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if not Unmasked then begin
+         if VectorGetMaskBit(Index) then begin
+          Stride:=1;
+         end else begin
+          Stride:=0;
+         end;
+        end else begin
+         Stride:=0;
+        end;
+        Address:=SourceValue+OperandValue+Stride;
+        if (Address<SourceValue) or ((Stride<>0) and (Address<=SourceValue)) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $12:begin
+      // vsbc.vvm
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        if VectorGetMaskBit(Index) then begin
+         SourceValue:=1;
+        end else begin
+         SourceValue:=0;
+        end;
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW)-SourceValue);
+       end;
+      end;
+     end;
+
+     $13:begin
+      // vmsbc.vvm / vmsbc.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if not Unmasked then begin
+         if VectorGetMaskBit(Index) then begin
+          Stride:=1;
+         end else begin
+          Stride:=0;
+         end;
+        end else begin
+         Stride:=0;
+        end;
+        if (SourceValue<(OperandValue+Stride)) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $14:begin
+      // vror.vv (Zvbb): rotate right
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
+        VectorSetElement(vd,Index,SEW,(SourceValue shr OperandValue) or (SourceValue shl ((SEW-OperandValue) and (SEW-1))));
+       end;
+      end;
+     end;
+
+     $15:begin
+      // vrol.vv (Zvbb): rotate left
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
+        VectorSetElement(vd,Index,SEW,(SourceValue shl OperandValue) or (SourceValue shr ((SEW-OperandValue) and (SEW-1))));
+       end;
+      end;
+     end;
+
+     $17:begin
+      // vmerge.vvm / vmv.v.v
+      if Unmasked then begin
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs1,Index,SEW));
+        end;
+       end;
+      end else begin
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else begin
+         if VectorGetMaskBit(Index) then begin
+          VectorSetElement(vd,Index,SEW,VectorGetElement(vs1,Index,SEW));
+         end else begin
+          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW));
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $18:begin
+      // vmseq.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)=VectorGetElement(vs1,Index,SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $19:begin
+      // vmsne.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)<>VectorGetElement(vs1,Index,SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1a:begin
+      // vmsltu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)<VectorGetElement(vs1,Index,SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1b:begin
+      // vmslt.vv (signed)
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<SignExtend(VectorGetElement(vs1,Index,SEW),SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1c:begin
+      // vmsleu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)<=VectorGetElement(vs1,Index,SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1d:begin
+      // vmsle.vv (signed)
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<=SignExtend(VectorGetElement(vs1,Index,SEW),SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $20:begin
+      // vsaddu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        Address:=SourceValue+OperandValue;
+        if Address<SourceValue then begin
+         case SEW of
+          8:begin
+           Address:=$ff;
+          end;
+          16:begin
+           Address:=$ffff;
+          end;
+          32:begin
+           Address:=$ffffffff;
+          end;
+          else begin
+           Address:=TPasRISCVUInt64($ffffffffffffffff);
+          end;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $21:begin
+      // vsadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        Address:=SourceValue+OperandValue;
+        if ((not (SourceValue xor OperandValue)) and (SourceValue xor Address) and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+         if (SourceValue and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+          Address:=TPasRISCVUInt64(1) shl (SEW-1);
+         end else begin
+          Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $22:begin
+      // vssubu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if SourceValue<OperandValue then begin
+         Address:=0;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end else begin
+         Address:=SourceValue-OperandValue;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $23:begin
+      // vssub.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        Address:=SourceValue-OperandValue;
+        if ((SourceValue xor OperandValue) and (SourceValue xor Address) and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+         if (SourceValue and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+          Address:=TPasRISCVUInt64(1) shl (SEW-1);
+         end else begin
+          Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $25:begin
+      // vsll.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl (VectorGetElement(vs1,Index,SEW) and (SEW-1)));
+       end;
+      end;
+     end;
+
+     $28:begin
+      // vsrl.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr (VectorGetElement(vs1,Index,SEW) and (SEW-1)));
+       end;
+      end;
+     end;
+
+     $29:begin
+      // vsra.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(SourceValue,SEW) shr OperandValue));
+       end;
+      end;
+     end;
+
+     $2c:begin
+      // vnsrl.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW*2);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
+        VectorSetElement(vd,Index,SEW,SourceValue shr OperandValue);
+       end;
+      end;
+     end;
+
+     $2d:begin
+      // vnsra.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW*2);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(SourceValue,SEW*2) shr OperandValue));
+       end;
+      end;
+     end;
+
+     $2e:begin
+      // vnclipu.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW*2);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
+        Address:=SourceValue shr OperandValue;
+        case SEW of
+         8:begin
+          if Address>$ff then begin
+           Address:=$ff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         16:begin
+          if Address>$ffff then begin
+           Address:=$ffff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         32:begin
+          if Address>$ffffffff then begin
+           Address:=$ffffffff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         else begin end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $2f:begin
+      // vnclip.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW*2);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
+        Stride:=TPasRISCVUInt64(SignExtend(SourceValue,SEW*2) shr OperandValue);
+        if SignExtend(Stride,SEW*2)>SignExtend((TPasRISCVUInt64(1) shl (SEW-1))-1,SEW) then begin
+         Stride:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end else if SignExtend(Stride,SEW*2)<SignExtend(TPasRISCVUInt64(1) shl (SEW-1),SEW) then begin
+         Stride:=TPasRISCVUInt64(1) shl (SEW-1);
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Stride);
+       end;
+      end;
+     end;
+
+     $30:begin
+      // vwredsumu.vs: Widening unsigned reduction sum
+      Address:=VectorGetElement(vs1,0,SEW*2);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=Address+VectorGetElement(vs2,Index,SEW);
+       end;
+      end;
+      VectorSetElement(vd,0,SEW*2,Address);
+     end;
+
+     $31:begin
+      // vwredsum.vs: Widening signed reduction sum
+      Address:=TPasRISCVUInt64(SignExtend(VectorGetElement(vs1,0,SEW*2),SEW*2));
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+TPasRISCVInt64(Address));
+       end;
+      end;
+      VectorSetElement(vd,0,SEW*2,Address);
+     end;
+
+     $35:begin
+      // vwsll.vv (Zvbb): widening shift left logical
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
+        VectorSetElement(vd,Index,SEW*2,SourceValue shl OperandValue);
+       end;
+      end;
+     end;
+     else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // OPFVV: Vector-Vector FP (funct3=1)                                       //
+   //////////////////////////////////////////////////////////////////////////////
+   1:begin
+    vd:=(aInstruction shr 7) and $1f;
+    vs1:=(aInstruction shr 15) and $1f;
+    vs2:=(aInstruction shr 20) and $1f;
+    Unmasked:=((aInstruction shr 25) and 1)<>0;
+    funct6:=(aInstruction shr 26) and $3f;
+    if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+    SEW:=8 shl ((fState.CSR.fData[TCSR.TAddress.VTYPE] shr 3) and 7);
+    EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    fState.CSR.SetVSDirty;
+    case funct6 of
+     $00:begin
+      // vfadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatResult:=FloatA+FloatB;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleResult:=DoubleA+DoubleB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $01:begin
+      // vfredusum.vs
+      case SEW of
+       32:begin
+        FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=FloatResult+FloatA;
+         end;
+        end;
+        TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=FloatResult;
+       end;
+       64:begin
+        DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleResult+DoubleA;
+         end;
+        end;
+        TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=DoubleResult;
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $02:begin
+      // vfsub.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatResult:=FloatA-FloatB;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleResult:=DoubleA-DoubleB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $03:begin
+      // vfredosum.vs
+      case SEW of
+       32:begin
+        FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=FloatResult+FloatA;
+         end;
+        end;
+        TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=FloatResult;
+       end;
+       64:begin
+        DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleResult+DoubleA;
+         end;
+        end;
+        TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=DoubleResult;
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $04:begin
+      // vfmin.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          if IsNaN(FloatA) then begin
+           FloatResult:=FloatB;
+          end else if IsNaN(FloatB) then begin
+           FloatResult:=FloatA;
+          end else if FloatA<FloatB then begin
+           FloatResult:=FloatA;
+          end else begin
+           FloatResult:=FloatB;
+          end;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          if IsNaN(DoubleA) then begin
+           DoubleResult:=DoubleB;
+          end else if IsNaN(DoubleB) then begin
+           DoubleResult:=DoubleA;
+          end else if DoubleA<DoubleB then begin
+           DoubleResult:=DoubleA;
+          end else begin
+           DoubleResult:=DoubleB;
+          end;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $05:begin
+      // vfredmin.vs
+      case SEW of
+       32:begin
+        FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if (not IsNaN(FloatA)) and ((IsNaN(FloatResult)) or (FloatA<FloatResult)) then begin
+           FloatResult:=FloatA;
+          end;
+         end;
+        end;
+        TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=FloatResult;
+       end;
+       64:begin
+        DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if (not IsNaN(DoubleA)) and ((IsNaN(DoubleResult)) or (DoubleA<DoubleResult)) then begin
+           DoubleResult:=DoubleA;
+          end;
+         end;
+        end;
+        TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=DoubleResult;
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $06:begin
+      // vfmax.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          if IsNaN(FloatA) then begin
+           FloatResult:=FloatB;
+          end else if IsNaN(FloatB) then begin
+           FloatResult:=FloatA;
+          end else if FloatA>FloatB then begin
+           FloatResult:=FloatA;
+          end else begin
+           FloatResult:=FloatB;
+          end;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          if IsNaN(DoubleA) then begin
+           DoubleResult:=DoubleB;
+          end else if IsNaN(DoubleB) then begin
+           DoubleResult:=DoubleA;
+          end else if DoubleA>DoubleB then begin
+           DoubleResult:=DoubleA;
+          end else begin
+           DoubleResult:=DoubleB;
+          end;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $07:begin
+      // vfredmax.vs
+      case SEW of
+       32:begin
+        FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if (not IsNaN(FloatA)) and ((IsNaN(FloatResult)) or (FloatA>FloatResult)) then begin
+           FloatResult:=FloatA;
+          end;
+         end;
+        end;
+        TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=FloatResult;
+       end;
+       64:begin
+        DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if (not IsNaN(DoubleA)) and ((IsNaN(DoubleResult)) or (DoubleA>DoubleResult)) then begin
+           DoubleResult:=DoubleA;
+          end;
+         end;
+        end;
+        TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=DoubleResult;
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $08:begin
+      // vfsgnj.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          OperandValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $7fffffff) or (OperandValue and $80000000);
+         end;
+         64:begin
+          SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          OperandValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(SourceValue and $7fffffffffffffff) or (OperandValue and $8000000000000000);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $09:begin
+      // vfsgnjn.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          OperandValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $7fffffff) or ((not OperandValue) and $80000000);
+         end;
+         64:begin
+          SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          OperandValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(SourceValue and $7fffffffffffffff) or ((not OperandValue) and $8000000000000000);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $0a:begin
+      // vfsgnjx.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          OperandValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $7fffffff) or ((SourceValue xor OperandValue) and $80000000);
+         end;
+         64:begin
+          SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          OperandValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(SourceValue and $7fffffffffffffff) or ((SourceValue xor OperandValue) and $8000000000000000);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $10:begin
+      // vfmv.f.s
+      rd:=TRegister((aInstruction shr 7) and $1f);
+      case SEW of
+       32:begin
+        fState.FPURegisters[TFPURegister(ord(rd))].ui64:=$ffffffff00000000 or TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][0])^);
+       end;
+       64:begin
+        fState.FPURegisters[TFPURegister(ord(rd))].ui64:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][0])^);
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $12:begin
+      // VFUNARY0: vfcvt/vfwcvt/vfncvt conversions
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case vs1 of
+         $00:begin
+          // vfcvt.xu.f.v
+          case SEW of
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Round(FloatA));
+           end;
+           64:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Round(DoubleA));
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $01:begin
+          // vfcvt.x.f.v
+          case SEW of
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVInt32(Round(FloatA));
+           end;
+           64:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Round(DoubleA);
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $02:begin
+          // vfcvt.f.xu.v
+          case SEW of
+           32:begin
+            SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVFloat(TPasRISCVUInt32(SourceValue));
+           end;
+           64:begin
+            SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVDouble(SourceValue);
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $03:begin
+          // vfcvt.f.x.v
+          case SEW of
+           32:begin
+            SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVFloat(TPasRISCVInt32(SourceValue));
+           end;
+           64:begin
+            SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVDouble(TPasRISCVInt64(SourceValue));
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $06:begin
+          // vfcvt.rtz.xu.f.v
+          case SEW of
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(FloatA));
+           end;
+           64:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(DoubleA));
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $07:begin
+          // vfcvt.rtz.x.f.v
+          case SEW of
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(FloatA);
+           end;
+           64:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(DoubleA);
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $08:begin
+          // vfwcvt.xu.f.v
+          if SEW=32 then begin
+           FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Round(FloatA));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $09:begin
+          // vfwcvt.x.f.v
+          if SEW=32 then begin
+           FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+           TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Round(FloatA);
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $0a:begin
+          // vfwcvt.f.xu.v
+          if SEW=32 then begin
+           SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+           TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVDouble(TPasRISCVUInt32(SourceValue));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $0b:begin
+          // vfwcvt.f.x.v
+          if SEW=32 then begin
+           SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+           TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVDouble(TPasRISCVInt32(SourceValue));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $0c:begin
+          // vfwcvt.f.f.v (f16->f32 or f32->f64)
+          case SEW of
+           16:begin
+            SourceValue:=TPasRISCVUInt16(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*2])^);
+            FloatResult:=TPasRISCVFloat(TPasRISCVHalfFloat(pointer(@SourceValue)^));
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+           end;
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=FloatA;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $0e:begin
+          // vfwcvt.rtz.xu.f.v
+          if SEW=32 then begin
+           FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(FloatA));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $0f:begin
+          // vfwcvt.rtz.x.f.v
+          if SEW=32 then begin
+           FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+           TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(FloatA);
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $10:begin
+          // vfncvt.xu.f.w
+          if SEW=32 then begin
+           DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Round(DoubleA));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $11:begin
+          // vfncvt.x.f.w
+          if SEW=32 then begin
+           DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+           TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVInt32(Round(DoubleA));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $12:begin
+          // vfncvt.f.xu.w
+          if SEW=32 then begin
+           SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+           TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVFloat(SourceValue);
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $13:begin
+          // vfncvt.f.x.w
+          if SEW=32 then begin
+           SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+           TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVFloat(TPasRISCVInt64(SourceValue));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $14:begin
+          // vfncvt.f.f.w (f32->f16 or f64->f32)
+          case SEW of
+           16:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVHalfFloat(pointer(@OperandValue)^):=TPasRISCVHalfFloat.FromFloat(FloatA);
+            TPasRISCVUInt16(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*2])^):=TPasRISCVUInt16(OperandValue);
+           end;
+           32:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=DoubleA;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $15:begin
+          // vfncvt.rod.f.f.w
+          case SEW of
+           16:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            TPasRISCVHalfFloat(pointer(@OperandValue)^):=TPasRISCVHalfFloat.FromFloat(FloatA);
+            TPasRISCVUInt16(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*2])^):=TPasRISCVUInt16(OperandValue);
+           end;
+           32:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=DoubleA;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $16:begin
+          // vfncvt.rtz.xu.f.w
+          if SEW=32 then begin
+           DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(DoubleA));
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+
+         $17:begin
+          // vfncvt.rtz.x.f.w
+          if SEW=32 then begin
+           DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+           TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(DoubleA);
+          end else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $13:begin
+      // VFUNARY1: vfsqrt/vfrsqrt7/vfrec7/vfclass
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case vs1 of
+         $00:begin
+          // vfsqrt.v
+          case SEW of
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            FloatResult:=Sqrt(FloatA);
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+           end;
+           64:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            DoubleResult:=Sqrt(DoubleA);
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $04:begin
+          // vfrsqrt7.v (approximation of 1/sqrt)
+          case SEW of
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            if FloatA>0 then begin
+             FloatResult:=1.0/Sqrt(FloatA);
+            end else begin
+             FloatResult:=FloatA;
+            end;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+           end;
+           64:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            if DoubleA>0 then begin
+             DoubleResult:=1.0/Sqrt(DoubleA);
+            end else begin
+             DoubleResult:=DoubleA;
+            end;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $05:begin
+          // vfrec7.v (approximation of 1/x)
+          case SEW of
+           32:begin
+            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            FloatResult:=1.0/FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+           end;
+           64:begin
+            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            DoubleResult:=1.0/DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+
+         $10:begin
+          // vfclass.v
+          case SEW of
+           32:begin
+            SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            OperandValue:=0;
+            if (SourceValue and $80000000)<>0 then begin
+             // Negative
+             if (SourceValue and $7fffffff)=0 then begin
+              OperandValue:=$08; // -0
+             end else if (SourceValue and $7f800000)=0 then begin
+              OperandValue:=$04; // -subnormal
+             end else if (SourceValue and $7f800000)=$7f800000 then begin
+              if (SourceValue and $007fffff)=0 then begin
+               OperandValue:=$01; // -infinity
+              end else if (SourceValue and $00400000)<>0 then begin
+               OperandValue:=$200; // quiet NaN
+              end else begin
+               OperandValue:=$100; // signaling NaN
+              end;
+             end else begin
+              OperandValue:=$02; // -normal
+             end;
+            end else begin
+             // Positive
+             if (SourceValue and $7fffffff)=0 then begin
+              OperandValue:=$10; // +0
+             end else if (SourceValue and $7f800000)=0 then begin
+              OperandValue:=$20; // +subnormal
+             end else if (SourceValue and $7f800000)=$7f800000 then begin
+              if (SourceValue and $007fffff)=0 then begin
+               OperandValue:=$80; // +infinity
+              end else if (SourceValue and $00400000)<>0 then begin
+               OperandValue:=$200; // quiet NaN
+              end else begin
+               OperandValue:=$100; // signaling NaN
+              end;
+             end else begin
+              OperandValue:=$40; // +normal
+             end;
+            end;
+            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(OperandValue);
+           end;
+           64:begin
+            SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            OperandValue:=0;
+            if (SourceValue and $8000000000000000)<>0 then begin
+             if (SourceValue and $7fffffffffffffff)=0 then begin
+              OperandValue:=$08;
+             end else if (SourceValue and $7ff0000000000000)=0 then begin
+              OperandValue:=$04;
+             end else if (SourceValue and $7ff0000000000000)=$7ff0000000000000 then begin
+              if (SourceValue and $000fffffffffffff)=0 then begin
+               OperandValue:=$01;
+              end else if (SourceValue and $0008000000000000)<>0 then begin
+               OperandValue:=$200;
+              end else begin
+               OperandValue:=$100;
+              end;
+             end else begin
+              OperandValue:=$02;
+             end;
+            end else begin
+             if (SourceValue and $7fffffffffffffff)=0 then begin
+              OperandValue:=$10;
+             end else if (SourceValue and $7ff0000000000000)=0 then begin
+              OperandValue:=$20;
+             end else if (SourceValue and $7ff0000000000000)=$7ff0000000000000 then begin
+              if (SourceValue and $000fffffffffffff)=0 then begin
+               OperandValue:=$80;
+              end else if (SourceValue and $0008000000000000)<>0 then begin
+               OperandValue:=$200;
+              end else begin
+               OperandValue:=$100;
+              end;
+             end else begin
+              OperandValue:=$40;
+             end;
+            end;
+            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=OperandValue;
+           end;
+           else begin
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $18:begin
+      // vmfeq.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          if FloatA=FloatB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          if DoubleA=DoubleB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $19:begin
+      // vmfle.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          if FloatA<=FloatB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          if DoubleA<=DoubleB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $1b:begin
+      // vmflt.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          if FloatA<FloatB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          if DoubleA<DoubleB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $1c:begin
+      // vmfne.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          if FloatA<>FloatB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          if DoubleA<>DoubleB then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $20:begin
+      // vfdiv.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatResult:=FloatA/FloatB;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleResult:=DoubleA/DoubleB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $24:begin
+      // vfmul.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatResult:=FloatA*FloatB;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleResult:=DoubleA*DoubleB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $28:begin
+      // vfmadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=(FloatA*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=(DoubleA*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $29:begin
+      // vfnmadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=-(FloatA*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=-(DoubleA*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2a:begin
+      // vfmsub.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=(FloatA*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=(DoubleA*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2b:begin
+      // vfnmsub.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=-(FloatA*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=-(DoubleA*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2c:begin
+      // vfmacc.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=(FloatA*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(DoubleA*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2d:begin
+      // vfnmacc.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=-(FloatA*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(DoubleA*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2e:begin
+      // vfmsac.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=(FloatA*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(DoubleA*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2f:begin
+      // vfnmsac.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=-(FloatA*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(DoubleA*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $30:begin
+      // vfwadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          DoubleResult:=FloatA+FloatB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $31:begin
+      // vfwredusum.vs
+      case SEW of
+       32:begin
+        DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleResult:=DoubleResult+FloatA;
+         end;
+        end;
+        TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=DoubleResult;
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $32:begin
+      // vfwsub.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          DoubleResult:=FloatA-FloatB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $33:begin
+      // vfwredosum.vs
+      case SEW of
+       32:begin
+        DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
+        for Index:=0 to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleResult:=DoubleResult+FloatA;
+         end;
+        end;
+        TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=DoubleResult;
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $34:begin
+      // vfwadd.wv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          DoubleResult:=DoubleA+FloatB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $36:begin
+      // vfwsub.wv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          DoubleResult:=DoubleA-FloatB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $38:begin
+      // vfwmul.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          DoubleResult:=FloatA*FloatB;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3c:begin
+      // vfwmacc.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(FloatA*FloatB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3d:begin
+      // vfwnmacc.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(FloatA*FloatB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3e:begin
+      // vfwmsac.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(FloatA*FloatB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3f:begin
+      // vfwnmsac.vv
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(FloatA*FloatB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+     else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+    end;
+   end;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // OPMVV: Vector-Vector Multiply/Mask (funct3=2)                           //
+   //////////////////////////////////////////////////////////////////////////////
+   2:begin
+    vd:=(aInstruction shr 7) and $1f;
+    vs1:=(aInstruction shr 15) and $1f;
+    vs2:=(aInstruction shr 20) and $1f;
+    Unmasked:=((aInstruction shr 25) and 1)<>0;
+    funct6:=(aInstruction shr 26) and $3f;
+    SEW:=VectorGetSEW;
+    EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    case funct6 of
+     $08:begin
+      // vaaddu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=(VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW)) shr 1;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $09:begin
+      // vaadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=TPasRISCVUInt64((SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)) shr 1);
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $0a:begin
+      // vasubu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=(VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW)) shr 1;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $0b:begin
+      // vasub.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=TPasRISCVUInt64((SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(VectorGetElement(vs1,Index,SEW),SEW)) shr 1);
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $20:begin
+      // vdivu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if OperandValue=0 then begin
+         case SEW of
+          8:begin
+           Address:=$ff;
+          end;
+          16:begin
+           Address:=$ffff;
+          end;
+          32:begin
+           Address:=$ffffffff;
+          end;
+          else begin
+           Address:=TPasRISCVUInt64($ffffffffffffffff);
+          end;
+         end;
+        end else begin
+         Address:=SourceValue div OperandValue;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $21:begin
+      // vdiv.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if OperandValue=0 then begin
+         case SEW of
+          8:begin
+           Address:=$ff;
+          end;
+          16:begin
+           Address:=$ffff;
+          end;
+          32:begin
+           Address:=$ffffffff;
+          end;
+          else begin
+           Address:=TPasRISCVUInt64($ffffffffffffffff);
+          end;
+         end;
+        end else begin
+         Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(OperandValue,SEW));
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $22:begin
+      // vremu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if OperandValue=0 then begin
+         Address:=SourceValue;
+        end else begin
+         Address:=SourceValue mod OperandValue;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $23:begin
+      // vrem.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        if OperandValue=0 then begin
+         Address:=SourceValue;
+        end else begin
+         Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) mod SignExtend(OperandValue,SEW));
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $24:begin
+      // vmulhu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        case SEW of
+         8:begin
+          Address:=(SourceValue*OperandValue) shr 8;
+         end;
+         16:begin
+          Address:=(SourceValue*OperandValue) shr 16;
+         end;
+         32:begin
+          Address:=(SourceValue*OperandValue) shr 32;
+         end;
+         else begin
+          Address:=MULHU(SourceValue,OperandValue);
+         end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $25:begin
+      // vmul.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)*VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $26:begin
+      // vmulhsu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=VectorGetElement(vs1,Index,SEW);
+        case SEW of
+         8:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,8))*TPasRISCVInt64(OperandValue)) shr 8;
+         end;
+         16:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,16))*TPasRISCVInt64(OperandValue)) shr 16;
+         end;
+         32:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,32))*TPasRISCVInt64(OperandValue)) shr 32;
+         end;
+         else begin
+          Address:=MULHSU(TPasRISCVInt64(SourceValue),OperandValue);
+         end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $27:begin
+      // vmulh.vv / vmv<nr>r.v
+      if Unmasked and (vs2=0) then begin
+       // vmv<nr>r.v
+       VLMAX:=(vs1 and 7)+1;
+       for Index:=0 to TPasRISCVUInt32(VLMAX*VLENB)-1 do begin
+        fState.VectorRegisters[TVectorRegister((vd+(Index div VLENB)) and 31)][Index mod VLENB]:=fState.VectorRegisters[TVectorRegister((vs2+(Index div VLENB)) and 31)][Index mod VLENB];
+       end;
+      end else begin
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         OperandValue:=VectorGetElement(vs1,Index,SEW);
+         case SEW of
+          8:begin
+           Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,8))*TPasRISCVInt64(SignExtend(OperandValue,8))) shr 8;
+          end;
+          16:begin
+           Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,16))*TPasRISCVInt64(SignExtend(OperandValue,16))) shr 16;
+          end;
+          32:begin
+           Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,32))*TPasRISCVInt64(SignExtend(OperandValue,32))) shr 32;
+          end;
+          else begin
+           Address:=MULH(TPasRISCVInt64(SourceValue),TPasRISCVInt64(OperandValue));
+          end;
+         end;
+         VectorSetElement(vd,Index,SEW,Address);
+        end;
+       end;
+      end;
+     end;
+
+     $28:begin
+      // vwaddu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $29:begin
+      // vwadd.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $2a:begin
+      // vwsubu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $2b:begin
+      // vwsub.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $2c:begin
+      // vwaddu.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)+VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $2d:begin
+      // vwadd.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $2e:begin
+      // vwsubu.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)-VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $2f:begin
+      // vwsub.wv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))-SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $30:begin
+      // vwmulu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)*VectorGetElement(vs1,Index,SEW));
+       end;
+      end;
+     end;
+
+     $32:begin
+      // vwmulsu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs1,Index,SEW))));
+       end;
+      end;
+     end;
+
+     $33:begin
+      // vwmul.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $34:begin
+      // vwmaccu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vd,Index,SEW*2)+(VectorGetElement(vs1,Index,SEW)*VectorGetElement(vs2,Index,SEW)));
+       end;
+      end;
+     end;
+
+     $35:begin
+      // vwmacc.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $37:begin
+      // vwmaccsu.vv
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs1,Index,SEW))));
+       end;
+      end;
+     end;
+
+      $00:begin
+       // vredsum.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         Address:=Address + VectorGetElement(vs2,Index,SEW);
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $01:begin
+       // vredand.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         Address:=Address and VectorGetElement(vs2,Index,SEW);
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $02:begin
+       // vredor.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         Address:=Address or VectorGetElement(vs2,Index,SEW);
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $03:begin
+       // vredxor.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         Address:=Address xor VectorGetElement(vs2,Index,SEW);
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $04:begin
+       // vredminu.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         if SourceValue<Address then begin
+          Address:=SourceValue;
+         end;
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $05:begin
+       // vredmin.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         if SignExtend(SourceValue,SEW)<SignExtend(Address,SEW) then begin
+          Address:=SourceValue;
+         end;
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $06:begin
+       // vredmaxu.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         if SourceValue>Address then begin
+          Address:=SourceValue;
+         end;
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $07:begin
+       // vredmax.vs
+       Address:=VectorGetElement(vs1,0,SEW);
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         if SignExtend(SourceValue,SEW)>SignExtend(Address,SEW) then begin
+          Address:=SourceValue;
+         end;
+        end;
+       end;
+       VectorSetElement(vd,0,SEW,Address);
+      end;
+
+      $10:begin
+       case vs1 of
+        $00:begin
+         // vmv.x.s: Move vs2[0] to integer register rd
+         rd:=TRegister((aInstruction shr 7) and $1f);
+         if rd<>TRegister.x0 then begin
+          fState.Registers[rd]:=SignExtend(VectorGetElement(vs2,0,SEW),SEW);
+         end;
+        end;
+
+        $10:begin
+         // vcpop.m (vpopc): Count population of mask register bits
+         rd:=TRegister((aInstruction shr 7) and $1f);
+         Address:=0;
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+            inc(Address);
+           end;
+          end;
+         end;
+         if rd<>TRegister.x0 then begin
+          fState.Registers[rd]:=Address;
+         end;
+        end;
+
+        $11:begin
+         // vfirst.m: Find first set mask bit, return index or -1
+         rd:=TRegister((aInstruction shr 7) and $1f);
+         Address:=TPasRISCVUInt64(TPasRISCVInt64(-1));
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+            Address:=Index;
+            break;
+           end;
+          end;
+         end;
+         if rd<>TRegister.x0 then begin
+          fState.Registers[rd]:=Address;
+         end;
+        end;
+        else begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+       end;
+      end;
+
+      $12:begin
+       // VXUNARY0: vzext/vsext
+       case vs1 of
+        $02:begin
+         // vzext.vf8
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW div 8));
+          end;
+         end;
+        end;
+
+        $03:begin
+         // vsext.vf8
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW div 8),SEW div 8)));
+          end;
+         end;
+        end;
+
+        $04:begin
+         // vzext.vf4
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW div 4));
+          end;
+         end;
+        end;
+
+        $05:begin
+         // vsext.vf4
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW div 4),SEW div 4)));
+          end;
+         end;
+        end;
+
+        $06:begin
+         // vzext.vf2
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW div 2));
+          end;
+         end;
+        end;
+
+        $07:begin
+         // vsext.vf2
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW div 2),SEW div 2)));
+          end;
+         end;
+        end;
+
+        $08:begin
+         // vbrev8.v (Zvbb): reverse bits in each byte
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           SourceValue:=VectorGetElement(vs2,Index,SEW);
+           Address:=0;
+           for SubIndex:=0 to (SEW div 8)-1 do begin
+            OperandValue:=(SourceValue shr (SubIndex*8)) and $ff;
+            OperandValue:=((OperandValue and $f0) shr 4) or ((OperandValue and $0f) shl 4);
+            OperandValue:=((OperandValue and $cc) shr 2) or ((OperandValue and $33) shl 2);
+            OperandValue:=((OperandValue and $aa) shr 1) or ((OperandValue and $55) shl 1);
+            Address:=Address or (OperandValue shl (SubIndex*8));
+           end;
+           VectorSetElement(vd,Index,SEW,Address);
+          end;
+         end;
+        end;
+
+        $09:begin
+         // vrev8.v (Zvbb): reverse byte order
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           SourceValue:=VectorGetElement(vs2,Index,SEW);
+           Address:=0;
+           for SubIndex:=0 to (SEW div 8)-1 do begin
+            Address:=Address or (((SourceValue shr (SubIndex*8)) and $ff) shl (((SEW div 8)-1-SubIndex)*8));
+           end;
+           VectorSetElement(vd,Index,SEW,Address);
+          end;
+         end;
+        end;
+
+        $0a:begin
+         // vbrev.v (Zvbb): reverse all bits in element
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           SourceValue:=VectorGetElement(vs2,Index,SEW);
+           Address:=0;
+           for SubIndex:=0 to SEW-1 do begin
+            if (SourceValue and (TPasRISCVUInt64(1) shl SubIndex))<>0 then begin
+             Address:=Address or (TPasRISCVUInt64(1) shl (SEW-1-SubIndex));
+            end;
+           end;
+           VectorSetElement(vd,Index,SEW,Address);
+          end;
+         end;
+        end;
+
+        $0c:begin
+         // vclz.v (Zvbb): count leading zeros
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           SourceValue:=VectorGetElement(vs2,Index,SEW);
+           Address:=0;
+           for SubIndex:=SEW-1 downto 0 do begin
+            if (SourceValue and (TPasRISCVUInt64(1) shl SubIndex))<>0 then begin
+             break;
+            end;
+            inc(Address);
+           end;
+           VectorSetElement(vd,Index,SEW,Address);
+          end;
+         end;
+        end;
+
+        $0d:begin
+         // vctz.v (Zvbb): count trailing zeros
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           SourceValue:=VectorGetElement(vs2,Index,SEW);
+           Address:=0;
+           for SubIndex:=0 to SEW-1 do begin
+            if (SourceValue and (TPasRISCVUInt64(1) shl SubIndex))<>0 then begin
+             break;
+            end;
+            inc(Address);
+           end;
+           VectorSetElement(vd,Index,SEW,Address);
+          end;
+         end;
+        end;
+
+        $0e:begin
+         // vcpop.v (Zvbb): count set bits (population count)
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           SourceValue:=VectorGetElement(vs2,Index,SEW);
+           Address:=0;
+           for SubIndex:=0 to SEW-1 do begin
+            if (SourceValue and (TPasRISCVUInt64(1) shl SubIndex))<>0 then begin
+             inc(Address);
+            end;
+           end;
+           VectorSetElement(vd,Index,SEW,Address);
+          end;
+         end;
+        end;
+        else begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+       end;
+      end;
+
+      $14:begin
+       // VMUNARY0: vmsbf/vmsof/vmsif/viota/vid
+       case vs1 of
+        $01:begin
+         // vmsbf.m: Set-before-first mask bit
+         SubIndex:=0;
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           if SubIndex=0 then begin
+            if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+             SubIndex:=1;
+             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            end else begin
+             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+            end;
+           end else begin
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           end;
+          end;
+         end;
+        end;
+
+        $02:begin
+         // vmsof.m: Set-only-first mask bit
+         SubIndex:=0;
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           if (SubIndex=0) and ((fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0) then begin
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+            SubIndex:=1;
+           end else begin
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           end;
+          end;
+         end;
+        end;
+
+        $03:begin
+         // vmsif.m: Set-including-first mask bit
+         SubIndex:=0;
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           if SubIndex=0 then begin
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+            if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+             SubIndex:=1;
+            end;
+           end else begin
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           end;
+          end;
+         end;
+        end;
+
+        $10:begin
+         // viota.m: Iota (prefix sum of mask bits)
+         Address:=0;
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,Address);
+           if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+            inc(Address);
+           end;
+          end;
+         end;
+        end;
+
+        $11:begin
+         // vid.v: Vector element index
+         for Index:=0 to EVL-1 do begin
+          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else begin
+           VectorSetElement(vd,Index,SEW,Index);
+          end;
+         end;
+        end;
+        else begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+       end;
+      end;
+
+      $17:begin
+       // vcompress.Unmasked
+       SubIndex:=0;
+       for Index:=0 to EVL-1 do begin
+        if (fState.VectorRegisters[TVectorRegister(0)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+         VectorSetElement(vd,SubIndex,SEW,VectorGetElement(vs2,Index,SEW));
+         inc(SubIndex);
+        end;
+       end;
+      end;
+
+      $18:begin
+       // vmandn.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] and (not fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index]);
+       end;
+      end;
+
+      $19:begin
+       // vmand.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] and fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index];
+       end;
+      end;
+
+      $1a:begin
+       // vmor.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] or fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index];
+       end;
+      end;
+
+      $1b:begin
+       // vmxor.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] xor fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index];
+       end;
+      end;
+
+      $1c:begin
+       // vmorn.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] or (not fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index]);
+       end;
+      end;
+
+      $1d:begin
+       // vmnand.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=not (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] and fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index]);
+       end;
+      end;
+
+      $1e:begin
+       // vmnor.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=not (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] or fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index]);
+       end;
+      end;
+
+      $1f:begin
+       // vmxnor.mm
+       for Index:=0 to (VLENB-1) do begin
+        fState.VectorRegisters[TVectorRegister(vd and 31)][Index]:=not (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index] xor fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index]);
+       end;
+      end;
+     else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // OPIVI: Vector-Immediate Integer (funct3=3)                               //
+   //////////////////////////////////////////////////////////////////////////////
+   3:begin
+    vd:=(aInstruction shr 7) and $1f;
+    vs2:=(aInstruction shr 20) and $1f;
+    Unmasked:=((aInstruction shr 25) and 1)<>0;
+    funct6:=(aInstruction shr 26) and $3f;
+    SEW:=VectorGetSEW;
+    EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    Stride:=TPasRISCVUInt64(SignExtend((aInstruction shr 15) and $1f,5));
+    case funct6 of
+     $00:begin
+      // vadd.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride);
+       end;
+      end;
+     end;
+
+     $03:begin
+      // vrsub.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,Stride-VectorGetElement(vs2,Index,SEW));
+       end;
+      end;
+     end;
+
+     $09:begin
+      // vand.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and Stride);
+       end;
+      end;
+     end;
+
+     $0a:begin
+      // vor.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or Stride);
+       end;
+      end;
+     end;
+
+     $0b:begin
+      // vxor.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor Stride);
+       end;
+      end;
+     end;
+
+     $0c:begin
+      // vrgather.vi
+      SubIndex:=TPasRISCVUInt32(Stride) and $1f;
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+        if SubIndex>=VLMAX then begin
+         VectorSetElement(vd,Index,SEW,0);
+        end else begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
+        end;
+       end;
+      end;
+     end;
+
+     $0e:begin
+      // vslideup.vi
+      SubIndex:=TPasRISCVUInt32(Stride) and $1f;
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if Index>=SubIndex then begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-SubIndex,SEW));
+        end;
+       end;
+      end;
+     end;
+
+     $0f:begin
+      // vslidedown.vi
+      SubIndex:=TPasRISCVUInt32(Stride) and $1f;
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+        if (Index+SubIndex)<VLMAX then begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+SubIndex,SEW));
+        end else begin
+         VectorSetElement(vd,Index,SEW,0);
+        end;
+       end;
+      end;
+     end;
+
+     $10:begin
+      // vadc.vim
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        if VectorGetMaskBit(Index) then begin
+         SourceValue:=1;
+        end else begin
+         SourceValue:=0;
+        end;
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride+SourceValue);
+       end;
+      end;
+     end;
+
+     $11:begin
+      // vmadc.vim / vmadc.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if not Unmasked then begin
+         if VectorGetMaskBit(Index) then begin
+          OperandValue:=1;
+         end else begin
+          OperandValue:=0;
+         end;
+        end else begin
+         OperandValue:=0;
+        end;
+        Address:=SourceValue+Stride+OperandValue;
+        if (Address<SourceValue) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $14,$15:begin
+      // vror.vi (Zvbb): rotate right by 6-bit immediate (bit5 from funct6 bit0)
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=(((aInstruction shr 15) and $1f) or ((funct6 and 1) shl 5)) and (SEW-1);
+        VectorSetElement(vd,Index,SEW,(SourceValue shr OperandValue) or (SourceValue shl ((SEW-OperandValue) and (SEW-1))));
+       end;
+      end;
+     end;
+
+     $17:begin
+      // vmerge.vim / vmv.v.Index
+      if Unmasked then begin
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end;
+       end;
+      end else begin
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else begin
+         if VectorGetMaskBit(Index) then begin
+          VectorSetElement(vd,Index,SEW,Stride);
+         end else begin
+          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW));
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $18:begin
+      // vmseq.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)=SignExtend(Stride,5) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $19:begin
+      // vmsne.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<>SignExtend(Stride,5) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1c:begin
+      // vmsleu.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)<=TPasRISCVUInt64(Stride) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1d:begin
+      // vmsle.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<=SignExtend(Stride,5) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1e:begin
+      // vmsgtu.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)>TPasRISCVUInt64(Stride) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1f:begin
+      // vmsgt.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)>SignExtend(Stride,5) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $20:begin
+      // vsaddu.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        Address:=SourceValue+Stride;
+        if Address<SourceValue then begin
+         case SEW of
+          8:begin
+           Address:=$ff;
+          end;
+          16:begin
+           Address:=$ffff;
+          end;
+          32:begin
+           Address:=$ffffffff;
+          end;
+          else begin
+           Address:=TPasRISCVUInt64($ffffffffffffffff);
+          end;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $21:begin
+      // vsadd.vi
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        Address:=SourceValue+Stride;
+        if ((not (SourceValue xor Stride)) and (SourceValue xor Address) and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+         if (SourceValue and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+          Address:=TPasRISCVUInt64(1) shl (SEW-1);
+         end else begin
+          Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $25:begin
+      // vsll.vi
+      SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl SubIndex);
+       end;
+      end;
+     end;
+
+     $28:begin
+      // vsrl.vi
+      SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr SubIndex);
+       end;
+      end;
+     end;
+
+     $29:begin
+      // vsra.vi
+      SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW) shr SubIndex));
+       end;
+      end;
+     end;
+
+     $2c:begin
+      // vnsrl.wi
+      SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW*2) shr SubIndex);
+       end;
+      end;
+     end;
+
+     $2d:begin
+      // vnsra.wi
+      SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2) shr SubIndex));
+       end;
+      end;
+     end;
+
+     $2e:begin
+      // vnclipu.wi
+      SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=VectorGetElement(vs2,Index,SEW*2) shr SubIndex;
+        case SEW of
+         8:begin
+          if Address>$ff then begin
+           Address:=$ff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         16:begin
+          if Address>$ffff then begin
+           Address:=$ffff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         32:begin
+          if Address>$ffffffff then begin
+           Address:=$ffffffff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         else begin end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $2f:begin
+      // vnclip.wi
+      SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2) shr SubIndex);
+        if SignExtend(Address,SEW*2)>SignExtend((TPasRISCVUInt64(1) shl (SEW-1))-1,SEW) then begin
+         Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end else if SignExtend(Address,SEW*2)<SignExtend(TPasRISCVUInt64(1) shl (SEW-1),SEW) then begin
+         Address:=TPasRISCVUInt64(1) shl (SEW-1);
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $35:begin
+      // vwsll.vi (Zvbb): widening shift left logical by immediate
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=TPasRISCVUInt64(Stride) and ((SEW*2)-1);
+        VectorSetElement(vd,Index,SEW*2,SourceValue shl OperandValue);
+       end;
+      end;
+     end;
+     else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // OPIVX: Vector-Scalar Integer (funct3=4)                                  //
+   //////////////////////////////////////////////////////////////////////////////
+   4:begin
+    vd:=(aInstruction shr 7) and $1f;
+    rs1:=TRegister((aInstruction shr 15) and $1f);
+    vs2:=(aInstruction shr 20) and $1f;
+    Unmasked:=((aInstruction shr 25) and 1)<>0;
+    funct6:=(aInstruction shr 26) and $3f;
+    SEW:=VectorGetSEW;
+    EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    Stride:=fState.Registers[rs1];
+    case funct6 of
+     $00:begin
+      // vadd.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride);
+       end;
+      end;
+     end;
+
+     $01:begin
+      // vandn.vx (Zvbb)
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and (not Stride));
+       end;
+      end;
+     end;
+
+     $02:begin
+      // vsub.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-Stride);
+       end;
+      end;
+     end;
+
+     $03:begin
+      // vrsub.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,Stride-VectorGetElement(vs2,Index,SEW));
+       end;
+      end;
+     end;
+
+     $04:begin
+      // vminu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if SourceValue<Stride then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end;
+       end;
+      end;
+     end;
+
+     $05:begin
+      // vmin.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if SignExtend(SourceValue,SEW)<SignExtend(Stride,SEW) then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end;
+       end;
+      end;
+     end;
+
+     $06:begin
+      // vmaxu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if SourceValue>Stride then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end;
+       end;
+      end;
+     end;
+
+     $07:begin
+      // vmax.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if SignExtend(SourceValue,SEW)>SignExtend(Stride,SEW) then begin
+         VectorSetElement(vd,Index,SEW,SourceValue);
+        end else begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end;
+       end;
+      end;
+     end;
+
+     $09:begin
+      // vand.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and Stride);
+       end;
+      end;
+     end;
+
+     $0a:begin
+      // vor.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or Stride);
+       end;
+      end;
+     end;
+
+     $0b:begin
+      // vxor.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor Stride);
+       end;
+      end;
+     end;
+
+     $0c:begin
+      // vrgather.vx
+      SubIndex:=TPasRISCVUInt32(Stride);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+        if SubIndex>=VLMAX then begin
+         VectorSetElement(vd,Index,SEW,0);
+        end else begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
+        end;
+       end;
+      end;
+     end;
+
+     $0e:begin
+      // vslideup.vx
+      SubIndex:=TPasRISCVUInt32(Stride);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if Index>=SubIndex then begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-SubIndex,SEW));
+        end;
+       end;
+      end;
+     end;
+
+     $0f:begin
+      // vslidedown.vx
+      SubIndex:=TPasRISCVUInt32(Stride);
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+        if (Index+SubIndex)<VLMAX then begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+SubIndex,SEW));
+        end else begin
+         VectorSetElement(vd,Index,SEW,0);
+        end;
+       end;
+      end;
+     end;
+
+     $10:begin
+      // vadc.vxm
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        if VectorGetMaskBit(Index) then begin
+         SourceValue:=1;
+        end else begin
+         SourceValue:=0;
+        end;
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride+SourceValue);
+       end;
+      end;
+     end;
+
+     $11:begin
+      // vmadc.vxm / vmadc.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if not Unmasked then begin
+         if VectorGetMaskBit(Index) then begin
+          OperandValue:=1;
+         end else begin
+          OperandValue:=0;
+         end;
+        end else begin
+         OperandValue:=0;
+        end;
+        Address:=SourceValue+Stride+OperandValue;
+        if (Address<SourceValue) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $12:begin
+      // vsbc.vxm
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        if VectorGetMaskBit(Index) then begin
+         SourceValue:=1;
+        end else begin
+         SourceValue:=0;
+        end;
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-Stride-SourceValue);
+       end;
+      end;
+     end;
+
+     $13:begin
+      // vmsbc.vxm / vmsbc.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if not Unmasked then begin
+         if VectorGetMaskBit(Index) then begin
+          OperandValue:=1;
+         end else begin
+          OperandValue:=0;
+         end;
+        end else begin
+         OperandValue:=0;
+        end;
+        if (SourceValue<(Stride+OperandValue)) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $14:begin
+      // vror.vx (Zvbb): rotate right by scalar
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=Stride and (SEW-1);
+        VectorSetElement(vd,Index,SEW,(SourceValue shr OperandValue) or (SourceValue shl ((SEW-OperandValue) and (SEW-1))));
+       end;
+      end;
+     end;
+
+     $15:begin
+      // vrol.vx (Zvbb): rotate left by scalar
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=Stride and (SEW-1);
+        VectorSetElement(vd,Index,SEW,(SourceValue shl OperandValue) or (SourceValue shr ((SEW-OperandValue) and (SEW-1))));
+       end;
+      end;
+     end;
+
+     $17:begin
+      // vmerge.vxm / vmv.v.x
+      if Unmasked then begin
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end;
+       end;
+      end else begin
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else begin
+         if VectorGetMaskBit(Index) then begin
+          VectorSetElement(vd,Index,SEW,Stride);
+         end else begin
+          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW));
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $18:begin
+      // vmseq.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)=Stride then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $19:begin
+      // vmsne.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)<>Stride then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1a:begin
+      // vmsltu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)<Stride then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1b:begin
+      // vmslt.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<SignExtend(Stride,SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1c:begin
+      // vmsleu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)<=Stride then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1d:begin
+      // vmsle.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<=SignExtend(Stride,SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1e:begin
+      // vmsgtu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if VectorGetElement(vs2,Index,SEW)>Stride then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $1f:begin
+      // vmsgt.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)>SignExtend(Stride,SEW) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+        end else begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end;
+       end;
+      end;
+     end;
+
+     $20:begin
+      // vsaddu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        Address:=SourceValue+Stride;
+        if Address<SourceValue then begin
+         case SEW of
+          8:begin
+           Address:=$ff;
+          end;
+          16:begin
+           Address:=$ffff;
+          end;
+          32:begin
+           Address:=$ffffffff;
+          end;
+          else begin
+           Address:=TPasRISCVUInt64($ffffffffffffffff);
+          end;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $21:begin
+      // vsadd.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        Address:=SourceValue+Stride;
+        if ((not (SourceValue xor Stride)) and (SourceValue xor Address) and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+         if (SourceValue and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+          Address:=TPasRISCVUInt64(1) shl (SEW-1);
+         end else begin
+          Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $22:begin
+      // vssubu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if SourceValue<Stride then begin
+         Address:=0;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end else begin
+         Address:=SourceValue-Stride;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $23:begin
+      // vssub.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        Address:=SourceValue-Stride;
+        if ((SourceValue xor Stride) and (SourceValue xor Address) and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+         if (SourceValue and (TPasRISCVUInt64(1) shl (SEW-1)))<>0 then begin
+          Address:=TPasRISCVUInt64(1) shl (SEW-1);
+         end else begin
+          Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         end;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $25:begin
+      // vsll.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl (Stride and (SEW-1)));
+       end;
+      end;
+     end;
+
+     $28:begin
+      // vsrl.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr (Stride and (SEW-1)));
+       end;
+      end;
+     end;
+
+     $29:begin
+      // vsra.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW) shr (Stride and (SEW-1))));
+       end;
+      end;
+     end;
+
+     $2c:begin
+      // vnsrl.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW*2) shr (Stride and ((SEW*2)-1)));
+       end;
+      end;
+     end;
+
+     $2d:begin
+      // vnsra.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2) shr (Stride and ((SEW*2)-1))));
+       end;
+      end;
+     end;
+
+     $35:begin
+      // vwsll.vx (Zvbb): widening shift left logical by scalar
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        OperandValue:=Stride and ((SEW*2)-1);
+        VectorSetElement(vd,Index,SEW*2,SourceValue shl OperandValue);
+       end;
+      end;
+     end;
+     else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // OPFVF: Vector-Scalar FP (funct3=5)                                       //
+   //////////////////////////////////////////////////////////////////////////////
+   5:begin
+    vd:=(aInstruction shr 7) and $1f;
+    rs1:=TRegister((aInstruction shr 15) and $1f);
+    vs2:=(aInstruction shr 20) and $1f;
+    Unmasked:=((aInstruction shr 25) and 1)<>0;
+    funct6:=(aInstruction shr 26) and $3f;
+    if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+    SEW:=8 shl ((fState.CSR.fData[TCSR.TAddress.VTYPE] shr 3) and 7);
+    EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    fState.CSR.SetVSDirty;
+    ScalarFP:=fState.FPURegisters[TFPURegister(ord(rs1))].ui64;
+    ScalarFloat:=TPasRISCVFloat(pointer(@ScalarFP)^);
+    ScalarDouble:=TPasRISCVDouble(pointer(@ScalarFP)^);
+    case funct6 of
+     $00:begin
+      // vfadd.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=FloatA+ScalarFloat;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleA+ScalarDouble;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $02:begin
+      // vfsub.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=FloatA-ScalarFloat;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleA-ScalarDouble;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $04:begin
+      // vfmin.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if IsNaN(FloatA) then begin
+           FloatResult:=ScalarFloat;
+          end else if IsNaN(ScalarFloat) then begin
+           FloatResult:=FloatA;
+          end else if FloatA<ScalarFloat then begin
+           FloatResult:=FloatA;
+          end else begin
+           FloatResult:=ScalarFloat;
+          end;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if IsNaN(DoubleA) then begin
+           DoubleResult:=ScalarDouble;
+          end else if IsNaN(ScalarDouble) then begin
+           DoubleResult:=DoubleA;
+          end else if DoubleA<ScalarDouble then begin
+           DoubleResult:=DoubleA;
+          end else begin
+           DoubleResult:=ScalarDouble;
+          end;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $06:begin
+      // vfmax.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if IsNaN(FloatA) then begin
+           FloatResult:=ScalarFloat;
+          end else if IsNaN(ScalarFloat) then begin
+           FloatResult:=FloatA;
+          end else if FloatA>ScalarFloat then begin
+           FloatResult:=FloatA;
+          end else begin
+           FloatResult:=ScalarFloat;
+          end;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if IsNaN(DoubleA) then begin
+           DoubleResult:=ScalarDouble;
+          end else if IsNaN(ScalarDouble) then begin
+           DoubleResult:=DoubleA;
+          end else if DoubleA>ScalarDouble then begin
+           DoubleResult:=DoubleA;
+          end else begin
+           DoubleResult:=ScalarDouble;
+          end;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $07:begin
+      // vfrsub.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=ScalarFloat-FloatA;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=ScalarDouble-DoubleA;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $08:begin
+      // vfsgnj.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $7fffffff) or (TPasRISCVUInt32(ScalarFP) and $80000000);
+         end;
+         64:begin
+          SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(SourceValue and $7fffffffffffffff) or (ScalarFP and $8000000000000000);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $09:begin
+      // vfsgnjn.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $7fffffff) or ((not TPasRISCVUInt32(ScalarFP)) and $80000000);
+         end;
+         64:begin
+          SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(SourceValue and $7fffffffffffffff) or ((not ScalarFP) and $8000000000000000);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $0a:begin
+      // vfsgnjx.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $7fffffff) or ((SourceValue xor TPasRISCVUInt32(ScalarFP)) and $80000000);
+         end;
+         64:begin
+          SourceValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(SourceValue and $7fffffffffffffff) or ((SourceValue xor ScalarFP) and $8000000000000000);
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $0e:begin
+      // vfslide1up.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        if Index=0 then begin
+         case SEW of
+          32:begin
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=TPasRISCVUInt32(ScalarFP);
+          end;
+          64:begin
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=ScalarFP;
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end else begin
+         case SEW of
+          32:begin
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index-1)*4])^);
+          end;
+          64:begin
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index-1)*8])^);
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $0f:begin
+      // vfslide1down.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        if Index=(EVL-1) then begin
+         case SEW of
+          32:begin
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(ScalarFP);
+          end;
+          64:begin
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarFP;
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end else begin
+         case SEW of
+          32:begin
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index+1)*4])^);
+          end;
+          64:begin
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index+1)*8])^);
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $10:begin
+      // vfmv.s.f
+      rs1:=TRegister((aInstruction shr 15) and $1f);
+      case SEW of
+       32:begin
+        TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=TPasRISCVUInt32(fState.FPURegisters[TFPURegister(ord(rs1))].ui64);
+       end;
+       64:begin
+        TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=fState.FPURegisters[TFPURegister(ord(rs1))].ui64;
+       end;
+       else begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
+
+     $17:begin
+      // vfmerge.vfm / vfmv.v.f
+      if Unmasked then begin
+       // vfmv.v.f: broadcast scalar to all elements
+       for Index:=0 to EVL-1 do begin
+        case SEW of
+         32:begin
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(ScalarFP);
+         end;
+         64:begin
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarFP;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end else begin
+       // vfmerge.vfm: vd[Index] = v0.mask[Index] ? f[rs1] : vs2[Index]
+       for Index:=0 to EVL-1 do begin
+        if VectorGetMaskBit(Index) then begin
+         case SEW of
+          32:begin
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(ScalarFP);
+          end;
+          64:begin
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarFP;
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end else begin
+         case SEW of
+          32:begin
+           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          end;
+          64:begin
+           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          end;
+          else begin
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $18:begin
+      // vmfeq.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if FloatA=ScalarFloat then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if DoubleA=ScalarDouble then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $19:begin
+      // vmfle.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if FloatA<=ScalarFloat then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if DoubleA<=ScalarDouble then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $1b:begin
+      // vmflt.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if FloatA<ScalarFloat then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if DoubleA<ScalarDouble then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $1c:begin
+      // vmfne.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if FloatA<>ScalarFloat then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if DoubleA<>ScalarDouble then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $1d:begin
+      // vmfgt.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if FloatA>ScalarFloat then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if DoubleA>ScalarDouble then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $1f:begin
+      // vmfge.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if FloatA>=ScalarFloat then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          if DoubleA>=ScalarDouble then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
+          end else begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $20:begin
+      // vfdiv.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=FloatA/ScalarFloat;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleA/ScalarDouble;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $21:begin
+      // vfrdiv.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=ScalarFloat/FloatA;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=ScalarDouble/DoubleA;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $24:begin
+      // vfmul.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=FloatA*ScalarFloat;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleA*ScalarDouble;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $28:begin
+      // vfmadd.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=(ScalarFloat*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=(ScalarDouble*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $29:begin
+      // vfnmadd.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=-(ScalarFloat*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=-(ScalarDouble*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2a:begin
+      // vfmsub.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=(ScalarFloat*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=(ScalarDouble*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2b:begin
+      // vfnmsub.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatResult:=-(ScalarFloat*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=-(ScalarDouble*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2c:begin
+      // vfmacc.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=(ScalarFloat*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(ScalarDouble*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2d:begin
+      // vfnmacc.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=-(ScalarFloat*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(ScalarDouble*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2e:begin
+      // vfmsac.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=(ScalarFloat*FloatB)-FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(ScalarDouble*DoubleB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $2f:begin
+      // vfnmsac.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
+          FloatResult:=-(ScalarFloat*FloatB)+FloatC;
+          TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+         end;
+         64:begin
+          DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(ScalarDouble*DoubleB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $30:begin
+      // vfwadd.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleResult:=FloatA+ScalarFloat;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $32:begin
+      // vfwsub.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleResult:=FloatA-ScalarFloat;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $34:begin
+      // vfwadd.wf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleA+ScalarFloat;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $36:begin
+      // vfwsub.wf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+          DoubleResult:=DoubleA-ScalarFloat;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $38:begin
+      // vfwmul.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleResult:=FloatA*ScalarFloat;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3c:begin
+      // vfwmacc.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(ScalarFloat*FloatB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3d:begin
+      // vfwnmacc.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(ScalarFloat*FloatB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3e:begin
+      // vfwmsac.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=(ScalarFloat*FloatB)-DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+
+     $3f:begin
+      // vfwnmsac.vf
+      for Index:=0 to EVL-1 do begin
+       if Unmasked or VectorGetMaskBit(Index) then begin
+        case SEW of
+         32:begin
+          FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
+          DoubleResult:=-(ScalarFloat*FloatB)+DoubleC;
+          TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
+       end;
+      end;
+     end;
+     else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+    end;
+   end;
+
+   //////////////////////////////////////////////////////////////////////////////
+   // OPMVX: Vector-Scalar Multiply/Mask (funct3=6)                           //
+   //////////////////////////////////////////////////////////////////////////////
+   6:begin
+    vd:=(aInstruction shr 7) and $1f;
+    rs1:=TRegister((aInstruction shr 15) and $1f);
+    vs2:=(aInstruction shr 20) and $1f;
+    Unmasked:=((aInstruction shr 25) and 1)<>0;
+    funct6:=(aInstruction shr 26) and $3f;
+    SEW:=VectorGetSEW;
+    EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+    Stride:=fState.Registers[rs1];
+    case funct6 of
+     $08:begin
+      // vaaddu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=(VectorGetElement(vs2,Index,SEW)+Stride) shr 1;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $09:begin
+      // vaadd.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=TPasRISCVUInt64((SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(Stride,SEW)) shr 1);
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $0a:begin
+      // vasubu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=(VectorGetElement(vs2,Index,SEW)-Stride) shr 1;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $0b:begin
+      // vasub.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=TPasRISCVUInt64((SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(Stride,SEW)) shr 1);
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $0e:begin
+      // vslide1up.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if Index=0 then begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end else begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-1,SEW));
+        end;
+       end;
+      end;
+     end;
+
+     $0f:begin
+      // vslide1down.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        if Index=(EVL-1) then begin
+         VectorSetElement(vd,Index,SEW,Stride);
+        end else begin
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+1,SEW));
+        end;
+       end;
+      end;
+     end;
+
+     $10:begin
+      // VRXUNARY0: vmv.s.x - Move scalar to element 0
+      VectorSetElement(vd,0,SEW,TPasRISCVUInt64(fState.Registers[rs1]));
+     end;
+
+     $20:begin
+      // vdivu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if Stride=0 then begin
+         case SEW of
+          8:begin
+           Address:=$ff;
+          end;
+          16:begin
+           Address:=$ffff;
+          end;
+          32:begin
+           Address:=$ffffffff;
+          end;
+          else begin
+           Address:=TPasRISCVUInt64($ffffffffffffffff);
+          end;
+         end;
+        end else begin
+         Address:=SourceValue div Stride;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $21:begin
+      // vdiv.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if Stride=0 then begin
+         case SEW of
+          8:begin
+           Address:=$ff;
+          end;
+          16:begin
+           Address:=$ffff;
+          end;
+          32:begin
+           Address:=$ffffffff;
+          end;
+          else begin
+           Address:=TPasRISCVUInt64($ffffffffffffffff);
+          end;
+         end;
+        end else begin
+         Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(Stride,SEW));
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $22:begin
+      // vremu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if Stride=0 then begin
+         Address:=SourceValue;
+        end else begin
+         Address:=SourceValue mod Stride;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $23:begin
+      // vrem.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        if Stride=0 then begin
+         Address:=SourceValue;
+        end else begin
+         Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) mod SignExtend(Stride,SEW));
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $24:begin
+      // vmulhu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        case SEW of
+         8:begin
+          Address:=(SourceValue*Stride) shr 8;
+         end;
+         16:begin
+          Address:=(SourceValue*Stride) shr 16;
+         end;
+         32:begin
+          Address:=(SourceValue*Stride) shr 32;
+         end;
+         else begin
+          Address:=MULHU(SourceValue,Stride);
+         end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $25:begin
+      // vmul.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)*Stride);
+       end;
+      end;
+     end;
+
+     $26:begin
+      // vmulhsu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        case SEW of
+         8:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,8))*TPasRISCVInt64(Stride)) shr 8;
+         end;
+         16:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,16))*TPasRISCVInt64(Stride)) shr 16;
+         end;
+         32:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,32))*TPasRISCVInt64(Stride)) shr 32;
+         end;
+         else begin
+          Address:=MULHSU(TPasRISCVInt64(SourceValue),Stride);
+         end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $27:begin
+      // vmulh.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        SourceValue:=VectorGetElement(vs2,Index,SEW);
+        case SEW of
+         8:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,8))*TPasRISCVInt64(SignExtend(Stride,8))) shr 8;
+         end;
+         16:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,16))*TPasRISCVInt64(SignExtend(Stride,16))) shr 16;
+         end;
+         32:begin
+          Address:=TPasRISCVUInt64(TPasRISCVInt64(SignExtend(SourceValue,32))*TPasRISCVInt64(SignExtend(Stride,32))) shr 32;
+         end;
+         else begin
+          Address:=MULH(TPasRISCVInt64(SourceValue),TPasRISCVInt64(Stride));
+         end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $28:begin
+      // vwaddu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)+Stride);
+       end;
+      end;
+     end;
+
+     $29:begin
+      // vwadd.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(Stride,SEW)));
+       end;
+      end;
+     end;
+
+     $2a:begin
+      // vwsubu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)-Stride);
+       end;
+      end;
+     end;
+
+     $2b:begin
+      // vwsub.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(Stride,SEW)));
+       end;
+      end;
+     end;
+
+     $2c:begin
+      // vwaddu.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)+Stride);
+       end;
+      end;
+     end;
+
+     $2d:begin
+      // vwadd.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))+SignExtend(Stride,SEW)));
+       end;
+      end;
+     end;
+
+     $2e:begin
+      // vwsubu.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)-Stride);
+       end;
+      end;
+     end;
+
+     $2f:begin
+      // vwsub.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))-SignExtend(Stride,SEW)));
+       end;
+      end;
+     end;
+
+     $30:begin
+      // vwmulu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)*Stride);
+       end;
+      end;
+     end;
+
+     $32:begin
+      // vwmulsu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(Stride)));
+       end;
+      end;
+     end;
+
+     $33:begin
+      // vwmul.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*SignExtend(Stride,SEW)));
+       end;
+      end;
+     end;
+
+     $34:begin
+      // vwmaccu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,VectorGetElement(vd,Index,SEW*2)+(Stride*VectorGetElement(vs2,Index,SEW)));
+       end;
+      end;
+     end;
+
+     $35:begin
+      // vwmacc.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(Stride,SEW)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $36:begin
+      // vwmaccus.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+TPasRISCVInt64(Stride)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
+       end;
+      end;
+     end;
+
+     $37:begin
+      // vwmaccsu.vx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(Stride)));
+       end;
+      end;
+     end;
+     else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+    end;
+    fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+    fState.CSR.SetVSDirty;
+    result:=4;
+    exit;
+   end;
+
+
+   end; // case funct3
+
+  end; // $57
 
   else begin
    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -37313,7 +44464,7 @@ begin
    exit;
   end;
 
- end;
+ end; // case Opcode
 
 end;
 {$ifdef fpc}
@@ -37487,6 +44638,7 @@ begin
        result:=2;
        exit;
       end;
+
       $1:begin
        // c.lh/c.lhu (Zcb)
 {$ifdef UseSpecializedRegisterLoadStores}
@@ -37518,6 +44670,7 @@ begin
        result:=2;
        exit;
       end;
+
       $2:begin
        // c.sbu (Zcb)
        rd:=TRegister(((aInstruction shr 2) and $7)+8);
@@ -37527,6 +44680,7 @@ begin
        result:=2;
        exit;
       end;
+
       $3:begin
        if (aInstruction and $40)=0 then begin
         // c.sh (Zcb)
@@ -40628,9 +47782,18 @@ begin
         exit;
        end;
        else begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
+        // Check for vector load (width: $0=8b, $5=16b, $6=32b, $7=64b)
+        case (aInstruction shr 12) and 7 of
+         $0,$5,$6,$7:begin
+          result:=ExecuteVectorInstruction(aInstruction);
+          exit;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
        end;
       end;
      end;
@@ -40689,9 +47852,18 @@ begin
         exit;
        end;
        else begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
+        // Check for vector store (width: $0=8b, $5=16b, $6=32b, $7=64b)
+        case (aInstruction shr 12) and 7 of
+         $0,$5,$6,$7:begin
+          result:=ExecuteVectorInstruction(aInstruction);
+          exit;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+        end;
        end;
       end;
      end;
@@ -45721,6 +52893,11 @@ begin
  end;
 end;
 
+function TPasRISCV.TDisassembler.GetVectorRegisterName(const aRegister:TPasRISCVUInt32):TPasRISCVUTF8String;
+begin
+ result:='v'+IntToStr(aRegister and 31);
+end;
+
 function TPasRISCV.TDisassembler.FormatImmediate(const aValue:TPasRISCVInt64):TPasRISCVUTF8String;
 var AbsoluteValue:TPasRISCVUInt64;
 begin
@@ -46399,6 +53576,143 @@ begin
     end;
    end;
    result:=Mnemonic+' '+GetFPURegisterName(frd)+', '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VSetVLI:begin
+   UnsignedImmediate:=(aInstruction shr 20) and $7ff;
+   result:=Mnemonic+' '+GetRegisterName(rd)+', '+GetRegisterName(rs1)+', '+FormatUnsignedImmediate(UnsignedImmediate);
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VSetIVLI:begin
+   Shamt:=(aInstruction shr 15) and $1f;
+   UnsignedImmediate:=(aInstruction shr 20) and $3ff;
+   result:=Mnemonic+' '+GetRegisterName(rd)+', '+FormatUnsignedImmediate(Shamt)+', '+FormatUnsignedImmediate(UnsignedImmediate);
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VSetVL:begin
+   result:=Mnemonic+' '+GetRegisterName(rd)+', '+GetRegisterName(rs1)+', '+GetRegisterName(rs2);
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VLoadUnit:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+')';
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VStoreUnit:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+')';
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VLoadStrided:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+'), '+GetRegisterName(rs2);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VStoreStrided:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+'), '+GetRegisterName(rs2);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VLoadIndexed:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+'), '+GetVectorRegisterName((aInstruction shr 20) and $1f);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VStoreIndexed:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+'), '+GetVectorRegisterName((aInstruction shr 20) and $1f);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VLoadWholeReg:begin
+   result:=Mnemonic+' '+GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+')';
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VStoreWholeReg:begin
+   result:=Mnemonic+' '+GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+')';
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VLoadMask:begin
+   result:=Mnemonic+' '+GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+')';
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VStoreMask:begin
+   result:=Mnemonic+' '+GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+')';
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VLoadFF:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', ('+GetRegisterName(rs1)+')';
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VVVV:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+
+            GetVectorRegisterName((aInstruction shr 20) and $1f)+', '+
+            GetVectorRegisterName((aInstruction shr 15) and $1f);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VVVX:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+
+            GetVectorRegisterName((aInstruction shr 20) and $1f)+', '+
+            GetRegisterName(rs1);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VVVI:begin
+   Immediate:=SignExtend((aInstruction shr 15) and $1f,5);
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+
+            GetVectorRegisterName((aInstruction shr 20) and $1f)+', '+
+            FormatImmediate(Immediate);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VVVF:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+
+            GetVectorRegisterName((aInstruction shr 20) and $1f)+', '+
+            GetFPURegisterName(frs1);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VUnaryV:begin
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+
+            GetVectorRegisterName((aInstruction shr 20) and $1f);
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VMaskToScalar:begin
+   if ((aInstruction shr 12) and 7)=1 then begin
+    Operand:=GetFPURegisterName(frd)+', '+
+             GetVectorRegisterName((aInstruction shr 20) and $1f);
+   end else begin
+    Operand:=GetRegisterName(rd)+', '+
+             GetVectorRegisterName((aInstruction shr 20) and $1f);
+   end;
+   if (aInstruction and (1 shl 25))=0 then begin
+    Operand:=Operand+', v0.t';
+   end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VScalarToV:begin
+   result:=Mnemonic+' '+GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+GetRegisterName(rs1);
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VFScalarToV:begin
+   result:=Mnemonic+' '+GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+GetFPURegisterName(frs1);
   end;
   else begin
    result:=Mnemonic;
@@ -49266,6 +56580,8 @@ begin
 
  fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
 
+ fVector:=true;
+
 end;
 
 destructor TPasRISCV.TConfiguration.Destroy;
@@ -49410,6 +56726,8 @@ begin
  fNVMeEnabled:=aConfiguration.fNVMeEnabled;
 
  fLRSCMaximumCycles:=aConfiguration.fLRSCMaximumCycles;
+
+ fVector:=aConfiguration.fVector;
 
  fBIOS.Clear;
  if aConfiguration.fBIOS.Size>0 then begin
@@ -49558,6 +56876,8 @@ begin
  fAllHARTMask:=0;
 
  fLRSCMaximumCycles:=fConfiguration.fLRSCMaximumCycles;
+
+ fVector:=fConfiguration.fVector;
 
  fHARTWakeUpConditionVariableLock:=TPasMPConditionVariableLock.Create;
  fHARTWakeUpConditionVariable:=TPasMPConditionVariable.Create;
@@ -50089,6 +57409,10 @@ begin
 
   ISA:='rv64imafdcb';
   ISAExtensions:='i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b';
+  if fVector then begin
+   ISA:=ISA+'v';
+   ISAExtensions:=ISAExtensions+#0'v';
+  end;
 
   (*
    * Here are the ordering rules of extension naming defined by RISC-V
@@ -50172,18 +57496,24 @@ begin
 //AddISAExtension('zksh');
   AddISAExtension('zkt');
 //AddISAExtension('ztso');
-//AddISAExtension('zvbb');
+  if fVector then begin
+   AddISAExtension('zvbb');
+  end;
 //AddISAExtension('zvbc');
-//AddISAExtension('zve32f');
-//AddISAExtension('zve32x');
-//AddISAExtension('zve64f');
-//AddISAExtension('zve64d');
-//AddISAExtension('zve64x');
+  if fVector then begin
+   AddISAExtension('zve32f');
+   AddISAExtension('zve32x');
+   AddISAExtension('zve64f');
+   AddISAExtension('zve64d');
+   AddISAExtension('zve64x');
+  end;
 //AddISAExtension('zvfbfmin');
 //AddISAExtension('zvfbfwma');
 //AddISAExtension('zvfh');
-//AddISAExtension('zvfhmin');
-//AddISAExtension('zvkb');
+  if fVector then begin
+   AddISAExtension('zvfhmin');
+   AddISAExtension('zvkb');
+  end;
 //AddISAExtension('zvkg');
 //AddISAExtension('zvkn');
 //AddISAExtension('zvknc');
@@ -50196,7 +57526,9 @@ begin
 //AddISAExtension('zvksed');
 //AddISAExtension('zvksg');
 //AddISAExtension('zvksh');
-//AddISAExtension('zvkt');
+  if fVector then begin
+   AddISAExtension('zvkt');
+  end;
 //AddISAExtension('zhinx');
 //AddISAExtension('zhinxmin');
 //AddISAExtension('sdtrig');

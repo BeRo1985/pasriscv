@@ -1,6 +1,6 @@
 # PasRISCV
 
-A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores, memory, I/O, and much more.
+A RISC-V RV64GCV emulator written in Object Pascal. It simulates processor cores, memory, I/O, and much more.
 
 ## Features
 
@@ -60,6 +60,12 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Zfh (Half-Precision Floating-Point)
   - Zfhmin (Half-Precision Float Minimal)
   - Zfbfmin (BFloat16 Minimal)
+  - V (Vector Extension 1.0, configurable, enabled by default)
+  - Zvbb (Vector Bit-manipulation for Cryptography)
+  - Zvfhmin (Vector Half-Precision Float Minimal)
+  - Zvkb (Vector Cryptography Bit-manipulation)
+  - Zvkt (Vector Data-Independent Execution Latency)
+  - Zve32f/Zve32x/Zve64f/Zve64d/Zve64x (Vector Sub-extensions)
   - Zicntr (Base Counters and Timers)
   - Zihpm (Hardware Performance Counters)
   - Zkt (Data-Independent Execution Latency)
@@ -117,6 +123,7 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
 - Full MMU support with Sv39, Sv48 and Sv57 page table modes, including support for Svnapot and Svadu extensions
 - Disassembler
   - RV64GC instruction set support
+  - Vector (V) extension instruction support
   - Supports disassembling code with or without compressed instructions
   - Supports disassembling code with or without floating-point instructions
   - Provides human-readable assembly code output
