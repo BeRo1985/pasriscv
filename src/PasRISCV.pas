@@ -23753,47 +23753,44 @@ procedure TPasRISCV.TVirtIODevice.ProcessQueue(const aQueueIndex:TPasRISCVUInt64
 var Queue:PQueue;
     AvailableIndex,DescriptorIndex:TPasRISCVUInt16;
     ReadSize,WriteSize:TPasRISCVUInt64;
-    OK,Retry:Boolean;
+    OK:Boolean;
 begin
  if fDriverOK then begin
   Queue:=@fQueues[aQueueIndex];
   if not Queue^.ManualRecv then begin
-   repeat
-    Retry:=false;
-    if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(Queue^.Lock) then begin
-     try
+   if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(Queue^.Lock) then begin
+    try
+     if aAvailableIndex>=0 then begin
+      AvailableIndex:=aAvailableIndex;
+      OK:=true;
+     end else begin
       OK:=Read16(Queue^.AvailableAddress+2,AvailableIndex);
-      if OK then begin
-       while Queue^.ShadowAvailableIndex<>AvailableIndex do begin
-        if Read16((Queue^.AvailableAddress+4)+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
-         if GetDescriptors(ReadSize,WriteSize,aQueueIndex,DescriptorIndex) then begin
-          if DeviceRecv(aQueueIndex,DescriptorIndex,ReadSize,WriteSize) then begin
-           if AdvanceShadowAvailableIndex(aQueueIndex) then begin
-            if (fStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)<>0 then begin
-             break;
-            end else begin
-             continue;
-            end;
+     end;
+     if OK then begin
+      while Queue^.ShadowAvailableIndex<>AvailableIndex do begin
+       if Read16((Queue^.AvailableAddress+4)+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
+        if GetDescriptors(ReadSize,WriteSize,aQueueIndex,DescriptorIndex) then begin
+         if DeviceRecv(aQueueIndex,DescriptorIndex,ReadSize,WriteSize) then begin
+          if AdvanceShadowAvailableIndex(aQueueIndex) then begin
+           if (fStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)<>0 then begin
+            break;
+           end else begin
+            continue;
            end;
-          end else begin
-           break;
           end;
+         end else begin
+          break;
          end;
         end;
-        NotifyDeviceNeedsReset;
-        break;
        end;
-       // Re-check for new descriptors that arrived while we held the lock
-       if Read16(Queue^.AvailableAddress+2,AvailableIndex) and
-          (Queue^.ShadowAvailableIndex<>AvailableIndex) then begin
-        Retry:=true;
-       end;
+       NotifyDeviceNeedsReset;
+       break;
       end;
-     finally
-      TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
      end;
+    finally
+     TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
     end;
-   until not Retry;
+   end;
   end;
  end;
 end;
@@ -25828,15 +25825,7 @@ begin
        end;
        PCMBuffer.fRemainingSize:=PCMBuffer.fRawSize;
        PCMBuffer.fOffset:=0;
-       PCMBuffer.fAvailableIndex:=-1;
-
-       SoundPCMStatus.Status:=VIRTIO_SND_S_OK;
-       SoundPCMStatus.LatencyBytes:=0;
-       if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@SoundPCMStatus,SizeOf(TVirtIOSoundPCMStatus)) and
-               ConsumeDescriptor(aQueueIndex,aDescriptorIndex,SizeOf(TVirtIOSoundPCMStatus)) and
-               UsedRingSync(aQueueIndex)) then begin
-        NotifyDeviceNeedsReset;
-       end;
+       PCMBuffer.fAvailableIndex:=fQueues[aQueueIndex].ShadowAvailableIndex;
 
        PCMStream.fBufferQueueLock.Acquire;
        try
