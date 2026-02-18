@@ -25942,7 +25942,7 @@ begin
   try
    repeat
     if assigned(PCMStream.fCurrentBuffer) then begin
-//   NotifyTXBuffer(PCMStream.fCurrentBuffer);
+     NotifyTXBuffer(PCMStream.fCurrentBuffer);
      PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
     end;
     if PCMStream.fBufferQueue.Dequeue(PCMStream.fCurrentBuffer) then begin
@@ -25996,7 +25996,7 @@ begin
      PCMStream.fBufferQueueLock.Release;
     end;
     if assigned(PCMStream.fCurrentBuffer) then begin
-     NotifyTXBuffer(PCMStream.fCurrentBuffer);
+//    NotifyTXBuffer(PCMStream.fCurrentBuffer);
     end;
    end;
 
@@ -26086,7 +26086,7 @@ begin
     end;
 
     if PCMBuffer.fRemainingSize=0 then begin
-//   NotifyTXBuffer(PCMStream.fCurrentBuffer);
+     NotifyTXBuffer(PCMStream.fCurrentBuffer);
      PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
      PCMStream.fCurrentBuffer:=nil;
     end;
