@@ -25499,6 +25499,9 @@ begin
              TPCMStream.TCommand.SetParameters,
              TPCMStream.TCommand.Stop,
              TPCMStream.TCommand.Release:begin
+              if not PCMStream.fActive then begin
+               PCMStream.fCommand:=TPCMStream.TCommand.SetParameters;
+               PVirtIOSoundHeader(@Output^[0])^.Code:=SetParams(SoundPCMSetParams^.Header.StreamID,SoundPCMSetParams^);
               end else begin
                PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
               end;
