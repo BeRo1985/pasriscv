@@ -6769,6 +6769,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Breakpoint(const aInstruction:TPasRISCVUInt32);
               function FetchInstruction(const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32):Boolean; //inline;
               function GetInstructionSize(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64; inline;
+              function ExecuteVectorInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
               function ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
 {$ifdef Zicfilp}
               function ExecuteInstructionWithPrechecks(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
@@ -37281,6 +37282,43 @@ begin
   result:=2; // Compressed instruction
  end;
 end;
+
+{$ifdef fpc}
+ {$push}
+ {$codealign jump=16}
+ {$codealign loop=16}
+ {$codealign proc=16}
+{$endif}
+function TPasRISCV.THART.ExecuteVectorInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+begin
+
+ case {$ifdef TryToForceCaseJumpTableOnLevel1}TPasRISCVUInt8(aInstruction and $7f){$else}aInstruction and 3{$endif} of
+
+ {$ifdef TryToForceCaseJumpTableOnLevel1}
+  $00,$04,$08,$0c,$10,$14,$18,$1c,$20,$24,$28,$2c,$30,$34,$38,$3c,
+  $40,$44,$48,$4c,$50,$54,$58,$5c,$60,$64,$68,$6c,$70,$74,$78,$7c,
+  $80,$84,$88,$8c,$90,$94,$98,$9c,$a0,$a4,$a8,$ac,$b0,$b4,$b8,$bc,
+  $c0,$c4,$c8,$cc,$d0,$d4,$d8,$dc,$e0,$e4,$e8,$ec,$f0,$f4,$f8,$fc:
+ {$else}
+  $00:
+ {$endif}begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+   result:=2;
+   exit;
+  end;
+
+  else begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+   result:=4;
+   exit;
+  end;
+
+ end;
+
+end;
+{$ifdef fpc}
+ {$pop}
+{$endif}
 
 {$ifdef fpc}
  {$push}
