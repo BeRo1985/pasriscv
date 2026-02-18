@@ -22468,7 +22468,7 @@ begin
  fCaptureDMACache[1]:=nil;
 
  inherited Destroy;
- 
+
 end;
 
 procedure TPasRISCV.TFM801Device.Reset;
@@ -22759,6 +22759,7 @@ begin
    end else begin
     FlushCaptureDMA(fCaptureBufferIndex);
     fCaptureActive:=false;
+   end;
   end;
   FM801_CAPTURE_COUNT:begin
    fCaptureCount:=TPasRISCVUInt16(aValue);
