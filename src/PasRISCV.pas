@@ -23804,8 +23804,8 @@ begin
   if not Queue^.ManualRecv then begin
    if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
     if Queue^.Asynchronous then begin
-     if not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,aQueueIndex,-1) then begin
-      ProcessQueue(aQueueIndex,-1);
+     if not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,aQueueIndex,AvailableIndex) then begin
+      ProcessQueue(aQueueIndex,AvailableIndex);
      end;
     end else begin
      ProcessQueue(aQueueIndex,AvailableIndex);
@@ -25497,7 +25497,6 @@ begin
              TPCMStream.TCommand.None,
              TPCMStream.TCommand.Prepare,
              TPCMStream.TCommand.SetParameters,
-             TPCMStream.TCommand.Stop,
              TPCMStream.TCommand.Release:begin
               if not PCMStream.fActive then begin
                PCMStream.fCommand:=TPCMStream.TCommand.SetParameters;
@@ -25539,18 +25538,13 @@ begin
              TPCMStream.TCommand.None,
              TPCMStream.TCommand.Prepare,
              TPCMStream.TCommand.SetParameters,
-             TPCMStream.TCommand.Stop,
              TPCMStream.TCommand.Release:begin
               PCMStream.fCommand:=TPCMStream.TCommand.Prepare;
-              if PCMStream.fActive then begin
-               TPasMPInterlocked.Write(PCMStream.fActive,TPasMPBool32(false));
-              end;
-              if SoundPCMHeader.StreamID=0 then begin
-               FlushTX;
+              if not PCMStream.fActive then begin
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
               end else begin
-               FlushRX;
+               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
               end;
-              PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_OK;
              end;
              else begin
               PVirtIOSoundHeader(@Output^[0])^.Code:=VIRTIO_SND_S_IO_ERR;
@@ -25781,10 +25775,13 @@ begin
   end;
 
   VIRTIO_SND_VQ_EVENT:begin
-   if ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and UsedRingSync(aQueueIndex) then begin
-    result:=true;
+   if aReadSize>0 then begin
+    if ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and UsedRingSync(aQueueIndex) then begin
+     result:=true;
+    end else begin
+     NotifyDeviceNeedsReset;
+    end;
    end else begin
-    NotifyDeviceNeedsReset;
     result:=false;
    end;
   end;
@@ -25826,21 +25823,13 @@ begin
        end;
        PCMBuffer.fRemainingSize:=PCMBuffer.fRawSize;
        PCMBuffer.fOffset:=0;
-       PCMBuffer.fAvailableIndex:=-1;
+       PCMBuffer.fAvailableIndex:=fQueues[aQueueIndex].ShadowAvailableIndex;
 
        PCMStream.fBufferQueueLock.Acquire;
        try
         PCMStream.fBufferQueue.Enqueue(PCMBuffer);
        finally
         PCMStream.fBufferQueueLock.Release;
-       end;
-
-       SoundPCMStatus.Status:=VIRTIO_SND_S_OK;
-       SoundPCMStatus.LatencyBytes:=0;
-       if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@SoundPCMStatus,SizeOf(TVirtIOSoundPCMStatus)) and
-               ConsumeDescriptor(aQueueIndex,aDescriptorIndex,SizeOf(TVirtIOSoundPCMStatus)) and
-               UsedRingSync(aQueueIndex)) then begin
-        NotifyDeviceNeedsReset;
        end;
 
        result:=true;
@@ -25951,11 +25940,12 @@ begin
   try
    repeat
     if assigned(PCMStream.fCurrentBuffer) then begin
+//   NotifyTXBuffer(PCMStream.fCurrentBuffer);
      PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
     end;
     if PCMStream.fBufferQueue.Dequeue(PCMStream.fCurrentBuffer) then begin
      if assigned(PCMStream.fCurrentBuffer) then begin
-      PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
+      NotifyTXBuffer(PCMStream.fCurrentBuffer);
      end;
     end else begin
      PCMStream.fCurrentBuffer:=nil;
