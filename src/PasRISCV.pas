@@ -3759,6 +3759,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPlaySize:TPasRISCVUInt32;
               fPlayScratchBuffer:TPasRISCVFloatDynamicArray;
               fPlayResamplerPosition:TPasRISCVUInt64;
+              fPlayDMACache:array[0..1] of TPasRISCVUInt8DynamicArray;
+              fPlayDMACacheSize:array[0..1] of TPasRISCVUInt32;
+              fPlayDMACacheReady:array[0..1] of Boolean;
               fCaptureActive:Boolean;
               fCaptureBufferIndex:TPasRISCVUInt32;
               fCaptureBuffer:TPasRISCVUInt32;
@@ -3775,6 +3778,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
               destructor Destroy; override;
               procedure Reset; override;
+              procedure PrefetchPlayDMA(const aBufferIndex:TPasRISCVUInt32);
               procedure OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
               procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
@@ -22512,6 +22516,12 @@ begin
  fPlaySize:=0;
  fPlayScratchBuffer:=nil;
  fPlayResamplerPosition:=0;
+ fPlayDMACache[0]:=nil;
+ fPlayDMACache[1]:=nil;
+ fPlayDMACacheSize[0]:=0;
+ fPlayDMACacheSize[1]:=0;
+ fPlayDMACacheReady[0]:=false;
+ fPlayDMACacheReady[1]:=false;
  fCaptureActive:=false;
  fCaptureBufferIndex:=0;
  fCaptureBuffer:=0;
@@ -22668,6 +22678,8 @@ begin
     end;
     fPlayActive:=true;
     fPlayCtrl:=fPlayCtrl and (not FM801_IMMED_STOP); // clear IMMED_STOP after handling
+    PrefetchPlayDMA(0);
+    PrefetchPlayDMA(1);
    end else if (fPlayCtrl and FM801_IMMED_STOP)<>0 then begin
     fPlayActive:=false;
     fPlayCtrl:=fPlayCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
@@ -22680,9 +22692,17 @@ begin
   end;
   FM801_PLAY_BUF1:begin
    fPlayBuffer1:=TPasRISCVUInt32(aValue);
+   fPlayDMACacheReady[0]:=false;
+   if fPlayActive then begin
+    PrefetchPlayDMA(0);
+   end;
   end;
   FM801_PLAY_BUF2:begin
    fPlayBuffer2:=TPasRISCVUInt32(aValue);
+   fPlayDMACacheReady[1]:=false;
+   if fPlayActive then begin
+    PrefetchPlayDMA(1);
+   end;
   end;
   FM801_CAPTURE_CTRL:begin
    fCaptureCtrl:=TPasRISCVUInt16(aValue);
@@ -22792,6 +22812,32 @@ begin
  end;
 end;
 
+procedure TPasRISCV.TFM801Device.PrefetchPlayDMA(const aBufferIndex:TPasRISCVUInt32);
+var BufAddr:TPasRISCVUInt32;
+    BufSize:TPasRISCVUInt32;
+    SrcPtr:Pointer;
+begin
+ if aBufferIndex=0 then begin
+  BufAddr:=fPlayBuffer1;
+ end else begin
+  BufAddr:=fPlayBuffer2;
+ end;
+ BufSize:=TPasRISCVUInt32(fPlayCount)+1;
+ if BufSize>0 then begin
+  if length(fPlayDMACache[aBufferIndex])<BufSize then begin
+   SetLength(fPlayDMACache[aBufferIndex],BufSize);
+  end;
+  SrcPtr:=GetGlobalDirectMemoryAccessPointer(BufAddr,BufSize,false,nil);
+  if assigned(SrcPtr) then begin
+   Move(SrcPtr^,fPlayDMACache[aBufferIndex][0],BufSize);
+  end else begin
+   FillChar(fPlayDMACache[aBufferIndex][0],BufSize,#0);
+  end;
+  fPlayDMACacheSize[aBufferIndex]:=BufSize;
+  fPlayDMACacheReady[aBufferIndex]:=true;
+ end;
+end;
+
 procedure TPasRISCV.TFM801Device.OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
 var Remain,ToDo,CopyBytes,SampleFrameSize,Channels:TPasRISCVSizeInt;
     Dest:PPasRISCVUInt8;
@@ -22870,6 +22916,12 @@ begin
    end;
    fPlayPosition:=0;
    fPlaySize:=TPasRISCVUInt32(fPlayCount)+1; // count register = period_bytes - 1
+   // Prefetch the OTHER buffer (the one we just finished will be refilled by guest)
+   if fPlayBufferIndex=0 then begin
+    PrefetchPlayDMA(1);
+   end else begin
+    PrefetchPlayDMA(0);
+   end;
    // Check BUF_LAST flags - if set, stop after this buffer
    if fPlayBufferIndex=0 then begin
     if (fPlayCtrl and FM801_BUFFER1_LAST)<>0 then begin
@@ -22917,8 +22969,13 @@ begin
 
   CopyBytes:=SrcSamples*SampleFrameSize;
 
-  // DMA: read from guest physical memory
-  SrcPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(fPlayBuffer)+fPlayPosition,CopyBytes,false,nil);
+  // DMA: read from prefetched cache or guest physical memory
+  if fPlayDMACacheReady[fPlayBufferIndex] and
+     (fPlayPosition+CopyBytes<=fPlayDMACacheSize[fPlayBufferIndex]) then begin
+   SrcPtr:=@fPlayDMACache[fPlayBufferIndex][fPlayPosition];
+  end else begin
+   SrcPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(fPlayBuffer)+fPlayPosition,CopyBytes,false,nil);
+  end;
   if SrcPtr=nil then begin
    // Can't access guest memory - fill silence and advance
    inc(fPlayPosition,CopyBytes);
