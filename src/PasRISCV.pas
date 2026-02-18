@@ -34813,12 +34813,12 @@ begin
     aVirtualAddress:=TPasRISCVUInt64(SARInt64(TPasRISCVInt64(aVirtualAddress shl 16),16));
    end;
   end;
- 
- end;
 
- if (EffectiveAccessType=TMMU.TAccessType.Load) and
-    ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MXR))<>0) then begin
-  EffectiveAccessType:=TMMU.TAccessType.LoadInstruction;
+  if (EffectiveAccessType=TMMU.TAccessType.Load) and
+     ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MXR))<>0) then begin
+   EffectiveAccessType:=TMMU.TAccessType.LoadInstruction;
+  end;
+
  end;
 
  case CPUMode of
