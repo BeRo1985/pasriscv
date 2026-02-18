@@ -65,6 +65,8 @@ A RISC-V RV64GC emulator written in Object Pascal. It simulates processor cores,
   - Zkt (Data-Independent Execution Latency)
   - Zimop (May-Be-Operations)
   - Zcmop (Compressed May-Be-Operations)
+  - Zicfilp (Landing Pad — Forward-Edge Control-Flow Integrity)
+  - Zicfiss (Shadow Stack — Backward-Edge Control-Flow Integrity)
   - Zihintpause (Pause Hint)
   - Zihintntl (Non-Temporal Locality Hints)
 - Multi-core SMP support

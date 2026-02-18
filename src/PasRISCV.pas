@@ -277,6 +277,9 @@ unit PasRISCV;
 {$undef PreferDirectMemoryAccess}
 {$undef FrameBufferDeviceDirtyMarking}
 
+{$define Zicfilp} // Zicfilp: Landing Pad (Forward-Edge CFI) - comment out to disable for performance
+{$define Zicfiss} // Zicfiss: Shadow Stack (Backward-Edge CFI) - comment out to disable for performance
+
 {-$define PasRISCVDebugVirtIO9P}
 
 {$if defined(fpc) and (defined(cpux86_64) or defined(cpuamd64))}
@@ -5988,6 +5991,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      LoadPageFault=13,
                      Reserved=14,
                      StorePageFault=15,
+                     SoftwareCheck=18,
                      InstructionGuestPageFault=20,
                      LoadGuestPageFault=21,
                      VirtualInstruction=22,
@@ -6066,21 +6070,24 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            ENVCFG_ADUE=TPasRISCVUInt64(1) shl 61;
                            ENVCFG_PBMTE=TPasRISCVUInt64(1) shl 62;
                            ENVCFG_STCE=TPasRISCVUInt64(1) shl 63;
+                           ENVCFG_LPE=TPasRISCVUInt64(1) shl 2;  // Zicfilp: Landing pad enable
+                           ENVCFG_SSE=TPasRISCVUInt64(1) shl 3;  // Zicfiss: Shadow stack enable
                            MSECCFG_USEED=TPasRISCVUInt64(1) shl 8;
                            MSECCFG_SSEED=TPasRISCVUInt64(1) shl 9;
+                           MSECCFG_MLPE=TPasRISCVUInt64(1) shl 10; // Zicfilp: M-mode landing pad enable
                            CSR_FFLAGS_MASK=$1f;
                            CSR_FRM_MASK=$7;
                            CSR_FCSR_MASK=$ff;
                            CSR_STATUS_FS_MASK=$6000;
-                           CSR_MEDELEG_MASK=TPasRISCVUInt64($f0b3ff); // H-ext: includes guest page faults (20-23) + virtual instruction (22)
+                           CSR_MEDELEG_MASK=TPasRISCVUInt64($f4b3ff); // H-ext: includes SoftwareCheck (18), guest page faults (20-23), virtual instruction (22)
                            CSR_HEDELEG_MASK=TPasRISCVUInt64($b1ff); // Same minus guest page faults and VS ecall
                            CSR_MIDELEG_MASK=TPasRISCVUInt64($2222);
                            CSR_HIDELEG_MASK=TPasRISCVUInt64($0222); // S-level IRQs delegatable to VS
                            CSR_MEIP_MASK=TPasRISCVUInt64($2aaa);
                            CSR_SEIP_MASK=TPasRISCVUInt64($2222);
-                           CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000003000000d0);
-                           CSR_SENVCFG_MASK=TPasRISCVUInt64($3000000d0);
-                           CSR_MSECCFG_MASK=$300;
+                           CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000003000000d0){$ifdef Zicfilp} or ENVCFG_LPE{$endif}{$ifdef Zicfiss} or ENVCFG_SSE{$endif};
+                           CSR_SENVCFG_MASK=TPasRISCVUInt64($3000000d0){$ifdef Zicfilp} or ENVCFG_LPE{$endif}{$ifdef Zicfiss} or ENVCFG_SSE{$endif};
+                           CSR_MSECCFG_MASK=MSECCFG_USEED or MSECCFG_SSEED{$ifdef Zicfilp} or MSECCFG_MLPE{$endif};
                            HVICTL_VTI=TPasRISCVUInt64(1) shl 30;
                            HVICTL_IID_MASK=TPasRISCVUInt64($0fff0000); // bits [27:16]
                            HVICTL_IID_SHIFT=16;
@@ -6108,6 +6115,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   FRM=$2;
                                   FCSR=$3;
                                   UVEC=$5;
+                                  SSP=$11; // (Zicfiss) Shadow Stack Pointer
                                   SEED=$15; // (Zkr)
                                   UEPC=$41;
                                   UCAUSE=$42;
@@ -6242,10 +6250,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           end;
                           TMask=class
                            public
-                            const MSTATUS=TPasRISCVUInt64($cf007fffaa); // includes MPV (39) and GVA (38)
-                                  SSTATUS=TPasRISCVUInt64($3000de722);
+                            const MSTATUS=TPasRISCVUInt64($cf007fffaa){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}) or (TPasRISCVUInt64(1) shl 41{MPELP}){$endif}; // includes MPV (39), GVA (38)
+                                  SSTATUS=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif};
                                   HSTATUS_MASK=TPasRISCVUInt64($007003e0); // SPV, SPVP, HU, GVA, VSBE, VTVM, VTW, VTSR (no VSXL: hardwired to 2)
-                                  MSTATUS_SWAP_MASK=TPasRISCVUInt64($3000de722); // Bits swapped between HS and VS: SIE,SPIE,SPP,FS,VS,SUM,MXR,UXL
+                                  MSTATUS_SWAP_MASK=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif}; // Bits swapped between HS and VS
                             type TStatus=class
                                   public
                                    const SIE=TPasRISCVUInt64(TPasRISCVUInt64(1) shl 1);
@@ -6281,8 +6289,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                          TVM=20;
                                          TW=21;
                                          TSR=22;
+                                         SPELP=23;  // Zicfilp: Supervisor Previous ELP
                                          GVA=38;
                                          MPV=39;
+                                         MPELP=41;  // Zicfilp: Machine Previous ELP
                                  end;
                                  THSTATUSBit=class
                                   public
@@ -6425,6 +6435,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      HSMode_SCAUSE:TPasRISCVUInt64;
                      HSMode_STVAL:TPasRISCVUInt64;
                      HSMode_SATP:TPasRISCVUInt64;
+{$ifdef Zicfilp}
+                     // Zicfilp: Expected landing pad state
+                     ELP:TPasRISCVUInt8; // 0=NO_LP_EXPECTED, 1=LP_EXPECTED
+{$endif}
                    end;
                    PState=^TState;
                    TCSROperation=
@@ -6435,6 +6449,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     );
                    TCSRHandler=procedure(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation) of object;
                    TCSRHandlerMap=array[0..4095] of TCSRHandler;
+{$ifdef Zicfilp}
+                   TExecuteInstructionMethod=function(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64 of object;
+{$endif}
                    { TMMU }
                    TMMU=class
                     public
@@ -6607,7 +6624,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                       'Store page fault',
                       'Reserved', // 16
                       'Reserved', // 17
-                      'Reserved', // 18
+                      'Software check', // 18
                       'Reserved', // 19
                       'Instruction guest-page fault',
                       'Load guest-page fault',
@@ -6647,6 +6664,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fState:TState;
               fPointerToState:PState;
               fCSRHandlerMap:TCSRHandlerMap;
+{$ifdef Zicfilp}
+              fExecuteInstructionTable:array[boolean] of TExecuteInstructionMethod;
+              fExecuteInstructionMethod:TExecuteInstructionMethod;
+{$endif}
               fHARTID:TPasRISCVUInt32;
               fHARTMask:TPasRISCVUInt32;
               fExecutionThread:TExecutionThread;
@@ -6749,6 +6770,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function FetchInstruction(const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32):Boolean; //inline;
               function GetInstructionSize(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64; inline;
               function ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+{$ifdef Zicfilp}
+              function ExecuteInstructionWithPrechecks(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+              procedure UpdateExecuteInstructionMethod;
+{$endif}
               function InterruptsRaised:TPasRISCVUInt64; inline;
               function InterruptsPending:TPasRISCVUInt64; inline;
               function InterruptsNotPending:TPasRISCVUInt64; inline;
@@ -15767,6 +15792,9 @@ begin
  // Integer Base                                                             //
  //////////////////////////////////////////////////////////////////////////////
  AddInstruction32('lui',TInstructionFormat.U,MaskOpcode,OpcodeLui);
+{$ifdef Zicfilp}
+ AddInstruction32('lpad',TInstructionFormat.U,MaskOpcode or $f80,OpcodeAuipc); // Zicfilp: AUIPC with rd=x0
+{$endif}
  AddInstruction32('auipc',TInstructionFormat.U,MaskOpcode,OpcodeAuipc);
  AddInstruction32('jal',TInstructionFormat.J,MaskOpcode,OpcodeJal);
  AddInstruction32('jalr',TInstructionFormat.Jalr,MaskOpcodeFunct3,ValueI(OpcodeJalr,0));
@@ -15959,6 +15987,22 @@ begin
  AddInstruction32('csrrsi',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,6));
  AddInstruction32('csrrci',TInstructionFormat.CSRImm,MaskOpcodeFunct3,ValueI(OpcodeSystem,7));
 
+{$ifdef Zicfiss}
+ //////////////////////////////////////////////////////////////////////////////
+ // Zicfiss (encoded as specific Zimop instructions, must precede generic)   //
+ //////////////////////////////////////////////////////////////////////////////
+ // SSPUSH x1: MOP.RR.7 with rs2=x1, rd=x0, rs1=x0
+ AddInstruction32('sspush',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($CE104073));
+ // SSPUSH x5: MOP.RR.7 with rs2=x5, rd=x0, rs1=x0
+ AddInstruction32('sspush',TInstructionFormat.None,TPasRISCVUInt32($ffffffff),TPasRISCVUInt32($CE504073));
+ // SSPOPCHK x1: MOP.R.28 with rs1=x1, rd=x0
+ AddInstruction32('sspopchk',TInstructionFormat.None,TPasRISCVUInt32($fffff07f),TPasRISCVUInt32($CDC0C073));
+ // SSPOPCHK x5: MOP.R.28 with rs1=x5, rd=x0
+ AddInstruction32('sspopchk',TInstructionFormat.None,TPasRISCVUInt32($fffff07f),TPasRISCVUInt32($CDC2C073));
+ // SSRDP: MOP.R.28 with rs1=x0, rd!=x0 (handled by RUnary format)
+ AddInstruction32('ssrdp',TInstructionFormat.RUnary,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($CDC04073));
+{$endif}
+
  //////////////////////////////////////////////////////////////////////////////
  // Zimop                                                                    //
  //////////////////////////////////////////////////////////////////////////////
@@ -15981,6 +16025,10 @@ begin
  //////////////////////////////////////////////////////////////////////////////
  // AMO                                                                      //
  //////////////////////////////////////////////////////////////////////////////
+{$ifdef Zicfiss}
+ AddInstruction32('ssamoswap.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$09)); // Zicfiss
+ AddInstruction32('ssamoswap.d',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,3,$09)); // Zicfiss
+{$endif}
  AddInstruction32('lr.w',TInstructionFormat.LR,MaskAmo,ValueAmo(OpcodeAmo,2,$02));
  AddInstruction32('sc.w',TInstructionFormat.SC,MaskAmo,ValueAmo(OpcodeAmo,2,$03));
  AddInstruction32('amoswap.w',TInstructionFormat.AMO,MaskAmo,ValueAmo(OpcodeAmo,2,$01));
@@ -16199,6 +16247,12 @@ begin
  AddInstruction16('c.li',TCompressedFormat.CI,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(2,1));
  AddInstruction16('c.addi16sp',TCompressedFormat.CIAddi16sp,TRegisterKind.Integer,MaskCompressedBase or MaskCompressedRd,ValueCompressedBase(3,1) or (TPasRISCVUInt32(2) shl 7));
  AddInstruction16('c.lui',TCompressedFormat.CILui,TRegisterKind.Integer,MaskCompressedBase,ValueCompressedBase(3,1));
+
+{$ifdef Zicfiss}
+ // Zicfiss compressed (must precede generic Zcmop)
+ AddInstruction16('c.sspush',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($6081)); // C.MOP.1 => C.SSPUSH x1
+ AddInstruction16('c.sspopchk',TCompressedFormat.None,TRegisterKind.Integer,TPasRISCVUInt32($ffff),TPasRISCVUInt32($6281)); // C.MOP.5 => C.SSPOPCHK x5
+{$endif}
 
  // Zcmop
  for Index:=0 to 7 do begin
@@ -33534,12 +33588,12 @@ begin
 
  fData[TAddress.MSTATUS]:=TPasRISCVUInt64($200000000);
 
- fData[TAddress.MENVCFG]:=TPasRISCVUInt64($e0000000000000d0); // $e
+ fData[TAddress.MENVCFG]:=TPasRISCVUInt64($e0000000000000d0); // LPE/SSE off by default, OS enables via CSR write
  fData[TAddress.MENVCFGH]:=fData[TAddress.MENVCFG] shr 32;
 
- fData[TAddress.SENVCFG]:=TPasRISCVUInt64($00000000000000d0);
+ fData[TAddress.SENVCFG]:=TPasRISCVUInt64($00000000000000d0); // LPE/SSE off by default
 
- fData[TAddress.HENVCFG]:=TPasRISCVUInt64($e0000003000000d0); // All features enabled by default
+ fData[TAddress.HENVCFG]:=TPasRISCVUInt64($e0000003000000d0); // LPE/SSE off by default
  fData[TAddress.HENVCFGH]:=fData[TAddress.HENVCFG] shr 32;
 
  // H-extension: HSTATUS initial value with VSXL=2 (64-bit)
@@ -33597,13 +33651,13 @@ begin
    result:=fHART.fState.Cycle shr 32;
   end;
   TAddress.MENVCFG:begin
-   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($e0000003000000d0)));
+   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and CSR_MENVCFG_MASK));
   end;
 { TAddress.MENVCFGH:begin
-   result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($80000000000000d0)) shr 32);
+   result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($80000000000000dc)) shr 32);
   end;}
   TAddress.SENVCFG:begin
-   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.SENVCFG] and TPasRISCVUInt64($00000003000000d0)));
+   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.SENVCFG] and CSR_SENVCFG_MASK));
   end;
   TAddress.STIMECMP:begin
    result:=fHART.fSTIMECMP;
@@ -33629,19 +33683,19 @@ begin
    fData[TAddress.MSTATUS]:=Value;
   end;
   TAddress.MENVCFG:begin
-   fData[TAddress.MENVCFG]:=aValue and TPasRISCVUInt64($e0000003000000d0);
+   fData[TAddress.MENVCFG]:=aValue and CSR_MENVCFG_MASK;
   end;
 { TAddress.MENVCFG:begin
    fData[TAddress.MENVCFG]:=((fData[TAddress.MENVCFG] and TPasRISCVUInt64($ffffffff00000000)) or
-                             (TPasRISCVUInt64(aValue) and TPasRISCVUInt64($00000000ffffffff))) and TPasRISCVUInt64($80000000000000d0);
+                             (TPasRISCVUInt64(aValue) and TPasRISCVUInt64($00000000ffffffff))) and TPasRISCVUInt64($80000000000000dc);
   end;
   TAddress.MENVCFGH:begin
    fData[TAddress.MENVCFG]:=((fData[TAddress.MENVCFG] and TPasRISCVUInt64($00000000ffffffff)) or
-                              ((TPasRISCVUInt64(aValue) shl 32) and TPasRISCVUInt64($ffffffff00000000))) and TPasRISCVUInt64($80000000000000d0);
+                              ((TPasRISCVUInt64(aValue) shl 32) and TPasRISCVUInt64($ffffffff00000000))) and TPasRISCVUInt64($80000000000000dc);
    fData[TAddress.MENVCFGH]:=fData[TAddress.MENVCFG] shr 32;
   end;}
   TAddress.SENVCFG:begin
-   fData[TAddress.SENVCFG]:=aValue and TPasRISCVUInt64($00000003000000d0);
+   fData[TAddress.SENVCFG]:=aValue and CSR_SENVCFG_MASK;
   end;
   TAddress.STIMECMP:begin
    fHART.fSTIMECMP:=aValue;
@@ -33847,6 +33901,12 @@ begin
 
  fPointerToState:=@fState;
 
+{$ifdef Zicfilp}
+ fExecuteInstructionTable[false]:=ExecuteInstruction;
+ fExecuteInstructionTable[true]:=ExecuteInstructionWithPrechecks;
+ fExecuteInstructionMethod:=fExecuteInstructionTable[false];
+{$endif}
+
  if fMachine.fConfiguration.fAIA then begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
    fAIARegFiles[AIARegFileMode]:=TAIARegFile.Create(self.fMachine,self);
@@ -33878,6 +33938,10 @@ begin
    TCSR.TAddress.FFLAGS,
    TCSR.TAddress.FRM,
    TCSR.TAddress.FCSR,
+
+{$ifdef Zicfiss}
+   TCSR.TAddress.SSP, // Zicfiss: Shadow Stack Pointer
+{$endif}
 
    TCSR.TAddress.SEED,
 
@@ -37567,8 +37631,88 @@ begin
         result:=2;
         exit;
        end else begin
-        // Zcmop - c.mop.N (rd is odd, 1..15) => NOP
+        // Zcmop - c.mop.N (rd is odd, 1..15) => NOP, with Zicfiss overrides
         if ((ord(rd) and 1)<>0) and (ord(rd)<=15) then begin
+{$ifdef Zicfiss}
+         // Check for Zicfiss compressed instructions
+         if ord(rd)=1 then begin
+          // C.MOP.1 → C.SSPUSH x1 (when xSSE active)
+          // Determine xSSE
+          Address:=0;
+          case fState.Mode of
+           THART.TMode.Supervisor:begin
+            if fState.VirtualMode then begin
+             if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+              Address:=1;
+             end;
+            end else begin
+             if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+              Address:=1;
+             end;
+            end;
+           end;
+           THART.TMode.User:begin
+            if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+             Address:=1;
+            end;
+           end;
+           else begin
+           end;
+          end;
+          if Address<>0 then begin
+           // C.SSPUSH x1: ssp -= 8, mem[ssp] = x1
+           Temporary:=fState.CSR.fData[TCSR.TAddress.SSP]-8;
+           fBus.Store(self,Temporary,fState.Registers[TRegister.RA],8);
+           if fState.ExceptionValue=TExceptionValue.None then begin
+            fState.CSR.fData[TCSR.TAddress.SSP]:=Temporary;
+           end;
+          end;
+          // else: Zcmop NOP
+          result:=2;
+          exit;
+         end else if ord(rd)=5 then begin
+          // C.MOP.5 → C.SSPOPCHK x5 (when xSSE active)
+          Address:=0;
+          case fState.Mode of
+           THART.TMode.Supervisor:begin
+            if fState.VirtualMode then begin
+             if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+              Address:=1;
+             end;
+            end else begin
+             if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+              Address:=1;
+             end;
+            end;
+           end;
+           THART.TMode.User:begin
+            if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+             Address:=1;
+            end;
+           end;
+           else begin
+           end;
+          end;
+          if Address<>0 then begin
+           // C.SSPOPCHK x5: temp = mem[ssp], check, ssp += 8
+           Temporary:=fBus.Load(self,fState.CSR.fData[TCSR.TAddress.SSP],8);
+           if fState.ExceptionValue<>TExceptionValue.None then begin
+            result:=2;
+            exit;
+           end;
+           if Temporary<>fState.Registers[TRegister.T0] then begin
+            SetException(TExceptionValue.SoftwareCheck,3,fState.PC);
+            result:=2;
+            exit;
+           end;
+           fState.CSR.fData[TCSR.TAddress.SSP]:=fState.CSR.fData[TCSR.TAddress.SSP]+8;
+          end;
+          // else: Zcmop NOP
+          result:=2;
+          exit;
+         end;
+{$endif}
+         // Other C.MOP.N: plain Zcmop NOP
          result:=2;
          exit;
         end else begin
@@ -37905,6 +38049,38 @@ begin
         // c.jr
         rs1:=TRegister((aInstruction shr 7) and $1f);
         fState.PC:=fState.Registers[rs1]-2;
+{$ifdef Zicfilp}
+        // Zicfilp: Set ELP if rs1 is not x1, x5, or x7
+        if (rs1<>TRegister.RA) and (rs1<>TRegister.T0) and (rs1<>TRegister.T2) then begin
+         case fState.Mode of
+          THART.TMode.Machine:begin
+           if (fState.CSR.fData[TCSR.TAddress.MSECCFG] and TCSR.MSECCFG_MLPE)<>0 then begin
+            fState.ELP:=1;
+            UpdateExecuteInstructionMethod;
+           end;
+          end;
+          THART.TMode.Supervisor:begin
+           if fState.VirtualMode then begin
+            if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+             fState.ELP:=1;
+             UpdateExecuteInstructionMethod;
+            end;
+           end else begin
+            if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+             fState.ELP:=1;
+             UpdateExecuteInstructionMethod;
+            end;
+           end;
+          end;
+          else begin
+           if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+            fState.ELP:=1;
+            UpdateExecuteInstructionMethod;
+           end;
+          end;
+         end;
+        end;
+{$endif}
         result:=2;
         exit;
        end;
@@ -37928,6 +38104,38 @@ begin
          Temporary:=fState.PC+2;
          fState.PC:=fState.Registers[rs1]-2;
          fState.Registers[TRegister.RA]:=Temporary;
+{$ifdef Zicfilp}
+         // Zicfilp: Set ELP if rs1 is not x1, x5, or x7
+         if (rs1<>TRegister.RA) and (rs1<>TRegister.T0) and (rs1<>TRegister.T2) then begin
+          case fState.Mode of
+           THART.TMode.Machine:begin
+            if (fState.CSR.fData[TCSR.TAddress.MSECCFG] and TCSR.MSECCFG_MLPE)<>0 then begin
+             fState.ELP:=1;
+             UpdateExecuteInstructionMethod;
+            end;
+           end;
+           THART.TMode.Supervisor:begin
+            if fState.VirtualMode then begin
+             if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+              fState.ELP:=1;
+              UpdateExecuteInstructionMethod;
+             end;
+            end else begin
+             if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+              fState.ELP:=1;
+              UpdateExecuteInstructionMethod;
+             end;
+            end;
+           end;
+           else begin
+            if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+             fState.ELP:=1;
+             UpdateExecuteInstructionMethod;
+            end;
+           end;
+          end;
+         end;
+{$endif}
          result:=2;
          exit;
         end;
@@ -38443,14 +38651,49 @@ begin
     // auipc                                                                    //
     //////////////////////////////////////////////////////////////////////////////
     $17{$ifdef TryToForceCaseJumpTableOnLevel1},$97{$endif}:begin
-     // auipc
      rd:=TRegister((aInstruction shr 7) and $1f);
-     {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-      Immediate:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fffff000))));
-      fState.Registers[rd]:=fState.PC+TPasRISCVUInt64(Immediate);
+{$ifdef Zicfilp}
+     if rd=TRegister.Zero then begin
+      // Zicfilp: LPAD instruction (AUIPC with rd=x0)
+      // Determine xLPE for current privilege mode
+      if fState.ELP<>0 then begin
+       // ELP is LP_EXPECTED - check if we have a valid landing pad
+       // Check 4-byte alignment of PC
+       if (fState.PC and 3)<>0 then begin
+        fState.ELP:=0;
+        UpdateExecuteInstructionMethod;
+        SetException(TExceptionValue.SoftwareCheck,2,fState.PC); // landing pad fault (code=2)
+        result:=4;
+        exit;
+       end;
+       // Check label: LPL is bits [31:12] of instruction
+       Immediate:=(aInstruction shr 12) and $fffff;
+       if (Immediate<>0) and (Immediate<>((fState.Registers[TRegister.T2] shr 12) and $fffff)) then begin
+        fState.ELP:=0;
+        UpdateExecuteInstructionMethod;
+        SetException(TExceptionValue.SoftwareCheck,2,fState.PC); // landing pad fault (code=2)
+        result:=4;
+        exit;
+       end;
+       // Valid landing pad - clear ELP
+       fState.ELP:=0;
+       UpdateExecuteInstructionMethod;
+      end;
+      // else: LPAD is a no-op when ELP=NO_LP_EXPECTED or extension not active
+      result:=4;
+      exit;
+     end else begin
+{$else}
+     begin
+{$endif}
+      // Regular auipc
+      {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+       Immediate:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fffff000))));
+       fState.Registers[rd]:=fState.PC+TPasRISCVUInt64(Immediate);
+      end;
+      result:=4;
+      exit;
      end;
-     result:=4;
-     exit;
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -39451,6 +39694,40 @@ begin
      {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
       fState.Registers[rd]:=Temporary;
      end;
+{$ifdef Zicfilp}
+     // Zicfilp: Set ELP if rs1 is not x1, x5, or x7 (i.e. not a return or software guarded branch)
+     if (rs1<>TRegister.RA) and (rs1<>TRegister.T0) and (rs1<>TRegister.T2) then begin
+      // Determine xLPE for current privilege mode
+      case fState.Mode of
+       THART.TMode.Machine:begin
+        if (fState.CSR.fData[TCSR.TAddress.MSECCFG] and TCSR.MSECCFG_MLPE)<>0 then begin
+         fState.ELP:=1;
+         UpdateExecuteInstructionMethod;
+        end;
+       end;
+       THART.TMode.Supervisor:begin
+        if fState.VirtualMode then begin
+         if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+          fState.ELP:=1;
+          UpdateExecuteInstructionMethod;
+         end;
+        end else begin
+         if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+          fState.ELP:=1;
+          UpdateExecuteInstructionMethod;
+         end;
+        end;
+       end;
+       else begin
+        // User / VU mode
+        if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_LPE)<>0 then begin
+         fState.ELP:=1;
+         UpdateExecuteInstructionMethod;
+        end;
+       end;
+      end;
+     end;
+{$endif}
      result:=4;
      exit;
     end;
@@ -39671,6 +39948,12 @@ begin
               Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((ord(THART.TMode.User) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
               Temporary:=(Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE)) or (((Temporary shr TCSR.TMask.TSSTATUSBit.SPIE) and 1) shl TCSR.TMask.TSSTATUSBit.SIE);
               Temporary:=Temporary or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE); // SPIE=1 per spec
+{$ifdef Zicfilp}
+              // Zicfilp: Restore ELP from SPELP, then clear SPELP
+              fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.SPELP) and 1;
+              UpdateExecuteInstructionMethod;
+              Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP);
+{$endif}
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
               fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
               CheckInterrupts;
@@ -39693,6 +39976,13 @@ begin
 
               // Set SPIE to 1 (spec requirement)
               Temporary:=Temporary or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE);
+
+{$ifdef Zicfilp}
+              // Zicfilp: Restore ELP from SPELP, then clear SPELP
+              fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.SPELP) and 1;
+              UpdateExecuteInstructionMethod;
+              Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP);
+{$endif}
 
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
 
@@ -39742,6 +40032,13 @@ begin
 
               // Clear MPV (before swap)
               Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+
+{$ifdef Zicfilp}
+              // Zicfilp: Restore ELP from MPELP, then clear MPELP
+              fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.MPELP) and 1;
+              UpdateExecuteInstructionMethod;
+              Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPELP);
+{$endif}
 
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
 
@@ -40093,8 +40390,92 @@ begin
          end;
         end;
         else begin
-         // Zimop - mop.r.N / mop.rr.N (write 0 to rd)
+         // Zimop - mop.r.N / mop.rr.N (write 0 to rd), with Zicfiss overrides
          if (aInstruction and $b0000000)=$80000000 then begin // bit[31]=1, bits[29:28]=00
+{$ifdef Zicfiss}
+          // Check for Zicfiss instructions encoded as Zimop
+          // Determine xSSE for current privilege mode
+          // Note: Zicfiss is not supported in M-mode
+          Address:=0; // reuse as SSE flag
+          case fState.Mode of
+           THART.TMode.Supervisor:begin
+            if fState.VirtualMode then begin
+             if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+              Address:=1;
+             end;
+            end else begin
+             if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+              Address:=1;
+             end;
+            end;
+           end;
+           THART.TMode.User:begin
+            if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
+             Address:=1;
+            end;
+           end;
+           else begin
+            // M-mode: SSE never enabled
+           end;
+          end;
+          // Check if this is MOP.RR.7 (SSPUSH encoding)
+          // MOP.RR.7 base: bits[31:25]=1100111, funct3=100, opcode=1110011
+          // Full mask: opcode+funct3+funct7+rs1+rd = $FE0FF07F
+          if ((aInstruction and $FE0FF07F)=$CE004073) then begin
+           // MOP.RR.7 with rs1=x0, rd=x0 → potential SSPUSH
+           rs2:=TRegister((aInstruction shr 20) and $1f);
+           if (Address<>0) and ((rs2=TRegister.RA) or (rs2=TRegister.T0)) then begin
+            // SSPUSH x1 or SSPUSH x5
+            Temporary:=fState.CSR.fData[TCSR.TAddress.SSP]-8;
+            fBus.Store(self,Temporary,fState.Registers[rs2],8);
+            if fState.ExceptionValue=TExceptionValue.None then begin
+             fState.CSR.fData[TCSR.TAddress.SSP]:=Temporary;
+            end;
+            result:=4;
+            exit;
+           end else begin
+            // SSE not active or rs2 not x1/x5: Zimop NOP (write 0 to rd=x0)
+            result:=4;
+            exit;
+           end;
+          end;
+          // Check if this is MOP.R.28 (SSPOPCHK / SSRDP encoding)
+          // MOP.R.28 bits[31:20]=110011011100=$CDC, funct3=100, opcode=1110011
+          if ((aInstruction shr 20) and $FFF)=$CDC then begin
+           rs1:=TRegister((aInstruction shr 15) and $1f);
+           rd:=TRegister((aInstruction shr 7) and $1f);
+           if (rd=TRegister.Zero) and ((rs1=TRegister.RA) or (rs1=TRegister.T0)) then begin
+            // SSPOPCHK x1 or SSPOPCHK x5
+            if Address<>0 then begin
+             Temporary:=fBus.Load(self,fState.CSR.fData[TCSR.TAddress.SSP],8);
+             if fState.ExceptionValue<>TExceptionValue.None then begin
+              result:=4;
+              exit;
+             end;
+             if Temporary<>fState.Registers[rs1] then begin
+              // Shadow stack mismatch → software-check exception (code=3: shadow stack fault)
+              SetException(TExceptionValue.SoftwareCheck,3,fState.PC);
+              result:=4;
+              exit;
+             end;
+             fState.CSR.fData[TCSR.TAddress.SSP]:=fState.CSR.fData[TCSR.TAddress.SSP]+8;
+            end;
+            // else: SSE not active → Zimop NOP
+            result:=4;
+            exit;
+           end else if (rs1=TRegister.Zero) and (rd<>TRegister.Zero) then begin
+            // SSRDP: read SSP into rd
+            if Address<>0 then begin
+             fState.Registers[rd]:=fState.CSR.fData[TCSR.TAddress.SSP];
+            end else begin
+             fState.Registers[rd]:=0; // Zimop: write 0 when SSE not active
+            end;
+            result:=4;
+            exit;
+           end;
+          end;
+{$endif}
+          // Generic Zimop fallback: write 0 to rd
           rd:=TRegister((aInstruction shr 7) and $1f);
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=0;
@@ -43747,6 +44128,30 @@ begin
           result:=4;
           exit;
          end;
+{$ifdef Zicfiss}
+         $09:begin
+          // ssamoswap.w (Zicfiss)
+          // Atomically swap shadow stack memory with rs2, result in rd
+          // Check alignment (4-byte for .w)
+          if (fState.Registers[rs1] and 3)<>0 then begin
+           SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
+           result:=4;
+           exit;
+          end;
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
+          if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+           Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
+           end;
+           if Ptr=@fState.Bounce.ui32 then begin
+            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
+           end;
+          end;
+          result:=4;
+          exit;
+         end;
+{$endif}
          $0c:begin
           // amoand.w
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
@@ -44010,6 +44415,30 @@ begin
           result:=4;
           exit;
          end;
+{$ifdef Zicfiss}
+         $09:begin
+          // ssamoswap.d (Zicfiss)
+          // Atomically swap shadow stack memory with rs2, result in rd
+          // Check alignment (8-byte for .d)
+          if (fState.Registers[rs1] and 7)<>0 then begin
+           SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
+           result:=4;
+           exit;
+          end;
+          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
+          if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+           Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=TPasRISCVUInt64(Temporary);
+           end;
+           if Ptr=@fState.Bounce.ui64 then begin
+            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
+           end;
+          end;
+          result:=4;
+          exit;
+         end;
+{$endif}
          $0c:begin
           // amoand.d
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
@@ -44202,6 +44631,33 @@ begin
 
 end;
 {$ifdef fpc}{$pop}{$endif}
+
+{$ifdef Zicfilp}
+function TPasRISCV.THART.ExecuteInstructionWithPrechecks(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+begin
+ // Zicfilp: ELP check - when ELP=LP_EXPECTED, only LPAD (AUIPC with rd=x0) is allowed
+ if fState.ELP<>0 then begin
+  // Check if the instruction is a 32-bit LPAD (opcode=$17 AUIPC, rd=x0)
+  if ((aInstruction and $7f)=$17) and (((aInstruction shr 7) and $1f)=0) and ((aInstruction and 3)=3) then begin
+   // This is LPAD - will be handled in the AUIPC case inside ExecuteInstruction
+  end else begin
+   // Not LPAD - raise software-check exception with tval=2 (landing pad fault)
+   fState.ELP:=0;
+   UpdateExecuteInstructionMethod;
+   SetException(TExceptionValue.SoftwareCheck,2,fState.PC);
+   result:=4;
+   exit;
+  end;
+ end;
+ // Future prechecks can be added here
+ result:=ExecuteInstruction(aInstruction);
+end;
+
+procedure TPasRISCV.THART.UpdateExecuteInstructionMethod;
+begin 
+ fExecuteInstructionMethod:=fExecuteInstructionTable[fState.ELP<>0];
+end;
+{$endif}
 
 function TPasRISCV.THART.InterruptsRaised:TPasRISCVUInt64;
 begin
@@ -44444,6 +44900,12 @@ begin
      end else begin
       Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
      end;
+{$ifdef Zicfilp}
+     // Zicfilp: Save ELP to MPELP and clear ELP
+     Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPELP)) or (TPasRISCVUInt64(fState.ELP) shl TCSR.TMask.TMSTATUSBit.MPELP);
+     fState.ELP:=0;
+     UpdateExecuteInstructionMethod;
+{$endif}
      fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
     end;
@@ -44462,6 +44924,12 @@ begin
       Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
       Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
       Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+{$ifdef Zicfilp}
+      // Zicfilp: Save ELP to SPELP and clear ELP
+      Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP)) or (TPasRISCVUInt64(fState.ELP) shl TCSR.TMask.TMSTATUSBit.SPELP);
+      fState.ELP:=0;
+      UpdateExecuteInstructionMethod;
+{$endif}
       fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
      end else begin
@@ -44487,6 +44955,12 @@ begin
       Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
       Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
       Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+{$ifdef Zicfilp}
+      // Zicfilp: Save ELP to SPELP and clear ELP
+      Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP)) or (TPasRISCVUInt64(fState.ELP) shl TCSR.TMask.TMSTATUSBit.SPELP);
+      fState.ELP:=0;
+      UpdateExecuteInstructionMethod;
+{$endif}
       fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
      end;
@@ -44654,6 +45128,12 @@ begin
     Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
     Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
     Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+{$ifdef Zicfilp}
+    // Zicfilp: Save ELP to SPELP and clear ELP
+    Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP)) or (TPasRISCVUInt64(fState.ELP) shl TCSR.TMask.TMSTATUSBit.SPELP);
+    fState.ELP:=0;
+    UpdateExecuteInstructionMethod;
+{$endif}
     fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
    end else begin
@@ -44691,6 +45171,12 @@ begin
     Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
     Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SIE))) or (((Status shr TCSR.TMask.TSSTATUSBit.SIE) and 1) shl TCSR.TMask.TSSTATUSBit.SPIE);
     Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPP)) or ((TPasRISCVUInt32(Mode) and 1) shl TCSR.TMask.TSSTATUSBit.SPP);
+{$ifdef Zicfilp}
+    // Zicfilp: Save ELP to SPELP and clear ELP
+    Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP)) or (TPasRISCVUInt64(fState.ELP) shl TCSR.TMask.TMSTATUSBit.SPELP);
+    fState.ELP:=0;
+    UpdateExecuteInstructionMethod;
+{$endif}
     fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
    end;
 
@@ -44730,6 +45216,12 @@ begin
    end else begin
     Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
    end;
+{$ifdef Zicfilp}
+   // Zicfilp: Save ELP to MPELP and clear ELP
+   Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPELP)) or (TPasRISCVUInt64(fState.ELP) shl TCSR.TMask.TMSTATUSBit.MPELP);
+   fState.ELP:=0;
+   UpdateExecuteInstructionMethod;
+{$endif}
    fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
   end;
@@ -45014,7 +45506,11 @@ begin
   end;
 {$ifend}
 
+{$ifdef Zicfilp}
+   inc(fState.PC,fExecuteInstructionMethod(Instruction));
+{$else}
    inc(fState.PC,ExecuteInstruction(Instruction));
+{$endif}
 
   until ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))<>RUNSTATE_RUNNING) or
         ((fState.Cycle and TPasRISCVUInt32($ffff))=0);
@@ -45210,6 +45706,11 @@ begin
    THART.TCSR.TAddress.USTATUS:begin
     CSRName:='ustatus';
    end;
+{$ifdef Zicfiss}
+   THART.TCSR.TAddress.SSP:begin
+    CSRName:='ssp';
+   end;
+{$endif}
    THART.TCSR.TAddress.FFLAGS:begin
     CSRName:='fflags';
    end;
@@ -49569,8 +50070,12 @@ begin
   AddISAExtension('ziccif');
   AddISAExtension('zicclsm');
   AddISAExtension('ziccrse');
-//AddISAExtension('zicfilp');
-//AddISAExtension('zicfiss');
+{$ifdef Zicfilp}
+  AddISAExtension('zicfilp');
+{$endif}
+{$ifdef Zicfiss}
+  AddISAExtension('zicfiss');
+{$endif}
   AddISAExtension('zicond');
   AddISAExtension('zicntr');
   AddISAExtension('zicsr');
