@@ -23758,7 +23758,7 @@ begin
  if fDriverOK then begin
   Queue:=@fQueues[aQueueIndex];
   if not Queue^.ManualRecv then begin
-   if TPasMPInterlocked.CompareExchange(Queue^.Lock,-1,0)=0 then begin
+   if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(Queue^.Lock) then begin
     try
      if aAvailableIndex>=0 then begin
       AvailableIndex:=aAvailableIndex;
@@ -23788,7 +23788,7 @@ begin
       end;
      end;
     finally
-     TPasMPInterlocked.Write(Queue^.Lock,0);
+     TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
     end;
    end;
   end;
