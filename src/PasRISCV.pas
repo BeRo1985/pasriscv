@@ -26003,6 +26003,9 @@ begin
     finally
      PCMStream.fBufferQueueLock.Release;
     end;
+    if assigned(PCMStream.fCurrentBuffer) then begin
+     NotifyTXBuffer(PCMStream.fCurrentBuffer);
+    end;
    end;
 
    PCMBuffer:=PCMStream.fCurrentBuffer;

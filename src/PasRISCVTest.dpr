@@ -82,7 +82,7 @@ begin
  case aExceptionValue of
   TPasRISCV.THART.TExceptionValue.ECallUMode,
   TPasRISCV.THART.TExceptionValue.ECallSMode,
-  TPasRISCV.THART.TExceptionValue.ECallVSMode,
+  TPasRISCV.THART.TExceptionValue.ECallHMode,
   TPasRISCV.THART.TExceptionValue.ECallMMode:begin
    if Machine.HART.State^.Registers[TPasRISCV.TRegister.A7]=93 then begin // Exit syscall
     TestErrorCode:=Machine.HART.State^.Registers[TPasRISCV.TRegister.A0];
@@ -156,7 +156,7 @@ begin
   try
 
    if ParamStr(1)='image' then begin
-    Configuration.VirtIOBlockEnabled:=true;
+//    Configuration.VirtIOBlockEnabled:=true;
    end;
 
    Machine:=TPasRISCV.Create(Configuration);
