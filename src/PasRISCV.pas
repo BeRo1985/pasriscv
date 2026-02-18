@@ -23804,8 +23804,8 @@ begin
   if not Queue^.ManualRecv then begin
    if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
     if Queue^.Asynchronous then begin
-     if not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,aQueueIndex,-1) then begin
-      ProcessQueue(aQueueIndex,-1);
+     if not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,aQueueIndex,AvailableIndex) then begin
+      ProcessQueue(aQueueIndex,AvailableIndex);
      end;
     end else begin
      ProcessQueue(aQueueIndex,AvailableIndex);
