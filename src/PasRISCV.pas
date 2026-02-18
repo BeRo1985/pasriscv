@@ -25538,6 +25538,7 @@ begin
              TPCMStream.TCommand.None,
              TPCMStream.TCommand.Prepare,
              TPCMStream.TCommand.SetParameters,
+             TPCMStream.TCommand.Stop,
              TPCMStream.TCommand.Release:begin
               PCMStream.fCommand:=TPCMStream.TCommand.Prepare;
               if not PCMStream.fActive then begin
