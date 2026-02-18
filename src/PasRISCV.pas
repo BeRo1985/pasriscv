@@ -22451,6 +22451,8 @@ destructor TPasRISCV.TFM801Device.Destroy;
 begin
  FreeAndNil(fOPL3);
  FreeAndNil(fFuncs[0]);
+ fPlayDMACache[0]:=nil;
+ fPlayDMACache[1]:=nil;
  inherited Destroy;
 end;
 
