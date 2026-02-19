@@ -38770,6 +38770,7 @@ begin
           SourceValue:=VectorGetElement(vd+(SubIndex*FieldStride),Index,EEW);
           Store(Address+(((TPasRISCVUInt64(Index)*TPasRISCVUInt64(NumFields+1))+TPasRISCVUInt64(SubIndex))*TPasRISCVUInt64(EEW shr 3)),SourceValue,EEW shr 3);
           if fState.ExceptionValue<>TExceptionValue.None then begin
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
            result:=4;
            exit;
           end;
@@ -38790,6 +38791,7 @@ begin
         SourceValue:=VectorGetElement(vd,Index,EEW);
         Store(Address+TPasRISCVUInt64(Index)*(EEW shr 3),SourceValue,EEW shr 3);
         if fState.ExceptionValue<>TExceptionValue.None then begin
+         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
          result:=4;
          exit;
         end;
@@ -38811,6 +38813,7 @@ begin
          SourceValue:=VectorGetElement(vd,Index,8);
          Store(Address+TPasRISCVUInt64(Index),SourceValue,1);
          if fState.ExceptionValue<>TExceptionValue.None then begin
+          fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
           result:=4;
           exit;
          end;
@@ -38855,6 +38858,7 @@ begin
         SourceValue:=VectorGetElement(vd+(SubIndex*FieldStride),Index,EEW);
         Store(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index))+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(EEW shr 3)),SourceValue,EEW shr 3);
         if fState.ExceptionValue<>TExceptionValue.None then begin
+         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
          result:=4;
          exit;
         end;
@@ -38893,6 +38897,7 @@ begin
         OperandValue:=VectorGetElement(vd+(SubIndex*FieldStride),Index,SEW);
         Store(Address+SourceValue+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(SEW shr 3)),OperandValue,SEW shr 3);
         if fState.ExceptionValue<>TExceptionValue.None then begin
+         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
          result:=4;
          exit;
         end;
