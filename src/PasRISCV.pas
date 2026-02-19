@@ -40468,8 +40468,15 @@ begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
            end else if FloatA<FloatB then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
-           end else begin
+           end else if FloatA>FloatB then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatB;
+           end else begin
+            // Equal: IEEE 754-2019 minimum: -0 < +0
+            if (TPasRISCVUInt32(pointer(@FloatA)^) and $80000000)<>0 then begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
+            end else begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatB;
+            end;
            end;
           end;
           $40:begin
@@ -40485,8 +40492,15 @@ begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
            end else if DoubleA<DoubleB then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
-           end else begin
+           end else if DoubleA>DoubleB then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleB;
+           end else begin
+            // Equal: IEEE 754-2019 minimum: -0 < +0
+            if (TPasRISCVUInt64(pointer(@DoubleA)^) and $8000000000000000)<>0 then begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
+            end else begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleB;
+            end;
            end;
           end;
           else begin
@@ -40509,7 +40523,18 @@ begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           if (not IsNaN(FloatA)) and ((IsNaN(FloatResult)) or (FloatA<FloatResult)) then begin
+           if IsNaN(FloatA) and IsNaN(FloatResult) then begin
+            // Both NaN: produce canonical NaN
+            TPasRISCVUInt32(pointer(@FloatResult)^):=$7fc00000;
+           end else if IsNaN(FloatA) then begin
+            // Element is NaN, accumulator is not: keep accumulator
+           end else if IsNaN(FloatResult) then begin
+            // Accumulator is NaN, element is not: replace
+            FloatResult:=FloatA;
+           end else if FloatA<FloatResult then begin
+            FloatResult:=FloatA;
+           end else if (FloatA=FloatResult) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $80000000)<>0) then begin
+            // Equal: IEEE 754-2019 minimum: prefer -0 over +0
             FloatResult:=FloatA;
            end;
           end;
@@ -40523,7 +40548,18 @@ begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           if (not IsNaN(DoubleA)) and ((IsNaN(DoubleResult)) or (DoubleA<DoubleResult)) then begin
+           if IsNaN(DoubleA) and IsNaN(DoubleResult) then begin
+            // Both NaN: produce canonical NaN
+            TPasRISCVUInt64(pointer(@DoubleResult)^):=$7ff8000000000000;
+           end else if IsNaN(DoubleA) then begin
+            // Element is NaN, accumulator is not: keep accumulator
+           end else if IsNaN(DoubleResult) then begin
+            // Accumulator is NaN, element is not: replace
+            DoubleResult:=DoubleA;
+           end else if DoubleA<DoubleResult then begin
+            DoubleResult:=DoubleA;
+           end else if (DoubleA=DoubleResult) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $8000000000000000)<>0) then begin
+            // Equal: IEEE 754-2019 minimum: prefer -0 over +0
             DoubleResult:=DoubleA;
            end;
           end;
@@ -40558,8 +40594,15 @@ begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
            end else if FloatA>FloatB then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
-           end else begin
+           end else if FloatA<FloatB then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatB;
+           end else begin
+            // Equal: IEEE 754-2019 maximum: +0 > -0
+            if (TPasRISCVUInt32(pointer(@FloatA)^) and $80000000)=0 then begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
+            end else begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatB;
+            end;
            end;
           end;
           $40:begin
@@ -40575,8 +40618,15 @@ begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
            end else if DoubleA>DoubleB then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
-           end else begin
+           end else if DoubleA<DoubleB then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleB;
+           end else begin
+            // Equal: IEEE 754-2019 maximum: +0 > -0
+            if (TPasRISCVUInt64(pointer(@DoubleA)^) and $8000000000000000)=0 then begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
+            end else begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleB;
+            end;
            end;
           end;
           else begin
@@ -40599,7 +40649,18 @@ begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           if (not IsNaN(FloatA)) and ((IsNaN(FloatResult)) or (FloatA>FloatResult)) then begin
+           if IsNaN(FloatA) and IsNaN(FloatResult) then begin
+            // Both NaN: produce canonical NaN
+            TPasRISCVUInt32(pointer(@FloatResult)^):=$7fc00000;
+           end else if IsNaN(FloatA) then begin
+            // Element is NaN, accumulator is not: keep accumulator
+           end else if IsNaN(FloatResult) then begin
+            // Accumulator is NaN, element is not: replace
+            FloatResult:=FloatA;
+           end else if FloatA>FloatResult then begin
+            FloatResult:=FloatA;
+           end else if (FloatA=FloatResult) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $80000000)=0) then begin
+            // Equal: IEEE 754-2019 maximum: prefer +0 over -0
             FloatResult:=FloatA;
            end;
           end;
@@ -40613,7 +40674,18 @@ begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           if (not IsNaN(DoubleA)) and ((IsNaN(DoubleResult)) or (DoubleA>DoubleResult)) then begin
+           if IsNaN(DoubleA) and IsNaN(DoubleResult) then begin
+            // Both NaN: produce canonical NaN
+            TPasRISCVUInt64(pointer(@DoubleResult)^):=$7ff8000000000000;
+           end else if IsNaN(DoubleA) then begin
+            // Element is NaN, accumulator is not: keep accumulator
+           end else if IsNaN(DoubleResult) then begin
+            // Accumulator is NaN, element is not: replace
+            DoubleResult:=DoubleA;
+           end else if DoubleA>DoubleResult then begin
+            DoubleResult:=DoubleA;
+           end else if (DoubleA=DoubleResult) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $8000000000000000)=0) then begin
+            // Equal: IEEE 754-2019 maximum: prefer +0 over -0
             DoubleResult:=DoubleA;
            end;
           end;
@@ -41928,7 +42000,9 @@ begin
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
-           DoubleResult:=FloatA+FloatB;
+           DoubleA:=FloatA;
+           DoubleB:=FloatB;
+           DoubleResult:=DoubleA+DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41974,7 +42048,9 @@ begin
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
-           DoubleResult:=FloatA-FloatB;
+           DoubleA:=FloatA;
+           DoubleB:=FloatB;
+           DoubleResult:=DoubleA-DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -42020,7 +42096,8 @@ begin
           $20:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
-           DoubleResult:=DoubleA+FloatB;
+           DoubleB:=FloatB;
+           DoubleResult:=DoubleA+DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -42043,7 +42120,8 @@ begin
           $20:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
-           DoubleResult:=DoubleA-FloatB;
+           DoubleB:=FloatB;
+           DoubleResult:=DoubleA-DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -42066,7 +42144,9 @@ begin
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
-           DoubleResult:=FloatA*FloatB;
+           DoubleA:=FloatA;
+           DoubleB:=FloatB;
+           DoubleResult:=DoubleA*DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -43243,13 +43323,13 @@ begin
         result:=4;
         exit;
        end;
-       // Check vd does not overlap vs2 (LMUL-aware) or v0
+       // Check vd does not overlap vs2 (LMUL-aware) or vs1 (mask source)
        begin
         OperandValue:=LMUL8 div 8;
         if OperandValue<1 then begin
          OperandValue:=1;
         end;
-        if (vd=0) or ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
+        if ((vs1>=vd) and (vs1<(vd+OperandValue))) or ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          result:=4;
          exit;
@@ -43257,7 +43337,7 @@ begin
        end;
        SubIndex:=0;
        for Index:=0 to EVL-1 do begin
-        if (fState.VectorRegisters[TVectorRegister(0)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+        if (fState.VectorRegisters[TVectorRegister(vs1)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
          VectorSetElement(vd,SubIndex,SEW,VectorGetElement(vs2,Index,SEW));
          inc(SubIndex);
         end;
@@ -43399,7 +43479,6 @@ begin
          end;
         end;
        end;
-      end;
       end;
       else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -43976,6 +44055,10 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
+     // Per RVV 1.0: if XLEN > SEW, use only the least-significant SEW bits
+     if SEW<64 then begin
+      Stride:=Stride and ((TPasRISCVUInt64(1) shl SEW)-1);
+     end;
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
@@ -44884,8 +44967,15 @@ begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else if FloatA<ScalarFloat then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
-           end else begin
+           end else if FloatA>ScalarFloat then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
+           end else begin
+            // Equal: IEEE 754-2019 minimum: -0 < +0
+            if (TPasRISCVUInt32(pointer(@FloatA)^) and $80000000)<>0 then begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
+            end else begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
+            end;
            end;
           end;
           $40:begin
@@ -44898,8 +44988,15 @@ begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else if DoubleA<ScalarDouble then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
-           end else begin
+           end else if DoubleA>ScalarDouble then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
+           end else begin
+            // Equal: IEEE 754-2019 minimum: -0 < +0
+            if (TPasRISCVUInt64(pointer(@DoubleA)^) and $8000000000000000)<>0 then begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
+            end else begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
+            end;
            end;
           end;
           else begin
@@ -44929,8 +45026,15 @@ begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else if FloatA>ScalarFloat then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
-           end else begin
+           end else if FloatA<ScalarFloat then begin
             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
+           end else begin
+            // Equal: IEEE 754-2019 maximum: +0 > -0
+            if (TPasRISCVUInt32(pointer(@FloatA)^) and $80000000)=0 then begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
+            end else begin
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
+            end;
            end;
           end;
           $40:begin
@@ -44943,8 +45047,15 @@ begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else if DoubleA>ScalarDouble then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
-           end else begin
+           end else if DoubleA<ScalarDouble then begin
             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
+           end else begin
+            // Equal: IEEE 754-2019 maximum: +0 > -0
+            if (TPasRISCVUInt64(pointer(@DoubleA)^) and $8000000000000000)=0 then begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
+            end else begin
+             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
+            end;
            end;
           end;
           else begin
@@ -45160,24 +45271,8 @@ begin
        if Unmasked then begin
         // vfmv.v.f: broadcast scalar to all elements
         for Index:=0 to EVL-1 do begin
-         case SEW of
-          $20:begin
-           TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(ScalarFP);
-          end;
-          $40:begin
-           TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarFP;
-          end;
-          else begin
-           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-           result:=4;
-           exit;
-          end;
-         end;
-        end;
-       end else begin
-        // vfmerge.vfm: vd[Index] = v0.mask[Index] ? f[rs1] : vs2[Index]
-        for Index:=0 to EVL-1 do begin
-         if VectorGetMaskBit(Index) then begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else begin
           case SEW of
            $20:begin
             TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(ScalarFP);
@@ -45191,18 +45286,40 @@ begin
             exit;
            end;
           end;
+         end;
+        end;
+       end else begin
+        // vfmerge.vfm: vd[Index] = v0.mask[Index] ? f[rs1] : vs2[Index]
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          end else begin
-          case SEW of
-           $20:begin
-            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+          if VectorGetMaskBit(Index) then begin
+           case SEW of
+            $20:begin
+             TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(ScalarFP);
+            end;
+            $40:begin
+             TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarFP;
+            end;
+            else begin
+             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+             result:=4;
+             exit;
+            end;
            end;
-           $40:begin
-            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           end;
-           else begin
-            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-            result:=4;
-            exit;
+          end else begin
+           case SEW of
+            $20:begin
+             TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+            end;
+            $40:begin
+             TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+            end;
+            else begin
+             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+             result:=4;
+             exit;
+            end;
            end;
           end;
          end;
@@ -45730,7 +45847,9 @@ begin
          case SEW of
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           DoubleResult:=FloatA+ScalarFloat;
+           DoubleA:=FloatA;
+           DoubleB:=ScalarFloat;
+           DoubleResult:=DoubleA+DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45752,7 +45871,9 @@ begin
          case SEW of
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           DoubleResult:=FloatA-ScalarFloat;
+           DoubleA:=FloatA;
+           DoubleB:=ScalarFloat;
+           DoubleResult:=DoubleA-DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45774,7 +45895,8 @@ begin
          case SEW of
           $20:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=DoubleA+ScalarFloat;
+           DoubleB:=ScalarFloat;
+           DoubleResult:=DoubleA+DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45796,7 +45918,8 @@ begin
          case SEW of
           $20:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=DoubleA-ScalarFloat;
+           DoubleB:=ScalarFloat;
+           DoubleResult:=DoubleA-DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45818,7 +45941,9 @@ begin
          case SEW of
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           DoubleResult:=FloatA*ScalarFloat;
+           DoubleA:=FloatA;
+           DoubleB:=ScalarFloat;
+           DoubleResult:=DoubleA*DoubleB;
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45951,6 +46076,10 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
+     // Per RVV 1.0: if XLEN > SEW, use only the least-significant SEW bits
+     if SEW<64 then begin
+      Stride:=Stride and ((TPasRISCVUInt64(1) shl SEW)-1);
+     end;
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((funct6<>$10) and (not VectorCheckRegAlign(vd,LMUL8))) or
