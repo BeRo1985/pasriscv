@@ -38412,7 +38412,9 @@ var rd,rs1,rs2:TRegister;
     funct3,funct6:TPasRISCVUInt32;
     vd,vs1,vs2:TPasRISCVUInt32;
     VTypeValue,AVL,NewVL,VLMAX:TPasRISCVUInt64;
+    OldVTypeValue,OldVLMAX:TPasRISCVUInt64;
     SEW,LMUL8:TPasRISCVUInt32;
+    OldSEW,OldLMUL8:TPasRISCVUInt32;
     vsew,vlmul:TPasRISCVUInt32;
     Unmasked:Boolean;
     Opcode:TPasRISCVUInt32;
@@ -38510,6 +38512,12 @@ begin
        if FieldStride<1 then begin
         FieldStride:=1;
        end;
+       // Check EMUL range [1/8..8] and EMUL*NFIELDS<=8
+       if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
@@ -38536,6 +38544,12 @@ begin
       $08:begin
        // vlNre8/16/32/64.v — whole register load
        // NumFields+1 registers, evl = (NumFields+1)*VLEN/EEW
+       // NREG must be 1, 2, 4, or 8 and vd must be aligned
+       if (not ((NumFields+1) in [1,2,4,8])) or ((vd mod (NumFields+1))<>0) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        EVL:=(NumFields+1)*(VLEN div EEW);
        Address:=fState.Registers[rs1];
        for Index:=0 to EVL-1 do begin
@@ -38631,6 +38645,12 @@ begin
      if FieldStride<1 then begin
       FieldStride:=1;
      end;
+     // Check EMUL range [1/8..8] and EMUL*NFIELDS<=8
+     if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
@@ -38668,6 +38688,12 @@ begin
      end;
      if FieldStride<1 then begin
       FieldStride:=1;
+     end;
+     // Check EMUL range [1/8..8] and EMUL*NFIELDS<=8
+     if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -38774,6 +38800,12 @@ begin
        if FieldStride<1 then begin
         FieldStride:=1;
        end;
+       // Check EMUL range [1/8..8] and EMUL*NFIELDS<=8
+       if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
@@ -38799,6 +38831,12 @@ begin
 
       $08:begin
        // vsNr.v — whole register store
+       // NREG must be 1, 2, 4, or 8 and vd must be aligned
+       if (not ((NumFields+1) in [1,2,4,8])) or ((vd mod (NumFields+1))<>0) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        EVL:=(NumFields+1)*(VLEN div EEW);
        Address:=fState.Registers[rs1];
        for Index:=0 to EVL-1 do begin
@@ -38862,6 +38900,12 @@ begin
      if FieldStride<1 then begin
       FieldStride:=1;
      end;
+     // Check EMUL range [1/8..8] and EMUL*NFIELDS<=8
+     if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
@@ -38898,6 +38942,12 @@ begin
      end;
      if FieldStride<1 then begin
       FieldStride:=1;
+     end;
+     // Check EMUL range [1/8..8] and EMUL*NFIELDS<=8
+     if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or (FieldStride*(NumFields+1)>8) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      // vs2 field has the index register, vd has the data
      for Index:=0 to EVL-1 do begin
@@ -38954,8 +39004,8 @@ begin
       // AVL = zero-extended 5-bit immediate from rs1 field
       AVL:=(aInstruction shr 15) and $1f;
       VTypeValue:=(aInstruction shr 20) and $3ff; // vtypei[9:0]
-     end else if (aInstruction and TPasRISCVUInt32($80000000))<>0 then begin
-      // vsetvl: bit31=1, bit30=0 (bits[31:25]=1000000)
+     end else if ((aInstruction shr 25) and $7f)=$40 then begin
+      // vsetvl: bits[31:25]=1000000 exactly
       rs2:=TRegister((aInstruction shr 20) and $1f);
       VTypeValue:=fState.Registers[rs2];
       if rs1<>TRegister.Zero then begin
@@ -38966,7 +39016,7 @@ begin
        // rs1=x0, rd=x0: keep vl, only change vtype
        AVL:=fState.CSR.fData[TCSR.TAddress.VL];
       end;
-     end else begin
+     end else if (aInstruction and TPasRISCVUInt32($80000000))=0 then begin
       // vsetvli: bit31=0
       VTypeValue:=(aInstruction shr 20) and $7ff; // vtypei[10:0]
       if rs1<>TRegister.Zero then begin
@@ -38977,6 +39027,11 @@ begin
        // rs1=x0, rd=x0: keep vl, only change vtype
        AVL:=fState.CSR.fData[TCSR.TAddress.VL];
       end;
+     end else begin
+      // Reserved encoding (bit31=1, bits[31:25] not 1000000/11xxxxx)
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
 
      // Validate vtype
@@ -39080,7 +39135,51 @@ begin
      end;
 
      // Special case: rs1=x0, rd=x0 means keep vl unchanged
+     // But only if VLMAX doesn't change; otherwise reserved (set vill)
      if (rs1=TRegister.Zero) and (rd=TRegister.Zero) then begin
+      // Compute old VLMAX from current vtype
+      OldVTypeValue:=fState.CSR.fData[TCSR.TAddress.VTYPE];
+      OldSEW:=8 shl ((OldVTypeValue shr 3) and 7);
+      case OldVTypeValue and 7 of
+       $00:begin
+        OldLMUL8:=8;
+       end;
+       $01:begin
+        OldLMUL8:=16;
+       end;
+       $02:begin
+        OldLMUL8:=32;
+       end;
+       $03:begin
+        OldLMUL8:=64;
+       end;
+       $05:begin
+        OldLMUL8:=1;
+       end;
+       $06:begin
+        OldLMUL8:=2;
+       end;
+       $07:begin
+        OldLMUL8:=4;
+       end;
+       else begin
+        OldLMUL8:=0;
+       end;
+      end;
+      if (OldLMUL8>0) and (OldSEW>0) then begin
+       OldVLMAX:=(VLEN div OldSEW)*OldLMUL8 div 8;
+      end else begin
+       OldVLMAX:=0;
+      end;
+      if OldVLMAX<>VLMAX then begin
+       // VLMAX changed: reserved, set vill
+       fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
+       fState.CSR.fData[TCSR.TAddress.VL]:=0;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
       NewVL:=fState.CSR.fData[TCSR.TAddress.VL];
      end;
 
