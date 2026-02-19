@@ -2262,7 +2262,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TAIARegFileMode=
              (
               Machine,
-              Supervisor
+              Supervisor,
+              VirtualSupervisor
              );
             { TTimer }
             TTimer=record
@@ -6243,6 +6244,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   VSCAUSE=$242;
                                   VSTVAL=$243;
                                   VSIP=$244;
+                                  VSISELECT=$250;
+                                  VSIREG=$251;
                                   VSTIMECMP=$24d;
                                   VSATP=$280;
                                   // Ssstateen CSRs
@@ -6522,6 +6525,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      HSMode_SCAUSE:TPasRISCVUInt64;
                      HSMode_STVAL:TPasRISCVUInt64;
                      HSMode_SATP:TPasRISCVUInt64;
+                     HSMode_SISELECT:TPasRISCVUInt64;
 {$ifdef Zicfilp}
                      // Zicfilp: Expected landing pad state
                      ELP:TPasRISCVUInt8; // 0=NO_LP_EXPECTED, 1=LP_EXPECTED
@@ -34949,9 +34953,11 @@ begin
 
   fCSRHandlerMap[TCSR.TAddress.MISELECT]:=CSRHandlerPrivileged; // MISELECT
   fCSRHandlerMap[TCSR.TAddress.SISELECT]:=CSRHandlerPrivileged; // SISELECT
+  fCSRHandlerMap[TCSR.TAddress.VSISELECT]:=CSRHandlerPrivileged; // VSISELECT (H-extension)
 
   fCSRHandlerMap[TCSR.TAddress.MIREG]:=CSRHandlerIndirect; // MIREG
   fCSRHandlerMap[TCSR.TAddress.SIREG]:=CSRHandlerIndirect; // SIREG
+  fCSRHandlerMap[TCSR.TAddress.VSIREG]:=CSRHandlerIndirect; // VSIREG (H-extension)
 
  end else begin
 
@@ -34963,9 +34969,11 @@ begin
 
   fCSRHandlerMap[TCSR.TAddress.MISELECT]:=CSRHandlerIllegal; // MISELECT
   fCSRHandlerMap[TCSR.TAddress.SISELECT]:=CSRHandlerIllegal; // SISELECT
+  fCSRHandlerMap[TCSR.TAddress.VSISELECT]:=CSRHandlerIllegal; // VSISELECT
 
   fCSRHandlerMap[TCSR.TAddress.MIREG]:=CSRHandlerIllegal; // MIREG
   fCSRHandlerMap[TCSR.TAddress.SIREG]:=CSRHandlerIllegal; // SIREG
+  fCSRHandlerMap[TCSR.TAddress.VSIREG]:=CSRHandlerIllegal; // VSIREG
 
  end;
 
@@ -37746,15 +37754,20 @@ begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
-  // TODO-AIA: For V=1, redirect STOPI access to VSTOPI (guest view) instead of HS STOPI semantics.
   rd:=TRegister((aInstruction shr 7) and $1f);
-  PendingValue:=InterruptsPending and TCSR.CSR_SEIP_MASK;
-  if PendingValue<>0 then begin
-   IRQ:=CLZDWord(PendingValue) xor 31;
+  if fState.VirtualMode and fMachine.fConfiguration.fAIA then begin
+   // V=1: STOPI access reflects VS-mode external interrupt state from VS AIA RegFile
+   IRQ:=UpdateAIAInternal(TPasRISCV.TAIARegFileMode.VirtualSupervisor,false,false);
+   CSRValue:=IRQ or (IRQ shl 16);
   end else begin
-   IRQ:=0;
+   PendingValue:=InterruptsPending and TCSR.CSR_SEIP_MASK;
+   if PendingValue<>0 then begin
+    IRQ:=CLZDWord(PendingValue) xor 31;
+   end else begin
+    IRQ:=0;
+   end;
+   CSRValue:=(ord(IRQ<>0) and 1) or (IRQ shl 16);
   end;
-  CSRValue:=(ord(IRQ<>0) and 1) or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
@@ -37787,10 +37800,14 @@ begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
-  // TODO-AIA: For V=1, redirect STOPEI access to VSTOPEI (guest IMSIC file) instead of HS STOPEI semantics.
   rd:=TRegister((aInstruction shr 7) and $1f);
   IsWrite:=(rd<>TRegister.Zero) or (aOperation=TCSROperation.Swap);
-  IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
+  if fState.VirtualMode and fMachine.fConfiguration.fAIA then begin
+   // V=1: STOPEI access uses VS AIA RegFile (guest IMSIC file)
+   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
+  end else begin
+   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
+  end;
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -37872,9 +37889,22 @@ begin
     ISelect:=fState.CSR.fData[TCSR.TAddress.MISELECT];
    end;
    TCSR.TAddress.SIREG:begin
+    if fState.VirtualMode then begin
+     // V=1: sireg access uses VS context (siselect already swapped to VS value)
+     Mode:=THART.TMode.Supervisor;
+     AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
+     ISelect:=fState.CSR.fData[TCSR.TAddress.SISELECT];
+    end else begin
+     Mode:=THART.TMode.Supervisor;
+     AIARegFileMode:=TPasRISCV.TAIARegFileMode.Supervisor;
+     ISelect:=fState.CSR.fData[TCSR.TAddress.SISELECT];
+    end;
+   end;
+   TCSR.TAddress.VSIREG:begin
+    // HS-mode access to VS indirect CSR: uses VSISELECT and VS AIA RegFile
     Mode:=THART.TMode.Supervisor;
-    AIARegFileMode:=TPasRISCV.TAIARegFileMode.Supervisor;
-    ISelect:=fState.CSR.fData[TCSR.TAddress.SISELECT];
+    AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
+    ISelect:=fState.CSR.fData[TCSR.TAddress.VSISELECT];
    end;
    else begin
     Mode:=THART.TMode.Invalid;
@@ -54531,6 +54561,9 @@ begin
     TPasRISCV.TAIARegFileMode.Supervisor:begin
      MSIP:=THART.TInterruptValue.SupervisorExternal;
     end;
+    TPasRISCV.TAIARegFileMode.VirtualSupervisor:begin
+     MSIP:=THART.TInterruptValue.SupervisorExternal;
+    end;
     else begin
      MSIP:=THART.TInterruptValue.None;
     end;
@@ -54563,6 +54596,9 @@ begin
     MSIP:=THART.TInterruptValue.MachineExternal;
    end;
    TPasRISCV.TAIARegFileMode.Supervisor:begin
+    MSIP:=THART.TInterruptValue.SupervisorExternal;
+   end;
+   TPasRISCV.TAIARegFileMode.VirtualSupervisor:begin
     MSIP:=THART.TInterruptValue.SupervisorExternal;
    end;
    else begin
@@ -54832,6 +54868,13 @@ begin
   fState.CSR.fData[TCSR.TAddress.SATP]:=fState.HSMode_SATP;
   fState.CSR.fData[TCSR.TAddress.VSATP]:=Temp;
 
+  // Swap siselect (Sscsrind)
+  if fMachine.fConfiguration.fAIA then begin
+   Temp:=fState.CSR.fData[TCSR.TAddress.SISELECT];
+   fState.CSR.fData[TCSR.TAddress.SISELECT]:=fState.HSMode_SISELECT;
+   fState.CSR.fData[TCSR.TAddress.VSISELECT]:=Temp;
+  end;
+
  end else begin
   // V=0 → V=1: save HS state, restore VS state
   // Save current (HS) mstatus bits to HSMode backing store
@@ -54862,6 +54905,12 @@ begin
   // Swap satp (HS satp ↔ vsatp)
   fState.HSMode_SATP:=fState.CSR.fData[TCSR.TAddress.SATP];
   fState.CSR.fData[TCSR.TAddress.SATP]:=fState.CSR.fData[TCSR.TAddress.VSATP];
+
+  // Swap siselect (Sscsrind)
+  if fMachine.fConfiguration.fAIA then begin
+   fState.HSMode_SISELECT:=fState.CSR.fData[TCSR.TAddress.SISELECT];
+   fState.CSR.fData[TCSR.TAddress.SISELECT]:=fState.CSR.fData[TCSR.TAddress.VSISELECT];
+  end;
 
  end;
 end;
@@ -55610,6 +55659,12 @@ begin
    end;
    THART.TCSR.TAddress.SIREG7:begin
     CSRName:='sireg7';
+   end;
+   THART.TCSR.TAddress.VSISELECT:begin
+    CSRName:='vsiselect';
+   end;
+   THART.TCSR.TAddress.VSIREG:begin
+    CSRName:='vsireg';
    end;
    THART.TCSR.TAddress.STOPEI:begin
     CSRName:='stopei';
