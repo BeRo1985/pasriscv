@@ -38891,9 +38891,19 @@ begin
      if FieldStride<1 then begin
       FieldStride:=1;
      end;
+     // Index-EMUL8 = (EEW * LMUL8) / SEW
+     // IndexEMULRegs = max(1, IndexEMUL8 / 8)
+     SubIndex:=(EEW*LMUL8) div SEW; // IndexEMUL8
+     if SubIndex<8 then begin
+      OperandValue:=1; // IndexEMULRegs
+     end else begin
+      OperandValue:=SubIndex div 8; // IndexEMULRegs
+     end;
      // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
+     // Also check Index-EMUL range, vs2 alignment and vs2 register group fits
      if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) then begin
+        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
+        (not VectorCheckRegAlign(vs2,SubIndex)) or ((vs2+OperandValue)>32) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -39146,6 +39156,7 @@ begin
 
     $01,$03:begin
      // Indexed store (vsuxei/vsoxei / vsuxseg/vsoxseg)
+     vs2:=(aInstruction shr 20) and $1f;
      Address:=fState.Registers[rs1];
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
@@ -39158,9 +39169,19 @@ begin
      if FieldStride<1 then begin
       FieldStride:=1;
      end;
+     // Index-EMUL8 = (EEW * LMUL8) / SEW
+     // IndexEMULRegs = max(1, IndexEMUL8 / 8)
+     SubIndex:=(EEW*LMUL8) div SEW; // IndexEMUL8
+     if SubIndex<8 then begin
+      OperandValue:=1; // IndexEMULRegs
+     end else begin
+      OperandValue:=SubIndex div 8; // IndexEMULRegs
+     end;
      // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
+     // Also check Index-EMUL range, vs2 alignment and vs2 register group fits
      if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) then begin
+        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
+        (not VectorCheckRegAlign(vs2,SubIndex)) or ((vs2+OperandValue)>32) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
