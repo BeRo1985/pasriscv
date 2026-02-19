@@ -60173,7 +60173,7 @@ begin
  end;
 //AddISAExtension('smcdeleg');
 //AddISAExtension('smcntrpmf');
-//AddISAExtension('smcsrind');
+  AddISAExtension('smcsrind');
 //AddISAExtension('smdbltrp');
 //AddISAExtension('smepmp');
 //AddISAExtension('smrnmi');
@@ -60187,7 +60187,7 @@ begin
   AddISAExtension('ssccptr');
   AddISAExtension('sscofpmf');
   AddISAExtension('sscounterenw');
-//AddISAExtension('sscsrind');
+  AddISAExtension('sscsrind');
 //AddISAExtension('ssdbltrp');
   AddISAExtension('ssnpm');
 //AddISAExtension('sspm');
