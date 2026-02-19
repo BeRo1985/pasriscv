@@ -7792,6 +7792,7 @@ const fmCreateTemporary=4;
       CPUFeatures_X86_F16C_Mask=1 shl 0;
       CPUFeatures_X86_SSE42_Mask=1 shl 1;
       CPUFeatures_X86_PCLMUL_Mask=1 shl 2;
+      CPUFeatures_X86_FMA_Mask=1 shl 3;
 
 var CPUFeatures:TPasRISCVCPUFeatures=0;
 
@@ -8535,6 +8536,162 @@ begin
  result:=aValue and $7f;
 end;
 {$ifend}
+
+// Fused multiply-add: result = (a * b) + c with single rounding
+{$ifdef purepascal}
+function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
+var a64,b64,c64,r64:TPasRISCVDouble;
+begin
+ // Perform fma via double precision: exact for single-precision inputs
+ // since double has >= 2*24+1 = 49 mantissa bits (it has 53)
+ a64:=aA;
+ b64:=aB;
+ c64:=aC;
+ r64:=(a64*b64)+c64;
+ result:=r64;
+end;
+
+function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
+var a80,b80,c80,r80:{$ifdef HAS_TYPE_EXTENDED}Extended{$else}TPasRISCVDouble{$endif};
+begin
+{$ifdef HAS_TYPE_EXTENDED}
+ // Perform fma via extended precision (80-bit): exact for double inputs
+ // if extended has >= 2*53+1 = 107 mantissa bits — x87 extended has only 64,
+ // which is not enough. So this is still not perfectly fused for double, but
+ // it is the best we can do without hardware FMA.
+ a80:=aA;
+ b80:=aB;
+ c80:=aC;
+ r80:=(a80*b80)+c80;
+ result:=r80;
+{$else}
+ // No extended type available, fall back to non-fused
+ result:=(aA*aB)+aC;
+{$endif}
+end;
+{$else}
+{$if defined(cpu386)}
+function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register;
+asm
+ // Use x87 extended precision for fma emulation
+ fld dword ptr aA
+ fld dword ptr aB
+ fmulp st(1),st(0)
+ fld dword ptr aC
+ faddp st(1),st(0)
+ fstp dword ptr [esp-4]
+ fld dword ptr [esp-4]
+ // result in st(0)
+end;
+
+function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble; assembler; register;
+asm
+ // Use x87 extended precision for fma emulation
+ fld qword ptr aA
+ fld qword ptr aB
+ fmulp st(1),st(0)
+ fld qword ptr aC
+ faddp st(1),st(0)
+ // result in st(0)
+end;
+{$elseif defined(cpuamd64) or defined(cpux64) or defined(cpux86_64)}
+function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+{$ifndef fpc}
+ .NOFRAME
+{$endif}
+{$ifdef fpc}
+ test dword ptr [rip+CPUFeatures],CPUFeatures_X86_FMA_Mask
+{$else}
+ test dword ptr [rel CPUFeatures],CPUFeatures_X86_FMA_Mask
+{$endif}
+ jz @NoFMA
+ // vfmadd213ss xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
+{$ifdef Windows}
+ // xmm0=aA, xmm1=aB, xmm2=aC
+ db $c4,$e2,$71,$a9,$c2 // vfmadd213ss xmm0,xmm1,xmm2
+{$else}
+ // xmm0=aA, xmm1=aB, xmm2=aC (SysV ABI)
+ db $c4,$e2,$71,$a9,$c2 // vfmadd213ss xmm0,xmm1,xmm2
+{$endif}
+ ret
+@NoFMA:
+ // Fallback: promote to double, multiply, add, demote
+{$ifdef Windows}
+ cvtss2sd xmm0,xmm0
+ cvtss2sd xmm1,xmm1
+ cvtss2sd xmm2,xmm2
+ mulsd xmm0,xmm1
+ addsd xmm0,xmm2
+ cvtsd2ss xmm0,xmm0
+{$else}
+ cvtss2sd xmm0,xmm0
+ cvtss2sd xmm1,xmm1
+ cvtss2sd xmm2,xmm2
+ mulsd xmm0,xmm1
+ addsd xmm0,xmm2
+ cvtsd2ss xmm0,xmm0
+{$endif}
+end;
+
+function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble; assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+{$ifndef fpc}
+ .NOFRAME
+{$endif}
+{$ifdef fpc}
+ test dword ptr [rip+CPUFeatures],CPUFeatures_X86_FMA_Mask
+{$else}
+ test dword ptr [rel CPUFeatures],CPUFeatures_X86_FMA_Mask
+{$endif}
+ jz @NoFMA
+ // vfmadd213sd xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
+{$ifdef Windows}
+ db $c4,$e2,$f1,$a9,$c2 // vfmadd213sd xmm0,xmm1,xmm2
+{$else}
+ db $c4,$e2,$f1,$a9,$c2 // vfmadd213sd xmm0,xmm1,xmm2
+{$endif}
+ ret
+@NoFMA:
+ // Fallback: use x87 extended precision
+ movsd qword ptr [rsp-8],xmm0
+ movsd qword ptr [rsp-16],xmm1
+ movsd qword ptr [rsp-24],xmm2
+ fld qword ptr [rsp-8]
+ fld qword ptr [rsp-16]
+ fmulp st(1),st(0)
+ fld qword ptr [rsp-24]
+ faddp st(1),st(0)
+ fstp qword ptr [rsp-8]
+ movsd xmm0,qword ptr [rsp-8]
+end;
+{$else}
+// Non-x86 fallback
+function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
+var a64,b64,c64,r64:TPasRISCVDouble;
+begin
+ a64:=aA;
+ b64:=aB;
+ c64:=aC;
+ r64:=(a64*b64)+c64;
+ result:=r64;
+end;
+
+function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
+var a80,b80,c80,r80:{$ifdef HAS_TYPE_EXTENDED}Extended{$else}TPasRISCVDouble{$endif};
+begin
+{$ifdef HAS_TYPE_EXTENDED}
+ a80:=aA;
+ b80:=aB;
+ c80:=aC;
+ r80:=(a80*b80)+c80;
+ result:=r80;
+{$else}
+ result:=(aA*aB)+aC;
+{$endif}
+end;
+{$ifend}
+{$endif}
 
 function BitwiseOrCombine(aValue:TPasRISCVUInt64):TPasRISCVUInt64; {$if defined(fpc) and defined(cpuamd64)} assembler; {$if defined(fpc)}nostackframe; {$if defined(Windows)}ms_abi_default;{$else}sysv_abi_default;{$ifend}{$ifend}
 asm
@@ -38560,13 +38717,17 @@ begin
        EVL:=(NumFields+1)*(VLEN div EEW);
        Address:=fState.Registers[rs1];
        for Index:=0 to EVL-1 do begin
-        OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
-        if fState.ExceptionValue<>TExceptionValue.None then begin
-         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
-         result:=4;
-         exit;
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         // prestart: skip
+        end else begin
+         OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
+          result:=4;
+          exit;
+         end;
+         VectorSetElement(vd,Index,EEW,OperandValue);
         end;
-        VectorSetElement(vd,Index,EEW,OperandValue);
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
        fState.CSR.SetVSDirty;
@@ -38576,6 +38737,12 @@ begin
 
       $0b:begin
        // vlm.v — mask load (EEW=8, evl=ceil(vl/8))
+       // Encoding requires nf=0 and vm=1
+       if (NumFields<>0) or (not Unmasked) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        EVL:=(fState.CSR.fData[TCSR.TAddress.VL]+7) shr 3;
        Address:=fState.Registers[rs1];
        for Index:=0 to EVL-1 do begin
@@ -38847,12 +39014,16 @@ begin
        EVL:=(NumFields+1)*(VLEN div EEW);
        Address:=fState.Registers[rs1];
        for Index:=0 to EVL-1 do begin
-        SourceValue:=VectorGetElement(vd,Index,EEW);
-        Store(Address+TPasRISCVUInt64(Index)*(EEW shr 3),SourceValue,EEW shr 3);
-        if fState.ExceptionValue<>TExceptionValue.None then begin
-         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
-         result:=4;
-         exit;
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         // prestart: skip
+        end else begin
+         SourceValue:=VectorGetElement(vd,Index,EEW);
+         Store(Address+TPasRISCVUInt64(Index)*(EEW shr 3),SourceValue,EEW shr 3);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
+          result:=4;
+          exit;
+         end;
         end;
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -38863,6 +39034,12 @@ begin
 
       $0b:begin
        // vsm.v — mask store (EEW=8, evl=ceil(vl/8))
+       // Encoding requires nf=0 and vm=1
+       if (NumFields<>0) or (not Unmasked) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        EVL:=(fState.CSR.fData[TCSR.TAddress.VL]+7) shr 3;
        Address:=fState.Registers[rs1];
        for Index:=0 to EVL-1 do begin
@@ -41381,14 +41558,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=(FloatA*FloatB)+FloatC;
+           FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=(DoubleA*DoubleB)+DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(DoubleA,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41412,14 +41589,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=-(FloatA*FloatB)-FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=-(DoubleA*DoubleB)-DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(DoubleA,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41443,14 +41620,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=(FloatA*FloatB)-FloatC;
+           FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=(DoubleA*DoubleB)-DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(DoubleA,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41474,14 +41651,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=-(FloatA*FloatB)+FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=-(DoubleA*DoubleB)+DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(DoubleA,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41505,14 +41682,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=(FloatA*FloatB)+FloatC;
+           FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(DoubleA*DoubleB)+DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(DoubleA,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41536,14 +41713,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=-(FloatA*FloatB)-FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(DoubleA*DoubleB)-DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(DoubleA,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41567,14 +41744,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=(FloatA*FloatB)-FloatC;
+           FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(DoubleA*DoubleB)-DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(DoubleA,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41598,14 +41775,14 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=-(FloatA*FloatB)+FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(DoubleA*DoubleB)+DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(DoubleA,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41790,7 +41967,7 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(FloatA*FloatB)+DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(FloatA,FloatB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41814,7 +41991,7 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(FloatA*FloatB)-DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(FloatA,FloatB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41838,7 +42015,7 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(FloatA*FloatB)-DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(FloatA,FloatB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -41862,7 +42039,7 @@ begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(FloatA*FloatB)+DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(FloatA,FloatB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -44344,6 +44521,10 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      fState.CSR.SetVSDirty;
      ScalarFP:=fState.FPURegisters[TFPURegister(ord(rs1))].ui64;
+     // NaN-box check for SEW=32: if upper 32 bits are not all 1s, replace with canonical NaN
+     if (SEW=$20) and ((ScalarFP shr 32)<>$ffffffff) then begin
+      ScalarFP:=$7fc00000; // canonical single-precision NaN
+     end;
      ScalarFloat:=TPasRISCVFloat(pointer(@ScalarFP)^);
      ScalarDouble:=TPasRISCVDouble(pointer(@ScalarFP)^);
      feclearexcept(FE_ALL_EXCEPT);
@@ -45043,13 +45224,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=(ScalarFloat*FloatB)+FloatC;
+           FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=(ScalarDouble*DoubleB)+DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(ScalarDouble,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45072,13 +45253,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=-(ScalarFloat*FloatB)-FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=-(ScalarDouble*DoubleB)-DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(ScalarDouble,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45101,13 +45282,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=(ScalarFloat*FloatB)-FloatC;
+           FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=(ScalarDouble*DoubleB)-DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(ScalarDouble,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45130,13 +45311,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           FloatResult:=-(ScalarFloat*FloatB)+FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           DoubleResult:=-(ScalarDouble*DoubleB)+DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(ScalarDouble,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45159,13 +45340,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=(ScalarFloat*FloatB)+FloatC;
+           FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(ScalarDouble*DoubleB)+DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(ScalarDouble,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45188,13 +45369,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=-(ScalarFloat*FloatB)-FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(ScalarDouble*DoubleB)-DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(ScalarDouble,DoubleB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45217,13 +45398,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=(ScalarFloat*FloatB)-FloatC;
+           FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(ScalarDouble*DoubleB)-DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(ScalarDouble,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45246,13 +45427,13 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatC:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^);
-           FloatResult:=-(ScalarFloat*FloatB)+FloatC;
+           FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(ScalarDouble*DoubleB)+DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(ScalarDouble,DoubleB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45385,7 +45566,7 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(ScalarFloat*FloatB)+DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(ScalarFloat,FloatB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45408,7 +45589,7 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(ScalarFloat*FloatB)-DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(ScalarFloat,FloatB,DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45431,7 +45612,7 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=(ScalarFloat*FloatB)-DoubleC;
+           DoubleResult:=FusedMultiplyAddDouble(ScalarFloat,FloatB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -45454,7 +45635,7 @@ begin
           $20:begin
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            DoubleC:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^);
-           DoubleResult:=-(ScalarFloat*FloatB)+DoubleC;
+           DoubleResult:=-FusedMultiplyAddDouble(ScalarFloat,FloatB,-DoubleC);
            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
@@ -49550,7 +49731,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f32:=(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)*ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64))+ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64);
+        fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
         fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
@@ -49566,7 +49747,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f64:=(fState.FPURegisters[frs1].f64*fState.FPURegisters[frs2].f64)+fState.FPURegisters[frs3].f64;
+        fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64);
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
@@ -49618,7 +49799,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f32:=(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)*ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64))-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64);
+        fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
         fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
@@ -49634,7 +49815,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f64:=(fState.FPURegisters[frs1].f64*fState.FPURegisters[frs2].f64)-fState.FPURegisters[frs3].f64;
+        fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,-fState.FPURegisters[frs3].f64);
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
@@ -49712,7 +49893,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f32:=((-ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64))*ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64))+ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64);
+        fState.FPURegisters[frd].f32:=-FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
         fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
@@ -49728,7 +49909,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f64:=((-fState.FPURegisters[frs1].f64)*fState.FPURegisters[frs2].f64)+fState.FPURegisters[frs3].f64;
+        fState.FPURegisters[frd].f64:=-FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,-fState.FPURegisters[frs3].f64);
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
@@ -49780,7 +49961,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f32:=((-ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64))*ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64))-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64);
+        fState.FPURegisters[frd].f32:=-FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
         fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
@@ -49796,7 +49977,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-        fState.FPURegisters[frd].f64:=((-fState.FPURegisters[frs1].f64)*fState.FPURegisters[frs2].f64)-fState.FPURegisters[frs3].f64;
+        fState.FPURegisters[frd].f64:=-FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64);
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
@@ -61328,6 +61509,9 @@ begin
   end;
   if (CPUIDData.ECX and (TPasRISCVUInt32(1) shl 29))<>0 then begin
    CPUFeatures:=CPUFeatures or CPUFeatures_X86_F16C_Mask;
+  end;
+  if (CPUIDData.ECX and (TPasRISCVUInt32(1) shl 12))<>0 then begin
+   CPUFeatures:=CPUFeatures or CPUFeatures_X86_FMA_Mask;
   end;
  end;
 end;
