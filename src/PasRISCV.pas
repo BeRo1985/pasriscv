@@ -42805,7 +42805,12 @@ begin
       end;
 
       $17:begin
-       // vcompress.Unmasked
+       // vcompress.vm — vstart != 0 is reserved
+       if fState.CSR.fData[TCSR.TAddress.VSTART]<>0 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        SubIndex:=0;
        for Index:=0 to EVL-1 do begin
         if (fState.VectorRegisters[TVectorRegister(0)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
