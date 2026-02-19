@@ -38092,18 +38092,22 @@ begin
  ByteOffset:=aIndex*(aSEW shr 3);
  RegIndex:=aVReg+(ByteOffset div VLENB);
  RegOffset:=ByteOffset mod VLENB;
+ if RegIndex>31 then begin
+  result:=0;
+  exit;
+ end;
  case aSEW of
   8:begin
-   result:=fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset];
+   result:=fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset];
   end;
   16:begin
-   result:=TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^);
+   result:=TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset])^);
   end;
   32:begin
-   result:=TPasRISCVUInt32(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^);
+   result:=TPasRISCVUInt32(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset])^);
   end;
   64:begin
-   result:=TPasRISCVUInt64(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^);
+   result:=TPasRISCVUInt64(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset])^);
   end;
   else begin
    result:=0;
@@ -38118,18 +38122,21 @@ begin
  ByteOffset:=aIndex*(aSEW shr 3);
  RegIndex:=aVReg+(ByteOffset div VLENB);
  RegOffset:=ByteOffset mod VLENB;
+ if RegIndex>31 then begin
+  exit;
+ end;
  case aSEW of
   8:begin
-   fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset]:=TPasRISCVUInt8(aValue);
+   fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset]:=TPasRISCVUInt8(aValue);
   end;
   16:begin
-   TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^):=TPasRISCVUInt16(aValue);
+   TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset])^):=TPasRISCVUInt16(aValue);
   end;
   32:begin
-   TPasRISCVUInt32(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^):=TPasRISCVUInt32(aValue);
+   TPasRISCVUInt32(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset])^):=TPasRISCVUInt32(aValue);
   end;
   64:begin
-   TPasRISCVUInt64(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex and 31)][RegOffset])^):=aValue;
+   TPasRISCVUInt64(Pointer(@fState.VectorRegisters[TVectorRegister(RegIndex)][RegOffset])^):=aValue;
   end;
  end;
 end;
@@ -39215,16 +39222,14 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      LMUL8:=VectorGetLMUL;
-     if LMUL8>8 then begin
-      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((not (funct6 in [$30,$31])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
-         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
-       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-       result:=4;
-       exit;
-      end;
+     if (not VectorCheckRegAlign(vs2,LMUL8)) or
+        ((not (funct6 in [$30,$31])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+        ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+        ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      case funct6 of
       $00:begin
@@ -40005,16 +40010,14 @@ begin
      fState.CSR.SetVSDirty;
      feclearexcept(FE_ALL_EXCEPT);
      LMUL8:=VectorGetLMUL;
-     if LMUL8>8 then begin
-      if ((funct6<>$10) and (not VectorCheckRegAlign(vs2,LMUL8))) or
-         ((not (funct6 in [$01,$03,$05,$07,$10,$31,$33])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
-         ((not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
-       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-       result:=4;
-       exit;
-      end;
+     if ((funct6<>$10) and (not VectorCheckRegAlign(vs2,LMUL8))) or
+        ((not (funct6 in [$01,$03,$05,$07,$10,$31,$33])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+        ((not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+        ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      case funct6 of
       $00:begin
@@ -41900,17 +41903,15 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      LMUL8:=VectorGetLMUL;
-     if LMUL8>8 then begin
-      if (not (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) then begin
-       if (not VectorCheckRegAlign(vs2,LMUL8)) or
-          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$12,$14,$17])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
-          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-          ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-          ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
-       end;
+     if (not (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) then begin
+      if (not VectorCheckRegAlign(vs2,LMUL8)) or
+         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$12,$14,$17])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+         ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
      end;
      case funct6 of
@@ -43029,15 +43030,13 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=TPasRISCVUInt64(SignExtend((aInstruction shr 15) and $1f,5));
      LMUL8:=VectorGetLMUL;
-     if LMUL8>8 then begin
-      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
-       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-       result:=4;
-       exit;
-      end;
+     if (not VectorCheckRegAlign(vs2,LMUL8)) or
+        ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+        ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      case funct6 of
       $00:begin
@@ -43555,15 +43554,13 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
      LMUL8:=VectorGetLMUL;
-     if LMUL8>8 then begin
-      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
-       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-       result:=4;
-       exit;
-      end;
+     if (not VectorCheckRegAlign(vs2,LMUL8)) or
+        ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+        ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      case funct6 of
       $00:begin
@@ -44351,15 +44348,13 @@ begin
      ScalarDouble:=TPasRISCVDouble(pointer(@ScalarFP)^);
      feclearexcept(FE_ALL_EXCEPT);
      LMUL8:=VectorGetLMUL;
-     if LMUL8>8 then begin
-      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
-       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-       result:=4;
-       exit;
-      end;
+     if (not VectorCheckRegAlign(vs2,LMUL8)) or
+        ((not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+        ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      case funct6 of
       $00:begin
@@ -45501,15 +45496,13 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
      LMUL8:=VectorGetLMUL;
-     if LMUL8>8 then begin
-      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((funct6<>$10) and (not VectorCheckRegAlign(vd,LMUL8))) or
-         ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
-       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-       result:=4;
-       exit;
-      end;
+     if (not VectorCheckRegAlign(vs2,LMUL8)) or
+        ((funct6<>$10) and (not VectorCheckRegAlign(vd,LMUL8))) or
+        ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
      end;
      case funct6 of
       $08:begin
