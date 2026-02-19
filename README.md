@@ -37,6 +37,11 @@ A RISC-V RV64GCV emulator written in Object Pascal. It simulates processor cores
   - Ssstateen (Supervisor-Mode State Enable)
   - Svbare (satp Bare Mode)
   - Ss1p13 (Supervisor Architecture v1.13)
+  - Sm1p13 (Machine Architecture v1.13)
+  - Smcsrind (Machine-Level CSR Indirect Access)
+  - Sscsrind (Supervisor-Level CSR Indirect Access)
+  - Smaia (Machine-Level Advanced Interrupt Architecture, when AIA is enabled)
+  - Ssaia (Supervisor-Level Advanced Interrupt Architecture, when AIA is enabled)
   - Supm (User-Mode Pointer Masking)
   - Ssnpm (Supervisor-Mode Pointer Masking)
   - Sha (Augmented Hypervisor Extension)
@@ -79,7 +84,7 @@ A RISC-V RV64GCV emulator written in Object Pascal. It simulates processor cores
 - Emulated peripherals
   - ACLINT
   - PLIC when AIA is not enabled (default), otherwise APLIC and IMSIC if AIA is enabled
-  - AIA (Advanced Interrupt Architecture) support with APLIC and IMSIC devices (disabled by default, because not fully tested yet, enable at your own risk)
+  - AIA (Advanced Interrupt Architecture) support with APLIC and IMSIC devices, including VS-mode guest interrupt file support (disabled by default, because not fully tested yet, enable at your own risk)
   - UART NS16550A
   - SysCon   
   - VirtIO MMIO with following devices support
