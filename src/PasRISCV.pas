@@ -38737,8 +38737,8 @@ begin
 
       $0b:begin
        // vlm.v — mask load (EEW=8, evl=ceil(vl/8))
-       // Encoding requires nf=0 and vm=1
-       if (NumFields<>0) or (not Unmasked) then begin
+       // Encoding requires nf=0, vm=1, and width=000 (EEW=8)
+       if (NumFields<>0) or (not Unmasked) or (EEW<>8) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
@@ -38765,29 +38765,51 @@ begin
       end;
 
       $10:begin
-       // vle8ff/16ff/32ff/64ff.v — fault-only-first load
+       // vle8ff/16ff/32ff/64ff.v / vlsegNff — fault-only-first (segment) load
        Address:=fState.Registers[rs1];
+       SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+       LMUL8:=VectorGetLMUL;
+       if (LMUL8>0) and (SEW>0) then begin
+        FieldStride:=(EEW*LMUL8) div (SEW*8);
+       end else begin
+        FieldStride:=1;
+       end;
+       if FieldStride<1 then begin
+        FieldStride:=1;
+       end;
+       // Check EMUL range [1/8..8] and EMUL*NFIELDS<=8
+       if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
          // masked off
         end else begin
-         OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
-         if fState.ExceptionValue<>TExceptionValue.None then begin
-          if Index=0 then begin
-           // Element 0: normal trap
-           result:=4;
-           exit;
-          end else begin
-           // Element >0: trim vl, no trap
-           fState.CSR.fData[TCSR.TAddress.VL]:=Index;
-           ClearException;
-           break;
+         for SubIndex:=0 to NumFields do begin
+          OperandValue:=Load(Address+(((TPasRISCVUInt64(Index)*TPasRISCVUInt64(NumFields+1))+TPasRISCVUInt64(SubIndex))*TPasRISCVUInt64(EEW shr 3)),EEW shr 3);
+          if fState.ExceptionValue<>TExceptionValue.None then begin
+           if Index=0 then begin
+            // Element 0: normal trap
+            fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
+            result:=4;
+            exit;
+           end else begin
+            // Element >0: trim vl, no trap
+            fState.CSR.fData[TCSR.TAddress.VL]:=Index;
+            ClearException;
+            break;
+           end;
           end;
+          VectorSetElement(vd+(SubIndex*FieldStride),Index,EEW,OperandValue);
          end;
-         VectorSetElement(vd,Index,EEW,OperandValue);
+         if fState.ExceptionValue<>TExceptionValue.None then begin
+          break; // already cleared, exit outer loop too
+         end;
         end;
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -39034,8 +39056,8 @@ begin
 
       $0b:begin
        // vsm.v — mask store (EEW=8, evl=ceil(vl/8))
-       // Encoding requires nf=0 and vm=1
-       if (NumFields<>0) or (not Unmasked) then begin
+       // Encoding requires nf=0, vm=1, and width=000 (EEW=8)
+       if (NumFields<>0) or (not Unmasked) or (EEW<>8) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
@@ -39323,6 +39345,15 @@ begin
      if (rs1=TRegister.Zero) and (rd=TRegister.Zero) then begin
       // Compute old VLMAX from current vtype
       OldVTypeValue:=fState.CSR.fData[TCSR.TAddress.VTYPE];
+      // If current vtype has vill set, the operation is reserved — set vill
+      if (OldVTypeValue and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+       fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
+       fState.CSR.fData[TCSR.TAddress.VL]:=0;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
       OldSEW:=8 shl ((OldVTypeValue shr 3) and 7);
       case OldVTypeValue and 7 of
        $00:begin
@@ -39403,7 +39434,8 @@ begin
         ((not (funct6 in [$30,$31])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -39544,7 +39576,19 @@ begin
       end;
 
       $0c:begin
-       // vrgather.vv
+       // vrgather.vv — vd must not overlap vs1 or vs2 (LMUL-aware)
+       begin
+        OperandValue:=LMUL8 div 8;
+        if OperandValue<1 then begin
+         OperandValue:=1;
+        end;
+        if ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) or
+           ((vd<(vs1+OperandValue)) and (vs1<(vd+OperandValue))) then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
@@ -39562,12 +39606,30 @@ begin
 
       $0e:begin
        // vrgatherei16.vv: gather with 16-bit indices
+       // vd must not overlap vs1 or vs2 (LMUL-aware)
+       begin
+        OperandValue:=LMUL8 div 8;
+        if OperandValue<1 then begin
+         OperandValue:=1;
+        end;
+        // EMUL for index = (16/SEW)*LMUL
+        SubIndex:=(16*LMUL8) div (SEW*8);
+        if SubIndex<1 then begin
+         SubIndex:=1;
+        end;
+        if ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) or
+           ((vd<(vs1+SubIndex)) and (vs1<(vd+OperandValue))) then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         SubIndex:=TPasRISCVUInt16(Pointer(@fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index*2])^);
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+         SubIndex:=VectorGetElement(vs1,Index,16);
+         VLMAX:=((VLEN div SEW)*VectorGetLMUL) div 8;
          if SubIndex<VLMAX then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
          end else begin
@@ -39578,7 +39640,12 @@ begin
       end;
 
       $10:begin
-       // vadc.vvm
+       // vadc.vvm — must have vm=0 (Unmasked=false) and vd!=v0
+       if Unmasked or (vd=0) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else begin
@@ -39619,7 +39686,12 @@ begin
       end;
 
       $12:begin
-       // vsbc.vvm
+       // vsbc.vvm — must have vm=0 (Unmasked=false) and vd!=v0
+       if Unmasked or (vd=0) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else begin
@@ -40191,7 +40263,8 @@ begin
         ((not (funct6 in [$01,$03,$05,$07,$10,$31,$33])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
         ((not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (SEW>=64)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -42085,7 +42158,8 @@ begin
          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$12,$14,$17])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
          ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+         ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$37]) and (SEW>=64)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -42777,7 +42851,12 @@ begin
       $10:begin
        case vs1 of
         $00:begin
-         // vmv.x.s: Move vs2[0] to integer register rd
+         // vmv.x.s: Move vs2[0] to integer register rd — must have vm=1
+         if not Unmasked then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          rd:=TRegister((aInstruction shr 7) and $1f);
          if rd<>TRegister.x0 then begin
           fState.Registers[rd]:=SignExtend(VectorGetElement(vs2,0,SEW),SEW);
@@ -43108,11 +43187,23 @@ begin
       end;
 
       $17:begin
-       // vcompress.vm — vstart != 0 is reserved
-       if fState.CSR.fData[TCSR.TAddress.VSTART]<>0 then begin
+       // vcompress.vm — must have vm=1, vstart!=0 reserved, vd must not overlap vs2 or v0
+       if (not Unmasked) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
+       end;
+       // Check vd does not overlap vs2 (LMUL-aware) or v0
+       begin
+        OperandValue:=LMUL8 div 8;
+        if OperandValue<1 then begin
+         OperandValue:=1;
+        end;
+        if (vd=0) or ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
        end;
        SubIndex:=0;
        for Index:=0 to EVL-1 do begin
@@ -43210,7 +43301,8 @@ begin
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -43320,7 +43412,12 @@ begin
       end;
 
       $10:begin
-       // vadc.vim
+       // vadc.vim — must have vm=0 (Unmasked=false) and vd!=v0
+       if Unmasked or (vd=0) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else begin
@@ -43734,7 +43831,8 @@ begin
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -43930,7 +44028,12 @@ begin
       end;
 
       $10:begin
-       // vadc.vxm
+       // vadc.vxm — must have vm=0 (Unmasked=false) and vd!=v0
+       if Unmasked or (vd=0) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else begin
@@ -43970,7 +44073,12 @@ begin
       end;
 
       $12:begin
-       // vsbc.vxm
+       // vsbc.vxm — must have vm=0 (Unmasked=false) and vd!=v0
+       if Unmasked or (vd=0) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else begin
@@ -44532,7 +44640,8 @@ begin
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (SEW>=64)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -45680,7 +45789,8 @@ begin
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((funct6<>$10) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -45921,7 +46031,12 @@ begin
       end;
 
       $10:begin
-       // VRXUNARY0: vmv.s.x - Move scalar to element 0
+       // VRXUNARY0: vmv.s.x - Move scalar to element 0 — must have vm=1
+       if not Unmasked then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        VectorSetElement(vd,0,SEW,TPasRISCVUInt64(fState.Registers[rs1]));
       end;
 
