@@ -38107,7 +38107,7 @@ var rd,rs1,rs2:TRegister;
     vsew,vlmul:TPasRISCVUInt32;
     Unmasked:Boolean;
     Opcode:TPasRISCVUInt32;
-    Width,MemOpType,NumFields,UnitStrideMop:TPasRISCVUInt32;
+    Width,MemOpType,NumFields,UnitStrideMop,FieldStride:TPasRISCVUInt32;
     EEW,EVL:TPasRISCVUInt32;
     Address,Stride:TPasRISCVUInt64;
     SubIndex,Index:TPasRISCVUInt32;
@@ -38181,22 +38181,33 @@ begin
      // Unit-stride
      case UnitStrideMop of
       $00:begin
-       // vle8/16/32/64.v — unit-stride load
+       // vle8/16/32/64.v / vlseg — unit-stride (segment) load
        Address:=fState.Registers[rs1];
        SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+       LMUL8:=VectorGetLMUL;
+       if (LMUL8>0) and (SEW>0) then begin
+        FieldStride:=(EEW*LMUL8) div (SEW*8);
+       end else begin
+        FieldStride:=1;
+       end;
+       if FieldStride<1 then begin
+        FieldStride:=1;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
          // masked off: undisturbed (do nothing)
         end else begin
-         OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
-         if fState.ExceptionValue<>TExceptionValue.None then begin
-          result:=4;
-          exit;
+         for SubIndex:=0 to NumFields do begin
+          OperandValue:=Load(Address+(((TPasRISCVUInt64(Index)*TPasRISCVUInt64(NumFields+1))+TPasRISCVUInt64(SubIndex))*TPasRISCVUInt64(EEW shr 3)),EEW shr 3);
+          if fState.ExceptionValue<>TExceptionValue.None then begin
+           result:=4;
+           exit;
+          end;
+          VectorSetElement(vd+(SubIndex*FieldStride),Index,EEW,OperandValue);
          end;
-         VectorSetElement(vd,Index,EEW,OperandValue);
         end;
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -38286,23 +38297,35 @@ begin
     end;
 
     $02:begin
-     // Strided load (vlse8/16/32/64.v)
+     // Strided load (vlse8/16/32/64.v / vlsseg)
      rs2:=TRegister((aInstruction shr 20) and $1f);
      Address:=fState.Registers[rs1];
      Stride:=fState.Registers[rs2];
+     SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     LMUL8:=VectorGetLMUL;
+     if (LMUL8>0) and (SEW>0) then begin
+      FieldStride:=(EEW*LMUL8) div (SEW*8);
+     end else begin
+      FieldStride:=1;
+     end;
+     if FieldStride<1 then begin
+      FieldStride:=1;
+     end;
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        // masked off
       end else begin
-       OperandValue:=Load(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index)),EEW shr 3);
-       if fState.ExceptionValue<>TExceptionValue.None then begin
-        result:=4;
-        exit;
+       for SubIndex:=0 to NumFields do begin
+        OperandValue:=Load(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index))+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(EEW shr 3)),EEW shr 3);
+        if fState.ExceptionValue<>TExceptionValue.None then begin
+         result:=4;
+         exit;
+        end;
+        VectorSetElement(vd+(SubIndex*FieldStride),Index,EEW,OperandValue);
        end;
-       VectorSetElement(vd,Index,EEW,OperandValue);
       end;
      end;
      fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -38312,25 +38335,35 @@ begin
     end;
 
     $01,$03:begin
-     // Indexed load (vluxei/vloxei)
+     // Indexed load (vluxei/vloxei / vluxseg/vloxseg)
      vs2:=(aInstruction shr 20) and $1f;
      Address:=fState.Registers[rs1];
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>0 then begin
+      FieldStride:=LMUL8 div 8;
+     end else begin
+      FieldStride:=1;
+     end;
+     if FieldStride<1 then begin
+      FieldStride:=1;
+     end;
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        // masked off
       end else begin
-       // Index from vs2 with EEW
        SourceValue:=VectorGetElement(vs2,Index,EEW);
-       OperandValue:=Load(Address+SourceValue,SEW shr 3);
-       if fState.ExceptionValue<>TExceptionValue.None then begin
-        result:=4;
-        exit;
+       for SubIndex:=0 to NumFields do begin
+        OperandValue:=Load(Address+SourceValue+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(SEW shr 3)),SEW shr 3);
+        if fState.ExceptionValue<>TExceptionValue.None then begin
+         result:=4;
+         exit;
+        end;
+        VectorSetElement(vd+(SubIndex*FieldStride),Index,SEW,OperandValue);
        end;
-       VectorSetElement(vd,Index,SEW,OperandValue);
       end;
      end;
      fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -38400,20 +38433,32 @@ begin
      UnitStrideMop:=(aInstruction shr 20) and $1f;
      case UnitStrideMop of
       $00:begin
-       // vse8/16/32/64.v — unit-stride store
+       // vse8/16/32/64.v / vsseg — unit-stride (segment) store
        Address:=fState.Registers[rs1];
+       SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+       LMUL8:=VectorGetLMUL;
+       if (LMUL8>0) and (SEW>0) then begin
+        FieldStride:=(EEW*LMUL8) div (SEW*8);
+       end else begin
+        FieldStride:=1;
+       end;
+       if FieldStride<1 then begin
+        FieldStride:=1;
+       end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
          // masked off
         end else begin
-         SourceValue:=VectorGetElement(vd,Index,EEW);
-         Store(Address+TPasRISCVUInt64(Index)*(EEW shr 3),SourceValue,EEW shr 3);
-         if fState.ExceptionValue<>TExceptionValue.None then begin
-          result:=4;
-          exit;
+         for SubIndex:=0 to NumFields do begin
+          SourceValue:=VectorGetElement(vd+(SubIndex*FieldStride),Index,EEW);
+          Store(Address+(((TPasRISCVUInt64(Index)*TPasRISCVUInt64(NumFields+1))+TPasRISCVUInt64(SubIndex))*TPasRISCVUInt64(EEW shr 3)),SourceValue,EEW shr 3);
+          if fState.ExceptionValue<>TExceptionValue.None then begin
+           result:=4;
+           exit;
+          end;
          end;
         end;
        end;
@@ -38471,22 +38516,34 @@ begin
     end;
 
     $02:begin
-     // Strided store (vsse8/16/32/64.v)
+     // Strided store (vsse8/16/32/64.v / vssseg)
      rs2:=TRegister((aInstruction shr 20) and $1f);
      Address:=fState.Registers[rs1];
      Stride:=fState.Registers[rs2];
+     SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     LMUL8:=VectorGetLMUL;
+     if (LMUL8>0) and (SEW>0) then begin
+      FieldStride:=(EEW*LMUL8) div (SEW*8);
+     end else begin
+      FieldStride:=1;
+     end;
+     if FieldStride<1 then begin
+      FieldStride:=1;
+     end;
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        // masked off
       end else begin
-       SourceValue:=VectorGetElement(vd,Index,EEW);
-       Store(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index)),SourceValue,EEW shr 3);
-       if fState.ExceptionValue<>TExceptionValue.None then begin
-        result:=4;
-        exit;
+       for SubIndex:=0 to NumFields do begin
+        SourceValue:=VectorGetElement(vd+(SubIndex*FieldStride),Index,EEW);
+        Store(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index))+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(EEW shr 3)),SourceValue,EEW shr 3);
+        if fState.ExceptionValue<>TExceptionValue.None then begin
+         result:=4;
+         exit;
+        end;
        end;
       end;
      end;
@@ -38497,10 +38554,19 @@ begin
     end;
 
     $01,$03:begin
-     // Indexed store (vsuxei/vsoxei)
+     // Indexed store (vsuxei/vsoxei / vsuxseg/vsoxseg)
      Address:=fState.Registers[rs1];
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>0 then begin
+      FieldStride:=LMUL8 div 8;
+     end else begin
+      FieldStride:=1;
+     end;
+     if FieldStride<1 then begin
+      FieldStride:=1;
+     end;
      // vs2 field has the index register, vd has the data
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -38509,11 +38575,13 @@ begin
        // masked off
       end else begin
        SourceValue:=VectorGetElement(vs2,Index,EEW);
-       OperandValue:=VectorGetElement(vd,Index,SEW);
-       Store(Address+SourceValue,OperandValue,SEW shr 3);
-       if fState.ExceptionValue<>TExceptionValue.None then begin
-        result:=4;
-        exit;
+       for SubIndex:=0 to NumFields do begin
+        OperandValue:=VectorGetElement(vd+(SubIndex*FieldStride),Index,SEW);
+        Store(Address+SourceValue+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(SEW shr 3)),OperandValue,SEW shr 3);
+        if fState.ExceptionValue<>TExceptionValue.None then begin
+         result:=4;
+         exit;
+        end;
        end;
       end;
      end;
@@ -38548,13 +38616,13 @@ begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    rs1:=TRegister((aInstruction shr 15) and $1f);
 
-   if (aInstruction and TPasRISCVUInt32($80000000))<>0 then begin
-    // vsetivli: bit31=1
+   if (aInstruction and TPasRISCVUInt32($c0000000))=TPasRISCVUInt32($c0000000) then begin
+    // vsetivli: bits[31:30]=11
     // AVL = zero-extended 5-bit immediate from rs1 field
     AVL:=(aInstruction shr 15) and $1f;
     VTypeValue:=(aInstruction shr 20) and $3ff; // vtypei[9:0]
-   end else if (aInstruction and TPasRISCVUInt32($40000000))<>0 then begin
-    // vsetvl: bit31=0, bit30=1
+   end else if (aInstruction and TPasRISCVUInt32($80000000))<>0 then begin
+    // vsetvl: bit31=1, bit30=0 (bits[31:25]=1000000)
     rs2:=TRegister((aInstruction shr 20) and $1f);
     VTypeValue:=fState.Registers[rs2];
     if rs1<>TRegister.Zero then begin
@@ -38566,7 +38634,7 @@ begin
      AVL:=fState.CSR.fData[TCSR.TAddress.VL];
     end;
    end else begin
-    // vsetvli: bit31=0, bit30=0
+    // vsetvli: bit31=0
     VTypeValue:=(aInstruction shr 20) and $7ff; // vtypei[10:0]
     if rs1<>TRegister.Zero then begin
      AVL:=fState.Registers[rs1];
@@ -39222,7 +39290,7 @@ begin
        end else begin
         SourceValue:=VectorGetElement(vs2,Index,SEW);
         OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
-        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(SourceValue,SEW) shr OperandValue));
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(SourceValue,SEW),OperandValue)));
        end;
       end;
      end;
@@ -39248,7 +39316,7 @@ begin
        end else begin
         SourceValue:=VectorGetElement(vs2,Index,SEW*2);
         OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
-        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(SourceValue,SEW*2) shr OperandValue));
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(SourceValue,SEW*2),OperandValue)));
        end;
       end;
      end;
@@ -39296,7 +39364,7 @@ begin
        end else begin
         SourceValue:=VectorGetElement(vs2,Index,SEW*2);
         OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
-        Stride:=TPasRISCVUInt64(SignExtend(SourceValue,SEW*2) shr OperandValue);
+        Stride:=TPasRISCVUInt64(SarInt64(SignExtend(SourceValue,SEW*2),OperandValue));
         if SignExtend(Stride,SEW*2)>SignExtend((TPasRISCVUInt64(1) shl (SEW-1))-1,SEW) then begin
          Stride:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
          fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
@@ -42210,7 +42278,7 @@ begin
        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        end else begin
-        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW) shr SubIndex));
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW),SubIndex)));
        end;
       end;
      end;
@@ -42234,7 +42302,7 @@ begin
        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        end else begin
-        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2) shr SubIndex));
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),SubIndex)));
        end;
       end;
      end;
@@ -42280,7 +42348,7 @@ begin
        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        end else begin
-        Address:=TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2) shr SubIndex);
+        Address:=TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),SubIndex));
         if SignExtend(Address,SEW*2)>SignExtend((TPasRISCVUInt64(1) shl (SEW-1))-1,SEW) then begin
          Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
          fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
@@ -42885,7 +42953,7 @@ begin
        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        end else begin
-        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW) shr (Stride and (SEW-1))));
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW),Stride and (SEW-1))));
        end;
       end;
      end;
@@ -42907,7 +42975,59 @@ begin
        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
        end else begin
-        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2) shr (Stride and ((SEW*2)-1))));
+        VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),Stride and ((SEW*2)-1))));
+       end;
+      end;
+     end;
+
+     $2e:begin
+      // vnclipu.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=VectorGetElement(vs2,Index,SEW*2) shr (Stride and ((SEW*2)-1));
+        case SEW of
+         8:begin
+          if Address>$ff then begin
+           Address:=$ff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         16:begin
+          if Address>$ffff then begin
+           Address:=$ffff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         32:begin
+          if Address>$ffffffff then begin
+           Address:=$ffffffff;
+           fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+          end;
+         end;
+         else begin end;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
+       end;
+      end;
+     end;
+
+     $2f:begin
+      // vnclip.wx
+      for Index:=0 to EVL-1 do begin
+       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+       end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       end else begin
+        Address:=TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),Stride and ((SEW*2)-1)));
+        if SignExtend(Address,SEW*2)>SignExtend((TPasRISCVUInt64(1) shl (SEW-1))-1,SEW) then begin
+         Address:=(TPasRISCVUInt64(1) shl (SEW-1))-1;
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end else if SignExtend(Address,SEW*2)<SignExtend(TPasRISCVUInt64(1) shl (SEW-1),SEW) then begin
+         Address:=TPasRISCVUInt64(1) shl (SEW-1);
+         fState.CSR.fData[TCSR.TAddress.VXSAT]:=1;
+        end;
+        VectorSetElement(vd,Index,SEW,Address);
        end;
       end;
      end;
