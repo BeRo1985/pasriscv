@@ -42755,6 +42755,8 @@ begin
             Address:=TPasRISCVUInt64($ffffffffffffffff);
            end;
           end;
+         end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(OperandValue)=-1) then begin
+          Address:=SourceValue;
          end else begin
           Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(OperandValue,SEW));
          end;
@@ -42791,6 +42793,8 @@ begin
          OperandValue:=VectorGetElement(vs1,Index,SEW);
          if OperandValue=0 then begin
           Address:=SourceValue;
+         end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(OperandValue)=-1) then begin
+          Address:=0;
          end else begin
           Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) mod SignExtend(OperandValue,SEW));
          end;
@@ -45197,6 +45201,8 @@ begin
         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
         ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
+        // vfslide1up.vf: vd must not overlap vs2
+        ((funct6=$0e) and (vd=vs2)) or
         // vd must not overlap v0 when masked (except vfmv, FP compares, reductions)
         ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f]))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -45396,7 +45402,7 @@ begin
        end;
       end;
 
-      $07:begin
+      $27:begin
        // vfrsub.vf
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -46402,7 +46408,11 @@ begin
         ((funct6<>$10) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
         ((funct6 in [$34,$35,$36,$37]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
-        ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and (SEW>=64)) then begin
+        ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
+        // vslide1up.vx: vd must not overlap vs2
+        ((funct6=$0e) and (vd=vs2)) or
+        // Widening narrow-source ops: vd group (2*LMUL) must not overlap vs2 group (LMUL)
+        ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -46706,6 +46716,8 @@ begin
             Address:=TPasRISCVUInt64($ffffffffffffffff);
            end;
           end;
+         end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(Stride)=-1) then begin
+          Address:=SourceValue;
          end else begin
           Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(Stride,SEW));
          end;
@@ -46740,6 +46752,8 @@ begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if Stride=0 then begin
           Address:=SourceValue;
+         end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(Stride)=-1) then begin
+          Address:=0;
          end else begin
           Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) mod SignExtend(Stride,SEW));
          end;
