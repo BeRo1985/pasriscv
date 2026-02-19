@@ -38475,6 +38475,13 @@ begin
     end;
    end;
 
+   // Check mew (bit 28) - reserved, must be 0
+   if (aInstruction and (TPasRISCVUInt32(1) shl 28))<>0 then begin
+    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+    result:=4;
+    exit;
+   end;
+
    // Check vtype.vill
    if (fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
     if not ((MemOpType=0) and (UnitStrideMop=$08)) then begin
@@ -38728,6 +38735,13 @@ begin
      result:=4;
      exit;
     end;
+   end;
+
+   // Check mew (bit 28) - reserved, must be 0
+   if (aInstruction and (TPasRISCVUInt32(1) shl 28))<>0 then begin
+    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+    result:=4;
+    exit;
    end;
 
    // Check vtype.vill
