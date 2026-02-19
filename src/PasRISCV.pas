@@ -16838,6 +16838,12 @@ begin
  AddInstruction32('vslideup.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($38004057));
  AddInstruction32('vslidedown.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($3c004057));
 
+ // OPIVI - whole register move
+ AddInstruction32('vmv1r.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($9e003057));
+ AddInstruction32('vmv2r.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($9e00b057));
+ AddInstruction32('vmv4r.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($9e01b057));
+ AddInstruction32('vmv8r.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($9e03b057));
+
  // OPFVV - vector-vector floating point (funct3=1)
  AddInstruction32('vfadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00001057));
  AddInstruction32('vfredusum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($04001057));
@@ -16945,6 +16951,7 @@ begin
  AddInstruction32('vfwnmsac.vf',TInstructionFormat.VVVF,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($fc005057));
  AddInstruction32('vfmv.s.f',TInstructionFormat.VFScalarToV,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($42005057));
  AddInstruction32('vfmerge.vfm',TInstructionFormat.VVVF,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($5c005057));
+ AddInstruction32('vfmv.v.f',TInstructionFormat.VFScalarToV,TPasRISCVUInt32($fff0707f),TPasRISCVUInt32($5e005057));
 
  // OPMVV - vector-vector multiply/mask (funct3=2)
  AddInstruction32('vredsum.vs',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($00002057));
@@ -16998,6 +17005,9 @@ begin
  AddInstruction32('vzext.vf2',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48032057));
  AddInstruction32('vsext.vf2',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4803a057));
  AddInstruction32('viota.m',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($50082057));
+ AddInstruction32('vmsbf.m',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($5000a057));
+ AddInstruction32('vmsof.m',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($50012057));
+ AddInstruction32('vmsif.m',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($5001a057));
  AddInstruction32('vid.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fdfff07f),TPasRISCVUInt32($5008a057));
  AddInstruction32('vbrev.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($48052057));
  AddInstruction32('vrev8.v',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fc0ff07f),TPasRISCVUInt32($4804a057));
