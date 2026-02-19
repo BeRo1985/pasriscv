@@ -38512,6 +38512,7 @@ begin
          for SubIndex:=0 to NumFields do begin
           OperandValue:=Load(Address+(((TPasRISCVUInt64(Index)*TPasRISCVUInt64(NumFields+1))+TPasRISCVUInt64(SubIndex))*TPasRISCVUInt64(EEW shr 3)),EEW shr 3);
           if fState.ExceptionValue<>TExceptionValue.None then begin
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
            result:=4;
            exit;
           end;
@@ -38533,6 +38534,7 @@ begin
        for Index:=0 to EVL-1 do begin
         OperandValue:=Load(Address+TPasRISCVUInt64(Index)*(EEW shr 3),EEW shr 3);
         if fState.ExceptionValue<>TExceptionValue.None then begin
+         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
          result:=4;
          exit;
         end;
@@ -38554,6 +38556,7 @@ begin
         end else begin
          OperandValue:=Load(Address+TPasRISCVUInt64(Index),1);
          if fState.ExceptionValue<>TExceptionValue.None then begin
+          fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
           result:=4;
           exit;
          end;
@@ -38630,6 +38633,7 @@ begin
        for SubIndex:=0 to NumFields do begin
         OperandValue:=Load(Address+TPasRISCVUInt64(TPasRISCVInt64(Stride)*TPasRISCVInt64(Index))+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(EEW shr 3)),EEW shr 3);
         if fState.ExceptionValue<>TExceptionValue.None then begin
+         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
          result:=4;
          exit;
         end;
@@ -38668,6 +38672,7 @@ begin
        for SubIndex:=0 to NumFields do begin
         OperandValue:=Load(Address+SourceValue+(TPasRISCVUInt64(SubIndex)*TPasRISCVUInt64(SEW shr 3)),SEW shr 3);
         if fState.ExceptionValue<>TExceptionValue.None then begin
+         fState.CSR.fData[TCSR.TAddress.VSTART]:=Index;
          result:=4;
          exit;
         end;
