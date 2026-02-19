@@ -39548,11 +39548,17 @@ begin
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((not (funct6 in [$30,$31])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vadc/vsbc, vmerge/vmv, reductions)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31]))) then begin
+        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31]))) or
+        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
+        ((funct6 in [$32,$33,$36,$37]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
+        // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and ((vd=vs1) or ((LMUL8>=8) and (vs1>vd) and (vs1<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
+        // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
+        ((funct6 in [$2c,$2d,$2e,$2f]) and ((vd=vs2) or ((LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -40433,7 +40439,11 @@ begin
         ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except reductions, vfmv, and FP compares)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33]))) then begin
+        ((not Unmasked) and (vd=0) and (not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33]))) or
+        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
+        ((funct6 in [$30,$32,$38,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
+        // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
+        ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and ((vd=vs1) or ((LMUL8>=8) and (vs1>vd) and (vs1<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -42488,7 +42498,13 @@ begin
          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
          ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
          ((funct6 in [$34,$35,$36,$37]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
-         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (SEW>=64)) then begin
+         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (SEW>=64)) or
+         // vd must not overlap v0 when masked (except reductions, mask-producing/vmv ops)
+         ((not Unmasked) and (vd=0) and (not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17]))) or
+         // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
+         ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
+         // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
+         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and ((vd=vs1) or ((LMUL8>=8) and (vs1>vd) and (vs1<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -43790,11 +43806,13 @@ begin
      LMUL8:=VectorGetLMUL;
      if ((not (funct6 in [$27])) and (not VectorCheckRegAlign(vs2,LMUL8))) or
         ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f,$27])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vmerge/vmv)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$11,$17,$18,$19,$1c,$1d,$1e,$1f]))) then begin
+        ((not Unmasked) and (vd=0) and (not (funct6 in [$11,$17,$18,$19,$1c,$1d,$1e,$1f]))) or
+        // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
+        ((funct6 in [$2c,$2d,$2e,$2f]) and ((vd=vs2) or ((LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -44376,11 +44394,15 @@ begin
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vadc/vsbc, vmerge/vmv, reductions)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31]))) then begin
+        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31]))) or
+        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
+        ((funct6 in [$32,$33,$36,$37]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
+        // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
+        ((funct6 in [$2c,$2d,$2e,$2f]) and ((vd=vs2) or ((LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -45234,7 +45256,9 @@ begin
         // vfslide1up.vf: vd must not overlap vs2
         ((funct6=$0e) and (vd=vs2)) or
         // vd must not overlap v0 when masked (except vfmv, FP compares, reductions)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f]))) then begin
+        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f]))) or
+        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
+        ((funct6 in [$30,$32,$38,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -46441,6 +46465,8 @@ begin
         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
         // vslide1up.vx: vd must not overlap vs2
         ((funct6=$0e) and (vd=vs2)) or
+        // vd must not overlap v0 when masked (except vmv.s.x)
+        ((not Unmasked) and (vd=0) and (funct6<>$10)) or
         // Widening narrow-source ops: vd group (2*LMUL) must not overlap vs2 group (LMUL)
         ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
