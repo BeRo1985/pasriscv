@@ -40792,7 +40792,12 @@ begin
       end;
 
       $10:begin
-       // vfmv.f.s
+       // vfmv.f.s — vs1 field must be 0
+       if vs1<>0 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        rd:=TRegister((aInstruction shr 7) and $1f);
        case SEW of
         $20:begin
@@ -45296,7 +45301,12 @@ begin
       end;
 
       $10:begin
-       // vfmv.s.f
+       // vfmv.s.f — vs2 field must be 0
+       if vs2<>0 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
        rs1:=TRegister((aInstruction shr 15) and $1f);
        case SEW of
         $20:begin
