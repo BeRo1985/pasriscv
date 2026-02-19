@@ -7846,9 +7846,10 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
         $7f800000, // +Infinity
         $7fc00000  // Canonical NaN
        );
+
+      // vfrsqrt7 lookup table, indexed by {exp[0],sig[MSB-:6]}, per RISC-V V-spec
       VFRsqrt7Table:array[0..127] of TPasRISCVUInt8=
        (
-        // vfrsqrt7 lookup table, indexed by {exp[0],sig[MSB-:6]}, per RISC-V V-spec
         // exp[0]=0
         $34,$33,$32,$30,$2f,$2e,$2c,$2b,$2a,$29,$28,$27,$26,$24,$23,$22,
         $21,$20,$1f,$1e,$1e,$1d,$1c,$1b,$1a,$19,$18,$17,$17,$16,$15,$14,
@@ -7860,9 +7861,10 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
         $50,$4f,$4e,$4d,$4c,$4b,$4a,$49,$48,$47,$46,$46,$45,$44,$43,$42,
         $41,$40,$3f,$3f,$3e,$3d,$3c,$3b,$3b,$3a,$39,$38,$38,$37,$36,$35
        );
+
+      // vfrec7 lookup table, indexed by sig[MSB-:7], per RISC-V V-spec
       VFRec7Table:array[0..127] of TPasRISCVUInt8=
        (
-        // vfrec7 lookup table, indexed by sig[MSB-:7], per RISC-V V-spec
         $7f,$7d,$7b,$79,$77,$75,$74,$72,$70,$6e,$6d,$6b,$69,$68,$66,$64,
         $63,$61,$60,$5e,$5d,$5b,$5a,$58,$57,$55,$54,$53,$51,$50,$4f,$4d,
         $4c,$4b,$4a,$48,$47,$46,$45,$44,$42,$41,$40,$3f,$3e,$3d,$3c,$3b,
