@@ -43863,10 +43863,17 @@ begin
 
       $27:begin
        // vmv<nr>r.v: whole register move (vm=1 required)
-       // simm5 field (vs1) encodes nr-1, vs2 is the source register
+       // simm5 field (bits [19:15]) encodes nr-1, vs2 is the source register
        if Unmasked then begin
-        VLMAX:=(vs1 and 7)+1;
-        for Index:=0 to TPasRISCVUInt32(VLMAX*VLENB)-1 do begin
+        vs1:=((aInstruction shr 15) and $1f);
+        NumFields:=(vs1 and 7)+1;
+        // NumFields must be 1, 2, 4, or 8; vd and vs2 must be aligned to NumFields
+        if (not (NumFields in [1,2,4,8])) or ((vd mod NumFields)<>0) or ((vs2 mod NumFields)<>0) then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+        for Index:=0 to TPasRISCVUInt32(NumFields*VLENB)-1 do begin
          fState.VectorRegisters[TVectorRegister((vd+(Index div VLENB)) and 31)][Index mod VLENB]:=fState.VectorRegisters[TVectorRegister((vs2+(Index div VLENB)) and 31)][Index mod VLENB];
         end;
        end else begin
