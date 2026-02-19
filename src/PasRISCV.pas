@@ -40108,11 +40108,49 @@ begin
            case SEW of
             $20:begin
              FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-             TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Round(FloatA));
+             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven32(FloatA)));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(FloatA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(Floor(FloatA)));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(Ceil(FloatA)));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)));
+              end;
+              else begin
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven32(FloatA)));
+              end;
+             end;
             end;
             $40:begin
              DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-             TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Round(DoubleA));
+             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven64(DoubleA)));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(DoubleA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(Floor(DoubleA)));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(Ceil(DoubleA)));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA)));
+              end;
+              else begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven64(DoubleA)));
+              end;
+             end;
             end;
             else begin
              SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -40127,11 +40165,49 @@ begin
            case SEW of
             $20:begin
              FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-             TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVInt32(Round(FloatA));
+             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+               TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(RoundToNearestTiesToEven32(FloatA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+               TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(FloatA);
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+               TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(Floor(FloatA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+               TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(Ceil(FloatA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+               TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA));
+              end;
+              else begin
+               TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(RoundToNearestTiesToEven32(FloatA));
+              end;
+             end;
             end;
             $40:begin
              DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-             TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Round(DoubleA);
+             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+               TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(RoundToNearestTiesToEven64(DoubleA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+               TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(DoubleA);
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+               TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(Floor(DoubleA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+               TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(Ceil(DoubleA));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+               TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA));
+              end;
+              else begin
+               TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(RoundToNearestTiesToEven64(DoubleA));
+              end;
+             end;
             end;
             else begin
              SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -40221,7 +40297,26 @@ begin
            // vfwcvt.xu.f.v
            if SEW=32 then begin
             FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Round(FloatA));
+            case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven32(FloatA)));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(FloatA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(Floor(FloatA)));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(Ceil(FloatA)));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)));
+             end;
+             else begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven32(FloatA)));
+             end;
+            end;
            end else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
             result:=4;
@@ -40233,7 +40328,26 @@ begin
            // vfwcvt.x.f.v
            if SEW=32 then begin
             FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-            TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Round(FloatA);
+            case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+              TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(RoundToNearestTiesToEven32(FloatA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+              TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(FloatA);
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+              TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(Floor(FloatA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+              TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(Ceil(FloatA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+              TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA));
+             end;
+             else begin
+              TPasRISCVInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=Trunc(RoundToNearestTiesToEven32(FloatA));
+             end;
+            end;
            end else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
             result:=4;
@@ -40313,7 +40427,26 @@ begin
            // vfncvt.xu.f.w
            if SEW=32 then begin
             DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Round(DoubleA));
+            case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven64(DoubleA)));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(DoubleA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(Floor(DoubleA)));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(Ceil(DoubleA)));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA)));
+             end;
+             else begin
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven64(DoubleA)));
+             end;
+            end;
            end else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
             result:=4;
@@ -40325,7 +40458,26 @@ begin
            // vfncvt.x.f.w
            if SEW=32 then begin
             DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-            TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=TPasRISCVInt32(Round(DoubleA));
+            case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+              TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(RoundToNearestTiesToEven64(DoubleA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+              TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(DoubleA);
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+              TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(Floor(DoubleA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+              TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(Ceil(DoubleA));
+             end;
+             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+              TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA));
+             end;
+             else begin
+              TPasRISCVInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=Trunc(RoundToNearestTiesToEven64(DoubleA));
+             end;
+            end;
            end else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
             result:=4;
