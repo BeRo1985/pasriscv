@@ -8538,39 +8538,7 @@ end;
 {$ifend}
 
 // Fused multiply-add: result = (a * b) + c with single rounding
-{$ifdef purepascal}
-function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
-var a64,b64,c64,r64:TPasRISCVDouble;
-begin
- // Perform fma via double precision: exact for single-precision inputs
- // since double has >= 2*24+1 = 49 mantissa bits (it has 53)
- a64:=aA;
- b64:=aB;
- c64:=aC;
- r64:=(a64*b64)+c64;
- result:=r64;
-end;
-
-function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
-var a80,b80,c80,r80:{$ifdef HAS_TYPE_EXTENDED}Extended{$else}TPasRISCVDouble{$endif};
-begin
-{$ifdef HAS_TYPE_EXTENDED}
- // Perform fma via extended precision (80-bit): exact for double inputs
- // if extended has >= 2*53+1 = 107 mantissa bits — x87 extended has only 64,
- // which is not enough. So this is still not perfectly fused for double, but
- // it is the best we can do without hardware FMA.
- a80:=aA;
- b80:=aB;
- c80:=aC;
- r80:=(a80*b80)+c80;
- result:=r80;
-{$else}
- // No extended type available, fall back to non-fused
- result:=(aA*aB)+aC;
-{$endif}
-end;
-{$else}
-{$if defined(cpu386)}
+{$if defined(cpu386) and not defined(purepascal)}
 function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register;
 asm
  // Use x87 extended precision for fma emulation
@@ -8594,7 +8562,7 @@ asm
  faddp st(1),st(0)
  // result in st(0)
 end;
-{$elseif defined(cpuamd64) or defined(cpux64) or defined(cpux86_64)}
+{$elseif (defined(cpuamd64) or defined(cpux64) or defined(cpux86_64)) and not defined(purepascal)}
 function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register; {$ifdef fpc}nostackframe;{$endif}
 asm
 {$ifndef fpc}
@@ -8670,6 +8638,8 @@ end;
 function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
 var a64,b64,c64,r64:TPasRISCVDouble;
 begin
+ // Perform fma via double precision: exact for single-precision inputs
+ // since double has >= 2*24+1 = 49 mantissa bits (it has 53)
  a64:=aA;
  b64:=aB;
  c64:=aC;
@@ -8681,17 +8651,21 @@ function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
 var a80,b80,c80,r80:{$ifdef HAS_TYPE_EXTENDED}Extended{$else}TPasRISCVDouble{$endif};
 begin
 {$ifdef HAS_TYPE_EXTENDED}
+ // Perform fma via extended precision (80-bit): exact for double inputs
+ // if extended has >= 2*53+1 = 107 mantissa bits — x87 extended has only 64,
+ // which is not enough. So this is still not perfectly fused for double, but
+ // it is the best we can do without hardware FMA.
  a80:=aA;
  b80:=aB;
  c80:=aC;
  r80:=(a80*b80)+c80;
  result:=r80;
 {$else}
+ // No extended type available, fall back to non-fused
  result:=(aA*aB)+aC;
 {$endif}
 end;
 {$ifend}
-{$endif}
 
 function BitwiseOrCombine(aValue:TPasRISCVUInt64):TPasRISCVUInt64; {$if defined(fpc) and defined(cpuamd64)} assembler; {$if defined(fpc)}nostackframe; {$if defined(Windows)}ms_abi_default;{$else}sysv_abi_default;{$ifend}{$ifend}
 asm
