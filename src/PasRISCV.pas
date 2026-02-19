@@ -39527,6 +39527,20 @@ begin
       result:=4;
       exit;
      end;
+     // Widening reductions: vstart must be 0, vl=0 means no-op
+     if funct6 in [$30,$31] then begin
+      if fState.CSR.fData[TCSR.TAddress.VSTART]<>0 then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      if EVL=0 then begin
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $00:begin
        // vadd.vv
@@ -40394,6 +40408,20 @@ begin
       result:=4;
       exit;
      end;
+     // FP Reductions: vstart must be 0, vl=0 means no-op
+     if funct6 in [$01,$03,$05,$07,$31,$33] then begin
+      if fState.CSR.fData[TCSR.TAddress.VSTART]<>0 then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      if EVL=0 then begin
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $00:begin
        // vfadd.vv
@@ -40877,8 +40905,8 @@ begin
       end;
 
       $10:begin
-       // vfmv.f.s — vs1 field must be 0, vm must be 1, vstart must be 0
-       if (vs1<>0) or (not Unmasked) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
+       // vfmv.f.s — vs1 field must be 0, vm must be 1
+       if (vs1<>0) or (not Unmasked) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
@@ -40911,47 +40939,55 @@ begin
            case SEW of
             $20:begin
              FloatA:=VectorGetFloat32(vs2,Index);
-             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
-               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven32(FloatA)))));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(FloatA)))));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(FloatA)))));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
-               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)))));
-              end;
-              else begin
-               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven32(FloatA)))));
+             if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
+              VectorSetElement(vd,Index,32,0);
+             end else begin
+              case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+                VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven32(FloatA)))));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+                VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+                VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(FloatA)))));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+                VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(FloatA)))));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+                VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)))));
+               end;
+               else begin
+                VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven32(FloatA)))));
+               end;
               end;
              end;
             end;
             $40:begin
              DoubleA:=VectorGetFloat64(vs2,Index);
-             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
-               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven64(DoubleA))));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(DoubleA)));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(DoubleA))));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(DoubleA))));
-              end;
-              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
-               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA))));
-              end;
-              else begin
-               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven64(DoubleA))));
+             if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
+              VectorSetElement(vd,Index,64,0);
+             end else begin
+              case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+                VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven64(DoubleA))));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+                VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(DoubleA)));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+                VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(DoubleA))));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+                VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(DoubleA))));
+               end;
+               TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+                VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA))));
+               end;
+               else begin
+                VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven64(DoubleA))));
+               end;
               end;
              end;
             end;
@@ -41059,15 +41095,23 @@ begin
           end;
 
           $06:begin
-           // vfcvt.rtz.xu.f.v
+           // vfcvt.rtz.xu.f.v (unsigned: clamp negative to 0)
            case SEW of
             $20:begin
              FloatA:=VectorGetFloat32(vs2,Index);
-             VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
+             if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
+              VectorSetElement(vd,Index,32,0);
+             end else begin
+              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
+             end;
             end;
             $40:begin
              DoubleA:=VectorGetFloat64(vs2,Index);
-             VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(DoubleA)));
+             if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
+              VectorSetElement(vd,Index,64,0);
+             end else begin
+              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(DoubleA)));
+             end;
             end;
             else begin
              SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -41100,24 +41144,28 @@ begin
            // vfwcvt.xu.f.v
            if SEW=32 then begin
             FloatA:=VectorGetFloat32(vs2,Index);
-            case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
-              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven32(FloatA))));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloatA)));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(FloatA))));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(FloatA))));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
-              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA))));
-             end;
-             else begin
-              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven32(FloatA))));
+            if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
+             VectorSetElement(vd,Index,64,0);
+            end else begin
+             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven32(FloatA))));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloatA)));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(FloatA))));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(FloatA))));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA))));
+              end;
+              else begin
+               VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToEven32(FloatA))));
+              end;
              end;
             end;
            end else begin
@@ -41206,7 +41254,11 @@ begin
            // vfwcvt.rtz.xu.f.v
            if SEW=32 then begin
             FloatA:=VectorGetFloat32(vs2,Index);
-            VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloatA)));
+            if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
+             VectorSetElement(vd,Index,64,0);
+            end else begin
+             VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloatA)));
+            end;
            end else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
             result:=4;
@@ -41230,24 +41282,28 @@ begin
            // vfncvt.xu.f.w
            if SEW=32 then begin
             DoubleA:=VectorGetFloat64(vs2,Index);
-            case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
-              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven64(DoubleA)))));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(DoubleA))));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(DoubleA)))));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(DoubleA)))));
-             end;
-             TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
-              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA)))));
-             end;
-             else begin
-              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven64(DoubleA)))));
+            if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
+             VectorSetElement(vd,Index,32,0);
+            end else begin
+             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToNearestEven):begin
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven64(DoubleA)))));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(DoubleA))));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(DoubleA)))));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(DoubleA)))));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA)))));
+              end;
+              else begin
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToEven64(DoubleA)))));
+              end;
              end;
             end;
            end else begin
@@ -41365,7 +41421,11 @@ begin
            // vfncvt.rtz.xu.f.w
            if SEW=32 then begin
             DoubleA:=VectorGetFloat64(vs2,Index);
-            VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(DoubleA))));
+            if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
+             VectorSetElement(vd,Index,32,0);
+            end else begin
+             VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(DoubleA))));
+            end;
            end else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
             result:=4;
@@ -42394,12 +42454,26 @@ begin
      end;
      if (not (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) then begin
       if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$12,$14,$17])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
          ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
          ((funct6 in [$34,$35,$36,$37]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
          ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (SEW>=64)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
+     // Reductions: vstart must be 0, vl=0 means no-op
+     if funct6 in [$00,$01,$02,$03,$04,$05,$06,$07] then begin
+      if fState.CSR.fData[TCSR.TAddress.VSTART]<>0 then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+       end;
+      if EVL=0 then begin
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
        result:=4;
        exit;
       end;
@@ -42981,7 +43055,9 @@ begin
          Address:=Address + VectorGetElement(vs2,Index,SEW);
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $01:begin
@@ -42994,7 +43070,9 @@ begin
          Address:=Address and VectorGetElement(vs2,Index,SEW);
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $02:begin
@@ -43007,7 +43085,9 @@ begin
          Address:=Address or VectorGetElement(vs2,Index,SEW);
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $03:begin
@@ -43020,7 +43100,9 @@ begin
          Address:=Address xor VectorGetElement(vs2,Index,SEW);
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $04:begin
@@ -43036,7 +43118,9 @@ begin
          end;
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $05:begin
@@ -43052,7 +43136,9 @@ begin
          end;
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $06:begin
@@ -43068,7 +43154,9 @@ begin
          end;
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $07:begin
@@ -43084,14 +43172,16 @@ begin
          end;
         end;
        end;
-       VectorSetElement(vd,0,SEW,Address);
+       if EVL>0 then begin
+        VectorSetElement(vd,0,SEW,Address);
+       end;
       end;
 
       $10:begin
        case vs1 of
         $00:begin
-         // vmv.x.s: Move vs2[0] to integer register rd — must have vm=1, vstart must be 0
-         if (not Unmasked) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
+         // vmv.x.s: Move vs2[0] to integer register rd — must have vm=1
+         if (not Unmasked) then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
@@ -43104,6 +43194,11 @@ begin
 
         $10:begin
          // vcpop.m (vpopc): Count population of mask register bits
+         if fState.CSR.fData[TCSR.TAddress.VSTART]<>0 then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          rd:=TRegister((aInstruction shr 7) and $1f);
          Address:=0;
          for Index:=0 to EVL-1 do begin
@@ -43122,6 +43217,11 @@ begin
 
         $11:begin
          // vfirst.m: Find first set mask bit, return index or -1
+         if fState.CSR.fData[TCSR.TAddress.VSTART]<>0 then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          rd:=TRegister((aInstruction shr 7) and $1f);
          Address:=TPasRISCVUInt64(TPasRISCVInt64(-1));
          for Index:=0 to EVL-1 do begin
@@ -43338,7 +43438,7 @@ begin
         $01:begin
          // vmsbf.m: Set-before-first mask bit
          // vd must not overlap vs2
-         if (vd=vs2) or ((not Unmasked) and (vd=0)) then begin
+         if (vd=vs2) or ((not Unmasked) and (vd=0)) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
@@ -43366,7 +43466,7 @@ begin
         $02:begin
          // vmsof.m: Set-only-first mask bit
          // vd must not overlap vs2
-         if (vd=vs2) or ((not Unmasked) and (vd=0)) then begin
+         if (vd=vs2) or ((not Unmasked) and (vd=0)) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
@@ -43390,7 +43490,7 @@ begin
         $03:begin
          // vmsif.m: Set-including-first mask bit
          // vd must not overlap vs2
-         if (vd=vs2) or ((not Unmasked) and (vd=0)) then begin
+         if (vd=vs2) or ((not Unmasked) and (vd=0)) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
@@ -43416,7 +43516,7 @@ begin
         $10:begin
          // viota.m: Iota (prefix sum of mask bits)
          // vd writes SEW-wide elements, needs LMUL alignment; vd must not overlap vs2 or v0 (when masked)
-         if (not VectorCheckRegAlign(vd,LMUL8)) or (vd=vs2) or ((not Unmasked) and (vd=0)) then begin
+         if (not VectorCheckRegAlign(vd,LMUL8)) or (vd=vs2) or ((not Unmasked) and (vd=0)) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
@@ -43650,9 +43750,12 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=TPasRISCVUInt64(SignExtend((aInstruction shr 15) and $1f,5));
+     if SEW<64 then begin
+      Stride:=Stride and ((TPasRISCVUInt64(1) shl SEW)-1);
+     end;
      LMUL8:=VectorGetLMUL;
-     if (not VectorCheckRegAlign(vs2,LMUL8)) or
-        ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+     if ((not (funct6 in [$27])) and (not VectorCheckRegAlign(vs2,LMUL8))) or
+        ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f,$27])) and (not VectorCheckRegAlign(vd,LMUL8))) or
         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
@@ -44028,17 +44131,22 @@ begin
 
       $27:begin
        // vmv<nr>r.v: whole register move (vm=1 required)
-       // simm5 field (bits [19:15]) encodes nr-1, vs2 is the source register
+       // simm5 field (bits [19:15]) encodes nr-1; valid values: 0,1,3,7
        if Unmasked then begin
         vs1:=((aInstruction shr 15) and $1f);
-        NumFields:=(vs1 and 7)+1;
-        // NumFields must be 1, 2, 4, or 8; vd and vs2 must be aligned to NumFields
-        if (not (NumFields in [1,2,4,8])) or ((vd mod NumFields)<>0) or ((vs2 mod NumFields)<>0) then begin
+        if not (vs1 in [0,1,3,7]) then begin
          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          result:=4;
          exit;
         end;
-        for Index:=0 to TPasRISCVUInt32(NumFields*VLENB)-1 do begin
+        NumFields:=vs1+1;
+        // vd and vs2 must be aligned to NumFields
+        if ((vd mod NumFields)<>0) or ((vs2 mod NumFields)<>0) then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+        for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) to TPasRISCVUInt32(NumFields*VLENB)-1 do begin
          fState.VectorRegisters[TVectorRegister((vd+(Index div VLENB)) and 31)][Index mod VLENB]:=fState.VectorRegisters[TVectorRegister((vs2+(Index div VLENB)) and 31)][Index mod VLENB];
         end;
        end else begin
@@ -44398,7 +44506,7 @@ begin
          exit;
         end;
        end;
-       SubIndex:=TPasRISCVUInt32(Stride);
+       SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
@@ -44422,7 +44530,7 @@ begin
         result:=4;
         exit;
        end;
-       SubIndex:=TPasRISCVUInt32(Stride);
+       SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
@@ -44436,7 +44544,7 @@ begin
 
       $0f:begin
        // vslidedown.vx
-       SubIndex:=TPasRISCVUInt32(Stride);
+       SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
@@ -45399,10 +45507,10 @@ begin
          if Index=0 then begin
           case SEW of
            $20:begin
-            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=TPasRISCVUInt32(ScalarFP);
+            VectorSetElement(vd,0,32,TPasRISCVUInt64(TPasRISCVUInt32(ScalarFP)));
            end;
            $40:begin
-            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=ScalarFP;
+            VectorSetElement(vd,0,64,ScalarFP);
            end;
            else begin
             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -45411,19 +45519,7 @@ begin
            end;
           end;
          end else begin
-          case SEW of
-           $20:begin
-            VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index-1)*4])^)));
-           end;
-           $40:begin
-            VectorSetElement(vd,Index,64,TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index-1)*8])^));
-           end;
-           else begin
-            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-            result:=4;
-            exit;
-           end;
-          end;
+          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-1,SEW));
          end;
         end;
        end;
@@ -45450,43 +45546,33 @@ begin
            end;
           end;
          end else begin
-          case SEW of
-           $20:begin
-            VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index+1)*4])^)));
-           end;
-           $40:begin
-            VectorSetElement(vd,Index,64,TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][(Index+1)*8])^));
-           end;
-           else begin
-            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-            result:=4;
-            exit;
-           end;
-          end;
+          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+1,SEW));
          end;
         end;
        end;
       end;
 
       $10:begin
-       // vfmv.s.f — vs2 field must be 0, vm must be 1, vstart must be 0
-       if (vs2<>0) or (not Unmasked) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
+       // vfmv.s.f — vs2 field must be 0, vm must be 1
+       if (vs2<>0) or (not Unmasked) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
        end;
-       rs1:=TRegister((aInstruction shr 15) and $1f);
-       case SEW of
-        $20:begin
-         TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=TPasRISCVUInt32(fState.FPURegisters[TFPURegister(ord(rs1))].ui64);
-        end;
-        $40:begin
-         TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=fState.FPURegisters[TFPURegister(ord(rs1))].ui64;
-        end;
-        else begin
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-         result:=4;
-         exit;
+       if (EVL>0) and (fState.CSR.fData[TCSR.TAddress.VSTART]<EVL) then begin
+        rs1:=TRegister((aInstruction shr 15) and $1f);
+        case SEW of
+         $20:begin
+          TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=TPasRISCVUInt32(fState.FPURegisters[TFPURegister(ord(rs1))].ui64);
+         end;
+         $40:begin
+          TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][0])^):=fState.FPURegisters[TFPURegister(ord(rs1))].ui64;
+         end;
+         else begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
         end;
        end;
       end;
@@ -46557,13 +46643,15 @@ begin
       end;
 
       $10:begin
-       // VRXUNARY0: vmv.s.x - Move scalar to element 0 — must have vm=1, vs2=0, vstart=0
-       if (not Unmasked) or (vs2<>0) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
+       // VRXUNARY0: vmv.s.x - Move scalar to element 0 — must have vm=1, vs2=0
+       if (not Unmasked) or (vs2<>0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
        end;
-       VectorSetElement(vd,0,SEW,TPasRISCVUInt64(fState.Registers[rs1]));
+       if (EVL>0) and (fState.CSR.fData[TCSR.TAddress.VSTART]<EVL) then begin
+        VectorSetElement(vd,0,SEW,TPasRISCVUInt64(fState.Registers[rs1]));
+       end;
       end;
 
       $20:begin
