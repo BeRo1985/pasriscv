@@ -6859,6 +6859,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function VectorCheckRegAlign(const aVReg:TPasRISCVUInt32;const aEMUL8:TPasRISCVInt32):Boolean;
               function VectorRoundoffShift(const aValue:TPasRISCVUInt64;const aShift:TPasRISCVUInt32):TPasRISCVUInt64;
               function VectorRoundoffShiftSigned(const aValue:TPasRISCVInt64;const aShift:TPasRISCVUInt32):TPasRISCVInt64;
+              class function VFRsqrt732(const aValue:TPasRISCVUInt32):TPasRISCVUInt32; static;
+              class function VFRsqrt764(const aValue:TPasRISCVUInt64):TPasRISCVUInt64; static;
+              function VFRec732(const aValue:TPasRISCVUInt32):TPasRISCVUInt32;
+              function VFRec764(const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure CheckTimers;
               procedure CheckInterrupts;
              public
@@ -7841,6 +7845,32 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
         $47800000, // 2^16
         $7f800000, // +Infinity
         $7fc00000  // Canonical NaN
+       );
+      VFRsqrt7Table:array[0..127] of TPasRISCVUInt8=
+       (
+        // vfrsqrt7 lookup table, indexed by {exp[0],sig[MSB-:6]}, per RISC-V V-spec
+        // exp[0]=0
+        $34,$33,$32,$30,$2f,$2e,$2c,$2b,$2a,$29,$28,$27,$26,$24,$23,$22,
+        $21,$20,$1f,$1e,$1e,$1d,$1c,$1b,$1a,$19,$18,$17,$17,$16,$15,$14,
+        $13,$13,$12,$11,$10,$10,$0f,$0e,$0e,$0d,$0c,$0c,$0b,$0a,$0a,$09,
+        $09,$08,$07,$07,$06,$06,$05,$04,$04,$03,$03,$02,$02,$01,$01,$00,
+        // exp[0]=1
+        $7f,$7d,$7b,$79,$77,$76,$74,$72,$71,$6f,$6d,$6c,$6a,$69,$67,$66,
+        $64,$63,$61,$60,$5f,$5d,$5c,$5b,$5a,$58,$57,$56,$55,$54,$53,$52,
+        $50,$4f,$4e,$4d,$4c,$4b,$4a,$49,$48,$47,$46,$46,$45,$44,$43,$42,
+        $41,$40,$3f,$3f,$3e,$3d,$3c,$3b,$3b,$3a,$39,$38,$38,$37,$36,$35
+       );
+      VFRec7Table:array[0..127] of TPasRISCVUInt8=
+       (
+        // vfrec7 lookup table, indexed by sig[MSB-:7], per RISC-V V-spec
+        $7f,$7d,$7b,$79,$77,$75,$74,$72,$70,$6e,$6d,$6b,$69,$68,$66,$64,
+        $63,$61,$60,$5e,$5d,$5b,$5a,$58,$57,$55,$54,$53,$51,$50,$4f,$4d,
+        $4c,$4b,$4a,$48,$47,$46,$45,$44,$42,$41,$40,$3f,$3e,$3d,$3c,$3b,
+        $3a,$39,$38,$37,$36,$35,$34,$33,$32,$31,$30,$2f,$2e,$2d,$2c,$2b,
+        $2a,$29,$28,$28,$27,$26,$25,$24,$23,$23,$22,$21,$20,$1f,$1f,$1e,
+        $1d,$1c,$1c,$1b,$1a,$19,$19,$18,$17,$17,$16,$15,$15,$14,$13,$13,
+        $12,$11,$11,$10,$0f,$0f,$0e,$0e,$0d,$0c,$0c,$0b,$0b,$0a,$09,$09,
+        $08,$08,$07,$07,$06,$05,$05,$04,$04,$03,$03,$02,$02,$01,$01,$00
        );
 
 {$if defined(PasRISCVCPUDebug)}
@@ -38196,6 +38226,179 @@ begin
  end;
 end;
 
+class function TPasRISCV.THART.VFRsqrt732(const aValue:TPasRISCVUInt32):TPasRISCVUInt32;
+var NormalizedExp,ShiftAmount,TableIndex:TPasRISCVInt32;
+    NormalizedSig,ResultExp,ResultSig:TPasRISCVUInt32;
+begin
+ NormalizedExp:=TPasRISCVInt32((aValue shr 23) and $ff);
+ NormalizedSig:=aValue and $007fffff;
+ if NormalizedExp=0 then begin
+  // Subnormal: normalize
+  ShiftAmount:=0;
+  while (NormalizedSig and $00400000)=0 do begin
+   NormalizedSig:=NormalizedSig shl 1;
+   inc(ShiftAmount);
+  end;
+  NormalizedExp:=1-ShiftAmount;
+  NormalizedSig:=NormalizedSig and $003fffff; // remove leading 1
+ end;
+ // Table index: exp[0] concatenated with sig[22:17] (top 6 bits of significand)
+ TableIndex:=((NormalizedExp and 1) shl 6) or ((NormalizedSig shr 17) and $3f);
+ // Output exponent: floor((3*127 - 1 - normalizedExp) / 2)
+ ResultExp:=TPasRISCVUInt32((((3*127)-1)-NormalizedExp) shr 1);
+ // Output significand: table lookup, placed in top 7 bits
+ ResultSig:=TPasRISCVUInt32(VFRsqrt7Table[TableIndex]) shl 16;
+ result:=(ResultExp shl 23) or ResultSig;
+end;
+
+class function TPasRISCV.THART.VFRsqrt764(const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+var NormalizedExp:TPasRISCVInt64;
+    NormalizedSig,ResultExp,ResultSig:TPasRISCVUInt64;
+    ShiftAmount,TableIndex:TPasRISCVInt32;
+begin
+ NormalizedExp:=TPasRISCVInt64((aValue shr 52) and $7ff);
+ NormalizedSig:=aValue and $000fffffffffffff;
+ if NormalizedExp=0 then begin
+  // Subnormal: normalize
+  ShiftAmount:=0;
+  while (NormalizedSig and $0008000000000000)=0 do begin
+   NormalizedSig:=NormalizedSig shl 1;
+   inc(ShiftAmount);
+  end;
+  NormalizedExp:=1-ShiftAmount;
+  NormalizedSig:=NormalizedSig and $0007ffffffffffff;
+ end;
+ TableIndex:=((TPasRISCVInt32(NormalizedExp) and 1) shl 6) or (TPasRISCVInt32(NormalizedSig shr 46) and $3f);
+ ResultExp:=TPasRISCVUInt64((((3*1023)-1)-NormalizedExp) shr 1);
+ ResultSig:=TPasRISCVUInt64(VFRsqrt7Table[TableIndex]) shl 45;
+ result:=(ResultExp shl 52) or ResultSig;
+end;
+
+function TPasRISCV.THART.VFRec732(const aValue:TPasRISCVUInt32):TPasRISCVUInt32;
+var NormalizedExp,NormalizedExpOut,ShiftAmount,TableIndex:TPasRISCVInt32;
+    NormalizedSig,NormalizedSigOut,ResultSig,SignBit:TPasRISCVUInt32;
+begin
+ SignBit:=aValue and $80000000;
+ NormalizedExp:=TPasRISCVInt32((aValue shr 23) and $ff);
+ NormalizedSig:=aValue and $007fffff;
+ if NormalizedExp=0 then begin
+  // Subnormal: normalize
+  ShiftAmount:=0;
+  while (NormalizedSig and $00400000)=0 do begin
+   NormalizedSig:=NormalizedSig shl 1;
+   inc(ShiftAmount);
+  end;
+  NormalizedExp:=1-ShiftAmount;
+  NormalizedSig:=NormalizedSig and $003fffff;
+ end;
+ // Normalized output exponent
+ NormalizedExpOut:=((2*127)-1)-NormalizedExp;
+ // Table index: top 7 bits of normalized significand
+ TableIndex:=(NormalizedSig shr 16) and $7f;
+ NormalizedSigOut:=TPasRISCVUInt32(VFRec7Table[TableIndex]) shl 16;
+ if (NormalizedExpOut<0) or (NormalizedExpOut>254) then begin
+  // Overflow/underflow to subnormal
+  if NormalizedExpOut<0 then begin
+   // Result is subnormal: shift significand right by (1 - normalizedExpOut)
+   // and set exponent to 0
+   ResultSig:=($00800000 or NormalizedSigOut) shr (1-NormalizedExpOut);
+   result:=SignBit or ResultSig;
+  end else begin
+   // Overflow: result depends on rounding mode
+   // For simplicity, use greatest finite value or infinity
+   case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+     // Round toward zero: greatest finite magnitude
+     result:=SignBit or $7f7fffff;
+    end;
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+     if SignBit<>0 then begin
+      result:=SignBit or $7f7fffff;
+     end else begin
+      result:=SignBit or $7f800000;
+     end;
+    end;
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+     if SignBit<>0 then begin
+      result:=SignBit or $7f800000;
+     end else begin
+      result:=SignBit or $7f7fffff;
+     end;
+    end;
+    else begin
+     // RNE, RMM: infinity
+     result:=SignBit or $7f800000;
+    end;
+   end;
+   fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NX) or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.OF);
+  end;
+ end else if NormalizedExpOut=0 then begin
+  // Subnormal result: shift right by 1
+  ResultSig:=($00800000 or NormalizedSigOut) shr 1;
+  result:=SignBit or ResultSig;
+ end else begin
+  // Normal result
+  result:=SignBit or (TPasRISCVUInt32(NormalizedExpOut) shl 23) or NormalizedSigOut;
+ end;
+end;
+
+function TPasRISCV.THART.VFRec764(const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+var NormalizedExp,NormalizedExpOut:TPasRISCVInt64;
+    NormalizedSig,NormalizedSigOut,ResultSig,SignBit:TPasRISCVUInt64;
+    ShiftAmount,TableIndex:TPasRISCVInt32;
+begin
+ SignBit:=aValue and $8000000000000000;
+ NormalizedExp:=TPasRISCVInt64((aValue shr 52) and $7ff);
+ NormalizedSig:=aValue and $000fffffffffffff;
+ if NormalizedExp=0 then begin
+  ShiftAmount:=0;
+  while (NormalizedSig and $0008000000000000)=0 do begin
+   NormalizedSig:=NormalizedSig shl 1;
+   inc(ShiftAmount);
+  end;
+  NormalizedExp:=1-ShiftAmount;
+  NormalizedSig:=NormalizedSig and $0007ffffffffffff;
+ end;
+ NormalizedExpOut:=((2*1023)-1)-NormalizedExp;
+ TableIndex:=TPasRISCVInt32((NormalizedSig shr 45) and $7f);
+ NormalizedSigOut:=TPasRISCVUInt64(VFRec7Table[TableIndex]) shl 45;
+ if (NormalizedExpOut<0) or (NormalizedExpOut>2046) then begin
+  if NormalizedExpOut<0 then begin
+   ResultSig:=($0010000000000000 or NormalizedSigOut) shr (1-NormalizedExpOut);
+   result:=SignBit or ResultSig;
+  end else begin
+   case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+     result:=SignBit or $7fefffffffffffff;
+    end;
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+     if SignBit<>0 then begin
+      result:=SignBit or $7fefffffffffffff;
+     end else begin
+      result:=SignBit or $7ff0000000000000;
+     end;
+    end;
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+     if SignBit<>0 then begin
+      result:=SignBit or $7ff0000000000000;
+     end else begin
+      result:=SignBit or $7fefffffffffffff;
+     end;
+    end;
+    else begin
+     result:=SignBit or $7ff0000000000000;
+    end;
+   end;
+   fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NX) or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.OF);
+  end;
+ end else if NormalizedExpOut=0 then begin
+  ResultSig:=($0010000000000000 or NormalizedSigOut) shr 1;
+  result:=SignBit or ResultSig;
+ end else begin
+  result:=SignBit or (TPasRISCVUInt64(NormalizedExpOut) shl 52) or NormalizedSigOut;
+ end;
+end;
+
 {$ifdef fpc}
  {$push}
  {$codealign jump=16}
@@ -40620,35 +40823,40 @@ begin
           end;
 
           $04:begin
-           // vfrsqrt7.v (7-bit approximation of 1/sqrt, per V-spec table)
+           // vfrsqrt7.v (7-bit approximation of 1/sqrt, per V-spec lookup table)
            case SEW of
             $20:begin
              SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
              // Handle special cases
              if (SourceValue and $80000000)<>0 then begin
-              // Negative (not -0): canonical NaN
+              // Negative (not -0): canonical NaN, set NV
               if (SourceValue and $7fffffff)<>0 then begin
                TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000;
+               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NV);
               end else begin
-               // -0 -> -inf
+               // -0 -> -inf, set DZ
                TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$ff800000;
+               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.DZ);
               end;
              end else if (SourceValue and $7f800000)=$7f800000 then begin
               if (SourceValue and $007fffff)<>0 then begin
                // NaN -> canonical NaN
+               if (SourceValue and $00400000)=0 then begin
+                // sNaN -> set NV
+                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NV);
+               end;
                TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000;
               end else begin
                // +inf -> +0
                TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$00000000;
               end;
              end else if (SourceValue and $7fffffff)=0 then begin
-              // +0 -> +inf
+              // +0 -> +inf, set DZ
               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7f800000;
+              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.DZ);
              end else begin
-              // Normal/subnormal positive: use exact computation (overprecise but spec-compliant behavior for emulator)
-              FloatA:=TPasRISCVFloat(pointer(@SourceValue)^);
-              FloatResult:=1.0/Sqrt(FloatA);
-              TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+              // Normal/subnormal positive: spec-conformant lookup
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=VFRsqrt732(TPasRISCVUInt32(SourceValue));
              end;
             end;
             $40:begin
@@ -40656,21 +40864,26 @@ begin
              if (OperandValue and $8000000000000000)<>0 then begin
               if (OperandValue and $7fffffffffffffff)<>0 then begin
                TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000;
+               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NV);
               end else begin
                TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$fff0000000000000;
+               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.DZ);
               end;
              end else if (OperandValue and $7ff0000000000000)=$7ff0000000000000 then begin
               if (OperandValue and $000fffffffffffff)<>0 then begin
+               if (OperandValue and $0008000000000000)=0 then begin
+                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NV);
+               end;
                TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000;
               end else begin
                TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$0000000000000000;
               end;
              end else if (OperandValue and $7fffffffffffffff)=0 then begin
               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff0000000000000;
+              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.DZ);
              end else begin
-              DoubleA:=TPasRISCVDouble(pointer(@OperandValue)^);
-              DoubleResult:=1.0/Sqrt(DoubleA);
-              TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+              // Normal/subnormal positive: spec-conformant lookup (f64)
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=VFRsqrt764(OperandValue);
              end;
             end;
             else begin
@@ -40682,41 +40895,47 @@ begin
           end;
 
           $05:begin
-           // vfrec7.v (7-bit approximation of 1/x, per V-spec table)
+           // vfrec7.v (7-bit approximation of 1/x, per V-spec lookup table)
            case SEW of
             $20:begin
              SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
              if (SourceValue and $7f800000)=$7f800000 then begin
               if (SourceValue and $007fffff)<>0 then begin
                // NaN -> canonical NaN
+               if (SourceValue and $00400000)=0 then begin
+                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NV);
+               end;
                TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000;
               end else begin
                // +/-inf -> +/-0 (preserve sign)
                TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=SourceValue and $80000000;
               end;
              end else if (SourceValue and $7fffffff)=0 then begin
-              // +/-0 -> +/-inf (preserve sign)
+              // +/-0 -> +/-inf (preserve sign), set DZ
               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $80000000) or $7f800000;
+              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.DZ);
              end else begin
-              FloatA:=TPasRISCVFloat(pointer(@SourceValue)^);
-              FloatResult:=1.0/FloatA;
-              TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+              // Normal/subnormal: spec-conformant lookup
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=VFRec732(TPasRISCVUInt32(SourceValue));
              end;
             end;
             $40:begin
              OperandValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
              if (OperandValue and $7ff0000000000000)=$7ff0000000000000 then begin
               if (OperandValue and $000fffffffffffff)<>0 then begin
+               if (OperandValue and $0008000000000000)=0 then begin
+                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.NV);
+               end;
                TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000;
               end else begin
                TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=OperandValue and $8000000000000000;
               end;
              end else if (OperandValue and $7fffffffffffffff)=0 then begin
               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(OperandValue and $8000000000000000) or $7ff0000000000000;
+              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFloatingPointExceptionFlags.DZ);
              end else begin
-              DoubleA:=TPasRISCVDouble(pointer(@OperandValue)^);
-              DoubleResult:=1.0/DoubleA;
-              TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+              // Normal/subnormal: spec-conformant lookup (f64)
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=VFRec764(OperandValue);
              end;
             end;
             else begin
