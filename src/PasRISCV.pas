@@ -40377,16 +40377,25 @@ begin
           end;
 
           $15:begin
-           // vfncvt.rod.f.f.w
+           // vfncvt.rod.f.f.w (round-to-odd)
            case SEW of
             $10:begin
              FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
              TPasRISCVHalfFloat(pointer(@OperandValue)^):=TPasRISCVHalfFloat.FromFloat(FloatA);
+             // Round-to-odd: if conversion was inexact, force LSB of result to 1
+             if TPasRISCVHalfFloat(pointer(@OperandValue)^).ToFloat<>FloatA then begin
+              OperandValue:=OperandValue or 1;
+             end;
              TPasRISCVUInt16(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*2])^):=TPasRISCVUInt16(OperandValue);
             end;
             $20:begin
              DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=DoubleA;
+             FloatResult:=DoubleA;
+             // Round-to-odd: if conversion was inexact, force LSB of mantissa to 1
+             if FloatResult<>DoubleA then begin
+              TPasRISCVUInt32(pointer(@FloatResult)^):=TPasRISCVUInt32(pointer(@FloatResult)^) or 1;
+             end;
+             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
             end;
             else begin
              SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
