@@ -38869,6 +38869,11 @@ begin
      vs2:=(aInstruction shr 20) and $1f;
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
+     if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      case funct6 of
@@ -41273,6 +41278,11 @@ begin
      vs2:=(aInstruction shr 20) and $1f;
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
+     if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      case funct6 of
@@ -42377,6 +42387,11 @@ begin
      vs2:=(aInstruction shr 20) and $1f;
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
+     if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=TPasRISCVUInt64(SignExtend((aInstruction shr 15) and $1f,5));
@@ -42887,6 +42902,11 @@ begin
      vs2:=(aInstruction shr 20) and $1f;
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
+     if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
@@ -44797,6 +44817,11 @@ begin
      vs2:=(aInstruction shr 20) and $1f;
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
+     if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
