@@ -39675,6 +39675,7 @@ begin
      SEW:=8 shl ((fState.CSR.fData[TCSR.TAddress.VTYPE] shr 3) and 7);
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      fState.CSR.SetVSDirty;
+     feclearexcept(FE_ALL_EXCEPT);
      LMUL8:=VectorGetLMUL;
      if LMUL8>8 then begin
       if ((funct6<>$10) and (not VectorCheckRegAlign(vs2,LMUL8))) or
@@ -41322,6 +41323,10 @@ begin
        exit;
       end;
      end;
+     SetFPUExceptions;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     result:=4;
+     exit;
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -43785,6 +43790,7 @@ begin
      ScalarFP:=fState.FPURegisters[TFPURegister(ord(rs1))].ui64;
      ScalarFloat:=TPasRISCVFloat(pointer(@ScalarFP)^);
      ScalarDouble:=TPasRISCVDouble(pointer(@ScalarFP)^);
+     feclearexcept(FE_ALL_EXCEPT);
      LMUL8:=VectorGetLMUL;
      if LMUL8>8 then begin
       if (not VectorCheckRegAlign(vs2,LMUL8)) or
@@ -44912,6 +44918,10 @@ begin
        exit;
       end;
      end;
+     SetFPUExceptions;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     result:=4;
+     exit;
     end;
 
     //////////////////////////////////////////////////////////////////////////////
