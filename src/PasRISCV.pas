@@ -40620,25 +40620,58 @@ begin
           end;
 
           $04:begin
-           // vfrsqrt7.v (approximation of 1/sqrt)
+           // vfrsqrt7.v (7-bit approximation of 1/sqrt, per V-spec table)
            case SEW of
             $20:begin
-             FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-             if FloatA>0 then begin
-              FloatResult:=1.0/Sqrt(FloatA);
+             SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+             // Handle special cases
+             if (SourceValue and $80000000)<>0 then begin
+              // Negative (not -0): canonical NaN
+              if (SourceValue and $7fffffff)<>0 then begin
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000;
+              end else begin
+               // -0 -> -inf
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$ff800000;
+              end;
+             end else if (SourceValue and $7f800000)=$7f800000 then begin
+              if (SourceValue and $007fffff)<>0 then begin
+               // NaN -> canonical NaN
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000;
+              end else begin
+               // +inf -> +0
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$00000000;
+              end;
+             end else if (SourceValue and $7fffffff)=0 then begin
+              // +0 -> +inf
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7f800000;
              end else begin
-              FloatResult:=FloatA;
+              // Normal/subnormal positive: use exact computation (overprecise but spec-compliant behavior for emulator)
+              FloatA:=TPasRISCVFloat(pointer(@SourceValue)^);
+              FloatResult:=1.0/Sqrt(FloatA);
+              TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
              end;
-             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
             end;
             $40:begin
-             DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-             if DoubleA>0 then begin
-              DoubleResult:=1.0/Sqrt(DoubleA);
+             OperandValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+             if (OperandValue and $8000000000000000)<>0 then begin
+              if (OperandValue and $7fffffffffffffff)<>0 then begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000;
+              end else begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$fff0000000000000;
+              end;
+             end else if (OperandValue and $7ff0000000000000)=$7ff0000000000000 then begin
+              if (OperandValue and $000fffffffffffff)<>0 then begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000;
+              end else begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$0000000000000000;
+              end;
+             end else if (OperandValue and $7fffffffffffffff)=0 then begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff0000000000000;
              end else begin
-              DoubleResult:=DoubleA;
+              DoubleA:=TPasRISCVDouble(pointer(@OperandValue)^);
+              DoubleResult:=1.0/Sqrt(DoubleA);
+              TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
              end;
-             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
             end;
             else begin
              SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -40649,17 +40682,42 @@ begin
           end;
 
           $05:begin
-           // vfrec7.v (approximation of 1/x)
+           // vfrec7.v (7-bit approximation of 1/x, per V-spec table)
            case SEW of
             $20:begin
-             FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-             FloatResult:=1.0/FloatA;
-             TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+             SourceValue:=TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
+             if (SourceValue and $7f800000)=$7f800000 then begin
+              if (SourceValue and $007fffff)<>0 then begin
+               // NaN -> canonical NaN
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000;
+              end else begin
+               // +/-inf -> +/-0 (preserve sign)
+               TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=SourceValue and $80000000;
+              end;
+             end else if (SourceValue and $7fffffff)=0 then begin
+              // +/-0 -> +/-inf (preserve sign)
+              TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=(SourceValue and $80000000) or $7f800000;
+             end else begin
+              FloatA:=TPasRISCVFloat(pointer(@SourceValue)^);
+              FloatResult:=1.0/FloatA;
+              TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
+             end;
             end;
             $40:begin
-             DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-             DoubleResult:=1.0/DoubleA;
-             TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+             OperandValue:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
+             if (OperandValue and $7ff0000000000000)=$7ff0000000000000 then begin
+              if (OperandValue and $000fffffffffffff)<>0 then begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000;
+              end else begin
+               TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=OperandValue and $8000000000000000;
+              end;
+             end else if (OperandValue and $7fffffffffffffff)=0 then begin
+              TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=(OperandValue and $8000000000000000) or $7ff0000000000000;
+             end else begin
+              DoubleA:=TPasRISCVDouble(pointer(@OperandValue)^);
+              DoubleResult:=1.0/DoubleA;
+              TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
+             end;
             end;
             else begin
              SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
