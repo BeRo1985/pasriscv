@@ -43228,6 +43228,12 @@ begin
        case vs1 of
         $01:begin
          // vmsbf.m: Set-before-first mask bit
+         // vd must not overlap vs2
+         if vd=vs2 then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          SubIndex:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -43249,6 +43255,12 @@ begin
 
         $02:begin
          // vmsof.m: Set-only-first mask bit
+         // vd must not overlap vs2
+         if vd=vs2 then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          SubIndex:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -43266,6 +43278,12 @@ begin
 
         $03:begin
          // vmsif.m: Set-including-first mask bit
+         // vd must not overlap vs2
+         if vd=vs2 then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          SubIndex:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -43285,6 +43303,12 @@ begin
 
         $10:begin
          // viota.m: Iota (prefix sum of mask bits)
+         // vd writes SEW-wide elements, needs LMUL alignment
+         if not VectorCheckRegAlign(vd,LMUL8) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          Address:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -43300,6 +43324,12 @@ begin
 
         $11:begin
          // vid.v: Vector element index
+         // vd writes SEW-wide elements, needs LMUL alignment
+         if not VectorCheckRegAlign(vd,LMUL8) then begin
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
