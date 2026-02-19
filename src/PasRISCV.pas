@@ -39826,30 +39826,36 @@ begin
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
-           if IsNaN(FloatA) then begin
+           if IsNaN(FloatA) and IsNaN(FloatB) then begin
+            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000; // canonical NaN
+           end else if IsNaN(FloatA) then begin
             FloatResult:=FloatB;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
            end else if IsNaN(FloatB) then begin
             FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
            end else if FloatA<FloatB then begin
-            FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else begin
-            FloatResult:=FloatB;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatB;
            end;
-           TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
-           if IsNaN(DoubleA) then begin
+           if IsNaN(DoubleA) and IsNaN(DoubleB) then begin
+            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000; // canonical NaN
+           end else if IsNaN(DoubleA) then begin
             DoubleResult:=DoubleB;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
            end else if IsNaN(DoubleB) then begin
             DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
            end else if DoubleA<DoubleB then begin
-            DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else begin
-            DoubleResult:=DoubleB;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleB;
            end;
-           TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -39910,30 +39916,36 @@ begin
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
            FloatB:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*4])^);
-           if IsNaN(FloatA) then begin
+           if IsNaN(FloatA) and IsNaN(FloatB) then begin
+            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000; // canonical NaN
+           end else if IsNaN(FloatA) then begin
             FloatResult:=FloatB;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
            end else if IsNaN(FloatB) then begin
             FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
            end else if FloatA>FloatB then begin
-            FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else begin
-            FloatResult:=FloatB;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatB;
            end;
-           TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
            DoubleB:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][Index*8])^);
-           if IsNaN(DoubleA) then begin
+           if IsNaN(DoubleA) and IsNaN(DoubleB) then begin
+            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000; // canonical NaN
+           end else if IsNaN(DoubleA) then begin
             DoubleResult:=DoubleB;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
            end else if IsNaN(DoubleB) then begin
             DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
            end else if DoubleA>DoubleB then begin
-            DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else begin
-            DoubleResult:=DoubleB;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleB;
            end;
-           TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -43839,29 +43851,31 @@ begin
          case SEW of
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           if IsNaN(FloatA) then begin
-            FloatResult:=ScalarFloat;
+           if IsNaN(FloatA) and IsNaN(ScalarFloat) then begin
+            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000; // canonical NaN
+           end else if IsNaN(FloatA) then begin
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
            end else if IsNaN(ScalarFloat) then begin
-            FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else if FloatA<ScalarFloat then begin
-            FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else begin
-            FloatResult:=ScalarFloat;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
            end;
-           TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           if IsNaN(DoubleA) then begin
-            DoubleResult:=ScalarDouble;
+           if IsNaN(DoubleA) and IsNaN(ScalarDouble) then begin
+            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000; // canonical NaN
+           end else if IsNaN(DoubleA) then begin
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
            end else if IsNaN(ScalarDouble) then begin
-            DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else if DoubleA<ScalarDouble then begin
-            DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else begin
-            DoubleResult:=ScalarDouble;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
            end;
-           TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -43882,29 +43896,31 @@ begin
          case SEW of
           $20:begin
            FloatA:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*4])^);
-           if IsNaN(FloatA) then begin
-            FloatResult:=ScalarFloat;
+           if IsNaN(FloatA) and IsNaN(ScalarFloat) then begin
+            TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=$7fc00000; // canonical NaN
+           end else if IsNaN(FloatA) then begin
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
            end else if IsNaN(ScalarFloat) then begin
-            FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else if FloatA>ScalarFloat then begin
-            FloatResult:=FloatA;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatA;
            end else begin
-            FloatResult:=ScalarFloat;
+            TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=ScalarFloat;
            end;
-           TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*4])^):=FloatResult;
           end;
           $40:begin
            DoubleA:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][Index*8])^);
-           if IsNaN(DoubleA) then begin
-            DoubleResult:=ScalarDouble;
+           if IsNaN(DoubleA) and IsNaN(ScalarDouble) then begin
+            TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=$7ff8000000000000; // canonical NaN
+           end else if IsNaN(DoubleA) then begin
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
            end else if IsNaN(ScalarDouble) then begin
-            DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else if DoubleA>ScalarDouble then begin
-            DoubleResult:=DoubleA;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleA;
            end else begin
-            DoubleResult:=ScalarDouble;
+            TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=ScalarDouble;
            end;
-           TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vd)][Index*8])^):=DoubleResult;
           end;
           else begin
            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
