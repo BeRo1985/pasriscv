@@ -6856,6 +6856,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function VectorGetElement(const aVReg:TPasRISCVUInt32;const aIndex,aSEW:TPasRISCVUInt32):TPasRISCVUInt64;
               procedure VectorSetElement(const aVReg:TPasRISCVUInt32;const aIndex,aSEW:TPasRISCVUInt32;const aValue:TPasRISCVUInt64);
               function VectorGetMaskBit(const aIndex:TPasRISCVUInt32):Boolean;
+              function VectorCheckRegAlign(const aVReg:TPasRISCVUInt32;const aEMUL8:TPasRISCVInt32):Boolean;
               function VectorRoundoffShift(const aValue:TPasRISCVUInt64;const aShift:TPasRISCVUInt32):TPasRISCVUInt64;
               function VectorRoundoffShiftSigned(const aValue:TPasRISCVInt64;const aShift:TPasRISCVUInt32):TPasRISCVInt64;
               procedure CheckTimers;
@@ -38106,6 +38107,15 @@ begin
  result:=(fState.VectorRegisters[TVectorRegister.v0][aIndex shr 3] shr (aIndex and 7)) and 1<>0;
 end;
 
+function TPasRISCV.THART.VectorCheckRegAlign(const aVReg:TPasRISCVUInt32;const aEMUL8:TPasRISCVInt32):Boolean;
+begin
+ if aEMUL8<=8 then begin
+  result:=true;
+ end else begin
+  result:=(aVReg and (TPasRISCVUInt32(aEMUL8 shr 3)-1))=0;
+ end;
+end;
+
 function TPasRISCV.THART.VectorRoundoffShift(const aValue:TPasRISCVUInt64;const aShift:TPasRISCVUInt32):TPasRISCVUInt64;
 var RoundBit:TPasRISCVUInt64;
 begin
@@ -38876,6 +38886,18 @@ begin
      end;
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>8 then begin
+      if (not VectorCheckRegAlign(vs2,LMUL8)) or
+         ((not (funct6 in [$30,$31])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $00:begin
        // vadd.vv
@@ -39653,6 +39675,18 @@ begin
      SEW:=8 shl ((fState.CSR.fData[TCSR.TAddress.VTYPE] shr 3) and 7);
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      fState.CSR.SetVSDirty;
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>8 then begin
+      if ((funct6<>$10) and (not VectorCheckRegAlign(vs2,LMUL8))) or
+         ((not (funct6 in [$01,$03,$05,$07,$10,$31,$33])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+         ((not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+         ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $00:begin
        // vfadd.vv
@@ -41285,6 +41319,20 @@ begin
      end;
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>8 then begin
+      if (not (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) then begin
+       if (not VectorCheckRegAlign(vs2,LMUL8)) or
+          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$12,$14,$17])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+          ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+          ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+      end;
+     end;
      case funct6 of
       $08:begin
        // vaaddu.vv: averaging add unsigned, rounding per vxrm
@@ -42395,6 +42443,17 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=TPasRISCVUInt64(SignExtend((aInstruction shr 15) and $1f,5));
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>8 then begin
+      if (not VectorCheckRegAlign(vs2,LMUL8)) or
+         ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $00:begin
        // vadd.vi
@@ -42910,6 +42969,17 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>8 then begin
+      if (not VectorCheckRegAlign(vs2,LMUL8)) or
+         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+         ((funct6=$35) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $00:begin
        // vadd.vx
@@ -43694,6 +43764,17 @@ begin
      ScalarFP:=fState.FPURegisters[TFPURegister(ord(rs1))].ui64;
      ScalarFloat:=TPasRISCVFloat(pointer(@ScalarFP)^);
      ScalarDouble:=TPasRISCVDouble(pointer(@ScalarFP)^);
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>8 then begin
+      if (not VectorCheckRegAlign(vs2,LMUL8)) or
+         ((not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
+         ((funct6 in [$30,$32,$34,$36,$38,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+         ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $00:begin
        // vfadd.vf
@@ -44825,6 +44906,17 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      Stride:=fState.Registers[rs1];
+     LMUL8:=VectorGetLMUL;
+     if LMUL8>8 then begin
+      if (not VectorCheckRegAlign(vs2,LMUL8)) or
+         ((funct6<>$10) and (not VectorCheckRegAlign(vd,LMUL8))) or
+         ((funct6 in [$28,$29,$2a,$2b,$2c,$2d,$2e,$2f,$30,$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
+         ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case funct6 of
       $08:begin
        // vaaddu.vx: averaging add unsigned, rounding per vxrm
