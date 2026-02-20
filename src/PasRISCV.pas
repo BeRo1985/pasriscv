@@ -7957,6 +7957,19 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
         $18,$f0,$7d,$ec,$3a,$dc,$4d,$20,$79,$ee,$5f,$3e,$d7,$cb,$39,$48
        );
 
+      // SM4 CK constants (Zvksed - vsm4k.vi key expansion)
+      SM4CK:array[0..31] of TPasRISCVUInt32=
+       (
+        $00070e15,$1c232a31,$383f464d,$545b6269,
+        $70777e85,$8c939aa1,$a8afb6bd,$c4cbd2d9,
+        $e0e7eef5,$fc030a11,$181f262d,$343b4249,
+        $50575e65,$6c737a81,$888f969d,$a4abb2b9,
+        $c0c7ced5,$dce3eaf1,$f8ff060d,$141b2229,
+        $30373e45,$4c535a61,$686f767d,$848b9299,
+        $a0a7aeb5,$bcc3cad1,$d8dfe6ed,$f4fb0209,
+        $10171e25,$2c333a41,$484f565d,$646b7279
+       );
+
 {$if defined(PasRISCVCPUDebug)}
 var IgnoreInterrupts:boolean=false;
     DumpDebug:boolean=false;
@@ -9365,6 +9378,320 @@ end;
 function SHA512Maj(x,y,z:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
  result:=(x and y) xor (x and z) xor (y and z);
+end;
+
+////////////////////////////////////////////////////////////////////////////////
+// Vector Crypto element-group helper procedures                              //
+////////////////////////////////////////////////////////////////////////////////
+
+// AES round operation for one element group (4 x 32-bit words)
+// aMode: 0=vaesdm (decrypt middle), 1=vaesdf (decrypt final),
+//        2=vaesem (encrypt middle), 3=vaesef (encrypt final)
+procedure VecCryptoAESRound(const aS0,aS1,aS2,aS3:TPasRISCVUInt32;
+                            const k0,k1,k2,k3:TPasRISCVUInt32;
+                            const aMode:TPasRISCVUInt32;
+                            out r0,r1,r2,r3:TPasRISCVUInt64);
+var s0,s1,s2,s3:TPasRISCVUInt32;
+begin
+ s0:=aS0; s1:=aS1; s2:=aS2; s3:=aS3;
+ case aMode of
+  0:begin
+   // vaesdm: InvShiftRows, InvSubBytes, AddRoundKey, InvMixColumns
+   VecAESShiftRowsInv(s0,s1,s2,s3);
+   s0:=VecAESSubByteInv(s0);
+   s1:=VecAESSubByteInv(s1);
+   s2:=VecAESSubByteInv(s2);
+   s3:=VecAESSubByteInv(s3);
+   s0:=s0 xor k0;
+   s1:=s1 xor k1;
+   s2:=s2 xor k2;
+   s3:=s3 xor k3;
+   s0:=VecAESMixColInv(s0);
+   s1:=VecAESMixColInv(s1);
+   s2:=VecAESMixColInv(s2);
+   s3:=VecAESMixColInv(s3);
+  end;
+  1:begin
+   // vaesdf: InvShiftRows, InvSubBytes, AddRoundKey (no InvMixColumns)
+   VecAESShiftRowsInv(s0,s1,s2,s3);
+   s0:=VecAESSubByteInv(s0);
+   s1:=VecAESSubByteInv(s1);
+   s2:=VecAESSubByteInv(s2);
+   s3:=VecAESSubByteInv(s3);
+   s0:=s0 xor k0;
+   s1:=s1 xor k1;
+   s2:=s2 xor k2;
+   s3:=s3 xor k3;
+  end;
+  2:begin
+   // vaesem: SubBytes, ShiftRows, MixColumns, AddRoundKey
+   s0:=VecAESSubByteFwd(s0);
+   s1:=VecAESSubByteFwd(s1);
+   s2:=VecAESSubByteFwd(s2);
+   s3:=VecAESSubByteFwd(s3);
+   VecAESShiftRowsFwd(s0,s1,s2,s3);
+   s0:=VecAESMixColFwd(s0);
+   s1:=VecAESMixColFwd(s1);
+   s2:=VecAESMixColFwd(s2);
+   s3:=VecAESMixColFwd(s3);
+   s0:=s0 xor k0;
+   s1:=s1 xor k1;
+   s2:=s2 xor k2;
+   s3:=s3 xor k3;
+  end;
+  else begin
+   // vaesef: SubBytes, ShiftRows, AddRoundKey (no MixColumns)
+   s0:=VecAESSubByteFwd(s0);
+   s1:=VecAESSubByteFwd(s1);
+   s2:=VecAESSubByteFwd(s2);
+   s3:=VecAESSubByteFwd(s3);
+   VecAESShiftRowsFwd(s0,s1,s2,s3);
+   s0:=s0 xor k0;
+   s1:=s1 xor k1;
+   s2:=s2 xor k2;
+   s3:=s3 xor k3;
+  end;
+ end;
+ r0:=s0; r1:=s1; r2:=s2; r3:=s3;
+end;
+
+// SM4 encryption/decryption: 4 rounds per element group
+procedure VecCryptoSM4Rounds(const aX0,aX1,aX2,aX3:TPasRISCVUInt32;
+                             const rk0,rk1,rk2,rk3:TPasRISCVUInt32;
+                             out r0,r1,r2,r3:TPasRISCVUInt64);
+var b,x0,x1,x2,x3:TPasRISCVUInt32;
+begin
+ x0:=aX0; x1:=aX1; x2:=aX2; x3:=aX3;
+ b:=x1 xor x2 xor x3 xor rk0;
+ x0:=x0 xor SM4LinearL(SM4SubWord32(b));
+ b:=x0 xor x2 xor x3 xor rk1;
+ x1:=x1 xor SM4LinearL(SM4SubWord32(b));
+ b:=x0 xor x1 xor x3 xor rk2;
+ x2:=x2 xor SM4LinearL(SM4SubWord32(b));
+ b:=x0 xor x1 xor x2 xor rk3;
+ x3:=x3 xor SM4LinearL(SM4SubWord32(b));
+ r0:=x0; r1:=x1; r2:=x2; r3:=x3;
+end;
+
+// GHASH multiply: Y = brev8(vd), H = brev8(vs2), Z = gfmul(Y, H), result = brev8(Z)
+procedure VecCryptoGHASHMul(const aY0,aY1,aY2,aY3:TPasRISCVUInt32;
+                            const h0,h1,h2,h3:TPasRISCVUInt32;
+                            out r0,r1,r2,r3:TPasRISCVUInt64);
+var y0,y1,y2,y3,t0,t1,t2,t3:TPasRISCVUInt32;
+begin
+ // brev8 on Y (vd)
+ y0:=Brev8_32(aY0);
+ y1:=Brev8_32(y1);
+ y2:=Brev8_32(y2);
+ y3:=Brev8_32(y3);
+ // brev8 on H (vs2)
+ t0:=Brev8_32(h0);
+ t1:=Brev8_32(h1);
+ t2:=Brev8_32(h2);
+ t3:=Brev8_32(h3);
+ // Z = Y * H mod p(x)
+ GF128Mul(y0,y1,y2,y3,t0,t1,t2,t3);
+ // brev8 result
+ r0:=Brev8_32(y0);
+ r1:=Brev8_32(y1);
+ r2:=Brev8_32(y2);
+ r3:=Brev8_32(y3);
+end;
+
+// GHASH hash: Y=brev8(vd), X=brev8(vs1), H=brev8(vs2), Z=gfmul(Y xor X, H), result=brev8(Z)
+procedure VecCryptoGHSH(const aY0,aY1,aY2,aY3:TPasRISCVUInt32;
+                        const x0,x1,x2,x3:TPasRISCVUInt32;
+                        const h0,h1,h2,h3:TPasRISCVUInt32;
+                        out r0,r1,r2,r3:TPasRISCVUInt64);
+var y0,y1,y2,y3,t0,t1,t2,t3:TPasRISCVUInt32;
+begin
+ // brev8 on Y (vd) and X (vs1)
+ y0:=Brev8_32(aY0) xor Brev8_32(x0);
+ y1:=Brev8_32(aY1) xor Brev8_32(x1);
+ y2:=Brev8_32(aY2) xor Brev8_32(x2);
+ y3:=Brev8_32(aY3) xor Brev8_32(x3);
+ // brev8 on H (vs2)
+ t0:=Brev8_32(h0);
+ t1:=Brev8_32(h1);
+ t2:=Brev8_32(h2);
+ t3:=Brev8_32(h3);
+ // Z = (Y xor X) * H mod p(x)
+ GF128Mul(y0,y1,y2,y3,t0,t1,t2,t3);
+ // brev8 result
+ r0:=Brev8_32(y0);
+ r1:=Brev8_32(y1);
+ r2:=Brev8_32(y2);
+ r3:=Brev8_32(y3);
+end;
+
+// AES-256 key schedule for one element group
+procedure VecCryptoAESKF2(const ck0,ck1,ck2,ck3:TPasRISCVUInt32;
+                          const pk0,pk1,pk2,pk3:TPasRISCVUInt32;
+                          aRnd:TPasRISCVUInt32;
+                          out r0,r1,r2,r3:TPasRISCVUInt64);
+begin
+ if (aRnd<2) or (aRnd>14) then begin
+  aRnd:=aRnd xor 8;
+ end;
+ if (aRnd and 1)=0 then begin
+  // Even round: RotWord + SubWord + Rcon
+  r0:=VecAESSubByteFwd(ROLDWord(ck3,8)) xor AESRoundConstants[(aRnd shr 1)-1] xor pk0;
+ end else begin
+  // Odd round: SubWord only (no RotWord, no Rcon)
+  r0:=VecAESSubByteFwd(ck3) xor pk0;
+ end;
+ r1:=r0 xor pk1;
+ r2:=r1 xor pk2;
+ r3:=r2 xor pk3;
+end;
+
+// SHA-256 compression: 2 rounds
+procedure VecCryptoSHA256Compress(const a,b,e,f:TPasRISCVUInt32;
+                                 const c,d,g,h:TPasRISCVUInt32;
+                                 const f1,f2:TPasRISCVUInt32;
+                                 out oa,ob,oe,of_:TPasRISCVUInt64);
+var la,lb,lc,ld,le,lf,lg,lh:TPasRISCVUInt32;
+    T1,T2:TPasRISCVUInt32;
+begin
+ la:=a; lb:=b; lc:=c; ld:=d;
+ le:=e; lf:=f; lg:=g; lh:=h;
+ // Round 1
+ T1:=lh+SHA256Sum1(le)+SHA256Ch(le,lf,lg)+f1;
+ T2:=SHA256Sum0(la)+SHA256Maj(la,lb,lc);
+ lh:=lg; lg:=lf; lf:=le; le:=ld+T1;
+ ld:=lc; lc:=lb; lb:=la; la:=T1+T2;
+ // Round 2
+ T1:=lh+SHA256Sum1(le)+SHA256Ch(le,lf,lg)+f2;
+ T2:=SHA256Sum0(la)+SHA256Maj(la,lb,lc);
+ lh:=lg; lg:=lf; lf:=le; le:=ld+T1;
+ ld:=lc; lc:=lb; lb:=la; la:=T1+T2;
+ // Output: {a, b, e, f}
+ oa:=la; ob:=lb; oe:=le; of_:=lf;
+end;
+
+// SHA-512 compression: 2 rounds
+procedure VecCryptoSHA512Compress(const a,b,e,f:TPasRISCVUInt64;
+                                 const c,d,g,h:TPasRISCVUInt64;
+                                 const f1,f2:TPasRISCVUInt64;
+                                 out oa,ob,oe,of_:TPasRISCVUInt64);
+var la,lb,lc,ld,le,lf,lg,lh:TPasRISCVUInt64;
+    T1,T2:TPasRISCVUInt64;
+begin
+ la:=a; lb:=b; lc:=c; ld:=d;
+ le:=e; lf:=f; lg:=g; lh:=h;
+ // Round 1
+ T1:=lh+SHA512Sum1(le)+SHA512Ch(le,lf,lg)+f1;
+ T2:=SHA512Sum0(la)+SHA512Maj(la,lb,lc);
+ lh:=lg; lg:=lf; lf:=le; le:=ld+T1;
+ ld:=lc; lc:=lb; lb:=la; la:=T1+T2;
+ // Round 2
+ T1:=lh+SHA512Sum1(le)+SHA512Ch(le,lf,lg)+f2;
+ T2:=SHA512Sum0(la)+SHA512Maj(la,lb,lc);
+ lh:=lg; lg:=lf; lf:=le; le:=ld+T1;
+ ld:=lc; lc:=lb; lb:=la; la:=T1+T2;
+ // Output: {a, b, e, f}
+ oa:=la; ob:=lb; oe:=le; of_:=lf;
+end;
+
+// SM3 compression: 2 rounds per vsm3c.vi invocation
+// aH0..aH7 = state from vd (element order: aH0=elem0..aH7=elem7)
+// w0,w1 = message words from vs2
+// rH0..rH7 = output state
+procedure VecCryptoSM3Compress(const aH0,aH1,aH2,aH3,aH4,aH5,aH6,aH7:TPasRISCVUInt32;
+                               const w0,w1:TPasRISCVUInt32;
+                               const aRnd:TPasRISCVUInt32;
+                               out rH0,rH1,rH2,rH3,rH4,rH5,rH6,rH7:TPasRISCVUInt64);
+var j:TPasRISCVUInt32;
+    A_,B_,C_,D_,E_,F_,G_,H_:TPasRISCVUInt32;
+    SS1,SS2,TT1,TT2,W_:TPasRISCVUInt32;
+begin
+ // H[7]=A, H[6]=B, H[5]=C, H[4]=D, H[3]=E, H[2]=F, H[1]=G, H[0]=H (reversed element order)
+ A_:=ByteSwap32(aH7); B_:=ByteSwap32(aH6); C_:=ByteSwap32(aH5); D_:=ByteSwap32(aH4);
+ E_:=ByteSwap32(aH3); F_:=ByteSwap32(aH2); G_:=ByteSwap32(aH1); H_:=ByteSwap32(aH0);
+ // 2 rounds
+ for j:=0 to 1 do begin
+  if j=0 then begin
+   W_:=ByteSwap32(w0);
+  end else begin
+   W_:=ByteSwap32(w1);
+  end;
+  SS1:=ROLDWord(ROLDWord(A_,12)+E_+ROLDWord(SM3T(aRnd*2+j),aRnd*2+j),7);
+  SS2:=SS1 xor ROLDWord(A_,12);
+  TT1:=SM3FF(A_,B_,C_,aRnd*2+j)+D_+SS2+(W_ xor SM3P1(W_));
+  TT2:=SM3GG(E_,F_,G_,aRnd*2+j)+H_+SS1+W_;
+  D_:=C_; C_:=ROLDWord(B_,9); B_:=A_; A_:=TT1;
+  H_:=G_; G_:=ROLDWord(F_,19); F_:=E_; E_:=SM3P0(TT2);
+ end;
+ // Write back (byte-swap)
+ rH7:=ByteSwap32(A_); rH6:=ByteSwap32(B_); rH5:=ByteSwap32(C_); rH4:=ByteSwap32(D_);
+ rH3:=ByteSwap32(E_); rH2:=ByteSwap32(F_); rH1:=ByteSwap32(G_); rH0:=ByteSwap32(H_);
+end;
+
+// SM3 message expansion for one element group (vsm3me.vv)
+// a0..a7 = W[0..7] from vs1, b0..b7 = W[8..15] from vs2 (byte-swapped in/out)
+procedure VecCryptoSM3ME(const a0,a1,a2,a3,a4,a5,a6,a7:TPasRISCVUInt32;
+                         const b0,b1,b2,b3,b4,b5,b6,b7:TPasRISCVUInt32;
+                         out r0,r1,r2,r3,r4,r5,r6,r7:TPasRISCVUInt64);
+var W:array[0..23] of TPasRISCVUInt32;
+    i:TPasRISCVInt32;
+begin
+ W[0]:=ByteSwap32(a0); W[1]:=ByteSwap32(a1); W[2]:=ByteSwap32(a2); W[3]:=ByteSwap32(a3);
+ W[4]:=ByteSwap32(a4); W[5]:=ByteSwap32(a5); W[6]:=ByteSwap32(a6); W[7]:=ByteSwap32(a7);
+ W[8]:=ByteSwap32(b0); W[9]:=ByteSwap32(b1); W[10]:=ByteSwap32(b2); W[11]:=ByteSwap32(b3);
+ W[12]:=ByteSwap32(b4); W[13]:=ByteSwap32(b5); W[14]:=ByteSwap32(b6); W[15]:=ByteSwap32(b7);
+ for i:=16 to 23 do begin
+  W[i]:=SM3P1(W[i-16] xor W[i-9] xor ROLDWord(W[i-3],15))
+        xor ROLDWord(W[i-13],7) xor W[i-6];
+ end;
+ r0:=ByteSwap32(W[16]); r1:=ByteSwap32(W[17]); r2:=ByteSwap32(W[18]); r3:=ByteSwap32(W[19]);
+ r4:=ByteSwap32(W[20]); r5:=ByteSwap32(W[21]); r6:=ByteSwap32(W[22]); r7:=ByteSwap32(W[23]);
+end;
+
+// SM4 key expansion for one element group (vsm4k.vi)
+procedure VecCryptoSM4KeyExp(const k0,k1,k2,k3:TPasRISCVUInt32;
+                             const aRndGroup:TPasRISCVUInt32;
+                             out r0,r1,r2,r3:TPasRISCVUInt64);
+var b,lk0,lk1,lk2,lk3:TPasRISCVUInt32;
+    lr0,lr1,lr2,lr3:TPasRISCVUInt32;
+begin
+ lk0:=k0; lk1:=k1; lk2:=k2; lk3:=k3;
+ b:=lk1 xor lk2 xor lk3 xor SM4CK[aRndGroup*4+0];
+ lr0:=lk0 xor SM4LinearLPrime(SM4SubWord32(b));
+ b:=lr0 xor lk2 xor lk3 xor SM4CK[aRndGroup*4+1];
+ lr1:=lk1 xor SM4LinearLPrime(SM4SubWord32(b));
+ b:=lr0 xor lr1 xor lk3 xor SM4CK[aRndGroup*4+2];
+ lr2:=lk2 xor SM4LinearLPrime(SM4SubWord32(b));
+ b:=lr0 xor lr1 xor lr2 xor SM4CK[aRndGroup*4+3];
+ lr3:=lk3 xor SM4LinearLPrime(SM4SubWord32(b));
+ r0:=lr0; r1:=lr1; r2:=lr2; r3:=lr3;
+end;
+
+// AES-128 key schedule for one element group (vaeskf1.vi)
+procedure VecCryptoAESKF1(const ck0,ck1,ck2,ck3:TPasRISCVUInt32;
+                          const aRnd:TPasRISCVUInt32;
+                          out r0,r1,r2,r3:TPasRISCVUInt64);
+var lr0,lr1,lr2,lr3:TPasRISCVUInt32;
+begin
+ lr0:=VecAESSubByteFwd(ROLDWord(ck3,8)) xor AESRoundConstants[aRnd-1] xor ck0;
+ lr1:=lr0 xor ck1;
+ lr2:=lr1 xor ck2;
+ lr3:=lr2 xor ck3;
+ r0:=lr0; r1:=lr1; r2:=lr2; r3:=lr3;
+end;
+
+// SHA-256 message schedule for one element group (vsha2ms.vv with SEW=32)
+procedure VecCryptoSHA256MsgSched(const w0,w1,w2,w3:TPasRISCVUInt32;     // vd
+                                  const w4,w9,w10,w11:TPasRISCVUInt32;   // vs2
+                                  const w12,w13,w14,w15:TPasRISCVUInt32; // vs1
+                                  out r0,r1,r2,r3:TPasRISCVUInt64);
+var w16,w17:TPasRISCVUInt32;
+begin
+ w16:=SHA256sig1(w14)+w9+SHA256sig0(w1)+w0;
+ w17:=SHA256sig1(w15)+w10+SHA256sig0(w2)+w1;
+ r0:=w16;
+ r1:=w17;
+ r2:=SHA256sig1(w16)+w11+SHA256sig0(w3)+w2;
+ r3:=SHA256sig1(w17)+w12+SHA256sig0(w4)+w3;
 end;
 
 function RoundDownToPowerOfTwo(x:TPasRISCVUInt32):TPasRISCVUInt32;
@@ -17550,6 +17877,39 @@ begin
  AddInstruction32('vasub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c002057));
  AddInstruction32('vclmul.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($30002057));
  AddInstruction32('vclmulh.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($34002057));
+
+ // Zvkg - GHASH (must come before less-specific base-V entries)
+ AddInstruction32('vghsh.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($b2002057));
+ AddInstruction32('vgmul.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a208a057));
+
+ // Zvkned - AES .vv (unary, fixed vs1 sub-opcode, vm=1)
+ AddInstruction32('vaesdm.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2002057));
+ AddInstruction32('vaesdf.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a200a057));
+ AddInstruction32('vaesem.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2012057));
+ AddInstruction32('vaesef.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a201a057));
+ // Zvkned - AES .vs (unary, fixed vs1 sub-opcode, vm=1)
+ AddInstruction32('vaesdm.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6002057));
+ AddInstruction32('vaesdf.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a600a057));
+ AddInstruction32('vaesem.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6012057));
+ AddInstruction32('vaesef.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a601a057));
+ // Zvkned - AES key schedule .vi (vm=1, uimm5 in vs1 field)
+ AddInstruction32('vaeskf1.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($8a002057));
+ AddInstruction32('vaeskf2.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($aa002057));
+
+ // Zvknha/b - SHA-2 (vm=1)
+ AddInstruction32('vsha2ms.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($b6002057));
+ AddInstruction32('vsha2ch.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($ba002057));
+ AddInstruction32('vsha2cl.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($be002057));
+
+ // Zvksed - SM4 (vm=1)
+ AddInstruction32('vsm4k.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($86002057));
+ AddInstruction32('vsm4r.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2082057));
+ AddInstruction32('vsm4r.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6082057));
+
+ // Zvksh - SM3 (vm=1)
+ AddInstruction32('vsm3me.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($82002057));
+ AddInstruction32('vsm3c.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($ae002057));
+
  AddInstruction32('vwaddu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c0002057));
  AddInstruction32('vwadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c4002057));
  AddInstruction32('vwsubu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c8002057));
@@ -43091,7 +43451,7 @@ begin
      end;
      if (not (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) then begin
       if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
+         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17,$28,$29,$2a,$2b])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
          ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
          ((funct6 in [$34,$35,$36,$37]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
@@ -43377,85 +43737,156 @@ begin
       end;
 
       $20:begin
-       // vdivu.vv
-       for Index:=0 to EVL-1 do begin
-        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-        end else begin
-         SourceValue:=VectorGetElement(vs2,Index,SEW);
-         OperandValue:=VectorGetElement(vs1,Index,SEW);
-         if OperandValue=0 then begin
-          case SEW of
-           $08:begin
-            Address:=$ff;
-           end;
-           $10:begin
-            Address:=$ffff;
-           end;
-           $20:begin
-            Address:=$ffffffff;
-           end;
-           else begin
-            Address:=TPasRISCVUInt64($ffffffffffffffff);
-           end;
-          end;
-         end else begin
-          Address:=SourceValue div OperandValue;
+       if Unmasked and (SEW=32) then begin
+        // vsm3me.vv (Zvksh) - SM3 message expansion, EGS=8, EGW=256
+        for Index:=0 to (EVL div 8)-1 do begin
+         SubIndex:=Index*8;
+         VecCryptoSM3ME(
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+4,32)),
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+5,32)),
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+6,32)),
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+7,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+4,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+5,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+6,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+7,32)),
+          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+          SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+         for OperandValue:=0 to 7 do begin
+          VectorSetElement(vd,SubIndex+OperandValue,32,SegmentBuffer[OperandValue]);
          end;
-         VectorSetElement(vd,Index,SEW,Address);
         end;
-       end;
+       end else begin
+         // vdivu.vv
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else begin
+          SourceValue:=VectorGetElement(vs2,Index,SEW);
+          OperandValue:=VectorGetElement(vs1,Index,SEW);
+          if OperandValue=0 then begin
+           case SEW of
+            $08:begin
+             Address:=$ff;
+            end;
+            $10:begin
+             Address:=$ffff;
+            end;
+            $20:begin
+             Address:=$ffffffff;
+            end;
+            else begin
+             Address:=TPasRISCVUInt64($ffffffffffffffff);
+            end;
+           end;
+          end else begin
+           Address:=SourceValue div OperandValue;
+          end;
+          VectorSetElement(vd,Index,SEW,Address);
+         end;
+        end;
+       end; // end if Unmasked/vsm3me else vdivu
       end;
 
       $21:begin
-       // vdiv.vv
-       for Index:=0 to EVL-1 do begin
-        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-        end else begin
-         SourceValue:=VectorGetElement(vs2,Index,SEW);
-         OperandValue:=VectorGetElement(vs1,Index,SEW);
-         if OperandValue=0 then begin
-          case SEW of
-           $08:begin
-            Address:=$ff;
-           end;
-           $10:begin
-            Address:=$ffff;
-           end;
-           $20:begin
-            Address:=$ffffffff;
-           end;
-           else begin
-            Address:=TPasRISCVUInt64($ffffffffffffffff);
-           end;
-          end;
-         end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(OperandValue)=-1) then begin
-          Address:=SourceValue;
-         end else begin
-          Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(OperandValue,SEW));
-         end;
-         VectorSetElement(vd,Index,SEW,Address);
+       if Unmasked and (SEW=32) then begin
+        // vsm4k.vi (Zvksed) - SM4 key expansion, EGS=4, EGW=128
+        SourceValue:=vs1 and 7; // round group
+        for Index:=0 to (EVL div 4)-1 do begin
+         SubIndex:=Index*4;
+         VecCryptoSM4KeyExp(
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+          TPasRISCVUInt32(SourceValue),
+          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
         end;
-       end;
+       end else begin
+        // vdiv.vv
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else begin
+          SourceValue:=VectorGetElement(vs2,Index,SEW);
+          OperandValue:=VectorGetElement(vs1,Index,SEW);
+          if OperandValue=0 then begin
+           case SEW of
+            $08:begin
+             Address:=$ff;
+            end;
+            $10:begin
+             Address:=$ffff;
+            end;
+            $20:begin
+             Address:=$ffffffff;
+            end;
+            else begin
+             Address:=TPasRISCVUInt64($ffffffffffffffff);
+            end;
+           end;
+          end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(OperandValue)=-1) then begin
+           Address:=SourceValue;
+          end else begin
+           Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(OperandValue,SEW));
+          end;
+          VectorSetElement(vd,Index,SEW,Address);
+         end;
+        end;
+       end; // end if Unmasked/vsm4k else vdiv
       end;
 
       $22:begin
-       // vremu.vv
-       for Index:=0 to EVL-1 do begin
-        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-        end else begin
-         SourceValue:=VectorGetElement(vs2,Index,SEW);
-         OperandValue:=VectorGetElement(vs1,Index,SEW);
-         if OperandValue=0 then begin
-          Address:=SourceValue;
-         end else begin
-          Address:=SourceValue mod OperandValue;
-         end;
-         VectorSetElement(vd,Index,SEW,Address);
+       if Unmasked and (SEW=32) then begin
+        // vaeskf1.vi (Zvkned) - AES-128 key schedule, EGS=4, EGW=128
+        // vs1 field = uimm5 (round number, use bits[3:0] = 1..10)
+        SourceValue:=vs1 and $f;
+        if (SourceValue=0) or (SourceValue>10) then begin
+         SourceValue:=SourceValue xor 8;
         end;
-       end;
+        for Index:=0 to (EVL div 4)-1 do begin
+         SubIndex:=Index*4;
+         VecCryptoAESKF1(
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+          TPasRISCVUInt32(SourceValue),
+          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+        end;
+       end else begin
+        // vremu.vv
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else begin
+          SourceValue:=VectorGetElement(vs2,Index,SEW);
+          OperandValue:=VectorGetElement(vs1,Index,SEW);
+          if OperandValue=0 then begin
+           Address:=SourceValue;
+          end else begin
+           Address:=SourceValue mod OperandValue;
+          end;
+          VectorSetElement(vd,Index,SEW,Address);
+         end;
+        end;
+       end; // end if Unmasked/vaeskf1 else vremu
       end;
 
       $23:begin
@@ -43566,6 +43997,455 @@ begin
           end;
          end;
          VectorSetElement(vd,Index,SEW,Address);
+        end;
+       end;
+      end;
+
+      $28:begin
+       // Vector crypto AES/SM4/GHASH .vv (Unmasked only, sub-decode on vs1)
+       if (not Unmasked) or (SEW<>32) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       case vs1 of
+        0,1,2,3:begin
+         // vaesdm.vv (0), vaesdf.vv (1), vaesem.vv (2), vaesef.vv (3)
+         for Index:=0 to (EVL div 4)-1 do begin
+          SubIndex:=Index*4;
+          VecCryptoAESRound(
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+           vs1,
+           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+         end;
+        end;
+        16:begin
+         // vsm4r.vv
+         for Index:=0 to (EVL div 4)-1 do begin
+          SubIndex:=Index*4;
+          VecCryptoSM4Rounds(
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+         end;
+        end;
+        17:begin
+         // vgmul.vv
+         for Index:=0 to (EVL div 4)-1 do begin
+          SubIndex:=Index*4;
+          VecCryptoGHASHMul(
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+         end;
+        end;
+        else begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+       end;
+      end;
+
+      $29:begin
+       // Vector crypto AES/SM4 .vs (Unmasked + vs1 in {0..3,16}) or vmadd.vv
+       if Unmasked and (vs1 in [0,1,2,3]) then begin
+        // vaesdm.vs (0), vaesdf.vs (1), vaesem.vs (2), vaesef.vs (3)
+        if SEW<>32 then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+        // Read scalar key from vs2 element group 0 into SegmentBuffer[4..7]
+        SegmentBuffer[4]:=VectorGetElement(vs2,0,32);
+        SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
+        SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
+        SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
+        for Index:=0 to (EVL div 4)-1 do begin
+         SubIndex:=Index*4;
+         VecCryptoAESRound(
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+          TPasRISCVUInt32(SegmentBuffer[4]),
+          TPasRISCVUInt32(SegmentBuffer[5]),
+          TPasRISCVUInt32(SegmentBuffer[6]),
+          TPasRISCVUInt32(SegmentBuffer[7]),
+          vs1,
+          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+        end;
+       end else if Unmasked and (vs1=16) then begin
+        // vsm4r.vs
+        if SEW<>32 then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+        // Read scalar round keys from vs2 element group 0 into SegmentBuffer[4..7]
+        SegmentBuffer[4]:=VectorGetElement(vs2,0,32);
+        SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
+        SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
+        SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
+        for Index:=0 to (EVL div 4)-1 do begin
+         SubIndex:=Index*4;
+         VecCryptoSM4Rounds(
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+          TPasRISCVUInt32(SegmentBuffer[4]),
+          TPasRISCVUInt32(SegmentBuffer[5]),
+          TPasRISCVUInt32(SegmentBuffer[6]),
+          TPasRISCVUInt32(SegmentBuffer[7]),
+          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+        end;
+       end else begin
+        // vmadd.vv: vd[i] = (vs1[i] * vd[i]) + vs2[i]
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else begin
+          SourceValue:=VectorGetElement(vd,Index,SEW);
+          OperandValue:=VectorGetElement(vs1,Index,SEW);
+          Address:=VectorGetElement(vs2,Index,SEW);
+          VectorSetElement(vd,Index,SEW,(SourceValue*OperandValue)+Address);
+         end;
+        end;
+       end;
+      end;
+
+      $2a:begin
+       // vaeskf2.vi (Unmasked only)
+       if (not Unmasked) or (SEW<>32) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoAESKF2(
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         vs1 and $f,
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+       end;
+      end;
+
+      $2b:begin
+       if Unmasked then begin
+        // vsm3c.vi (SM3 compression)
+        if SEW<>32 then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+        for Index:=0 to (EVL div 8)-1 do begin
+         SubIndex:=Index*8;
+         // Perform 2 SM3 compression rounds
+         VecCryptoSM3Compress(
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+4,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+5,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+6,32)),
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+7,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+          vs1 and $1f,
+          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+          SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+         // Write back state
+         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+         VectorSetElement(vd,SubIndex+4,32,SegmentBuffer[4]);
+         VectorSetElement(vd,SubIndex+5,32,SegmentBuffer[5]);
+         VectorSetElement(vd,SubIndex+6,32,SegmentBuffer[6]);
+         VectorSetElement(vd,SubIndex+7,32,SegmentBuffer[7]);
+        end;
+       end else begin
+        // vnmsub.vv: vd[i] = -(vs1[i] * vd[i]) + vs2[i]
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else begin
+          SourceValue:=VectorGetElement(vd,Index,SEW);
+          OperandValue:=VectorGetElement(vs1,Index,SEW);
+          Address:=VectorGetElement(vs2,Index,SEW);
+          VectorSetElement(vd,Index,SEW,Address-(SourceValue*OperandValue));
+         end;
+        end;
+       end;
+      end;
+
+      $2c:begin
+       // vghsh.vv (Unmasked only)
+       if (not Unmasked) or (SEW<>32) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoGHSH(
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+       end;
+      end;
+
+      $2d:begin
+       if Unmasked then begin
+        // vsha2ms.vv (SHA-2 message schedule)
+        if not (SEW in [32,64]) then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+        for Index:=0 to (EVL div 4)-1 do begin
+         SubIndex:=Index*4;
+         if SEW=32 then begin
+          // SHA-256 message schedule
+          // vd = {W3, W2, W1, W0}, vs2 = {W11, W10, W9, W4}, vs1 = {W15, W14, W13, W12}
+          VecCryptoSHA256MsgSched(
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),   // W0
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),   // W1
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),   // W2
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),   // W3
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),  // W4
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),  // W9
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),  // W10
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),  // W11
+           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),  // W12
+           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),  // W13
+           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),  // W14
+           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),  // W15
+           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+         end else begin
+          // SHA-512 message schedule (SEW=64)
+          SegmentBuffer[0]:=VectorGetElement(vd,SubIndex+0,64);   // W0
+          SegmentBuffer[1]:=VectorGetElement(vd,SubIndex+1,64);   // W1
+          SegmentBuffer[2]:=VectorGetElement(vd,SubIndex+2,64);   // W2
+          SegmentBuffer[3]:=VectorGetElement(vd,SubIndex+3,64);   // W3
+          SegmentBuffer[4]:=VectorGetElement(vs2,SubIndex+0,64);  // W4
+          SegmentBuffer[5]:=VectorGetElement(vs2,SubIndex+1,64);  // W9
+          SegmentBuffer[6]:=VectorGetElement(vs2,SubIndex+2,64);  // W10
+          SegmentBuffer[7]:=VectorGetElement(vs2,SubIndex+3,64);  // W11
+          SourceValue:=VectorGetElement(vs1,SubIndex+0,64);       // W12
+          OperandValue:=VectorGetElement(vs1,SubIndex+2,64);       // W14
+          Address:=VectorGetElement(vs1,SubIndex+3,64);            // W15
+          // W16 = sig1(W14) + W9 + sig0(W1) + W0
+          Stride:=SHA512sig1(OperandValue)+SegmentBuffer[5]+SHA512sig0(SegmentBuffer[1])+SegmentBuffer[0];
+          // W17 = sig1(W15) + W10 + sig0(W2) + W1
+          SourceValue:=SHA512sig1(Address)+SegmentBuffer[6]+SHA512sig0(SegmentBuffer[2])+SegmentBuffer[1];
+          // W18 = sig1(W16) + W11 + sig0(W3) + W2
+          OperandValue:=SHA512sig1(Stride)+SegmentBuffer[7]+SHA512sig0(SegmentBuffer[3])+SegmentBuffer[2];
+          // W19 = sig1(W17) + W12 + sig0(W4) + W3
+          Address:=SHA512sig1(SourceValue)+VectorGetElement(vs1,SubIndex+0,64)+SHA512sig0(SegmentBuffer[4])+SegmentBuffer[3];
+          VectorSetElement(vd,SubIndex+0,64,Stride);
+          VectorSetElement(vd,SubIndex+1,64,SourceValue);
+          VectorSetElement(vd,SubIndex+2,64,OperandValue);
+          VectorSetElement(vd,SubIndex+3,64,Address);
+         end;
+        end;
+       end else begin
+        // vmacc.vv: vd[i] = (vs1[i] * vs2[i]) + vd[i]
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else begin
+          SourceValue:=VectorGetElement(vs1,Index,SEW);
+          OperandValue:=VectorGetElement(vs2,Index,SEW);
+          Address:=VectorGetElement(vd,Index,SEW);
+          VectorSetElement(vd,Index,SEW,(SourceValue*OperandValue)+Address);
+         end;
+        end;
+       end;
+      end;
+
+      $2e:begin
+       // vsha2ch.vv (Unmasked only)
+       if (not Unmasked) or (not (SEW in [32,64])) then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        if SEW=32 then begin
+         // SHA-256 compression (high half): f1=vs1[2], f2=vs1[3]
+         VecCryptoSHA256Compress(
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)), // a
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)), // b
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)), // e
+          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)), // f
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),  // c
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),  // d
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),  // g
+          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),  // h
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)), // f1 (high half elem 2)
+          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)), // f2 (high half elem 3)
+          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+        end else begin
+         // SHA-512 compression (high half): f1=vs1[2], f2=vs1[3]
+         SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64); // a
+         SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64); // b
+         SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64); // e
+         SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64); // f
+         SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);  // c
+         SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);  // d
+         SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);  // g
+         SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);  // h
+         SourceValue:=VectorGetElement(vs1,SubIndex+2,64);      // f1
+         OperandValue:=VectorGetElement(vs1,SubIndex+3,64);     // f2
+         VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
+                                SourceValue,OperandValue,
+                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+         VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
+         VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
+         VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
+         VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+        end;
+       end;
+      end;
+
+      $2f:begin
+       if Unmasked then begin
+        // vsha2cl.vv (SHA-2 compression low half)
+        if not (SEW in [32,64]) then begin
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
+        for Index:=0 to (EVL div 4)-1 do begin
+         SubIndex:=Index*4;
+         if SEW=32 then begin
+          // SHA-256 compression (low half): f1=vs1[0], f2=vs1[1]
+          VecCryptoSHA256Compress(
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)), // a
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)), // b
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)), // e
+           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)), // f
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),  // c
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),  // d
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),  // g
+           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),  // h
+           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)), // f1 (low half elem 0)
+           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)), // f2 (low half elem 1)
+           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+         end else begin
+          // SHA-512 compression (low half): f1=vs1[0], f2=vs1[1]
+          SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64); // a
+          SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64); // b
+          SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64); // e
+          SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64); // f
+          SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);  // c
+          SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);  // d
+          SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);  // g
+          SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);  // h
+          SourceValue:=VectorGetElement(vs1,SubIndex+0,64);      // f1
+          OperandValue:=VectorGetElement(vs1,SubIndex+1,64);     // f2
+          VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
+                                 SourceValue,OperandValue,
+                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+          VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
+          VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
+          VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
+          VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+         end;
+        end;
+       end else begin
+        // vnmsac.vv: vd[i] = -(vs1[i] * vs2[i]) + vd[i]
+        for Index:=0 to EVL-1 do begin
+         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else begin
+          SourceValue:=VectorGetElement(vs1,Index,SEW);
+          OperandValue:=VectorGetElement(vs2,Index,SEW);
+          Address:=VectorGetElement(vd,Index,SEW);
+          VectorSetElement(vd,Index,SEW,Address-(SourceValue*OperandValue));
+         end;
         end;
        end;
       end;
@@ -61130,18 +62010,20 @@ begin
    AddISAExtension('zvfhmin');
    AddISAExtension('zvkb');
   end;
-//AddISAExtension('zvkg');
-//AddISAExtension('zvkn');
-//AddISAExtension('zvknc');
-//AddISAExtension('zvkned');
-//AddISAExtension('zvkng');
-//AddISAExtension('zvknha');
-//AddISAExtension('zvknhb');
-//AddISAExtension('zvks');
-//AddISAExtension('zvksc');
-//AddISAExtension('zvksed');
-//AddISAExtension('zvksg');
-//AddISAExtension('zvksh');
+  if fVector then begin
+   AddISAExtension('zvkg');
+   AddISAExtension('zvkn');
+   AddISAExtension('zvknc');
+   AddISAExtension('zvkned');
+   AddISAExtension('zvkng');
+   AddISAExtension('zvknha');
+   AddISAExtension('zvknhb');
+   AddISAExtension('zvks');
+   AddISAExtension('zvksc');
+   AddISAExtension('zvksed');
+   AddISAExtension('zvksg');
+   AddISAExtension('zvksh');
+  end;
   if fVector then begin
    AddISAExtension('zvkt');
   end;
