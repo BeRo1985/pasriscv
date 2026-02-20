@@ -9086,6 +9086,283 @@ begin
  result:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(r)));
 end;
 
+////////////////////////////////////////////////////////////////////////////////
+// Vector Crypto helpers (Zvkg/Zvkned/Zvknha/b/Zvksed/Zvksh)                 //
+////////////////////////////////////////////////////////////////////////////////
+
+// GF(2^8) multiply for AES MixColumns/InvMixColumns
+function GF256Mul(a,b:TPasRISCVUInt8):TPasRISCVUInt8;
+var i:TPasRISCVInt32;
+begin
+ result:=0;
+ for i:=0 to 7 do begin
+  if (b and 1)<>0 then begin
+   result:=result xor a;
+  end;
+  if (a and $80)<>0 then begin
+   a:=(a shl 1) xor $1b;
+  end else begin
+   a:=a shl 1;
+  end;
+  b:=b shr 1;
+ end;
+end;
+
+// Apply AES forward S-box to each byte of a 32-bit word
+function VecAESSubByteFwd(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=TPasRISCVUInt32(AESSBoxFwd[x and $ff]) or
+         (TPasRISCVUInt32(AESSBoxFwd[(x shr 8) and $ff]) shl 8) or
+         (TPasRISCVUInt32(AESSBoxFwd[(x shr 16) and $ff]) shl 16) or
+         (TPasRISCVUInt32(AESSBoxFwd[(x shr 24) and $ff]) shl 24);
+end;
+
+// Apply AES inverse S-box to each byte of a 32-bit word
+function VecAESSubByteInv(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=TPasRISCVUInt32(AESSBoxInv[x and $ff]) or
+         (TPasRISCVUInt32(AESSBoxInv[(x shr 8) and $ff]) shl 8) or
+         (TPasRISCVUInt32(AESSBoxInv[(x shr 16) and $ff]) shl 16) or
+         (TPasRISCVUInt32(AESSBoxInv[(x shr 24) and $ff]) shl 24);
+end;
+
+// AES ShiftRows forward on 4 columns (in-place)
+procedure VecAESShiftRowsFwd(var s0,s1,s2,s3:TPasRISCVUInt32);
+var t0,t1,t2,t3:TPasRISCVUInt32;
+begin
+ t0:=(s0 and $000000ff) or (s1 and $0000ff00) or (s2 and $00ff0000) or (s3 and $ff000000);
+ t1:=(s1 and $000000ff) or (s2 and $0000ff00) or (s3 and $00ff0000) or (s0 and $ff000000);
+ t2:=(s2 and $000000ff) or (s3 and $0000ff00) or (s0 and $00ff0000) or (s1 and $ff000000);
+ t3:=(s3 and $000000ff) or (s0 and $0000ff00) or (s1 and $00ff0000) or (s2 and $ff000000);
+ s0:=t0; s1:=t1; s2:=t2; s3:=t3;
+end;
+
+// AES InvShiftRows on 4 columns (in-place)
+procedure VecAESShiftRowsInv(var s0,s1,s2,s3:TPasRISCVUInt32);
+var t0,t1,t2,t3:TPasRISCVUInt32;
+begin
+ t0:=(s0 and $000000ff) or (s3 and $0000ff00) or (s2 and $00ff0000) or (s1 and $ff000000);
+ t1:=(s1 and $000000ff) or (s0 and $0000ff00) or (s3 and $00ff0000) or (s2 and $ff000000);
+ t2:=(s2 and $000000ff) or (s1 and $0000ff00) or (s0 and $00ff0000) or (s3 and $ff000000);
+ t3:=(s3 and $000000ff) or (s2 and $0000ff00) or (s1 and $00ff0000) or (s0 and $ff000000);
+ s0:=t0; s1:=t1; s2:=t2; s3:=t3;
+end;
+
+// AES MixColumns forward for one column
+function VecAESMixColFwd(x:TPasRISCVUInt32):TPasRISCVUInt32;
+var b0,b1,b2,b3:TPasRISCVUInt8;
+begin
+ b0:=x and $ff; b1:=(x shr 8) and $ff; b2:=(x shr 16) and $ff; b3:=(x shr 24) and $ff;
+ result:=TPasRISCVUInt32(GF256Mul(b0,2) xor GF256Mul(b1,3) xor b2 xor b3) or
+         (TPasRISCVUInt32(b0 xor GF256Mul(b1,2) xor GF256Mul(b2,3) xor b3) shl 8) or
+         (TPasRISCVUInt32(b0 xor b1 xor GF256Mul(b2,2) xor GF256Mul(b3,3)) shl 16) or
+         (TPasRISCVUInt32(GF256Mul(b0,3) xor b1 xor b2 xor GF256Mul(b3,2)) shl 24);
+end;
+
+// AES InvMixColumns for one column
+function VecAESMixColInv(x:TPasRISCVUInt32):TPasRISCVUInt32;
+var b0,b1,b2,b3:TPasRISCVUInt8;
+begin
+ b0:=x and $ff; b1:=(x shr 8) and $ff; b2:=(x shr 16) and $ff; b3:=(x shr 24) and $ff;
+ result:=TPasRISCVUInt32(GF256Mul(b0,$0e) xor GF256Mul(b1,$0b) xor GF256Mul(b2,$0d) xor GF256Mul(b3,$09)) or
+         (TPasRISCVUInt32(GF256Mul(b0,$09) xor GF256Mul(b1,$0e) xor GF256Mul(b2,$0b) xor GF256Mul(b3,$0d)) shl 8) or
+         (TPasRISCVUInt32(GF256Mul(b0,$0d) xor GF256Mul(b1,$09) xor GF256Mul(b2,$0e) xor GF256Mul(b3,$0b)) shl 16) or
+         (TPasRISCVUInt32(GF256Mul(b0,$0b) xor GF256Mul(b1,$0d) xor GF256Mul(b2,$09) xor GF256Mul(b3,$0e)) shl 24);
+end;
+
+// Reverse bits within each byte of a 32-bit word (brev8)
+function Brev8_32(x:TPasRISCVUInt32):TPasRISCVUInt32;
+var i:TPasRISCVInt32;
+    b,r:TPasRISCVUInt8;
+begin
+ result:=0;
+ for i:=0 to 3 do begin
+  b:=(x shr (i*8)) and $ff;
+  r:=((b*TPasRISCVUInt32($0802) and TPasRISCVUInt32($22110)) or (b*TPasRISCVUInt32($8020) and TPasRISCVUInt32($88440))) * TPasRISCVUInt32($10101) shr 16;
+  result:=result or (TPasRISCVUInt32(r and $ff) shl (i*8));
+ end;
+end;
+
+// GF(2^128) multiply for GHASH (Zvkg)
+// Operands in 4 x 32-bit words with bit 0 of word 0 = coefficient of x^0
+// Polynomial: x^128 + x^7 + x^2 + x + 1 (R = 0x87)
+procedure GF128Mul(var z0,z1,z2,z3:TPasRISCVUInt32; const y0,y1,y2,y3:TPasRISCVUInt32);
+var x0,x1,x2,x3:TPasRISCVUInt32;
+    s0,s1,s2,s3:TPasRISCVUInt32;
+    i,w:TPasRISCVInt32;
+    xbit:boolean;
+begin
+ x0:=z0; x1:=z1; x2:=z2; x3:=z3;
+ s0:=y0; s1:=y1; s2:=y2; s3:=y3;
+ z0:=0; z1:=0; z2:=0; z3:=0;
+ for i:=0 to 127 do begin
+  w:=i shr 5;
+  case w of
+   0:begin
+    xbit:=(x0 and (TPasRISCVUInt32(1) shl (i and 31)))<>0;
+   end; 
+   1:begin
+    xbit:=(x1 and (TPasRISCVUInt32(1) shl (i and 31)))<>0;
+   end; 
+   2:begin    
+    xbit:=(x2 and (TPasRISCVUInt32(1) shl (i and 31)))<>0;
+   end; 
+   else begin
+    xbit:=(x3 and (TPasRISCVUInt32(1) shl (i and 31)))<>0;
+   end;
+  end;
+  if xbit then begin
+   z0:=z0 xor s0; z1:=z1 xor s1; z2:=z2 xor s2; z3:=z3 xor s3;
+  end;
+  // Check bit 127 of S (the MSB)
+  xbit:=(s3 and TPasRISCVUInt32($80000000))<>0;
+  // Shift S left by 1
+  s3:=(s3 shl 1) or (s2 shr 31);
+  s2:=(s2 shl 1) or (s1 shr 31);
+  s1:=(s1 shl 1) or (s0 shr 31);
+  s0:=s0 shl 1;
+  // Reduce if bit 128 (the carried-out bit) was set
+  if xbit then begin
+   s0:=s0 xor $87; // x^7 + x^2 + x + 1
+  end;
+ end;
+end;
+
+// SM4 SubWord (apply SM4 S-box to each byte of a 32-bit word)
+function SM4SubWord32(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=TPasRISCVUInt32(SM4SBox[x and $ff]) or
+         (TPasRISCVUInt32(SM4SBox[(x shr 8) and $ff]) shl 8) or
+         (TPasRISCVUInt32(SM4SBox[(x shr 16) and $ff]) shl 16) or
+         (TPasRISCVUInt32(SM4SBox[(x shr 24) and $ff]) shl 24);
+end;
+
+// SM4 linear transform L (for encryption/decryption rounds)
+function SM4LinearL(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=x xor ROLDWord(x,2) xor ROLDWord(x,10) xor ROLDWord(x,18) xor ROLDWord(x,24);
+end;
+
+// SM4 linear transform L' (for key expansion)
+function SM4LinearLPrime(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=x xor ROLDWord(x,13) xor ROLDWord(x,23);
+end;
+
+// SM3 P0 permutation
+function SM3P0(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=x xor ROLDWord(x,9) xor ROLDWord(x,17);
+end;
+
+// SM3 P1 permutation
+function SM3P1(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=x xor ROLDWord(x,15) xor ROLDWord(x,23);
+end;
+
+// SM3 FF function
+function SM3FF(x,y,z:TPasRISCVUInt32;j:TPasRISCVInt32):TPasRISCVUInt32;
+begin
+ if j<16 then begin
+  result:=x xor y xor z;
+ end else begin
+  result:=(x and y) or (x and z) or (y and z);
+ end;
+end;
+
+// SM3 GG function
+function SM3GG(x,y,z:TPasRISCVUInt32;j:TPasRISCVInt32):TPasRISCVUInt32;
+begin
+ if j<16 then begin
+  result:=x xor y xor z;
+ end else begin
+  result:=(x and y) or ((not x) and z);
+ end;
+end;
+
+// SM3 T constant
+function SM3T(j:TPasRISCVInt32):TPasRISCVUInt32;
+begin
+ if j<16 then begin
+  result:=$79cc4519;
+ end else begin
+  result:=$7a879d8a;
+ end;
+end;
+
+// SHA-256 lower-case sigma0 (message schedule)
+function SHA256sig0(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=RORDWord(x,7) xor RORDWord(x,18) xor (x shr 3);
+end;
+
+// SHA-256 lower-case sigma1 (message schedule)
+function SHA256sig1(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=RORDWord(x,17) xor RORDWord(x,19) xor (x shr 10);
+end;
+
+// SHA-256 upper-case Sigma0 (compression)
+function SHA256Sum0(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=RORDWord(x,2) xor RORDWord(x,13) xor RORDWord(x,22);
+end;
+
+// SHA-256 upper-case Sigma1 (compression)
+function SHA256Sum1(x:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=RORDWord(x,6) xor RORDWord(x,11) xor RORDWord(x,25);
+end;
+
+// SHA-256 Ch function
+function SHA256Ch(x,y,z:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=(x and y) xor ((not x) and z);
+end;
+
+// SHA-256 Maj function
+function SHA256Maj(x,y,z:TPasRISCVUInt32):TPasRISCVUInt32;
+begin
+ result:=(x and y) xor (x and z) xor (y and z);
+end;
+
+// SHA-512 lower-case sigma0 (message schedule)
+function SHA512sig0(x:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=RORQWord(x,1) xor RORQWord(x,8) xor (x shr 7);
+end;
+
+// SHA-512 lower-case sigma1 (message schedule)
+function SHA512sig1(x:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=RORQWord(x,19) xor RORQWord(x,61) xor (x shr 6);
+end;
+
+// SHA-512 upper-case Sigma0 (compression)
+function SHA512Sum0(x:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=RORQWord(x,28) xor RORQWord(x,34) xor RORQWord(x,39);
+end;
+
+// SHA-512 upper-case Sigma1 (compression)
+function SHA512Sum1(x:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=RORQWord(x,14) xor RORQWord(x,18) xor RORQWord(x,41);
+end;
+
+// SHA-512 Ch function
+function SHA512Ch(x,y,z:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=(x and y) xor ((not x) and z);
+end;
+
+// SHA-512 Maj function
+function SHA512Maj(x,y,z:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ result:=(x and y) xor (x and z) xor (y and z);
+end;
+
 function RoundDownToPowerOfTwo(x:TPasRISCVUInt32):TPasRISCVUInt32;
 begin  
 
