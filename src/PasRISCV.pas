@@ -1723,7 +1723,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      VStoreMask,
                      VLoadFF,
                      RWithBs,
-                     IKS1I
+                     IKS1I,
+                     VCryptoVI
                     );
                    TInstruction=record
                     Mask:TPasRISCVUInt32;
@@ -9212,7 +9213,10 @@ begin
    end;
   end;
   if xbit then begin
-   z0:=z0 xor s0; z1:=z1 xor s1; z2:=z2 xor s2; z3:=z3 xor s3;
+   z0:=z0 xor s0; 
+   z1:=z1 xor s1; 
+   z2:=z2 xor s2; 
+   z3:=z3 xor s3;
   end;
   // Check bit 127 of S (the MSB)
   xbit:=(s3 and TPasRISCVUInt32($80000000))<>0;
@@ -57281,6 +57285,13 @@ begin
    if (aInstruction and (1 shl 25))=0 then begin
     Operand:=Operand+', v0.t';
    end;
+   result:=Mnemonic+' '+Operand;
+  end;
+  TInstructionSetArchitecture.TInstructionFormat.VCryptoVI:begin
+   // Vector crypto .vi: vd, vs2, uimm5 (uimm5 from vs1 field bits[19:15])
+   Operand:=GetVectorRegisterName((aInstruction shr 7) and $1f)+', '+
+            GetVectorRegisterName((aInstruction shr 20) and $1f)+', '+
+            FormatImmediate((aInstruction shr 15) and $1f);
    result:=Mnemonic+' '+Operand;
   end;
   TInstructionSetArchitecture.TInstructionFormat.VUnaryDstOnly:begin
