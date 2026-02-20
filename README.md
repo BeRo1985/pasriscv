@@ -133,8 +133,8 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
       - HID keyboard (planned, currently disabled)
 - Full MMU support with Sv39, Sv48 and Sv57 page table modes, including support for Svnapot and Svadu extensions
 - Disassembler
-  - RV64GC instruction set support
-  - Vector (V) extension instruction support
+  - RV64GCV instruction set support
+  - Vector (V) extension instruction support  
   - Supports disassembling code with or without compressed instructions
   - Supports disassembling code with or without floating-point instructions
   - Provides human-readable assembly code output
@@ -162,7 +162,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
 
 ## Why 64-bit only?
 
-The decision to support only 64-bit RISC-V (RV64GC) is primarily driven by the need for a modern architecture that can efficiently handle current and future workloads. 64-bit architectures provide several advantages over their 32-bit counterparts, including:
+The decision to support only 64-bit RISC-V (RV64GCV) is primarily driven by the need for a modern architecture that can efficiently handle current and future workloads. 64-bit architectures provide several advantages over their 32-bit counterparts, including:
 
 1. **Larger Address Space**: 64-bit systems can address significantly more memory than 32-bit systems, allowing for more extensive and complex applications.
 
@@ -204,7 +204,7 @@ See the `docs` directory for more information.
 
 ## Related connected repositories
 
-- [PasRISCV Third-Party Software Repository](https://github.com/BeRo1985/pasriscv_software) - This repository contains third-party software, including test cases, guest Linux system build scripts, and other related assets, for the PasRISCV Emulator — a RV64GC RISC-V emulator developed in Object Pascal. Needed for the test suite and other related assets.
+- [PasRISCV Third-Party Software Repository](https://github.com/BeRo1985/pasriscv_software) - This repository contains third-party software, including test cases, guest Linux system build scripts, and other related assets, for the PasRISCV Emulator — a RV64GCV/RVA23 RISC-V emulator developed in Object Pascal. Needed for the test suite and other related assets.
 - [PasVulkan](https://github.com/BeRo1985/pasvulkan) - PasVulkan game engine and Vulkan API bindings for Object Pascal.
 - [pasriscemu](https://github.com/BeRo1985/pasriscvemu) - PasRISCV Emulator frontend using PasVulkan.
 
