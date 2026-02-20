@@ -82,6 +82,8 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Zkt (Data-Independent Execution Latency)
   - Zimop (May-Be-Operations)
   - Zcmop (Compressed May-Be-Operations)
+  - Ztso (Total Store Ordering)
+  - Zama16b (Misaligned Atomics 16-byte Guarantee)
   - Zicfilp (Landing Pad — Forward-Edge Control-Flow Integrity)
   - Zicfiss (Shadow Stack — Backward-Edge Control-Flow Integrity)
   - Zihintpause (Pause Hint)

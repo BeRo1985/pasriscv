@@ -60720,7 +60720,7 @@ begin
   AddISAExtension('zabha');
   AddISAExtension('zacas');
   AddISAExtension('zalrsc');
-//AddISAExtension('zama16b');
+  AddISAExtension('zama16b');
   AddISAExtension('zawrs');
   AddISAExtension('zfa');
   AddISAExtension('zfbfmin');
@@ -60753,7 +60753,7 @@ begin
   AddISAExtension('zksed');
   AddISAExtension('zksh');
   AddISAExtension('zkt');
-//AddISAExtension('ztso');
+  AddISAExtension('ztso');
   if fVector then begin
    AddISAExtension('zvbb');
   end;
