@@ -73,6 +73,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Zfbfmin (BFloat16 Minimal)
   - V (Vector Extension 1.0, configurable, enabled by default)
   - Zvbb (Vector Bit-manipulation for Cryptography)
+  - Zvbc (Vector Carry-less Multiply)
   - Zvfhmin (Vector Half-Precision Float Minimal)
   - Zvkb (Vector Cryptography Bit-manipulation)
   - Zvkt (Vector Data-Independent Execution Latency)

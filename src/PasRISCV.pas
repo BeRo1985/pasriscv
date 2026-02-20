@@ -17267,6 +17267,8 @@ begin
  AddInstruction32('vaadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24002057));
  AddInstruction32('vasubu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28002057));
  AddInstruction32('vasub.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c002057));
+ AddInstruction32('vclmul.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($30002057));
+ AddInstruction32('vclmulh.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($34002057));
  AddInstruction32('vwaddu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c0002057));
  AddInstruction32('vwadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c4002057));
  AddInstruction32('vwsubu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c8002057));
@@ -17331,6 +17333,8 @@ begin
  AddInstruction32('vaadd.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($24006057));
  AddInstruction32('vasubu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($28006057));
  AddInstruction32('vasub.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($2c006057));
+ AddInstruction32('vclmul.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($30006057));
+ AddInstruction32('vclmulh.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($34006057));
  AddInstruction32('vslide1up.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($38006057));
  AddInstruction32('vslide1down.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($3c006057));
  AddInstruction32('vwaddu.vx',TInstructionFormat.VVVX,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c0006057));
@@ -43059,6 +43063,38 @@ begin
        end;
       end;
 
+      $0c:begin
+       // vclmul.vv (Zvbc) - SEW must be 64
+       if SEW<>64 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         VectorSetElement(vd,Index,SEW,CLMul64(VectorGetElement(vs2,Index,SEW),VectorGetElement(vs1,Index,SEW)));
+        end;
+       end;
+      end;
+
+      $0d:begin
+       // vclmulh.vv (Zvbc) - SEW must be 64
+       if SEW<>64 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         VectorSetElement(vd,Index,SEW,CLMulH64(VectorGetElement(vs2,Index,SEW),VectorGetElement(vs1,Index,SEW)));
+        end;
+       end;
+      end;
+
       $20:begin
        // vdivu.vv
        for Index:=0 to EVL-1 do begin
@@ -46986,6 +47022,38 @@ begin
           end;
          end;
          VectorSetElement(vd,Index,SEW,Address);
+        end;
+       end;
+      end;
+
+      $0c:begin
+       // vclmul.vx (Zvbc) - SEW must be 64
+       if SEW<>64 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         VectorSetElement(vd,Index,SEW,CLMul64(VectorGetElement(vs2,Index,SEW),Stride));
+        end;
+       end;
+      end;
+
+      $0d:begin
+       // vclmulh.vx (Zvbc) - SEW must be 64
+       if SEW<>64 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end;
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         VectorSetElement(vd,Index,SEW,CLMulH64(VectorGetElement(vs2,Index,SEW),Stride));
         end;
        end;
       end;
@@ -60757,7 +60825,9 @@ begin
   if fVector then begin
    AddISAExtension('zvbb');
   end;
-//AddISAExtension('zvbc');
+  if fVector then begin
+   AddISAExtension('zvbc');
+  end;
   if fVector then begin
    AddISAExtension('zve32f');
    AddISAExtension('zve32x');
