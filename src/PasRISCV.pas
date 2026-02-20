@@ -7886,6 +7886,75 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
         $12,$11,$11,$10,$0f,$0f,$0e,$0e,$0d,$0c,$0c,$0b,$0b,$0a,$09,$09,
         $08,$08,$07,$07,$06,$05,$05,$04,$04,$03,$03,$02,$02,$01,$01,$00
        );
+       
+       // AES Forward S-Box (Zknd/Zkne)
+       AESSBoxFwd:array[0..255] of TPasRISCVUInt8=
+        (
+         $63,$7c,$77,$7b,$f2,$6b,$6f,$c5,$30,$01,$67,$2b,$fe,$d7,$ab,$76,
+         $ca,$82,$c9,$7d,$fa,$59,$47,$f0,$ad,$d4,$a2,$af,$9c,$a4,$72,$c0,
+         $b7,$fd,$93,$26,$36,$3f,$f7,$cc,$34,$a5,$e5,$f1,$71,$d8,$31,$15,
+         $04,$c7,$23,$c3,$18,$96,$05,$9a,$07,$12,$80,$e2,$eb,$27,$b2,$75,
+         $09,$83,$2c,$1a,$1b,$6e,$5a,$a0,$52,$3b,$d6,$b3,$29,$e3,$2f,$84,
+         $53,$d1,$00,$ed,$20,$fc,$b1,$5b,$6a,$cb,$be,$39,$4a,$4c,$58,$cf,
+         $d0,$ef,$aa,$fb,$43,$4d,$33,$85,$45,$f9,$02,$7f,$50,$3c,$9f,$a8,
+         $51,$a3,$40,$8f,$92,$9d,$38,$f5,$bc,$b6,$da,$21,$10,$ff,$f3,$d2,
+         $cd,$0c,$13,$ec,$5f,$97,$44,$17,$c4,$a7,$7e,$3d,$64,$5d,$19,$73,
+         $60,$81,$4f,$dc,$22,$2a,$90,$88,$46,$ee,$b8,$14,$de,$5e,$0b,$db,
+         $e0,$32,$3a,$0a,$49,$06,$24,$5c,$c2,$d3,$ac,$62,$91,$95,$e4,$79,
+         $e7,$c8,$37,$6d,$8d,$d5,$4e,$a9,$6c,$56,$f4,$ea,$65,$7a,$ae,$08,
+         $ba,$78,$25,$2e,$1c,$a6,$b4,$c6,$e8,$dd,$74,$1f,$4b,$bd,$8b,$8a,
+         $70,$3e,$b5,$66,$48,$03,$f6,$0e,$61,$35,$57,$b9,$86,$c1,$1d,$9e,
+         $e1,$f8,$98,$11,$69,$d9,$8e,$94,$9b,$1e,$87,$e9,$ce,$55,$28,$df,
+         $8c,$a1,$89,$0d,$bf,$e6,$42,$68,$41,$99,$2d,$0f,$b0,$54,$bb,$16
+        );
+
+      // AES Inverse S-Box (Zknd)
+      AESSBoxInv:array[0..255] of TPasRISCVUInt8=
+       (
+        $52,$09,$6a,$d5,$30,$36,$a5,$38,$bf,$40,$a3,$9e,$81,$f3,$d7,$fb,
+        $7c,$e3,$39,$82,$9b,$2f,$ff,$87,$34,$8e,$43,$44,$c4,$de,$e9,$cb,
+        $54,$7b,$94,$32,$a6,$c2,$23,$3d,$ee,$4c,$95,$0b,$42,$fa,$c3,$4e,
+        $08,$2e,$a1,$66,$28,$d9,$24,$b2,$76,$5b,$a2,$49,$6d,$8b,$d1,$25,
+        $72,$f8,$f6,$64,$86,$68,$98,$16,$d4,$a4,$5c,$cc,$5d,$65,$b6,$92,
+        $6c,$70,$48,$50,$fd,$ed,$b9,$da,$5e,$15,$46,$57,$a7,$8d,$9d,$84,
+        $90,$d8,$ab,$00,$8c,$bc,$d3,$0a,$f7,$e4,$58,$05,$b8,$b3,$45,$06,
+        $d0,$2c,$1e,$8f,$ca,$3f,$0f,$02,$c1,$af,$bd,$03,$01,$13,$8a,$6b,
+        $3a,$91,$11,$41,$4f,$67,$dc,$ea,$97,$f2,$cf,$ce,$f0,$b4,$e6,$73,
+        $96,$ac,$74,$22,$e7,$ad,$35,$85,$e2,$f9,$37,$e8,$1c,$75,$df,$6e,
+        $47,$f1,$1a,$71,$1d,$29,$c5,$89,$6f,$b7,$62,$0e,$aa,$18,$be,$1b,
+        $fc,$56,$3e,$4b,$c6,$d2,$79,$20,$9a,$db,$c0,$fe,$78,$cd,$5a,$f4,
+        $1f,$dd,$a8,$33,$88,$07,$c7,$31,$b1,$12,$10,$59,$27,$80,$ec,$5f,
+        $60,$51,$7f,$a9,$19,$b5,$4a,$0d,$2d,$e5,$7a,$9f,$93,$c9,$9c,$ef,
+        $a0,$e0,$3b,$4d,$ae,$2a,$f5,$b0,$c8,$eb,$bb,$3c,$83,$53,$99,$61,
+        $17,$2b,$04,$7e,$ba,$77,$d6,$26,$e1,$69,$14,$63,$55,$21,$0c,$7d
+       );
+       
+      // AES Round Constants (Zkne/Zknd - aes64ks1i)
+      AESRoundConstants:array[0..10] of TPasRISCVUInt32=
+       ( 
+        $01,$02,$04,$08,$10,$20,$40,$80,$1b,$36,$00
+       );
+       
+      // SM4 S-Box (Zksed)
+      SM4SBox:array[0..255] of TPasRISCVUInt8=
+       (
+        $d6,$90,$e9,$fe,$cc,$e1,$3d,$b7,$16,$b6,$14,$c2,$28,$fb,$2c,$05,
+        $2b,$67,$9a,$76,$2a,$be,$04,$c3,$aa,$44,$13,$26,$49,$86,$06,$99,
+        $9c,$42,$50,$f4,$91,$ef,$98,$7a,$33,$54,$0b,$43,$ed,$cf,$ac,$62,
+        $e4,$b3,$1c,$a9,$c9,$08,$e8,$95,$80,$df,$94,$fa,$75,$8f,$3f,$a6,
+        $47,$07,$a7,$fc,$f3,$73,$17,$ba,$83,$59,$3c,$19,$e6,$85,$4f,$a8,
+        $68,$6b,$81,$b2,$71,$64,$da,$8b,$f8,$eb,$0f,$4b,$70,$56,$9d,$35,
+        $1e,$24,$0e,$5e,$63,$58,$d1,$a2,$25,$22,$7c,$3b,$01,$21,$78,$87,
+        $d4,$00,$46,$57,$9f,$d3,$27,$52,$4c,$36,$02,$e7,$a0,$c4,$c8,$9e,
+        $ea,$bf,$8a,$d2,$40,$c7,$38,$b5,$a3,$f7,$f2,$ce,$f9,$61,$15,$a1,
+        $e0,$ae,$5d,$a4,$9b,$34,$1a,$55,$ad,$93,$32,$30,$f5,$8c,$b1,$e3,
+        $1d,$f6,$e2,$2e,$82,$66,$ca,$60,$c0,$29,$23,$ab,$0d,$53,$4e,$6f,
+        $d5,$db,$37,$45,$de,$fd,$8e,$2f,$03,$ff,$6a,$72,$6d,$6c,$5b,$51,
+        $8d,$1b,$af,$92,$bb,$dd,$bc,$7f,$11,$d9,$5c,$41,$1f,$10,$5a,$d8,
+        $0a,$c1,$31,$88,$a5,$cd,$7b,$bd,$2d,$74,$d0,$12,$b8,$e5,$b4,$b0,
+        $89,$69,$97,$4a,$0c,$96,$77,$7e,$65,$b9,$f1,$09,$c5,$6e,$c6,$84,
+        $18,$f0,$7d,$ec,$3a,$dc,$4d,$20,$79,$ee,$5f,$3e,$d7,$cb,$39,$48
+       );
 
 {$if defined(PasRISCVCPUDebug)}
 var IgnoreInterrupts:boolean=false;
@@ -8836,76 +8905,11 @@ begin
  end;
 end;
 
-// AES Forward S-Box (Zknd/Zkne)
-const AESSBoxFwd:array[0..255] of TPasRISCVUInt8=(
- $63,$7c,$77,$7b,$f2,$6b,$6f,$c5,$30,$01,$67,$2b,$fe,$d7,$ab,$76,
- $ca,$82,$c9,$7d,$fa,$59,$47,$f0,$ad,$d4,$a2,$af,$9c,$a4,$72,$c0,
- $b7,$fd,$93,$26,$36,$3f,$f7,$cc,$34,$a5,$e5,$f1,$71,$d8,$31,$15,
- $04,$c7,$23,$c3,$18,$96,$05,$9a,$07,$12,$80,$e2,$eb,$27,$b2,$75,
- $09,$83,$2c,$1a,$1b,$6e,$5a,$a0,$52,$3b,$d6,$b3,$29,$e3,$2f,$84,
- $53,$d1,$00,$ed,$20,$fc,$b1,$5b,$6a,$cb,$be,$39,$4a,$4c,$58,$cf,
- $d0,$ef,$aa,$fb,$43,$4d,$33,$85,$45,$f9,$02,$7f,$50,$3c,$9f,$a8,
- $51,$a3,$40,$8f,$92,$9d,$38,$f5,$bc,$b6,$da,$21,$10,$ff,$f3,$d2,
- $cd,$0c,$13,$ec,$5f,$97,$44,$17,$c4,$a7,$7e,$3d,$64,$5d,$19,$73,
- $60,$81,$4f,$dc,$22,$2a,$90,$88,$46,$ee,$b8,$14,$de,$5e,$0b,$db,
- $e0,$32,$3a,$0a,$49,$06,$24,$5c,$c2,$d3,$ac,$62,$91,$95,$e4,$79,
- $e7,$c8,$37,$6d,$8d,$d5,$4e,$a9,$6c,$56,$f4,$ea,$65,$7a,$ae,$08,
- $ba,$78,$25,$2e,$1c,$a6,$b4,$c6,$e8,$dd,$74,$1f,$4b,$bd,$8b,$8a,
- $70,$3e,$b5,$66,$48,$03,$f6,$0e,$61,$35,$57,$b9,$86,$c1,$1d,$9e,
- $e1,$f8,$98,$11,$69,$d9,$8e,$94,$9b,$1e,$87,$e9,$ce,$55,$28,$df,
- $8c,$a1,$89,$0d,$bf,$e6,$42,$68,$41,$99,$2d,$0f,$b0,$54,$bb,$16
-);
-
-// AES Inverse S-Box (Zknd)
-const AESSBoxInv:array[0..255] of TPasRISCVUInt8=(
- $52,$09,$6a,$d5,$30,$36,$a5,$38,$bf,$40,$a3,$9e,$81,$f3,$d7,$fb,
- $7c,$e3,$39,$82,$9b,$2f,$ff,$87,$34,$8e,$43,$44,$c4,$de,$e9,$cb,
- $54,$7b,$94,$32,$a6,$c2,$23,$3d,$ee,$4c,$95,$0b,$42,$fa,$c3,$4e,
- $08,$2e,$a1,$66,$28,$d9,$24,$b2,$76,$5b,$a2,$49,$6d,$8b,$d1,$25,
- $72,$f8,$f6,$64,$86,$68,$98,$16,$d4,$a4,$5c,$cc,$5d,$65,$b6,$92,
- $6c,$70,$48,$50,$fd,$ed,$b9,$da,$5e,$15,$46,$57,$a7,$8d,$9d,$84,
- $90,$d8,$ab,$00,$8c,$bc,$d3,$0a,$f7,$e4,$58,$05,$b8,$b3,$45,$06,
- $d0,$2c,$1e,$8f,$ca,$3f,$0f,$02,$c1,$af,$bd,$03,$01,$13,$8a,$6b,
- $3a,$91,$11,$41,$4f,$67,$dc,$ea,$97,$f2,$cf,$ce,$f0,$b4,$e6,$73,
- $96,$ac,$74,$22,$e7,$ad,$35,$85,$e2,$f9,$37,$e8,$1c,$75,$df,$6e,
- $47,$f1,$1a,$71,$1d,$29,$c5,$89,$6f,$b7,$62,$0e,$aa,$18,$be,$1b,
- $fc,$56,$3e,$4b,$c6,$d2,$79,$20,$9a,$db,$c0,$fe,$78,$cd,$5a,$f4,
- $1f,$dd,$a8,$33,$88,$07,$c7,$31,$b1,$12,$10,$59,$27,$80,$ec,$5f,
- $60,$51,$7f,$a9,$19,$b5,$4a,$0d,$2d,$e5,$7a,$9f,$93,$c9,$9c,$ef,
- $a0,$e0,$3b,$4d,$ae,$2a,$f5,$b0,$c8,$eb,$bb,$3c,$83,$53,$99,$61,
- $17,$2b,$04,$7e,$ba,$77,$d6,$26,$e1,$69,$14,$63,$55,$21,$0c,$7d
-);
-
-// AES Round Constants (Zkne/Zknd - aes64ks1i)
-const AESRoundConstants:array[0..10] of TPasRISCVUInt32=(
- $01,$02,$04,$08,$10,$20,$40,$80,$1b,$36,$00
-);
-
-// SM4 S-Box (Zksed)
-const SM4SBox:array[0..255] of TPasRISCVUInt8=(
- $d6,$90,$e9,$fe,$cc,$e1,$3d,$b7,$16,$b6,$14,$c2,$28,$fb,$2c,$05,
- $2b,$67,$9a,$76,$2a,$be,$04,$c3,$aa,$44,$13,$26,$49,$86,$06,$99,
- $9c,$42,$50,$f4,$91,$ef,$98,$7a,$33,$54,$0b,$43,$ed,$cf,$ac,$62,
- $e4,$b3,$1c,$a9,$c9,$08,$e8,$95,$80,$df,$94,$fa,$75,$8f,$3f,$a6,
- $47,$07,$a7,$fc,$f3,$73,$17,$ba,$83,$59,$3c,$19,$e6,$85,$4f,$a8,
- $68,$6b,$81,$b2,$71,$64,$da,$8b,$f8,$eb,$0f,$4b,$70,$56,$9d,$35,
- $1e,$24,$0e,$5e,$63,$58,$d1,$a2,$25,$22,$7c,$3b,$01,$21,$78,$87,
- $d4,$00,$46,$57,$9f,$d3,$27,$52,$4c,$36,$02,$e7,$a0,$c4,$c8,$9e,
- $ea,$bf,$8a,$d2,$40,$c7,$38,$b5,$a3,$f7,$f2,$ce,$f9,$61,$15,$a1,
- $e0,$ae,$5d,$a4,$9b,$34,$1a,$55,$ad,$93,$32,$30,$f5,$8c,$b1,$e3,
- $1d,$f6,$e2,$2e,$82,$66,$ca,$60,$c0,$29,$23,$ab,$0d,$53,$4e,$6f,
- $d5,$db,$37,$45,$de,$fd,$8e,$2f,$03,$ff,$6a,$72,$6d,$6c,$5b,$51,
- $8d,$1b,$af,$92,$bb,$dd,$bc,$7f,$11,$d9,$5c,$41,$1f,$10,$5a,$d8,
- $0a,$c1,$31,$88,$a5,$cd,$7b,$bd,$2d,$74,$d0,$12,$b8,$e5,$b4,$b0,
- $89,$69,$97,$4a,$0c,$96,$77,$7e,$65,$b9,$f1,$09,$c5,$6e,$c6,$84,
- $18,$f0,$7d,$ec,$3a,$dc,$4d,$20,$79,$ee,$5f,$3e,$d7,$cb,$39,$48
-);
-
 // AES helper functions for Zknd/Zkne
 
 function AESApplyFwdSBoxToEachByte(aValue:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
- result:=TPasRISCVUInt64(AESSBoxFwd[aValue and $ff]) or
+ result:=(TPasRISCVUInt64(AESSBoxFwd[aValue and $ff]) shl 0) or
          (TPasRISCVUInt64(AESSBoxFwd[(aValue shr 8) and $ff]) shl 8) or
          (TPasRISCVUInt64(AESSBoxFwd[(aValue shr 16) and $ff]) shl 16) or
          (TPasRISCVUInt64(AESSBoxFwd[(aValue shr 24) and $ff]) shl 24) or
@@ -8917,7 +8921,7 @@ end;
 
 function AESApplyInvSBoxToEachByte(aValue:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
- result:=TPasRISCVUInt64(AESSBoxInv[aValue and $ff]) or
+ result:=(TPasRISCVUInt64(AESSBoxInv[aValue and $ff]) shl 0) or
          (TPasRISCVUInt64(AESSBoxInv[(aValue shr 8) and $ff]) shl 8) or
          (TPasRISCVUInt64(AESSBoxInv[(aValue shr 16) and $ff]) shl 16) or
          (TPasRISCVUInt64(AESSBoxInv[(aValue shr 24) and $ff]) shl 24) or
@@ -8940,7 +8944,7 @@ function AESShiftRowsFwd64(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64;
 // State = rs1[63:0] || rs2[63:0] as bytes [0..7, 8..15]
 // ShiftRows output bytes for the lower 64 bits: bytes 0,5,10,15,4,9,14,3
 begin
- result:=TPasRISCVUInt64(aRs1 and $ff) or                         // byte 0 from rs1[7:0]
+ result:=(TPasRISCVUInt64(aRs1 and $ff) shl 0) or                 // byte 0 from rs1[7:0]
          (TPasRISCVUInt64((aRs1 shr 40) and $ff) shl 8) or        // byte 5 from rs1[47:40]
          (TPasRISCVUInt64((aRs2 shr 16) and $ff) shl 16) or       // byte 10 from rs2[23:16]
          (TPasRISCVUInt64((aRs2 shr 56) and $ff) shl 24) or       // byte 15 from rs2[63:56]
@@ -8954,7 +8958,7 @@ function AESShiftRowsInv64(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64;
 // Select bytes for inverse ShiftRows: output[i] picks a byte from the combined 128-bit state
 // InvShiftRows output bytes for the lower 64 bits: bytes 0,13,10,7,4,1,14,11
 begin
- result:=TPasRISCVUInt64(aRs1 and $ff) or                         // byte 0 from rs1[7:0]
+ result:=(TPasRISCVUInt64(aRs1 and $ff) shl 0) or                 // byte 0 from rs1[7:0]
          (TPasRISCVUInt64((aRs2 shr 40) and $ff) shl 8) or        // byte 13 from rs2[47:40]
          (TPasRISCVUInt64((aRs2 shr 16) and $ff) shl 16) or       // byte 10 from rs2[23:16]
          (TPasRISCVUInt64((aRs1 shr 56) and $ff) shl 24) or       // byte 7 from rs1[63:56]
@@ -9043,7 +9047,7 @@ begin
   result:=0; // reserved, should trigger illegal instruction before calling
   exit;
  end;
- tmp1:=TPasRISCVUInt32(aRs1 shr 32);
+ tmp1:=TPasRISCVUInt32(aRs1 shr 32); 
  rc:=AESRoundConstants[aRnum];
  if aRnum=$A then begin
   tmp2:=tmp1;
