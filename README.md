@@ -1,10 +1,10 @@
 # PasRISCV
 
-A RISC-V RV64GCV emulator written in Object Pascal. It simulates processor cores, memory, I/O, and much more.
+A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor cores, memory, I/O, and much more.
 
 ## Features
 
-- RV64GC instruction set support with these ISA extensions:  
+- RV64GCV/RVA23 instruction set support with these ISA extensions:  
   - M (Integer Multiplication and Division)  
   - A (Atomic Operations)  
   - F (Single-Precision Floating-Point)  
