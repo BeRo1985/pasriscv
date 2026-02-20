@@ -8799,6 +8799,41 @@ begin
  until b=0;
 end;
 
+function BitReverseInEachByte(aValue:TPasRISCVUInt64):TPasRISCVUInt64; // brev8 (Zbkb)
+begin
+ // Swap adjacent bits
+ aValue:=((aValue and TPasRISCVUInt64($5555555555555555)) shl 1) or ((aValue shr 1) and TPasRISCVUInt64($5555555555555555));
+ // Swap adjacent bit-pairs
+ aValue:=((aValue and TPasRISCVUInt64($3333333333333333)) shl 2) or ((aValue shr 2) and TPasRISCVUInt64($3333333333333333));
+ // Swap nibbles within each byte
+ aValue:=((aValue and TPasRISCVUInt64($0f0f0f0f0f0f0f0f)) shl 4) or ((aValue shr 4) and TPasRISCVUInt64($0f0f0f0f0f0f0f0f));
+ result:=aValue;
+end;
+
+function CrossbarPermBytes(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // xperm8 (Zbkx)
+var i,Index:TPasRISCVUInt64;
+begin
+ result:=0;
+ for i:=0 to 7 do begin
+  Index:=(aRs2 shr (i*8)) and $ff;
+  if Index<8 then begin
+   result:=result or (((aRs1 shr (Index*8)) and $ff) shl (i*8));
+  end;
+ end;
+end;
+
+function CrossbarPermNibbles(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // xperm4 (Zbkx)
+var i,Index:TPasRISCVUInt64;
+begin
+ result:=0;
+ for i:=0 to 15 do begin
+  Index:=(aRs2 shr (i*4)) and $f;
+  if Index<16 then begin
+   result:=result or (((aRs1 shr (Index*4)) and $f) shl (i*4));
+  end;
+ end;
+end;
+
 function RoundDownToPowerOfTwo(x:TPasRISCVUInt32):TPasRISCVUInt32;
 begin
 
@@ -16131,6 +16166,7 @@ begin
  AddInstruction32('orc.b',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,5,$14,$07));
  AddInstruction32('bexti',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$24));
  AddInstruction32('rori',TInstructionFormat.IShift,MaskOpcodeFunct6Funct3,ValueIShift6(OpcodeOpImm,5,$30));
+ AddInstruction32('brev8',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,5,$34,$07));
  AddInstruction32('rev8',TInstructionFormat.RUnary,MaskOpcodeFunct7Funct3Shamt,ValueIShiftFixed6(OpcodeOpImm,5,$34,$38));
 
  AddInstruction32('addiw',TInstructionFormat.I,MaskOpcodeFunct3,ValueI(OpcodeOpImm32,0));
@@ -16166,6 +16202,7 @@ begin
  AddInstruction32('mulhsu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$01));
  AddInstruction32('clmulr',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$05));
  AddInstruction32('sh1add',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$10));
+ AddInstruction32('xperm4',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,2,$14));
 
  AddInstruction32('sltu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$00));
  AddInstruction32('mulhu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,3,$01));
@@ -16173,8 +16210,10 @@ begin
 
  AddInstruction32('xor',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$00));
  AddInstruction32('div',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$01));
+ AddInstruction32('pack',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$04));
  AddInstruction32('min',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$05));
  AddInstruction32('sh2add',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$10));
+ AddInstruction32('xperm8',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$14));
  AddInstruction32('xnor',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,4,$20));
 
  AddInstruction32('srl',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,5,$00));
@@ -16193,6 +16232,7 @@ begin
 
  AddInstruction32('and',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$00));
  AddInstruction32('remu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$01));
+ AddInstruction32('packh',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$04));
  AddInstruction32('maxu',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$05));
  AddInstruction32('czero.nez',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$07));
  AddInstruction32('andn',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp,7,$20));
@@ -16209,6 +16249,7 @@ begin
 
  AddInstruction32('divw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,4,$01));
  AddInstruction32('zext.h',TInstructionFormat.RUnary,MaskOpcodeFunct7Rs2Funct3,ValueOpFpFunct3Rs2(OpcodeOp32,$04,4,0));
+ AddInstruction32('packw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,4,$04));
  AddInstruction32('sh2add.uw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,4,$10));
 
  AddInstruction32('srlw',TInstructionFormat.R,MaskOpcodeFunct7Funct3,ValueR(OpcodeOp32,5,$00));
@@ -48425,6 +48466,14 @@ begin
         end;
         $34:begin
          case {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} of
+          $07:begin
+           // brev8 (Zbkb) - reverse bits within each byte
+           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+            fState.Registers[rd]:=BitReverseInEachByte(fState.Registers[rs1]);
+           end;
+           result:=4;
+           exit;
+          end;
           $38:begin
            // rev8 (Zbb)
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -48813,7 +48862,7 @@ begin
        end;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$2:{$else}$02,$0a,$12,$1a,$22,$2a,$32,$3a,$42,$4a,$52,$5a,$62,$6a,$72,$7a,$82,$8a,$92,$9a,$a2,$aa,$b2,$ba,$c2,$ca,$d2,$da,$e2,$ea,$f2,$fa:{$endif}begin
-       // slt mulhsu clmulr sh1add
+       // slt mulhsu clmulr sh1add xperm4
        case (aInstruction shr 25) and $7f of
         $00:begin
          // slt
@@ -48843,6 +48892,14 @@ begin
          // sh1add (Zba)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(fState.Registers[rs1] shl 1);
+         end;
+         result:=4;
+         exit;
+        end;
+        $14:begin
+         // xperm4 (Zbkx) - nibble-wise crossbar permutation
+         {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+          fState.Registers[rd]:=CrossbarPermNibbles(fState.Registers[rs1],fState.Registers[rs2]);
          end;
          result:=4;
          exit;
@@ -48888,7 +48945,7 @@ begin
        end;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$4:{$else}$04,$0c,$14,$1c,$24,$2c,$34,$3c,$44,$4c,$54,$5c,$64,$6c,$74,$7c,$84,$8c,$94,$9c,$a4,$ac,$b4,$bc,$c4,$cc,$d4,$dc,$e4,$ec,$f4,$fc:{$endif}begin
-       // xor div sh2add xnor min
+       // xor div pack sh2add xperm8 xnor min
        case (aInstruction shr 25) and $7f of
         $00:begin
          // xor
@@ -48912,6 +48969,14 @@ begin
          result:=4;
          exit;
         end;
+        $04:begin
+         // pack (Zbkb) - pack lower halves: rd = rs1[31:0] | (rs2[31:0] << 32)
+         {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1])) or (TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs2])) shl 32);
+         end;
+         result:=4;
+         exit;
+        end;
         $05:begin
          // min (Zbb)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -48928,6 +48993,14 @@ begin
          // sh2add (Zba)
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(fState.Registers[rs1] shl 2);
+         end;
+         result:=4;
+         exit;
+        end;
+        $14:begin
+         // xperm8 (Zbkx) - byte-wise crossbar permutation
+         {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+          fState.Registers[rd]:=CrossbarPermBytes(fState.Registers[rs1],fState.Registers[rs2]);
          end;
          result:=4;
          exit;
@@ -49086,7 +49159,7 @@ begin
        end;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$7:{$else}$07,$0f,$17,$1f,$27,$2f,$37,$3f,$47,$4f,$57,$5f,$67,$6f,$77,$7f,$87,$8f,$97,$9f,$a7,$af,$b7,$bf,$c7,$cf,$d7,$df,$e7,$ef,$f7,$ff:{$endif}begin
-       // and remu andn maxu czero.nez
+       // and remu packh andn maxu czero.nez
        case (aInstruction shr 25) and $7f of
         $00:begin
          // and
@@ -49104,6 +49177,14 @@ begin
           end else begin
            fState.Registers[rd]:=fState.Registers[rs1] mod fState.Registers[rs2];
           end;
+         end;
+         result:=4;
+         exit;
+        end;
+        $04:begin
+         // packh (Zbkb) - pack low bytes: rd = rs1[7:0] | (rs2[7:0] << 8)
+         {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+          fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs1])) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl 8);
          end;
          result:=4;
          exit;
@@ -49264,7 +49345,7 @@ begin
        end;
       end;
       {$ifndef TryToForceCaseJumpTableOnLevel2}$4:{$else}$04,$0c,$14,$1c,$24,$2c,$34,$3c,$44,$4c,$54,$5c,$64,$6c,$74,$7c,$84,$8c,$94,$9c,$a4,$ac,$b4,$bc,$c4,$cc,$d4,$dc,$e4,$ec,$f4,$fc:{$endif}begin
-       // divw sha2add.uw
+       // divw packw sha2add.uw
        case (aInstruction shr 25) and $7f of
         $01:begin
          // divw
@@ -49289,7 +49370,10 @@ begin
           result:=4;
           exit;
          end else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          // packw (Zbkb) - pack lower 16-bit halves, sign-extended: rd = sext((rs1[15:0] | (rs2[15:0] << 16))[31:0])
+          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt16(fState.Registers[rs1])) or (TPasRISCVUInt32(TPasRISCVUInt16(fState.Registers[rs2])) shl 16))));
+          end;
           result:=4;
           exit;
          end;
@@ -60191,9 +60275,9 @@ begin
   AddISAExtension('zba');
   AddISAExtension('zbb');
   AddISAExtension('zbc');
-//AddISAExtension('zbkb');
-//AddISAExtension('zbkc');
-//AddISAExtension('zbkx');
+  AddISAExtension('zbkb');
+  AddISAExtension('zbkc');
+  AddISAExtension('zbkx');
   AddISAExtension('zbs');
 //AddISAExtension('zk');
 //AddISAExtension('zkn');

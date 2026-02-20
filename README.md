@@ -55,6 +55,7 @@ A RISC-V RV64GCV emulator written in Object Pascal. It simulates processor cores
   - Svinval (Fine-Grained TLB Invalidation)
   - Svnapot ("NAPOT Translation" Continuity)
   - Zba/Zbb/Zbc/Zbs (Bit Manipulations)
+  - Zbkb/Zbkc/Zbkx (Scalar Cryptography Bit Manipulations)
   - Zca/Zcb (Compressed sub-extensions)
   - Zacas (Atomic Compare-And-Swap)
   - Zaamo (Atomic Memory Operations)
