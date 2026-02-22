@@ -1,4 +1,4 @@
-﻿(******************************************************************************
+(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
  *                        Version 2026-02-13-01-29-0000                       *
@@ -2314,6 +2314,22 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Shutdown;
               procedure SetInterval(const aInterval:TPasRISCVUInt64);
             end;
+            { TEventThread }
+            TEventThread=class(TPasMPThread)
+             private
+              fMachine:TPasRISCV;
+              fConditionVariableLock:TPasMPConditionVariableLock;
+              fConditionVariable:TPasMPConditionVariable;
+              fRunning:TPasMPBool32;
+             protected
+              procedure Execute; override;
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure Shutdown;
+              procedure Start;
+              procedure Stop;
+            end;
             TVirtIODevice=class;
             TNVMeDevice=class;
             TBochsVBEDevice=class;
@@ -2713,6 +2729,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure NotifyInterrupt(const aSrc:TPasRISCVUInt64);
               procedure EdgeInterrupt(const aSrc:TPasRISCVUInt64);
               procedure UpdateInterrupt(const aSrc:TPasRISCVUInt64);
+              procedure FullUpdate;
              public
               function SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
               function RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean; override;
@@ -2750,7 +2767,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              private
               fAllocationIRQCounter:TPasRISCVUInt32;
               fCountContexts:TPasRISCVUInt32;
-              fLastFullUpdateTime:TPasRISCVUInt64;
               fPriority:array[0..PLIC_SOURCE_MAX-1] of TPasRISCVUInt32;
               fPending:array[0..PLIC_SRC_REG_COUNT-1] of TPasRISCVUInt32;
               fRaised:array[0..PLIC_SRC_REG_COUNT-1] of TPasRISCVUInt32;
@@ -7511,7 +7527,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
        fConfiguration:TConfiguration;
 
-       fAtomicCriticalSection:TCriticalSection;
+       fGlobalLock:TPasMPMultipleReaderSingleWriterSpinLock;
+
+       fEventTickLock:TPasMPMultipleReaderSingleWriterSpinLock;
 
        fOnCPUException:TOnCPUException;
 
@@ -7657,7 +7675,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fWakeUpConditionVariableLock:TPasMPConditionVariableLock;
        fWakeUpConditionVariable:TPasMPConditionVariable;
 
+       fEventThread:TEventThread;
+
        fDebugger:TDebugger;
+
+       fLastFullUpdateTime:TPasMPUInt64;
 
        procedure ShutdownCPUs;
 
@@ -7688,6 +7710,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure Interrupt;
        procedure WakeUp;
        procedure InterruptAndWakeUp;
+       procedure EventTick;
        function QueuePause(const aWaitUntilHalted:Boolean):Boolean;
        procedure Pause(const aWaitUntilHalted:Boolean);
        procedure Resume(const aWaitUntilRunning:Boolean);
@@ -18694,6 +18717,110 @@ begin
  fEvent.SetEvent;
 end;
 
+{ TPasRISCV.TEventThread }
+
+constructor TPasRISCV.TEventThread.Create(const aMachine:TPasRISCV);
+begin
+ fMachine:=aMachine;
+ fConditionVariableLock:=TPasMPConditionVariableLock.Create;
+ fConditionVariable:=TPasMPConditionVariable.Create;
+ fRunning:=false;
+ inherited Create(false);
+end;
+
+destructor TPasRISCV.TEventThread.Destroy;
+begin
+ Shutdown;
+ FreeAndNil(fConditionVariableLock);
+ FreeAndNil(fConditionVariable);
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TEventThread.Shutdown;
+begin
+ if not Finished then begin
+  fConditionVariableLock.Acquire;
+  try
+   Terminate;
+   fConditionVariable.Signal;
+  finally
+   fConditionVariableLock.Release;
+  end;
+  WaitFor;
+ end;
+end;
+
+procedure TPasRISCV.TEventThread.Start;
+begin
+ if not TPasMPInterlocked.Read(fRunning) then begin
+  fConditionVariableLock.Acquire;
+  try
+   if not TPasMPInterlocked.CompareExchange(fRunning,TPasMPBool32(true),TPasMPBool32(false)) then begin
+    fConditionVariable.Signal;
+   end;
+  finally
+   fConditionVariableLock.Release;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TEventThread.Stop;
+begin
+ if TPasMPInterlocked.Read(fRunning) then begin
+  fConditionVariableLock.Acquire;
+  try
+   if TPasMPInterlocked.CompareExchange(fRunning,TPasMPBool32(false),TPasMPBool32(true)) then begin
+    fConditionVariable.Signal;
+   end;
+  finally
+   fConditionVariableLock.Release;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TEventThread.Execute;
+begin
+
+ NameThreadForDebugging('TPasRISCV.TEventThread');
+
+ while not Terminated do begin
+
+  fConditionVariableLock.Acquire;
+  try
+   while not (fRunning or Terminated) do begin
+    fConditionVariable.Wait(fConditionVariableLock,1000);
+   end;
+  finally
+   fConditionVariableLock.Release;
+  end;
+
+  if Terminated then begin
+   break;
+  end;
+
+  while fRunning and not Terminated do begin
+
+   fConditionVariableLock.Acquire;
+   try
+    while not (fRunning or Terminated) do begin
+     fConditionVariable.Wait(fConditionVariableLock,16);
+    end;
+   finally
+    fConditionVariableLock.Release;
+   end;
+
+   if Terminated then begin
+    break;
+   end else if fRunning then begin
+    fMachine.EventTick;
+   end;
+
+  end;
+
+ end;
+
+end;
+
 { TPasRISCV.TFDT }
 
 constructor TPasRISCV.TFDT.Create;
@@ -19608,6 +19735,14 @@ begin
  end;
 end;
 
+procedure TPasRISCV.TAPLICDevice.FullUpdate;
+var Source:TPasRISCVUInt32;
+begin
+ for Source:=1 to APLIC_SRC_LIMIT-1 do begin
+  UpdateInterrupt(Source);
+ end;
+end;
+
 function TPasRISCV.TAPLICDevice.SendIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 begin
  if (aIRQ>0) and (aIRQ<APLIC_SRC_LIMIT) then begin
@@ -19679,7 +19814,6 @@ begin
  FillChar(fRaised,SizeOf(fRaised),#0);
  FillChar(fEnable,SizeOf(fEnable),#0);
  FillChar(fThreshold,SizeOf(fThreshold),#0);
- fLastFullUpdateTime:=0;
 end;
 
 function TPasRISCV.TPLICDevice.IsIRQPending(const aIRQ:TPasRISCVUInt32):Boolean;
@@ -57445,7 +57579,6 @@ var Instruction:TPasRISCVUInt32;
     InstructionAddress,PageAddress:TPasRISCVUInt64;
     InstructionPointer:TPasRISCVPtrUInt;
     RunState:PPasRISCVUInt32;
-    PLICTime:TPasRISCVUInt64;
 begin
 
  RunState:=@fMachine.fRunState;
@@ -57461,17 +57594,8 @@ begin
    CheckTimers;
   end;
 
-  // Periodic PLIC full update (safety net, ~60Hz, HART 0 only).
-  // This is a 60Hz event loop that re-evaluates all PLIC contexts,
-  // recovering any interrupts that were permanently lost due to the RaiseIRQ/LowerIRQ
-  // race condition on the fRaised dedup guard. While the primary fix (always calling
-  // SendIRQ in RaiseIRQ) prevents most losses, this provides defense-in-depth.
-  if (fHARTID=0) and assigned(fMachine.fPLICDevice){$if defined(PasRISCVCPUDebug)}and not IgnoreInterrupts{$ifend} then begin
-   PLICTime:=fACLINTDevice.GetTime;
-   if (PLICTime-fMachine.fPLICDevice.fLastFullUpdateTime)>=CLOCK_FREQUENCY_INTERVAL_60HZ then begin
-    fMachine.fPLICDevice.fLastFullUpdateTime:=PLICTime;
-    fMachine.fPLICDevice.FullUpdate;
-   end;
+  if not assigned(fMachine.fEventThread) then begin
+   fMachine.EventTick;
   end;
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
@@ -61769,7 +61893,9 @@ begin
 
  fWakeUpConditionVariable:=TPasMPConditionVariable.Create;
 
- fAtomicCriticalSection:=TCriticalSection.Create;
+ fGlobalLock:=TPasMPMultipleReaderSingleWriterSpinLock.Create;
+
+ fEventTickLock:=TPasMPMultipleReaderSingleWriterSpinLock.Create;
 
  fJobManager:=TJobManager.Create(4);
 
@@ -62032,6 +62158,12 @@ begin
 
  fHART:=fHARTs[0];
 
+ if fCountHARTs>1 then begin
+  fEventThread:=TEventThread.Create(self);
+ end else begin
+  fEventThread:=nil;
+ end;
+
  if fConfiguration.fDebugger then begin
 
   DebuggerOptions:=[];
@@ -62071,6 +62203,11 @@ begin
  end;
 
  ShutdownCPUs;
+
+ if assigned(fEventThread) then begin
+  fEventThread.Shutdown;
+  FreeAndNil(fEventThread);
+ end;
 
  fJobManager.Shutdown;
 
@@ -62157,7 +62294,9 @@ begin
 
  FreeAndNil(fSoundIO);
 
- FreeAndNil(fAtomicCriticalSection);
+ FreeAndNil(fEventTickLock);
+
+ FreeAndNil(fGlobalLock);
 
  FreeAndNil(fInterrupts);
 
@@ -62222,6 +62361,10 @@ begin
   if not HART.fExecutionThread.Finished then begin
    HART.fExecutionThread.WaitFor;
   end;
+ end;
+
+ if assigned(fEventThread) then begin
+  fEventThread.Stop;
  end;
 
 end;
@@ -63859,6 +64002,8 @@ begin
   fHARTs[Index].Init;
  end;
 
+ TPasMPInterlocked.Write(fLastFullUpdateTime,0);
+
 end;
 
 function TPasRISCV.GetRunning:Boolean;
@@ -63920,6 +64065,10 @@ begin
 
    if (fRunState and (RUNSTATE_RUNNING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=(RUNSTATE_RUNNING or RUNSTATE_PAUSED) then begin
 
+    if assigned(fEventThread) then begin
+     fEventThread.Stop;
+    end;
+
 {$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
@@ -63965,6 +64114,10 @@ begin
 
    if aSingleStep and ((fRunState and RUNSTATE_SINGLESTEP)<>0) then begin
 
+    if assigned(fEventThread) then begin
+     EventTick;
+    end;
+
     for Index:=0 to length(fHARTs)-1 do begin
      fHARTs[Index].Execute;
     end;
@@ -64002,6 +64155,10 @@ begin
      fHARTStatusChangeConditionVariableLock.Release;
     end;
 
+    if assigned(fEventThread) then begin
+     fEventThread.Start;
+    end;
+
 {$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
     DebugActive:=(RunStateValue and (RUNSTATE_SINGLESTEP or RUNSTATE_PAUSED or RUNSTATE_PAUSING))<>0;
@@ -64017,6 +64174,10 @@ begin
    if SingleStepExecuted and ((fRunState and RUNSTATE_SINGLESTEP)<>0) and not aSingleStep then begin
     
     SingleStepExecuted:=false;
+
+    if assigned(fEventThread) then begin
+     fEventThread.Stop;
+    end;
 
 {$ifdef PasRISCVStepDebugOutput}
     RunStateValue:=TPasMPInterlocked.Read(fRunState);
@@ -64104,6 +64265,49 @@ begin
  end;
 end;
 
+procedure TPasRISCV.EventTick;
+var PLICTime:TPasRISCVUInt64;
+begin
+
+ // Periodic PLIC/APLIC full update (safety net, ~60Hz).
+ // This is a 60Hz event loop that re-evaluates all PLIC contexts and APLIC sources,
+ // recovering any interrupts that were permanently lost due to the RaiseIRQ/LowerIRQ
+ // race condition on the fRaised dedup guard. While the primary fix (always calling
+ // SendIRQ in RaiseIRQ) prevents most losses, this provides defense-in-depth.
+ if ((fRunState and (RUNSTATE_RUNNING or RUNSTATE_SINGLESTEP or RUNSTATE_PAUSING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=RUNSTATE_RUNNING) and
+    assigned(fACLINTDevice){$if defined(PasRISCVCPUDebug)}and not IgnoreInterrupts{$ifend} then begin
+
+  PLICTime:=fACLINTDevice.GetTime;
+
+  if (PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ then begin
+
+   fEventTickLock.AcquireWrite;
+   try
+
+    if ((fRunState and (RUNSTATE_RUNNING or RUNSTATE_SINGLESTEP or RUNSTATE_PAUSING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=RUNSTATE_RUNNING) and
+       ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ) then begin
+
+     TPasMPInterlocked.Write(fLastFullUpdateTime,PLICTime);
+
+     if assigned(fPLICDevice) then begin
+      fPLICDevice.FullUpdate;
+     end;
+     if assigned(fAPLICDevice) then begin
+      fAPLICDevice.FullUpdate;
+     end;
+
+    end;
+
+   finally
+    fEventTickLock.ReleaseWrite;
+   end;
+
+  end;
+
+ end;
+
+end;
+
 function TPasRISCV.QueuePause(const aWaitUntilHalted:Boolean):Boolean;
 {$ifdef PasRISCVStepDebugOutput}
 var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
@@ -64132,6 +64336,11 @@ begin
    WakeUp;
 
    if aWaitUntilHalted then begin
+
+    if assigned(fEventThread) then begin
+     fEventThread.Stop;
+    end;
+
     fHARTStatusChangeConditionVariableLock.Acquire;
     try
 
@@ -64174,8 +64383,9 @@ begin
 end;
 
 procedure TPasRISCV.Pause(const aWaitUntilHalted:Boolean);
+var Paused:Boolean;
 {$ifdef PasRISCVStepDebugOutput}
-var RunStateValue,RunningMaskValue:TPasRISCVUInt32;
+    RunStateValue,RunningMaskValue:TPasRISCVUInt32;
 {$endif}
 begin
 
@@ -64187,13 +64397,19 @@ begin
          ' wait='+IntToStr(Ord(aWaitUntilHalted)));
 {$endif}
 
- if (TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)=0 then begin
+ Paused:=(TPasMPInterlocked.ExchangeBitwiseOr(fRunState,TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)=0;
+
+ if Paused then begin
 
   Interrupt;
   WakeUp;
 
   if aWaitUntilHalted then begin
    
+   if assigned(fEventThread) then begin
+    fEventThread.Stop;
+   end;
+
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
 
@@ -64229,8 +64445,9 @@ begin
 end;
 
 procedure TPasRISCV.Resume(const aWaitUntilRunning:Boolean);
+var Resumed:Boolean;
 {$ifdef PasRISCVStepDebugOutput}
-var RunStateValue,RunningMaskValue,AllMaskValue:TPasRISCVUInt32;
+    RunStateValue,RunningMaskValue,AllMaskValue:TPasRISCVUInt32;
 {$endif}
 begin
 
@@ -64244,7 +64461,9 @@ begin
          ' wait='+IntToStr(Ord(aWaitUntilRunning)));
 {$endif}
 
- if (TPasMPInterlocked.ExchangeBitwiseAnd(fRunState,not TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)<>0 then begin
+ Resumed:=(TPasMPInterlocked.ExchangeBitwiseAnd(fRunState,not TPasMPUInt32(RUNSTATE_PAUSED)) and RUNSTATE_PAUSED)<>0;
+
+ if Resumed then begin
 
   Interrupt;
   WakeUp;
@@ -64272,6 +64491,10 @@ begin
 
    finally
     fHARTStatusChangeConditionVariableLock.Release;
+   end;
+
+   if assigned(fEventThread) then begin
+    fEventThread.Start;
    end;
 
   end;
@@ -64315,6 +64538,11 @@ begin
   Resume(false);
 
   if aWaitUntilDone then begin
+
+   if assigned(fEventThread) then begin
+    fEventThread.Stop;
+   end;
+
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
     while TPasMPInterlocked.Read(fSingleStepCounter)=StepCounter do begin
@@ -64323,6 +64551,7 @@ begin
    finally
     fHARTStatusChangeConditionVariableLock.Release;
    end;
+
   end;
 
 {$else}
@@ -64330,6 +64559,10 @@ begin
   Resume(aWaitUntilDone);
 
   if aWaitUntilDone then begin
+
+   if assigned(fEventThread) then begin
+    fEventThread.Stop;
+   end;
 
    fHARTStatusChangeConditionVariableLock.Acquire;
    try
@@ -64367,6 +64600,7 @@ begin
    finally
     fHARTStatusChangeConditionVariableLock.Release;
    end;
+
   end;
 
 {$endif}
