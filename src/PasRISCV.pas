@@ -57457,22 +57457,22 @@ begin
    TPasMPInterlocked.BitwiseAnd(fMachine.fFlushTLBHARTMask,TPasMPUInt32(not TPasMPUInt32(fHARTMask)));
   end;
 
-   {$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
-    CheckTimers;
-   end;
+  {$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
+   CheckTimers;
+  end;
 
-   // Periodic PLIC full update (safety net, ~60Hz, HART 0 only).
-   // This is a 60Hz event loop that re-evaluates all PLIC contexts,
-   // recovering any interrupts that were permanently lost due to the RaiseIRQ/LowerIRQ
-   // race condition on the fRaised dedup guard. While the primary fix (always calling
-   // SendIRQ in RaiseIRQ) prevents most losses, this provides defense-in-depth.
-   if (fHARTID=0) and assigned(fMachine.fPLICDevice) then begin
-    PLICTime:=fACLINTDevice.GetTime;
-    if (PLICTime-fMachine.fPLICDevice.fLastFullUpdateTime)>=CLOCK_FREQUENCY_INTERVAL_60HZ then begin
-     fMachine.fPLICDevice.fLastFullUpdateTime:=PLICTime;
-     fMachine.fPLICDevice.FullUpdate;
-    end;
+  // Periodic PLIC full update (safety net, ~60Hz, HART 0 only).
+  // This is a 60Hz event loop that re-evaluates all PLIC contexts,
+  // recovering any interrupts that were permanently lost due to the RaiseIRQ/LowerIRQ
+  // race condition on the fRaised dedup guard. While the primary fix (always calling
+  // SendIRQ in RaiseIRQ) prevents most losses, this provides defense-in-depth.
+  if (fHARTID=0) and assigned(fMachine.fPLICDevice) then begin
+   PLICTime:=fACLINTDevice.GetTime;
+   if (PLICTime-fMachine.fPLICDevice.fLastFullUpdateTime)>=CLOCK_FREQUENCY_INTERVAL_60HZ then begin
+    fMachine.fPLICDevice.fLastFullUpdateTime:=PLICTime;
+    fMachine.fPLICDevice.FullUpdate;
    end;
+  end;
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
    ExecuteException;
