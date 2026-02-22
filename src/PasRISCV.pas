@@ -3433,7 +3433,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               type TOnDoorbell=procedure(const aSender:TIVSHMEMDevice;const aValue:TPasRISCVUInt32) of object;
              private
               fIntMask:TPasRISCVUInt32;
-              fIntStatus:TPasRISCVUInt32;
+              fIntStatus:TPasMPUInt32;
               fIVPosition:TPasRISCVUInt32;
               fSharedMemorySize:TPasRISCVUInt64;
               fSharedMemoryPointer:Pointer;
@@ -26184,8 +26184,7 @@ begin
     1:begin
      case Offset of
       0:begin
-       result:=fIntStatus;
-       fIntStatus:=0;
+       result:=TPasMPInterlocked.Exchange(fIntStatus,0);
        fMachine.fInterrupts.LowerIRQ(fIRQ);
       end;
       else begin
