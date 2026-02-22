@@ -34753,10 +34753,22 @@ begin
  Offset:=aAddress-fBase;
  if (Offset+aSize)<=fSize then begin
 {$ifdef LITTLE_ENDIAN}
-  if aSize=8 then begin
-   result:=TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^);
-  end else begin
-   result:=TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^) and ((TPasRISCVUInt64(1) shl (aSize shl 3))-1);
+  case aSize of
+   1:begin
+    result:=TPasRISCVUInt8(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^);
+   end;
+   2:begin
+    result:=TPasRISCVUInt16(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^);
+   end;
+   4:begin
+    result:=TPasRISCVUInt32(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^);
+   end;
+   8:begin
+    result:=TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^);
+   end;
+   else begin
+    result:=TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^) and ((TPasRISCVUInt64(1) shl (aSize shl 3))-1);
+   end;
   end;
 {$else}
   case aSize of
@@ -34788,11 +34800,23 @@ begin
  Offset:=aAddress-fBase;
  if (Offset+aSize)<=fSize then begin
 {$ifdef LITTLE_ENDIAN}
-  if aSize=8 then begin
-   TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=aValue;
-  end else begin
-   Mask:=(TPasRISCVUInt64(1) shl (aSize shl 3))-1;
-   TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=(TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^) and not Mask) or (aValue and Mask);
+  case aSize of
+   1:begin
+    TPasRISCVUInt8(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=aValue;
+   end;
+   2:begin
+    TPasRISCVUInt16(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=aValue;
+   end;
+   4:begin
+    TPasRISCVUInt32(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=aValue;
+   end;
+   8:begin
+    TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=aValue;
+   end;
+   else begin
+    Mask:=(TPasRISCVUInt64(1) shl (aSize shl 3))-1;
+    TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=(TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^) and not Mask) or (aValue and Mask);
+   end;
   end;
 {$else}
   case aSize of
