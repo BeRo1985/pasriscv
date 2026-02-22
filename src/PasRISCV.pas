@@ -1,4 +1,4 @@
-(******************************************************************************
+﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
  *                        Version 2026-02-13-01-29-0000                       *
@@ -297,6 +297,8 @@ unit PasRISCV;
 {$define GStageQEMUParity}
 
 {$define NVMELevelTriggeredPCIEInterrupts}
+
+{$undef UseAtomicMemAccessForTLBFastPath}
 
 //{$define I2CDebug} // Enable I2C debug output — remove/comment out when not needed
 
@@ -8174,6 +8176,56 @@ begin
   aLen:=0;
   result:=0;
  end;
+end;
+
+// Since aligned loads/stores expect relaxed atomicity, the TLB direct-access fast paths
+// should use these helpers instead of raw pointer dereferences, to prevent other harts
+// from observing half-made memory operations on TLB miss.
+// On x86/x86-64, naturally-aligned typed pointer accesses are already architecturally
+// atomic up to 64-bit width. On non-TSO platforms (ARM, RISC-V host), these can be
+// replaced with explicit relaxed-atomic intrinsics. Wrapping the accesses serves to:
+// (a) document atomicity intent explicitly
+// (b) prevent the compiler from splitting natural-width accesses into smaller operations,
+// (c) provide a single point of change for adding platform-specific atomics in the future.
+
+function AtomicMemLoadRelaxedUInt8(const aPointer:Pointer):TPasRISCVUInt8; {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ result:=PPasRISCVUInt8(aPointer)^;
+end;
+
+function AtomicMemLoadRelaxedUInt16(const aPointer:Pointer):TPasRISCVUInt16; {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ result:=PPasRISCVUInt16(aPointer)^;
+end;
+
+function AtomicMemLoadRelaxedUInt32(const aPointer:Pointer):TPasRISCVUInt32; {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ result:=PPasRISCVUInt32(aPointer)^;
+end;
+
+function AtomicMemLoadRelaxedUInt64(const aPointer:Pointer):TPasRISCVUInt64; {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ result:=PPasRISCVUInt64(aPointer)^;
+end;
+
+procedure AtomicMemStoreRelaxedUInt8(const aPointer:Pointer;const aValue:TPasRISCVUInt8); {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ PPasRISCVUInt8(aPointer)^:=aValue;
+end;
+
+procedure AtomicMemStoreRelaxedUInt16(const aPointer:Pointer;const aValue:TPasRISCVUInt16); {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ PPasRISCVUInt16(aPointer)^:=aValue;
+end;
+
+procedure AtomicMemStoreRelaxedUInt32(const aPointer:Pointer;const aValue:TPasRISCVUInt32); {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ PPasRISCVUInt32(aPointer)^:=aValue;
+end;
+
+procedure AtomicMemStoreRelaxedUInt64(const aPointer:Pointer;const aValue:TPasRISCVUInt64); {$ifdef CAN_INLINE}inline;{$endif}
+begin
+ PPasRISCVUInt64(aPointer)^:=aValue;
 end;
 
 {$if not declared(SARLongint)}
@@ -22067,18 +22119,18 @@ begin
    IVSHMEM_REG_INTMASK:begin
     result:=TPasMPInterlocked.Read(fIntMask);
    end;
-    IVSHMEM_REG_INTSTATUS:begin
-     // Read and clear
-     result:=TPasMPInterlocked.Exchange(fIntStatus,0);
-     if result<>0 then begin
-      fFuncs[0].LowerIRQ;
-      // Re-check: a concurrent RingDoorbell may have set fIntStatus after our
-      // Exchange cleared it, with its RaiseIRQ deduplicated by the PLIC.
-      if TPasMPInterlocked.Read(fIntStatus)<>0 then begin
-       fFuncs[0].RaiseIRQ(0);
-      end;
+   IVSHMEM_REG_INTSTATUS:begin
+    // Read and clear
+    result:=TPasMPInterlocked.Exchange(fIntStatus,0);
+    if result<>0 then begin
+     fFuncs[0].LowerIRQ;
+     // Re-check: a concurrent RingDoorbell may have set fIntStatus after our
+     // Exchange cleared it, with its RaiseIRQ deduplicated by the PLIC.
+     if TPasMPInterlocked.Read(fIntStatus)<>0 then begin
+      fFuncs[0].RaiseIRQ(0);
      end;
     end;
+   end;
    IVSHMEM_REG_IVPOSITION:begin
     result:=fIVPosition;
    end;
@@ -36861,7 +36913,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  result:=AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   result:=PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
   exit;
  end;
 
@@ -36870,7 +36926,11 @@ begin
   result:=0;
 {$ifdef PreferDirectMemoryAccess}
  end else if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  result:=AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   result:=PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$endif}
  end else begin
   result:=TPasRISCVUInt8(fBus.Load(self,TranslatedAddress,1));
@@ -36887,7 +36947,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
+{$else}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -36898,7 +36962,11 @@ begin
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
   if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
+{$else}
    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
    end;
@@ -36921,7 +36989,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   Value:=PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -36932,7 +37004,11 @@ begin
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
   if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   Value:=AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
    Value:=PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
    end;
@@ -36954,7 +37030,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
   PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
   exit;
  end;
 
@@ -36962,7 +37042,11 @@ begin
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
   if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
    PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
   end else{$endif}begin
    fBus.Store(self,TranslatedAddress,aValue,1);
   end;
@@ -36981,7 +37065,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
   PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
   exit;
  end;
 
@@ -36989,7 +37077,11 @@ begin
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
   if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
    PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
   end else{$endif}begin
    fBus.Store(self,TranslatedAddress,Value,1);
   end;
@@ -37005,7 +37097,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  result:=AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   result:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
   exit;
  end;
 
@@ -37015,7 +37111,11 @@ begin
    result:=0;
 {$ifdef PreferDirectMemoryAccess}
   end else if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   result:=AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
    result:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$endif}
   end else begin
    result:=TPasRISCVUInt16(fBus.Load(self,TranslatedAddress,2));
@@ -37038,7 +37138,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
+{$else}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -37050,7 +37154,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
+{$else}
     Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
     end;
@@ -37082,7 +37190,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   Value:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -37094,7 +37206,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
     Value:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
@@ -37125,7 +37241,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
   PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
   exit;
  end;
 
@@ -37134,7 +37254,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
     PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,aValue,2);
    end;
@@ -37159,7 +37283,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
   PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
   exit;
  end;
 
@@ -37168,7 +37296,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
     PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,Value,2);
    end;
@@ -37190,7 +37322,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  result:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   result:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
   exit;
  end;
 
@@ -37200,7 +37336,11 @@ begin
    result:=0;
 {$ifdef PreferDirectMemoryAccess}
   end else if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   result:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
    result:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$endif}
   end else begin
    result:=TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4));
@@ -37220,7 +37360,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
+{$else}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -37232,7 +37376,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
+{$else}
     Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
@@ -37261,7 +37409,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -37273,7 +37425,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
     Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
@@ -37302,7 +37458,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
   fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
   fState.CSR.SetFSDirty;
   exit;
@@ -37313,7 +37473,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
     Value:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
     fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
     fState.CSR.SetFSDirty;
    end else{$endif}begin
@@ -37342,7 +37506,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
   PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
   exit;
  end;
 
@@ -37351,7 +37519,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
    end else{$endif} begin
     fBus.Store(self,TranslatedAddress,aValue,4);
    end;
@@ -37373,7 +37545,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
   PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
   exit;
  end;
 
@@ -37382,7 +37558,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
    end else{$endif} begin
     fBus.Store(self,TranslatedAddress,Value,4);
    end;
@@ -37404,7 +37584,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
   PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
   exit;
  end;
 
@@ -37413,7 +37597,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
    end else{$endif} begin
     fBus.Store(self,TranslatedAddress,Value,4);
    end;
@@ -37432,7 +37620,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  result:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   result:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
   exit;
  end;
 
@@ -37442,7 +37634,11 @@ begin
    result:=0;
 {$ifdef PreferDirectMemoryAccess}
   end else if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   result:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
    result:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$endif}
   end else begin
    result:=fBus.Load(self,TranslatedAddress,8);
@@ -37462,7 +37658,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))));
+{$else}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -37474,7 +37674,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))));
+{$else}
     Value:=TPasRISCVUInt64(TPasRISCVInt64(PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^)));
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
@@ -37503,7 +37707,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
    fState.Registers[aRegister]:=Value;
   end;
@@ -37515,7 +37723,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
     Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
@@ -37544,7 +37756,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  Value:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
   Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
   fState.FPURegisters[aRegister].ui64:=Value;
   fState.CSR.SetFSDirty;
   exit;
@@ -37555,7 +37771,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    Value:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
+{$else}
     Value:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
+{$endif}
     fState.FPURegisters[aRegister].ui64:=Value;
     fState.CSR.SetFSDirty;
    end else{$endif}begin
@@ -37584,7 +37804,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
   PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
   exit;
  end;
 
@@ -37593,7 +37817,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
+{$else}
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,aValue,8);
    end;
@@ -37615,7 +37843,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
   PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
   exit;
  end;
 
@@ -37624,7 +37856,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,Value,8);
    end;
@@ -37646,7 +37882,11 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
   PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
   exit;
  end;
 
@@ -37655,7 +37895,11 @@ begin
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+    AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
+{$else}
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,Value,8);
    end;
@@ -37739,10 +37983,18 @@ begin
   if assigned(aBounce) then begin
    case aSize of
     4:begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+     AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),PPasRISCVUInt32(aBounce)^);
+{$else}
      PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=PPasRISCVUInt32(aBounce)^;
+{$endif}
     end;
     8:begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+     AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),PPasRISCVUInt64(aBounce)^);
+{$else}
      PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=PPasRISCVUInt64(aBounce)^;
+{$endif}
     end;
     16:begin
      PPasMPInt128Record(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=PPasMPInt128Record(aBounce)^;
@@ -39009,12 +39261,24 @@ begin
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (DirectAccessTLBEntry^.Execute=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef Use16BitSplittedInstructionFetches}
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  aInstruction:=AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress)));
+{$else}
   aInstruction:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress)))^;
+{$endif}
   if (aInstruction and 3)=3 then begin
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+   aInstruction:=aInstruction or (TPasRISCVUInt32(AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress+2)))) shl 16);
+{$else}
    aInstruction:=aInstruction or (TPasRISCVUInt32(PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress+2)))^) shl 16);
+{$endif}
   end;
 {$else}
+{$ifdef UseAtomicMemAccessForTLBFastPath}
+  aInstruction:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress)));
+{$else}
   aInstruction:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+aAddress)))^;
+{$endif}
 {$endif}
   result:=true;
   exit;
