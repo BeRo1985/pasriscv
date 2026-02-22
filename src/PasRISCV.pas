@@ -7710,7 +7710,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure Interrupt;
        procedure WakeUp;
        procedure InterruptAndWakeUp;
-       procedure EventTick;
+       procedure EventTick(const aForce:Boolean);
        function QueuePause(const aWaitUntilHalted:Boolean):Boolean;
        procedure Pause(const aWaitUntilHalted:Boolean);
        procedure Resume(const aWaitUntilRunning:Boolean);
@@ -18878,7 +18878,8 @@ begin
 
    fConditionVariableLock.Acquire;
    try
-    Timeouted:=ConditionVariableWaitTime(fConditionVariable,fConditionVariableLock,CLOCK_FREQUENCY_INTERVAL_60HZ)=wrTimeout;
+    Timeouted:=fConditionVariable.Wait(fConditionVariableLock,16)=wrTimeout;
+//  Timeouted:=ConditionVariableWaitTime(fConditionVariable,fConditionVariableLock,CLOCK_FREQUENCY_INTERVAL_60HZ)=wrTimeout;
    finally
     fConditionVariableLock.Release;
    end;
@@ -18886,7 +18887,7 @@ begin
    if Terminated then begin
     break;
    end else if Timeouted and TPasMPInterlocked.Read(fRunning) then begin
-    fMachine.EventTick;
+    fMachine.EventTick(true);
    end;
 
   end;
@@ -57669,7 +57670,7 @@ begin
   end;
 
   if not assigned(fMachine.fEventThread) then begin
-   fMachine.EventTick;
+   fMachine.EventTick(false);
   end;
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
@@ -64189,7 +64190,7 @@ begin
    if aSingleStep and ((fRunState and RUNSTATE_SINGLESTEP)<>0) then begin
 
     if assigned(fEventThread) then begin
-     EventTick;
+     EventTick(false);
     end;
 
     for Index:=0 to length(fHARTs)-1 do begin
@@ -64339,7 +64340,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.EventTick;
+procedure TPasRISCV.EventTick(const aForce:Boolean);
 var PLICTime:TPasRISCVUInt64;
 begin
 
@@ -64353,13 +64354,13 @@ begin
 
   PLICTime:=fACLINTDevice.GetTime;
 
-  if (PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ then begin
+  if aForce or ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ) then begin
 
    fEventTickLock.AcquireWrite;
    try
 
     if ((fRunState and (RUNSTATE_RUNNING or RUNSTATE_SINGLESTEP or RUNSTATE_PAUSING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=RUNSTATE_RUNNING) and
-       ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ) then begin
+       (aForce or ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ)) then begin
 
      TPasMPInterlocked.Write(fLastFullUpdateTime,PLICTime);
 
