@@ -18779,6 +18779,7 @@ begin
 end;
 
 procedure TPasRISCV.TEventThread.Execute;
+var Timeouted:Boolean;
 begin
 
  NameThreadForDebugging('TPasRISCV.TEventThread');
@@ -18802,16 +18803,14 @@ begin
 
    fConditionVariableLock.Acquire;
    try
-    while not (fRunning or Terminated) do begin
-     fConditionVariable.Wait(fConditionVariableLock,16);
-    end;
+    Timeouted:=fConditionVariable.Wait(fConditionVariableLock,16)=wrTimeout;
    finally
     fConditionVariableLock.Release;
    end;
 
    if Terminated then begin
     break;
-   end else if fRunning then begin
+   end else if Timeouted and fRunning then begin
     fMachine.EventTick;
    end;
 
