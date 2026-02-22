@@ -11649,6 +11649,81 @@ begin
 
 end;
 
+function ConditionVariableWaitTime(const aConditionVariable:TPasMPConditionVariable;
+                                   const aConditionVariableLock:TPasMPConditionVariableLock;
+                                   aDuration:TPasRISCVUInt64):TWaitResult;
+var SleepThreshold,TimeA,TimeB,Remaining,WaitForDuration,Difference:TPasRISCVUInt64;
+begin
+
+ SleepThreshold:=GlobalSleepThreshold;
+ if GlobalSleepGranularity<>0 then begin
+  inc(SleepThreshold,aDuration div 6);
+ end;
+
+ Remaining:=aDuration;
+
+ TimeA:=GetCurrentTime;
+
+ // Sleep for a while to avoid busy waiting
+ while Remaining>SleepThreshold do begin
+  WaitForDuration:=ConvertScale(Remaining-SleepThreshold,CLOCK_FREQUENCY,1000);
+  if WaitForDuration>0 then begin
+   case aConditionVariable.Wait(aConditionVariableLock,WaitForDuration) of
+    wrSignaled:begin
+     result:=wrSignaled;
+     exit;
+    end;
+    wrError:begin
+     result:=wrError;
+     exit;
+    end;
+    wrAbandoned:begin
+     result:=wrAbandoned;
+     exit;
+    end;
+    else begin
+    end;
+   end;
+  end;
+  TimeB:=GetCurrentTime;
+  Difference:=TimeB-TimeA;
+  if Remaining>Difference then begin
+   dec(Remaining,Difference);
+  end else begin
+   Remaining:=0;
+  end;
+  TimeA:=TimeB;
+ end;
+
+ // Busy wait for the remaining time for more precise timing
+ while Remaining>0 do begin
+  TimeB:=GetCurrentTime;
+  Difference:=TimeB-TimeA;
+  if Remaining>Difference then begin
+   dec(Remaining,Difference);
+  end else begin
+   Remaining:=0;
+  end;
+  TimeA:=TimeB;
+ end;
+
+ case aConditionVariable.Wait(aConditionVariableLock,0) of
+  wrSignaled:begin
+   result:=wrSignaled;
+  end;
+  wrError:begin
+   result:=wrError;
+  end;
+  wrAbandoned:begin
+   result:=wrAbandoned;
+  end;
+  else begin
+   result:=wrTimeout;
+  end;
+ end;
+
+end;
+
 {$if defined(cpu386)}
 function feclearexcept(aExceptions:TPasRISCVUInt32=$3f):TPasRISCVUInt32; assembler; register;
 asm
@@ -18803,7 +18878,7 @@ begin
 
    fConditionVariableLock.Acquire;
    try
-    Timeouted:=fConditionVariable.Wait(fConditionVariableLock,16)=wrTimeout;
+    Timeouted:=ConditionVariableWaitTime(fConditionVariable,fConditionVariableLock,CLOCK_FREQUENCY_INTERVAL_60HZ)=wrTimeout;
    finally
     fConditionVariableLock.Release;
    end;
