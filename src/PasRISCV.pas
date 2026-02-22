@@ -57466,7 +57466,7 @@ begin
   // recovering any interrupts that were permanently lost due to the RaiseIRQ/LowerIRQ
   // race condition on the fRaised dedup guard. While the primary fix (always calling
   // SendIRQ in RaiseIRQ) prevents most losses, this provides defense-in-depth.
-  if (fHARTID=0) and assigned(fMachine.fPLICDevice) then begin
+  if (fHARTID=0) and assigned(fMachine.fPLICDevice){$if defined(PasRISCVCPUDebug)}and not IgnoreInterrupts{$ifend} then begin
    PLICTime:=fACLINTDevice.GetTime;
    if (PLICTime-fMachine.fPLICDevice.fLastFullUpdateTime)>=CLOCK_FREQUENCY_INTERVAL_60HZ then begin
     fMachine.fPLICDevice.fLastFullUpdateTime:=PLICTime;
