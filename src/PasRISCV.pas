@@ -19051,7 +19051,7 @@ begin
   result:=(fMachine.fHARTs[HARTID].InterruptsRaised shr TPasRISCVUInt32(THART.TInterruptValue.MachineSoftware)) and 1;
  end else if (Address>=MTimeCmpAddress) and (Address<(MTimeCmpAddress+(CountHARTs shl 3))) then begin
   HARTID:=(Address-MTimeCmpAddress) shr 3;
-  result:=fMachine.fHARTs[HARTID].fMTIMECMP;
+  result:=TPasMPInterlocked.Read(fMachine.fHARTs[HARTID].fMTIMECMP);
  end else if (Address>=MTimeAddress) and (Address<(MTimeAddress+8)) then begin
   result:=GetTime;
  end else if (Address>=SSIPAddress) and (Address<(SSIPAddress+(CountHARTs shl 2))) then begin
@@ -19076,7 +19076,7 @@ begin
   end;
  end else if (Address>=MTimeCmpAddress) and (Address<(MTimeCmpAddress+(CountHARTs shl 3))) then begin
   HARTID:=(Address-MTimeCmpAddress) shr 3;
-  fMachine.fHARTs[HARTID].fMTIMECMP:=aValue;
+  TPasMPInterlocked.Write(fMachine.fHARTs[HARTID].fMTIMECMP,aValue);
   if GetTime>=aValue then begin
    fMachine.fHARTs[HARTID].RaiseInterrupt(THART.TInterruptValue.MachineTimer);
   end else begin
@@ -19086,7 +19086,7 @@ begin
   fStartTime:=GetTime-aValue;
   Time:=GetTime;
   for HARTID:=1 to CountHARTs do begin
-   if Time>=fMachine.fHARTs[HARTID-1].fMTIMECMP then begin
+   if Time>=TPasMPInterlocked.Read(fMachine.fHARTs[HARTID-1].fMTIMECMP) then begin
     fMachine.fHARTs[HARTID-1].RaiseInterrupt(THART.TInterruptValue.MachineTimer);
    end else begin
     fMachine.fHARTs[HARTID-1].ClearInterrupt(THART.TInterruptValue.MachineTimer);
@@ -35500,10 +35500,10 @@ begin
    result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.SENVCFG] and CSR_SENVCFG_MASK));
   end;
   TAddress.STIMECMP:begin
-   result:=fHART.fSTIMECMP;
+   result:=TPasMPInterlocked.Read(fHART.fSTIMECMP);
   end;
   TAddress.VSTIMECMP:begin
-   result:=fHART.fVSTIMECMP;
+   result:=TPasMPInterlocked.Read(fHART.fVSTIMECMP);
   end;
 {TAddress.STIMECMPH:begin
    result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.STIMECMP] shr 32));
@@ -35538,11 +35538,11 @@ begin
    fData[TAddress.SENVCFG]:=aValue and CSR_SENVCFG_MASK;
   end;
   TAddress.STIMECMP:begin
-   fHART.fSTIMECMP:=aValue;
+   TPasMPInterlocked.Write(fHART.fSTIMECMP,aValue);
    fData[TAddress.STIMECMP]:=aValue;
   end;
   TAddress.VSTIMECMP:begin
-   fHART.fVSTIMECMP:=aValue;
+   TPasMPInterlocked.Write(fHART.fVSTIMECMP,aValue);
    fData[TAddress.VSTIMECMP]:=aValue;
   end;
   TAddress.HVICTL:begin
@@ -38655,9 +38655,9 @@ begin
    SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
   end else begin
    rd:=TRegister((aInstruction shr 7) and $1f);
-   CSRValue:=fVSTIMECMP;
+   CSRValue:=TPasMPInterlocked.Read(fVSTIMECMP);
    fState.CSR.Store(TCSR.TAddress.VSTIMECMP,CSROperation(aOperation,CSRValue,aRHS));
-   if (fMachine.fACLINTDevice.GetTime+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=fVSTIMECMP then begin
+   if (fMachine.fACLINTDevice.GetTime+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=TPasMPInterlocked.Read(fVSTIMECMP) then begin
     RaiseInterrupt(TInterruptValue.HypervisorTimer);
    end else begin
     ClearInterrupt(TInterruptValue.HypervisorTimer);
@@ -38676,7 +38676,7 @@ begin
    rd:=TRegister((aInstruction shr 7) and $1f);
    CSRValue:=fState.CSR.Load(aCSR);
    fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
-   if fMachine.fACLINTDevice.GetTime>=fSTIMECMP then begin
+   if fMachine.fACLINTDevice.GetTime>=TPasMPInterlocked.Read(fSTIMECMP) then begin
     RaiseInterrupt(TInterruptValue.SupervisorTimer);
    end else begin
     ClearInterrupt(TInterruptValue.SupervisorTimer);
@@ -38706,9 +38706,9 @@ begin
   end else begin
    // HS-mode access to VSTIMECMP (hypervisor sets guest timer)
    rd:=TRegister((aInstruction shr 7) and $1f);
-   CSRValue:=fVSTIMECMP;
+   CSRValue:=TPasMPInterlocked.Read(fVSTIMECMP);
    fState.CSR.Store(TCSR.TAddress.VSTIMECMP,CSROperation(aOperation,CSRValue,aRHS));
-   if (fMachine.fACLINTDevice.GetTime+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=fVSTIMECMP then begin
+   if (fMachine.fACLINTDevice.GetTime+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=TPasMPInterlocked.Read(fVSTIMECMP) then begin
     RaiseInterrupt(TInterruptValue.HypervisorTimer);
    end else begin
     ClearInterrupt(TInterruptValue.HypervisorTimer);
@@ -57242,7 +57242,7 @@ end;
 
 procedure TPasRISCV.THART.SleepUntilNextInterrupt;
 var SleepDuration,CurrentSleepDuration,WaitForDuration,
-    Time,TimeA,TimeB,ActiveTimers,MTIMECMP,STIMECMP,SleepThreshold,
+    Time,TimeA,TimeB,ActiveTimers,MTIMECMP,STIMECMP,VSTIMECMP,SleepThreshold,
     Remaining,Difference:TPasRISCVUInt64;
     DoInterrupt:Boolean;
 begin
@@ -57259,7 +57259,7 @@ begin
 
    SleepDuration:=TPasRISCVUInt64($ffffffffffffffff);
 
-   MTIMECMP:=fMTIMECMP;
+   MTIMECMP:=TPasMPInterlocked.Read(fMTIMECMP);
    if (MTIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
       ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and
       (Time<MTIMECMP) then begin
@@ -57269,7 +57269,7 @@ begin
     end;
    end;
 
-   STIMECMP:=fSTIMECMP;
+   STIMECMP:=TPasMPInterlocked.Read(fSTIMECMP);
    if (STIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
       ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and
       (Time<STIMECMP) then begin
@@ -57279,10 +57279,11 @@ begin
     end;
    end;
 
-   if (fVSTIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
+   VSTIMECMP:=TPasMPInterlocked.Read(fVSTIMECMP);
+   if (VSTIMECMP<>TPasRISCVUInt64($ffffffffffffffff)) and
       ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer)<>0) and
-      ((Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])<fVSTIMECMP) then begin
-    CurrentSleepDuration:=TPasRISCVInt64(fVSTIMECMP)-TPasRISCVInt64(Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA]);
+      ((Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])<VSTIMECMP) then begin
+    CurrentSleepDuration:=TPasRISCVInt64(VSTIMECMP)-TPasRISCVInt64(Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA]);
     if CurrentSleepDuration<SleepDuration then begin
      SleepDuration:=CurrentSleepDuration;
     end;
@@ -57353,7 +57354,7 @@ begin
 
    DoInterrupt:=false;
 
-   if ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP) then begin
+   if ((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=TPasMPInterlocked.Read(fMTIMECMP)) then begin
     if SetInterrupt(TPasRISCV.THART.TInterruptValue.MachineTimer) then begin
      DoInterrupt:=true;
     end;
@@ -57395,17 +57396,17 @@ begin
  if Interrupts<>0 then begin
   Time:=fACLINTDevice.GetTime;
   DoInterrupt:=false;
-  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=fMTIMECMP) then begin
+  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=TPasMPInterlocked.Read(fMTIMECMP)) then begin
    if SetInterrupt(TPasRISCV.THART.TInterruptValue.MachineTimer) then begin
     DoInterrupt:=true;
    end;
   end;
-  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=fSTIMECMP) then begin
+  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=TPasMPInterlocked.Read(fSTIMECMP)) then begin
    if SetInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorTimer) then begin
     DoInterrupt:=true;
    end;
   end;
-  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer)<>0) and ((Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=fVSTIMECMP) then begin
+  if ((Interrupts and TPasRISCV.THART.TInterruptValueMasks.HypervisorTimer)<>0) and ((Time+fState.CSR.fData[TCSR.TAddress.HTIMEDELTA])>=TPasMPInterlocked.Read(fVSTIMECMP)) then begin
    if SetInterrupt(TPasRISCV.THART.TInterruptValue.HypervisorTimer) then begin
     DoInterrupt:=true;
    end;
