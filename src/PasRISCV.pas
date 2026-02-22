@@ -18788,7 +18788,7 @@ begin
 
   fConditionVariableLock.Acquire;
   try
-   while not (fRunning or Terminated) do begin
+   while not (TPasMPInterlocked.Read(fRunning) or Terminated) do begin
     fConditionVariable.Wait(fConditionVariableLock,1000);
    end;
   finally
@@ -18799,7 +18799,7 @@ begin
    break;
   end;
 
-  while fRunning and not Terminated do begin
+  while TPasMPInterlocked.Read(fRunning) and not Terminated do begin
 
    fConditionVariableLock.Acquire;
    try
@@ -18810,7 +18810,7 @@ begin
 
    if Terminated then begin
     break;
-   end else if Timeouted and fRunning then begin
+   end else if Timeouted and TPasMPInterlocked.Read(fRunning) then begin
     fMachine.EventTick;
    end;
 
