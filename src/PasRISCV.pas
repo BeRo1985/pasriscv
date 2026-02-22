@@ -1,4 +1,4 @@
-﻿(******************************************************************************
+(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
  *                        Version 2026-02-13-01-29-0000                       *
@@ -22067,13 +22067,18 @@ begin
    IVSHMEM_REG_INTMASK:begin
     result:=TPasMPInterlocked.Read(fIntMask);
    end;
-   IVSHMEM_REG_INTSTATUS:begin
-    // Read and clear
-    result:=TPasMPInterlocked.Exchange(fIntStatus,0);
-    if result<>0 then begin
-     fFuncs[0].LowerIRQ;
+    IVSHMEM_REG_INTSTATUS:begin
+     // Read and clear
+     result:=TPasMPInterlocked.Exchange(fIntStatus,0);
+     if result<>0 then begin
+      fFuncs[0].LowerIRQ;
+      // Re-check: a concurrent RingDoorbell may have set fIntStatus after our
+      // Exchange cleared it, with its RaiseIRQ deduplicated by the PLIC.
+      if TPasMPInterlocked.Read(fIntStatus)<>0 then begin
+       fFuncs[0].RaiseIRQ(0);
+      end;
+     end;
     end;
-   end;
    IVSHMEM_REG_IVPOSITION:begin
     result:=fIVPosition;
    end;
@@ -25730,6 +25735,15 @@ begin
   fMachine.fInterrupts.RaiseIRQ(fIRQ);
  end else begin
   fMachine.fInterrupts.LowerIRQ(fIRQ);
+  // Re-check: A concurrent SetIRQ may have set fIntStatus between our read
+  // above and the LowerIRQ call, with its RaiseIRQ being silently deduplicated
+  // by the PLIC (fRaised was still set from the old interrupt). Our LowerIRQ
+  // then cleared fRaised, permanently losing the new interrupt. Re-raising here
+  // recovers it because fRaised is now 0 after our LowerIRQ, so RaiseIRQ will
+  // always call SendIRQ and deliver the interrupt to the HART.
+  if TPasMPInterlocked.Read(fIntStatus)<>0 then begin
+   fMachine.fInterrupts.RaiseIRQ(fIRQ);
+  end;
  end;
 end;
 
@@ -26186,6 +26200,13 @@ begin
       0:begin
        result:=TPasMPInterlocked.Exchange(fIntStatus,0);
        fMachine.fInterrupts.LowerIRQ(fIRQ);
+       // Re-check: same race condition as MMIO INTERRUPT_ACK path.
+       // A concurrent SetIRQ may have set fIntStatus after our Exchange
+       // cleared it, with its RaiseIRQ deduplicated by the PLIC. Our
+       // LowerIRQ then cleared fRaised, permanently losing the interrupt.
+       if TPasMPInterlocked.Read(fIntStatus)<>0 then begin
+        fMachine.fInterrupts.RaiseIRQ(fIRQ);
+       end;
       end;
       else begin
        result:=0;
