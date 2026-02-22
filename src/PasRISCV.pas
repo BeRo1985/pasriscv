@@ -37759,8 +37759,17 @@ begin
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.NoTrap,TMMU.TAccessFlag.DirectMemoryPointer]);
   if (fState.ExceptionValue=TExceptionValue.None) and assigned(aBounce) then begin
    case aSize of
-    1,2,4,8:begin
+    1:begin
+     fBus.Store(self,TranslatedAddress,PPasRISCVUInt8(aBounce)^,aSize);
+    end;
+    2:begin
+     fBus.Store(self,TranslatedAddress,PPasRISCVUInt16(aBounce)^,aSize);
+    end;
+    4:begin
      fBus.Store(self,TranslatedAddress,PPasRISCVUInt32(aBounce)^,aSize);
+    end;
+    8:begin
+     fBus.Store(self,TranslatedAddress,PPasRISCVUInt64(aBounce)^,aSize);
     end;
     16:begin
      fBus.Store(self,TranslatedAddress,PPasMPInt128Record(aBounce)^.Lo,8);
