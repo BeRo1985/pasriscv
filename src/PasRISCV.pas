@@ -1409,6 +1409,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              RUNSTATE_HARTS_MASK=TPasRISCVUInt32($0000ffff);
              RUNSTATE_HART_SHIFT=0;
              CLOCK_FREQUENCY=1000000;
+             CLOCK_FREQUENCY_INTERVAL_60HZ=(CLOCK_FREQUENCY+30) div 60;
              FE_ALL_EXCEPT=$3f;
              FE_INVALID=$01;
              FE_DENORM=$02;
@@ -2749,6 +2750,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              private
               fAllocationIRQCounter:TPasRISCVUInt32;
               fCountContexts:TPasRISCVUInt32;
+              fLastFullUpdateTime:TPasRISCVUInt64;
               fPriority:array[0..PLIC_SOURCE_MAX-1] of TPasRISCVUInt32;
               fPending:array[0..PLIC_SRC_REG_COUNT-1] of TPasRISCVUInt32;
               fRaised:array[0..PLIC_SRC_REG_COUNT-1] of TPasRISCVUInt32;
@@ -19677,6 +19679,7 @@ begin
  FillChar(fRaised,SizeOf(fRaised),#0);
  FillChar(fEnable,SizeOf(fEnable),#0);
  FillChar(fThreshold,SizeOf(fThreshold),#0);
+ fLastFullUpdateTime:=0;
 end;
 
 function TPasRISCV.TPLICDevice.IsIRQPending(const aIRQ:TPasRISCVUInt32):Boolean;
@@ -19886,8 +19889,14 @@ var Mask:TPasRISCVUInt32;
 begin
  if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
-  if (TPasMPInterlocked.ExchangeBitwiseOr(fRaised[aIRQ shr 5],Mask) and Mask)=0 then begin
-   SendIRQ(aIRQ);
+  // Two chained atomic ORs.
+  // 1) Set fRaised bit — if it was already set, skip (dedup on raised).
+  // 2) If raised was new (0->1), set fPending bit — if it was already set, skip (dedup on pending).
+  // 3) If pending was also new (0->1), notify the HART.
+  // This avoids going through SendIRQ and keeps the same structure.
+  if ((TPasMPInterlocked.ExchangeBitwiseOr(fRaised[aIRQ shr 5],Mask) and Mask)=0) and 
+     ((TPasMPInterlocked.ExchangeBitwiseOr(fPending[aIRQ shr 5],Mask) and Mask)=0) then begin
+   NotifyIRQ(aIRQ);
   end;
   result:=true;
  end else begin
@@ -57436,6 +57445,7 @@ var Instruction:TPasRISCVUInt32;
     InstructionAddress,PageAddress:TPasRISCVUInt64;
     InstructionPointer:TPasRISCVPtrUInt;
     RunState:PPasRISCVUInt32;
+    PLICTime:TPasRISCVUInt64;
 begin
 
  RunState:=@fMachine.fRunState;
@@ -57447,9 +57457,22 @@ begin
    TPasMPInterlocked.BitwiseAnd(fMachine.fFlushTLBHARTMask,TPasMPUInt32(not TPasMPUInt32(fHARTMask)));
   end;
 
-  {$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
-   CheckTimers;
-  end;
+   {$if defined(PasRISCVCPUDebug)}if not IgnoreInterrupts then{$ifend}begin
+    CheckTimers;
+   end;
+
+   // Periodic PLIC full update (safety net, ~60Hz, HART 0 only).
+   // This is a 60Hz event loop that re-evaluates all PLIC contexts,
+   // recovering any interrupts that were permanently lost due to the RaiseIRQ/LowerIRQ
+   // race condition on the fRaised dedup guard. While the primary fix (always calling
+   // SendIRQ in RaiseIRQ) prevents most losses, this provides defense-in-depth.
+   if (fHARTID=0) and assigned(fMachine.fPLICDevice) then begin
+    PLICTime:=fACLINTDevice.GetTime;
+    if (PLICTime-fMachine.fPLICDevice.fLastFullUpdateTime)>=CLOCK_FREQUENCY_INTERVAL_60HZ then begin
+     fMachine.fPLICDevice.fLastFullUpdateTime:=PLICTime;
+     fMachine.fPLICDevice.FullUpdate;
+    end;
+   end;
 
   if fState.ExceptionValue<>TExceptionValue.None then begin
    ExecuteException;
