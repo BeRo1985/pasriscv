@@ -300,6 +300,8 @@ unit PasRISCV;
 
 {$undef UseAtomicMemAccessForTLBFastPath}
 
+{$define UseAtomicMemCopyRelaxedForSlowPath}
+
 //{$define I2CDebug} // Enable I2C debug output — remove/comment out when not needed
 
 //{$define PasRISCVCPUFileDumpDebug}
@@ -7817,6 +7819,16 @@ var CPUFeatures:TPasRISCVCPUFeatures=0;
     HalfFloatToFloatExponentTable:array[0..63] of TPasRISCVUInt32;
     HalfFloatToFloatOffsetTable:array[0..63] of TPasRISCVUInt32;
 
+function AtomicMemLoadRelaxedUInt8(const aPointer:Pointer):TPasRISCVUInt8; {$ifdef CAN_INLINE}inline;{$endif}
+function AtomicMemLoadRelaxedUInt16(const aPointer:Pointer):TPasRISCVUInt16; {$ifdef CAN_INLINE}inline;{$endif}
+function AtomicMemLoadRelaxedUInt32(const aPointer:Pointer):TPasRISCVUInt32; {$ifdef CAN_INLINE}inline;{$endif}
+function AtomicMemLoadRelaxedUInt64(const aPointer:Pointer):TPasRISCVUInt64; {$ifdef CAN_INLINE}inline;{$endif}
+procedure AtomicMemStoreRelaxedUInt8(const aPointer:Pointer;const aValue:TPasRISCVUInt8); {$ifdef CAN_INLINE}inline;{$endif}
+procedure AtomicMemStoreRelaxedUInt16(const aPointer:Pointer;const aValue:TPasRISCVUInt16); {$ifdef CAN_INLINE}inline;{$endif}
+procedure AtomicMemStoreRelaxedUInt32(const aPointer:Pointer;const aValue:TPasRISCVUInt32); {$ifdef CAN_INLINE}inline;{$endif}
+procedure AtomicMemStoreRelaxedUInt64(const aPointer:Pointer;const aValue:TPasRISCVUInt64); {$ifdef CAN_INLINE}inline;{$endif}
+procedure AtomicMemCopyRelaxed(const aSrc,aDst:Pointer;const aSize:TPasRISCVUInt64); {$ifdef CAN_INLINE}inline;{$endif}
+
 function IntLog2(x:TPasRISCVUInt32):TPasRISCVUInt32; {$ifdef fpc}{$ifdef CAN_INLINE}inline;{$endif}{$endif}
 function IntLog264(x:TPasRISCVUInt64):TPasRISCVUInt32; {$ifdef fpc}{$ifdef CAN_INLINE}inline;{$endif}{$endif}
 
@@ -8226,6 +8238,25 @@ end;
 procedure AtomicMemStoreRelaxedUInt64(const aPointer:Pointer;const aValue:TPasRISCVUInt64); {$ifdef CAN_INLINE}inline;{$endif}
 begin
  PPasRISCVUInt64(aPointer)^:=aValue;
+end;
+
+// Consolidated atomic memcpy for SMP correctness.
+// Uses naturally-aligned typed accesses for sizes 1/2/4/8 when both src and dst are aligned,
+// falling back to byte-by-byte copy otherwise (which is still correct — just not single-access atomic).
+procedure AtomicMemCopyRelaxed(const aSrc,aDst:Pointer;const aSize:TPasRISCVUInt64); {$ifdef CAN_INLINE}inline;{$endif}
+var Index:TPasRISCVUInt64;
+begin
+ if (aSize=8) and ((TPasRISCVPtrUInt(aSrc) and 7)=0) and ((TPasRISCVPtrUInt(aDst) and 7)=0) then begin
+  PPasRISCVUInt64(aDst)^:=PPasRISCVUInt64(aSrc)^;
+ end else if (aSize=4) and ((TPasRISCVPtrUInt(aSrc) and 3)=0) and ((TPasRISCVPtrUInt(aDst) and 3)=0) then begin
+  PPasRISCVUInt32(aDst)^:=PPasRISCVUInt32(aSrc)^;
+ end else if (aSize=2) and ((TPasRISCVPtrUInt(aSrc) and 1)=0) and ((TPasRISCVPtrUInt(aDst) and 1)=0) then begin
+  PPasRISCVUInt16(aDst)^:=PPasRISCVUInt16(aSrc)^;
+ end else begin
+  for Index:=0 to aSize-1 do begin
+   PPasRISCVUInt8Array(aDst)^[Index]:=PPasRISCVUInt8Array(aSrc)^[Index];
+  end;
+ end;
 end;
 
 {$if not declared(SARLongint)}
@@ -34753,6 +34784,10 @@ begin
  Offset:=aAddress-fBase;
  if (Offset+aSize)<=fSize then begin
 {$ifdef LITTLE_ENDIAN}
+{$ifdef UseAtomicMemCopyRelaxedForSlowPath}
+  result:=0;
+  AtomicMemCopyRelaxed(Pointer(@PPasRISCVUInt8Array(fData)^[Offset]),@result,aSize);
+{$else}
   case aSize of
    1:begin
     result:=TPasRISCVUInt8(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^);
@@ -34770,6 +34805,7 @@ begin
     result:=TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^) and ((TPasRISCVUInt64(1) shl (aSize shl 3))-1);
    end;
   end;
+{$endif}
 {$else}
   case aSize of
    1:begin
@@ -34800,6 +34836,9 @@ begin
  Offset:=aAddress-fBase;
  if (Offset+aSize)<=fSize then begin
 {$ifdef LITTLE_ENDIAN}
+{$ifdef UseAtomicMemCopyRelaxedForSlowPath}
+  AtomicMemCopyRelaxed(@aValue,Pointer(@PPasRISCVUInt8Array(fData)^[Offset]),aSize);
+{$else}
   case aSize of
    1:begin
     TPasRISCVUInt8(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=aValue;
@@ -34818,6 +34857,7 @@ begin
     TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^):=(TPasRISCVUInt64(Pointer(@PPasRISCVUInt8Array(fData)^[Offset])^) and not Mask) or (aValue and Mask);
    end;
   end;
+{$endif}
 {$else}
   case aSize of
    1:begin
