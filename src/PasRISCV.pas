@@ -57905,7 +57905,19 @@ var Address:TPasRISCVUInt64;
     Depth:TPasRISCVUInt64;
     Line:TPasRISCVRawByteString;
     ModeStr:TPasRISCVRawByteString;
+ procedure Emit(const aString:TPasRISCVRawByteString);
+ begin
+  if assigned(fMachine.fDebugger) then begin
+   fMachine.fDebugger.Output(aString);
+  end else begin
+   WriteLn(aString);
+  end;
+ end;
 begin
+
+ if not assigned(fMachine) then begin
+  exit;
+ end;
 
  case fState.Mode of
   TMode.User:begin
@@ -57922,47 +57934,47 @@ begin
   end;
  end;
 
- WriteLn('');
- WriteLn('========== SPINLOCK DETECTOR: HART #'+IntToStr(fHARTID)+' ==========');
- WriteLn('PC stuck in range 0x'+LowerCase(IntToHex(fSpinDetectPC,16))+
+ Emit('');
+ Emit('========== SPINLOCK DETECTOR: HART #'+IntToStr(fHARTID)+' ==========');
+ Emit('PC stuck in range 0x'+LowerCase(IntToHex(fSpinDetectPC,16))+
          '..0x'+LowerCase(IntToHex(fSpinDetectPC+63,16))+
          ' for >'+IntToStr(fMachine.fSpinDetectThresholdTicks div CLOCK_FREQUENCY)+'s');
- WriteLn('Current PC: 0x'+LowerCase(IntToHex(fState.PC,16))+
+ Emit('Current PC: 0x'+LowerCase(IntToHex(fState.PC,16))+
          '  Mode: '+ModeStr+
          '  Cycle: '+IntToStr(fState.Cycle));
- WriteLn('');
+ Emit('');
 
  // Key CSRs for interrupt debugging
- WriteLn('--- CSRs ---');
- WriteLn('  mstatus: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.MSTATUS],16))+
+ Emit('--- CSRs ---');
+ Emit('  mstatus: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.MSTATUS],16))+
          '  sstatus: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SSTATUS],16)));
- WriteLn('      mip: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.MIP],16))+
+ Emit('      mip: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.MIP],16))+
          '      mie: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.MIE],16)));
- WriteLn('      sip: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SIP],16))+
+ Emit('      sip: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SIP],16))+
          '      sie: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SIE],16)));
- WriteLn('   scause: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SCAUSE],16))+
+ Emit('   scause: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SCAUSE],16))+
          '    stval: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.STVAL],16)));
- WriteLn('     sepc: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SEPC],16))+
+ Emit('     sepc: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SEPC],16))+
          '     satp: 0x'+LowerCase(IntToHex(fState.CSR.fData[TCSR.TAddress.SATP],16)));
- WriteLn('');
+ Emit('');
 
  // Key registers
- WriteLn('--- Registers ---');
- WriteLn('   ra: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.RA],16))+
+ Emit('--- Registers ---');
+ Emit('   ra: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.RA],16))+
          '   sp: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.SP],16)));
- WriteLn('   gp: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.GP],16))+
+ Emit('   gp: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.GP],16))+
          '   tp: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.TP],16)));
- WriteLn('   a0: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.A0],16))+
+ Emit('   a0: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.A0],16))+
          '   a1: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.A1],16)));
- WriteLn('   a2: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.A2],16))+
+ Emit('   a2: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.A2],16))+
          '   a3: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.A3],16)));
- WriteLn('   s0: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.S0],16))+
+ Emit('   s0: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.S0],16))+
          '   s1: 0x'+LowerCase(IntToHex(fState.Registers[TRegister.S1],16)));
- WriteLn('');
+ Emit('');
 
  // Disassembly of the stuck region
  if assigned(fMachine.fDebugger) then begin
-  WriteLn('--- Disassembly (stuck region) ---');
+  Emit('--- Disassembly (stuck region) ---');
   Address:=fSpinDetectPC;
   while Address<fSpinDetectPC+64 do begin
    if fMachine.fDebugger.ReadInstruction(self,Address,Instruction,InstructionSize) then begin
@@ -57977,43 +57989,43 @@ begin
      Line:=Line+LowerCase(IntToHex(Address,16))+': '+LowerCase(IntToHex(Instruction,8));
     end;
     Line:=Line+' '+TPasRISCVRawByteString(fMachine.fDebugger.fDisassembler.DisassembleInstruction(Address,Instruction));
-    WriteLn(Line);
+    Emit(Line);
     inc(Address,InstructionSize);
    end else begin
-    WriteLn('   '+LowerCase(IntToHex(Address,16))+': <unreadable>');
+    Emit('   '+LowerCase(IntToHex(Address,16))+': <unreadable>');
     inc(Address,4);
    end;
   end;
-  WriteLn('');
+  Emit('');
  end;
 
  // Backtrace
- WriteLn('--- Backtrace ---');
+ Emit('--- Backtrace ---');
  FP:=fState.Registers[TRegister.S0];
  if FP=0 then begin
-  WriteLn('   (no frame pointer)');
+  Emit('   (no frame pointer)');
  end else begin
-  WriteLn('   pc=0x'+LowerCase(IntToHex(fState.PC,16))+' fp=0x'+LowerCase(IntToHex(FP,16)));
-   Depth:=0;
-   while Depth<32 do begin
-    // Best-effort frame chain: [fp]=prev_fp, [fp+8]=ra (matches debugger convention)
-    if not LoadEx(FP,NextFP,8) then begin
-     break;
-    end;
-    if not LoadEx(FP+8,RA,8) then begin
-     break;
-    end;
-    WriteLn('   #'+IntToStr(Depth)+' ra=0x'+LowerCase(IntToHex(RA,16))+' fp=0x'+LowerCase(IntToHex(FP,16)));
-    if (NextFP=0) or (NextFP<=FP) then begin
-     break;
-    end;
-    FP:=NextFP;
-    inc(Depth);
+  Emit('   pc=0x'+LowerCase(IntToHex(fState.PC,16))+' fp=0x'+LowerCase(IntToHex(FP,16)));
+  Depth:=0;
+  while Depth<32 do begin
+   // Best-effort frame chain: [fp]=prev_fp, [fp+8]=ra (matches debugger convention)
+   if not LoadEx(FP,NextFP,8) then begin
+    break;
    end;
+   if not LoadEx(FP+8,RA,8) then begin
+    break;
+   end;
+   Emit('   #'+IntToStr(Depth)+' ra=0x'+LowerCase(IntToHex(RA,16))+' fp=0x'+LowerCase(IntToHex(FP,16)));
+   if (NextFP=0) or (NextFP<=FP) then begin
+    break;
+   end;
+   FP:=NextFP;
+   inc(Depth);
+  end;
  end;
 
- WriteLn('================================================');
- WriteLn('');
+ Emit('================================================');
+ Emit('');
 
 end;
 {$endif}
@@ -61121,284 +61133,284 @@ begin
   result:=false;
   exit;
  end else if (Command='help') or (Command='?') then begin
-   Emit('commands: regs (r), print, mem (m), memw (mw), stack (st), backtrace (bt), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), '+
+  Emit('commands: regs (r), print, mem (m), memw (mw), stack (st), backtrace (bt), step (s), stepi (si), cont (c), pause (p), hart (h), disasm (d), break (b), '+
 {$ifdef PasMPDebugSpinDetect}
-        'watchdog (wd), '+
+       'watchdog (wd), '+
 {$endif}
-        'reboot, shutdown, quit (q)');
+       'reboot, shutdown, quit (q)');
 {$ifdef PasMPDebugSpinDetect}
-   Emit('  watchdog on|off       - enable/disable spinlock detector');
-   Emit('  watchdog threshold <s> - set detection threshold in seconds');
+  Emit('  watchdog on|off       - enable/disable spinlock detector');
+  Emit('  watchdog threshold <s> - set detection threshold in seconds');
 {$endif}
+  exit;
+ end;
+ if (Command='cont') or (Command='c') then begin
+  Continue_;
+  exit;
+ end else if (Command='pause') or (Command='p') then begin
+  Interrupt;
+  exit;
+ end;
+ Pause;
+ HART:=GetLocalHART;
+ if (Command='regs') or (Command='r') then begin
+  DumpRegistersTo(HART,aOnOutput,aOnError);
+ end else if Command='print' then begin
+  if not assigned(HART) then begin
+   EmitError('E.Invalid CPU');
    exit;
   end;
-  if (Command='cont') or (Command='c') then begin
-   Continue_;
-   exit;
-  end else if (Command='pause') or (Command='p') then begin
-   Interrupt;
+  Token:=NextToken(aLine,Index);
+  if length(Token)=0 then begin
+   EmitError('E.Missing register');
    exit;
   end;
-  Pause;
-  HART:=GetLocalHART;
-  if (Command='regs') or (Command='r') then begin
-   DumpRegistersTo(HART,aOnOutput,aOnError);
-  end else if Command='print' then begin
-   if not assigned(HART) then begin
-    EmitError('E.Invalid CPU');
-    exit;
-   end;
-   Token:=NextToken(aLine,Index);
-   if length(Token)=0 then begin
-    EmitError('E.Missing register');
-    exit;
-   end;
-   while length(Token)>0 do begin
-    TokenLower:=LowerCase(Token);
-    Found:=false;
-    if TokenLower='pc' then begin
-     Emit('pc: 0x'+LowerCase(IntToHex(HART.fState.PC,16)));
-     Found:=true;
-    end else if TokenLower='fp' then begin
-     Emit('fp: 0x'+LowerCase(IntToHex(HART.fState.Registers[TRegister.S0],16)));
-     Found:=true;
-    end else begin
-     for Register_:=Low(TRegister) to High(TRegister) do begin
-      if (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterRawNames[Register_])) or
-         (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterABINames[Register_])) then begin
-       Emit(TInstructionSetArchitecture.RegisterABINames[Register_]+': 0x'+LowerCase(IntToHex(HART.fState.Registers[Register_],16)));
-       Found:=true;
-       break;
-      end;
-     end;
-    end;
-    if not Found then begin
-     for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
-      if (TokenLower=LowerCase(TInstructionSetArchitecture.FPURegisterRawNames[FPURegister])) or
-         (TokenLower=LowerCase(TInstructionSetArchitecture.FPURegisterABINames[FPURegister])) then begin
-       Emit(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+FormatFPURegisterValue(HART.fState.FPURegisters[FPURegister]));
-       Found:=true;
-       break;
-      end;
-     end;
-    end;
-    if not Found then begin
-     EmitError('E.Invalid register');
-     exit;
-    end;
-    Token:=NextToken(aLine,Index);
-   end;
-  end else if (Command='mem') or (Command='m') then begin
-   Token:=NextToken(aLine,Index);
-   if ParseAddressToken(HART,Token,Address) then begin
-    Token:=NextToken(aLine,Index);
-    if ParseUInt64(Token,Size) then begin
-     DumpMemoryTo(HART,Address,Size,aOnOutput,aOnError);
-    end else begin
-     EmitError('E.Invalid size');
-    end;
+  while length(Token)>0 do begin
+   TokenLower:=LowerCase(Token);
+   Found:=false;
+   if TokenLower='pc' then begin
+    Emit('pc: 0x'+LowerCase(IntToHex(HART.fState.PC,16)));
+    Found:=true;
+   end else if TokenLower='fp' then begin
+    Emit('fp: 0x'+LowerCase(IntToHex(HART.fState.Registers[TRegister.S0],16)));
+    Found:=true;
    end else begin
-    EmitError('E.Invalid address');
-   end;
-  end else if (Command='memw') or (Command='mw') then begin
-   Token:=NextToken(aLine,Index);
-   if ParseAddressToken(HART,Token,Address) then begin
-    HexString:=NextToken(aLine,Index);
-    if (length(HexString)>=2) and (HexString[1]='0') and ((HexString[2]='x') or (HexString[2]='X')) then begin
-     HexString:=Copy(HexString,3,length(HexString)-2);
+    for Register_:=Low(TRegister) to High(TRegister) do begin
+     if (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterRawNames[Register_])) or
+        (TokenLower=LowerCase(TInstructionSetArchitecture.RegisterABINames[Register_])) then begin
+      Emit(TInstructionSetArchitecture.RegisterABINames[Register_]+': 0x'+LowerCase(IntToHex(HART.fState.Registers[Register_],16)));
+      Found:=true;
+      break;
+     end;
     end;
-    if (length(HexString)>0) and ((length(HexString) and 1)=0) then begin
-     HexIndex:=1;
-     while HexIndex<length(HexString) do begin
-      if HexNibble(HexString[HexIndex],ByteHigh) and HexNibble(HexString[HexIndex+1],ByteLow) then begin
-       if WriteMemoryByte(HART,Address,TPasRISCVUInt8((ByteHigh shl 4) or ByteLow)) then begin
-        inc(Address);
-        inc(HexIndex,2);
-       end else begin
-        EmitError('E00');
-        exit;
-       end;
+   end;
+   if not Found then begin
+    for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+     if (TokenLower=LowerCase(TInstructionSetArchitecture.FPURegisterRawNames[FPURegister])) or
+        (TokenLower=LowerCase(TInstructionSetArchitecture.FPURegisterABINames[FPURegister])) then begin
+      Emit(TInstructionSetArchitecture.FPURegisterABINames[FPURegister]+': '+FormatFPURegisterValue(HART.fState.FPURegisters[FPURegister]));
+      Found:=true;
+      break;
+     end;
+    end;
+   end;
+   if not Found then begin
+    EmitError('E.Invalid register');
+    exit;
+   end;
+   Token:=NextToken(aLine,Index);
+  end;
+ end else if (Command='mem') or (Command='m') then begin
+  Token:=NextToken(aLine,Index);
+  if ParseAddressToken(HART,Token,Address) then begin
+   Token:=NextToken(aLine,Index);
+   if ParseUInt64(Token,Size) then begin
+    DumpMemoryTo(HART,Address,Size,aOnOutput,aOnError);
+   end else begin
+    EmitError('E.Invalid size');
+   end;
+  end else begin
+   EmitError('E.Invalid address');
+  end;
+ end else if (Command='memw') or (Command='mw') then begin
+  Token:=NextToken(aLine,Index);
+  if ParseAddressToken(HART,Token,Address) then begin
+   HexString:=NextToken(aLine,Index);
+   if (length(HexString)>=2) and (HexString[1]='0') and ((HexString[2]='x') or (HexString[2]='X')) then begin
+    HexString:=Copy(HexString,3,length(HexString)-2);
+   end;
+   if (length(HexString)>0) and ((length(HexString) and 1)=0) then begin
+    HexIndex:=1;
+    while HexIndex<length(HexString) do begin
+     if HexNibble(HexString[HexIndex],ByteHigh) and HexNibble(HexString[HexIndex+1],ByteLow) then begin
+      if WriteMemoryByte(HART,Address,TPasRISCVUInt8((ByteHigh shl 4) or ByteLow)) then begin
+       inc(Address);
+       inc(HexIndex,2);
       end else begin
-       EmitError('E.Invalid hex');
+       EmitError('E00');
        exit;
       end;
-     end;
-     Emit('ok');
-    end else begin
-     EmitError('E.Invalid hex');
-    end;
-   end else begin
-    EmitError('E.Invalid address');
-   end;
-  end else if (Command='stack') or (Command='st') then begin
-   if not assigned(HART) then begin
-    EmitError('E.Invalid CPU');
-    exit;
-   end;
-   Address:=HART.fState.Registers[TRegister.SP];
-   Size:=128;
-   Token:=NextToken(aLine,Index);
-   if length(Token)>0 then begin
-    Token2:=NextToken(aLine,Index);
-    if length(Token2)>0 then begin
-     if ParseAddressToken(HART,Token,Address) then begin
-      if ParseUInt64(Token2,Size) then begin
-       DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
-      end else begin
-       EmitError('E.Invalid size');
-      end;
      end else begin
-      EmitError('E.Invalid address');
-     end;
-    end else begin
-     if ParseUInt64(Token,Size) then begin
-      DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
-     end else if ParseAddressToken(HART,Token,Address) then begin
-      DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
-     end else begin
-      EmitError('E.Invalid argument');
+      EmitError('E.Invalid hex');
+      exit;
      end;
     end;
+    Emit('ok');
    end else begin
-    DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
+    EmitError('E.Invalid hex');
    end;
-  end else if (Command='backtrace') or (Command='bt') then begin
-   if not assigned(HART) then begin
-    EmitError('E.Invalid CPU');
-    exit;
-   end;
-   Count:=16;
-   Token:=NextToken(aLine,Index);
-   if length(Token)>0 then begin
-    if ParseUInt64(Token,Count) then begin
-     DumpBacktraceTo(HART,Count,aOnOutput,aOnError);
-    end else begin
-     EmitError('E.Invalid depth');
-    end;
-   end else begin
-    DumpBacktraceTo(HART,Count,aOnOutput,aOnError);
-   end;
-  end else if (Command='step') or (Command='s') or (Command='stepi') or (Command='si') then begin
-   SingleStep(true);
-  end else if (Command='disasm') or (Command='d') then begin
-   Token:=NextToken(aLine,Index);
-   if length(Token)>0 then begin
+  end else begin
+   EmitError('E.Invalid address');
+  end;
+ end else if (Command='stack') or (Command='st') then begin
+  if not assigned(HART) then begin
+   EmitError('E.Invalid CPU');
+   exit;
+  end;
+  Address:=HART.fState.Registers[TRegister.SP];
+  Size:=128;
+  Token:=NextToken(aLine,Index);
+  if length(Token)>0 then begin
+   Token2:=NextToken(aLine,Index);
+   if length(Token2)>0 then begin
     if ParseAddressToken(HART,Token,Address) then begin
-     Token:=NextToken(aLine,Index);
-     if ParseUInt64(Token,Count) then begin
-      DumpDisassemblerTo(HART,Address,Count,aOnOutput,aOnError);
+     if ParseUInt64(Token2,Size) then begin
+      DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
      end else begin
-      DumpDisassemblerTo(HART,Address,16,aOnOutput,aOnError);
+      EmitError('E.Invalid size');
      end;
     end else begin
      EmitError('E.Invalid address');
     end;
    end else begin
-    if assigned(HART) then begin
-     DumpDisassemblerTo(HART,HART.fState.PC,16,aOnOutput,aOnError);
+    if ParseUInt64(Token,Size) then begin
+     DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
+    end else if ParseAddressToken(HART,Token,Address) then begin
+     DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
     end else begin
-     EmitError('E.Invalid CPU');
+     EmitError('E.Invalid argument');
     end;
    end;
-  end else if (Command='hart') or (Command='h') then begin
-   Token:=NextToken(aLine,Index);
-   if length(Token)=0 then begin
+  end else begin
+   DumpStackTo(HART,Address,Size,aOnOutput,aOnError);
+  end;
+ end else if (Command='backtrace') or (Command='bt') then begin
+  if not assigned(HART) then begin
+   EmitError('E.Invalid CPU');
+   exit;
+  end;
+  Count:=16;
+  Token:=NextToken(aLine,Index);
+  if length(Token)>0 then begin
+   if ParseUInt64(Token,Count) then begin
+    DumpBacktraceTo(HART,Count,aOnOutput,aOnError);
+   end else begin
+    EmitError('E.Invalid depth');
+   end;
+  end else begin
+   DumpBacktraceTo(HART,Count,aOnOutput,aOnError);
+  end;
+ end else if (Command='step') or (Command='s') or (Command='stepi') or (Command='si') then begin
+  SingleStep(true);
+ end else if (Command='disasm') or (Command='d') then begin
+  Token:=NextToken(aLine,Index);
+  if length(Token)>0 then begin
+   if ParseAddressToken(HART,Token,Address) then begin
+    Token:=NextToken(aLine,Index);
+    if ParseUInt64(Token,Count) then begin
+     DumpDisassemblerTo(HART,Address,Count,aOnOutput,aOnError);
+    end else begin
+     DumpDisassemblerTo(HART,Address,16,aOnOutput,aOnError);
+    end;
+   end else begin
+    EmitError('E.Invalid address');
+   end;
+  end else begin
+   if assigned(HART) then begin
+    DumpDisassemblerTo(HART,HART.fState.PC,16,aOnOutput,aOnError);
+   end else begin
+    EmitError('E.Invalid CPU');
+   end;
+  end;
+ end else if (Command='hart') or (Command='h') then begin
+  Token:=NextToken(aLine,Index);
+  if length(Token)=0 then begin
+   if assigned(HART) then begin
+    Emit('hart '+IntToStr(HART.fHARTID)+'');
+   end else begin
+    Emit('hart '+IntToStr(fLocalHARTIndex));
+   end;
+  end else if ParseUInt64(Token,Address) then begin
+   if assigned(fMachine) and (Address<fMachine.fCountHARTs) then begin
+    SetLocalHARTIndex(Address);
+    HART:=GetLocalHART;
     if assigned(HART) then begin
      Emit('hart '+IntToStr(HART.fHARTID)+'');
     end else begin
      Emit('hart '+IntToStr(fLocalHARTIndex));
     end;
-   end else if ParseUInt64(Token,Address) then begin
-    if assigned(fMachine) and (Address<fMachine.fCountHARTs) then begin
-     SetLocalHARTIndex(Address);
-     HART:=GetLocalHART;
-     if assigned(HART) then begin
-      Emit('hart '+IntToStr(HART.fHARTID)+'');
-     end else begin
-      Emit('hart '+IntToStr(fLocalHARTIndex));
-     end;
-    end else begin
-     EmitError('E.Invalid HART');
-    end;
    end else begin
     EmitError('E.Invalid HART');
    end;
-  end else if (Command='break') or (Command='b') then begin
-   Token:=NextToken(aLine,Index);
-   Token:=LowerCase(Token);
-   if length(Token)=0 then begin
-    ListBreakpoints;
-   end else if Token='list' then begin
-    ListBreakpoints;
-   end else if Token='clear' then begin
-    ClearBreakpoints;
-   end else if Token='-' then begin
-    Token:=NextToken(aLine,Index);
-    if ParseUInt64(Token,Address) then begin
-     RemoveBreakpoint(HART,Address);
-    end else begin
-     EmitError('E.Invalid address');
-    end;
-   end else begin
-    if ParseUInt64(Token,Address) then begin
-     AddBreakpoint(HART,Address);
-    end else begin
-     EmitError('E.Invalid address');
-    end;
-   end;
-  end else if Command='reboot' then begin
-   Reset;
-{$ifdef PasMPDebugSpinDetect}
-  end else if (Command='watchdog') or (Command='wd') then begin
-   Token:=NextToken(aLine,Index);
-   Token:=LowerCase(Token);
-   if (length(Token)=0) then begin
-    if assigned(fMachine) then begin
-     if fMachine.fSpinDetectEnabled then begin
-      Emit('watchdog: ON (threshold: '+IntToStr(fMachine.fSpinDetectThresholdTicks div CLOCK_FREQUENCY)+'s)');
-     end else begin
-      Emit('watchdog: OFF');
-     end;
-    end;
-   end else if Token='on' then begin
-    if assigned(fMachine) then begin
-     fMachine.fSpinDetectEnabled:=true;
-     Emit('watchdog: enabled');
-    end;
-   end else if Token='off' then begin
-    if assigned(fMachine) then begin
-     fMachine.fSpinDetectEnabled:=false;
-     Emit('watchdog: disabled');
-    end;
-   end else if Token='threshold' then begin
-    Token:=NextToken(aLine,Index);
-    if ParseUInt64(Token,Address) then begin
-     if assigned(fMachine) then begin
-      if Address=0 then begin
-       EmitError('E.Threshold must be > 0');
-      end else begin
-       fMachine.fSpinDetectThresholdTicks:=Address*CLOCK_FREQUENCY;
-       Emit('watchdog: threshold set to '+IntToStr(Address)+'s');
-      end;
-     end;
-    end else begin
-     EmitError('E.Invalid threshold value');
-    end;
-   end else begin
-    EmitError('E.Usage: watchdog [on|off|threshold <seconds>]');
-   end;
-{$endif}
-  end else if Command='shutdown' then begin
-   if assigned(fMachine) then begin
-    fMachine.PowerOff;
-    if assigned(fOnShutdown) then begin
-     fOnShutdown;
-    end;
-   end;
-   result:=false;
   end else begin
-   EmitError('E.Unknown command');
+   EmitError('E.Invalid HART');
   end;
+ end else if (Command='break') or (Command='b') then begin
+  Token:=NextToken(aLine,Index);
+  Token:=LowerCase(Token);
+  if length(Token)=0 then begin
+   ListBreakpoints;
+  end else if Token='list' then begin
+   ListBreakpoints;
+  end else if Token='clear' then begin
+   ClearBreakpoints;
+  end else if Token='-' then begin
+   Token:=NextToken(aLine,Index);
+   if ParseUInt64(Token,Address) then begin
+    RemoveBreakpoint(HART,Address);
+   end else begin
+    EmitError('E.Invalid address');
+   end;
+  end else begin
+   if ParseUInt64(Token,Address) then begin
+    AddBreakpoint(HART,Address);
+   end else begin
+    EmitError('E.Invalid address');
+   end;
+  end;
+ end else if Command='reboot' then begin
+  Reset;
+{$ifdef PasMPDebugSpinDetect}
+ end else if (Command='watchdog') or (Command='wd') then begin
+  Token:=NextToken(aLine,Index);
+  Token:=LowerCase(Token);
+  if (length(Token)=0) then begin
+   if assigned(fMachine) then begin
+    if fMachine.fSpinDetectEnabled then begin
+     Emit('watchdog: ON (threshold: '+IntToStr(fMachine.fSpinDetectThresholdTicks div CLOCK_FREQUENCY)+'s)');
+    end else begin
+     Emit('watchdog: OFF');
+    end;
+   end;
+  end else if Token='on' then begin
+   if assigned(fMachine) then begin
+    fMachine.fSpinDetectEnabled:=true;
+    Emit('watchdog: enabled');
+   end;
+  end else if Token='off' then begin
+   if assigned(fMachine) then begin
+    fMachine.fSpinDetectEnabled:=false;
+    Emit('watchdog: disabled');
+   end;
+  end else if Token='threshold' then begin
+   Token:=NextToken(aLine,Index);
+   if ParseUInt64(Token,Address) then begin
+    if assigned(fMachine) then begin
+     if Address=0 then begin
+      EmitError('E.Threshold must be > 0');
+     end else begin
+      fMachine.fSpinDetectThresholdTicks:=Address*CLOCK_FREQUENCY;
+      Emit('watchdog: threshold set to '+IntToStr(Address)+'s');
+     end;
+    end;
+   end else begin
+    EmitError('E.Invalid threshold value');
+   end;
+  end else begin
+   EmitError('E.Usage: watchdog [on|off|threshold <seconds>]');
+  end;
+{$endif}
+ end else if Command='shutdown' then begin
+  if assigned(fMachine) then begin
+   fMachine.PowerOff;
+   if assigned(fOnShutdown) then begin
+    fOnShutdown;
+   end;
+  end;
+  result:=false;
+ end else begin
+  EmitError('E.Unknown command');
+ end;
 end;
 
 function TPasRISCV.TDebugger.ProcessLocalCommand(const aLine:TPasRISCVRawByteString):Boolean;
