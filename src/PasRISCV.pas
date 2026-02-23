@@ -43399,8 +43399,11 @@ begin
               VectorSetElement(vd,Index,16,TPasRISCVUInt64($7c00));
               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
              end else begin
+              // Normal/subnormal positive: widen to f32, apply spec-conformant lookup, narrow back
               FloatA:=VectorGetFloat16(vs2,Index);
-              FloatResult:=1.0/Sqrt(FloatA);
+              TPasRISCVFloat(pointer(@OperandValue)^):=FloatA;
+              OperandValue:=TPasRISCVUInt64(VFRsqrt732(TPasRISCVUInt32(OperandValue)));
+              FloatResult:=TPasRISCVFloat(pointer(@OperandValue)^);
               VectorSetFloat16(vd,Index,FloatResult);
              end;
             end;
@@ -43494,9 +43497,11 @@ begin
               VectorSetElement(vd,Index,16,TPasRISCVUInt64((SourceValue and $8000) or $7c00));
               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
              end else begin
-              // Normal/subnormal: compute 1/x via f32
+              // Normal/subnormal: widen to f32, apply spec-conformant lookup, narrow back
               FloatA:=VectorGetFloat16(vs2,Index);
-              FloatResult:=1.0/FloatA;
+              TPasRISCVFloat(pointer(@OperandValue)^):=FloatA;
+              OperandValue:=TPasRISCVUInt64(VFRec732(TPasRISCVUInt32(OperandValue)));
+              FloatResult:=TPasRISCVFloat(pointer(@OperandValue)^);
               VectorSetFloat16(vd,Index,FloatResult);
              end;
             end;
