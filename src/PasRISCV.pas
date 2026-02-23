@@ -1409,7 +1409,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              RUNSTATE_HARTS_MASK=TPasRISCVUInt32($0000ffff);
              RUNSTATE_HART_SHIFT=0;
              CLOCK_FREQUENCY=1000000;
-             CLOCK_FREQUENCY_INTERVAL_60HZ=(CLOCK_FREQUENCY+30) div 60;
+             CLOCK_FREQUENCY_INTERVAL_100HZ=(CLOCK_FREQUENCY+50) div 100;
              FE_ALL_EXCEPT=$3f;
              FE_INVALID=$01;
              FE_DENORM=$02;
@@ -18891,8 +18891,8 @@ begin
 
    fConditionVariableLock.Acquire;
    try
-    Timeouted:=fConditionVariable.Wait(fConditionVariableLock,16)=wrTimeout;
-//  Timeouted:=ConditionVariableWaitTime(fConditionVariable,fConditionVariableLock,CLOCK_FREQUENCY_INTERVAL_60HZ)=wrTimeout;
+    Timeouted:=fConditionVariable.Wait(fConditionVariableLock,10)=wrTimeout;
+//  Timeouted:=ConditionVariableWaitTime(fConditionVariable,fConditionVariableLock,CLOCK_FREQUENCY_INTERVAL_100HZ)=wrTimeout;
    finally
     fConditionVariableLock.Release;
    end;
@@ -64570,8 +64570,8 @@ procedure TPasRISCV.EventTick(const aForce:Boolean);
 var PLICTime:TPasRISCVUInt64;
 begin
 
- // Periodic PLIC/APLIC full update (safety net, ~60Hz).
- // This is a 60Hz event loop that re-evaluates all PLIC contexts and APLIC sources,
+ // Periodic PLIC/APLIC full update (safety net, ~100Hz).
+ // This is a 100Hz event loop that re-evaluates all PLIC contexts and APLIC sources,
  // recovering any interrupts that were permanently lost due to the RaiseIRQ/LowerIRQ
  // race condition on the fRaised dedup guard. While the primary fix (always calling
  // SendIRQ in RaiseIRQ) prevents most losses, this provides defense-in-depth.
@@ -64580,13 +64580,13 @@ begin
 
   PLICTime:=fACLINTDevice.GetTime;
 
-  if aForce or ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ) then begin
+  if aForce or ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_100HZ) then begin
 
    fEventTickLock.AcquireWrite;
    try
 
     if ((fRunState and (RUNSTATE_RUNNING or RUNSTATE_SINGLESTEP or RUNSTATE_PAUSING or RUNSTATE_PAUSED or RUNSTATE_POWEROFF))=RUNSTATE_RUNNING) and
-       (aForce or ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_60HZ)) then begin
+       (aForce or ((PLICTime-TPasMPInterlocked.Read(fLastFullUpdateTime))>=CLOCK_FREQUENCY_INTERVAL_100HZ)) then begin
 
      TPasMPInterlocked.Write(fLastFullUpdateTime,PLICTime);
 
