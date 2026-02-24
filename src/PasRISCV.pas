@@ -1284,6 +1284,223 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
      { TPasRISCV9PFileSystemMemory }
 
+     { TPasRISCVFUSEFileSystem }
+     TPasRISCVFUSEFileSystem=class
+      public
+       const // Linux error codes (for FUSE)
+             FUSE_OK=0;
+             FUSE_EPERM=1;
+             FUSE_ENOENT=2;
+             FUSE_EIO=5;
+             FUSE_EACCES=13;
+             FUSE_EEXIST=17;
+             FUSE_ENOTDIR=20;
+             FUSE_EISDIR=21;
+             FUSE_EINVAL=22;
+             FUSE_ENOSPC=28;
+             FUSE_EROFS=30;
+             FUSE_ENAMETOOLONG=36;
+             FUSE_ENOSYS=38;
+             FUSE_ENOTEMPTY=39;
+             FUSE_ENODATA=61;
+             // File type bits (Linux stat mode)
+             S_IFMT=$f000;
+             S_IFSOCK=$c000;
+             S_IFLNK=$a000;
+             S_IFREG=$8000;
+             S_IFBLK=$6000;
+             S_IFDIR=$4000;
+             S_IFCHR=$2000;
+             S_IFIFO=$1000;
+             // Permission bits
+             S_ISUID=$0800;
+             S_ISGID=$0400;
+             S_ISVTX=$0200;
+             S_IRWXU=$01c0;
+             S_IRUSR=$0100;
+             S_IWUSR=$0080;
+             S_IXUSR=$0040;
+             S_IRWXG=$0038;
+             S_IRGRP=$0020;
+             S_IWGRP=$0010;
+             S_IXGRP=$0008;
+             S_IRWXO=$0007;
+             S_IROTH=$0004;
+             S_IWOTH=$0002;
+             S_IXOTH=$0001;
+             // Open flags (Linux-compatible)
+             O_RDONLY=$0000;
+             O_WRONLY=$0001;
+             O_RDWR=$0002;
+             O_CREAT=$0040;
+             O_EXCL=$0080;
+             O_TRUNC=$0200;
+             O_APPEND=$0400;
+             O_DIRECTORY=$10000;
+             // DT_ constants
+             DT_UNKNOWN=0;
+             DT_FIFO=1;
+             DT_CHR=2;
+             DT_DIR=4;
+             DT_BLK=6;
+             DT_REG=8;
+             DT_LNK=10;
+             DT_SOCK=12;
+       type TFileStat=record
+             Ino:TPasRISCVUInt64;
+             Size:TPasRISCVUInt64;
+             Blocks:TPasRISCVUInt64;
+             ATimeSec:TPasRISCVUInt64;
+             ATimeNSec:TPasRISCVUInt32;
+             MTimeSec:TPasRISCVUInt64;
+             MTimeNSec:TPasRISCVUInt32;
+             CTimeSec:TPasRISCVUInt64;
+             CTimeNSec:TPasRISCVUInt32;
+             Mode:TPasRISCVUInt32;
+             NLink:TPasRISCVUInt32;
+             UID:TPasRISCVUInt32;
+             GID:TPasRISCVUInt32;
+             RDev:TPasRISCVUInt32;
+             BlkSize:TPasRISCVUInt32;
+            end;
+            PFileStat=^TFileStat;
+            TFileSystemStat=record
+             Blocks:TPasRISCVUInt64;
+             BFree:TPasRISCVUInt64;
+             BAvail:TPasRISCVUInt64;
+             Files:TPasRISCVUInt64;
+             FFree:TPasRISCVUInt64;
+             BSize:TPasRISCVUInt32;
+             NameLen:TPasRISCVUInt32;
+             FRSize:TPasRISCVUInt32;
+            end;
+            PFileSystemStat=^TFileSystemStat;
+            TDirEntry=record
+             Ino:TPasRISCVUInt64;
+             Off:TPasRISCVUInt64;
+             NameLen:TPasRISCVUInt32;
+             Type_:TPasRISCVUInt32;
+             Name:TPasRISCVRawByteString;
+            end;
+            PDirEntry=^TDirEntry;
+            TDirEntries=array of TDirEntry;
+            TFileHandle=TPasRISCVUInt64;
+      private
+       fRootPath:TPasRISCVRawByteString;
+      public
+       constructor Create; virtual;
+       destructor Destroy; override;
+       function Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32; virtual;
+       function StatFS(out aStat:TFileSystemStat):TPasRISCVInt32; virtual;
+       function OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; virtual;
+       function CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; virtual;
+       function ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; virtual;
+       function WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; virtual;
+       function CloseFile(const aHandle:TFileHandle):TPasRISCVInt32; virtual;
+       function FlushFile(const aHandle:TFileHandle):TPasRISCVInt32; virtual;
+       function FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; virtual;
+       function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32; virtual;
+       function ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; virtual;
+       function CloseDir(const aHandle:TFileHandle):TPasRISCVInt32; virtual;
+       function MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32; virtual;
+       function Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
+       function RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
+       function Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
+       function SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; virtual;
+       function SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
+       function ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
+       function HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
+       function MkNod(const aPath:TPasRISCVRawByteString;const aMode,aRDev:TPasRISCVUInt32):TPasRISCVInt32; virtual;
+       function Access(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32):TPasRISCVInt32; virtual;
+       function ComposePath(const aBase,aName:TPasRISCVRawByteString):TPasRISCVRawByteString; virtual;
+      public
+       property RootPath:TPasRISCVRawByteString read fRootPath write fRootPath;
+     end;
+
+{$if defined(fpc) and defined(Unix)}
+     { TPasRISCVFUSEFileSystemPOSIX }
+     TPasRISCVFUSEFileSystemPOSIX=class(TPasRISCVFUSEFileSystem)
+      private
+       function POSIXErrorToFUSEError(const aErrno:TPasRISCVInt32):TPasRISCVInt32;
+       procedure StatBufToFileStat(const aSB:PStat;out aStat:TPasRISCVFUSEFileSystem.TFileStat);
+      public
+       constructor Create(const aRootPath:TPasRISCVRawByteString); reintroduce;
+       destructor Destroy; override;
+       function Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32; override;
+       function StatFS(out aStat:TFileSystemStat):TPasRISCVInt32; override;
+       function OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
+       function CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
+       function ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function CloseFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function FlushFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
+       function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32; override;
+       function ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; override;
+       function CloseDir(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32; override;
+       function Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; override;
+       function SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function MkNod(const aPath:TPasRISCVRawByteString;const aMode,aRDev:TPasRISCVUInt32):TPasRISCVInt32; override;
+       function Access(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32):TPasRISCVInt32; override;
+       function ComposePath(const aBase,aName:TPasRISCVRawByteString):TPasRISCVRawByteString; override;
+     end;
+{$ifend}
+
+{$if defined(Windows)}
+     { TPasRISCVFUSEFileSystemWindows }
+     TPasRISCVFUSEFileSystemWindows=class(TPasRISCVFUSEFileSystem)
+      public
+       type TDirHandleInfo=class
+             public
+              fPath:TPasRISCVRawByteString;
+              fDirHandle:THandle;
+              constructor Create(const aPath:TPasRISCVRawByteString;const aDirHandle:THandle);
+              destructor Destroy; override;
+            end;
+      private
+       function Win32ErrorToFUSEError(const aErrorCode:DWORD):TPasRISCVInt32;
+       function FlagsToWin32Access(const aFlags:TPasRISCVUInt32):DWORD;
+       function FlagsToWin32Disposition(const aFlags:TPasRISCVUInt32):DWORD;
+       procedure Win32FileInfoToFileStat(const aInfo:BY_HANDLE_FILE_INFORMATION;const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat);
+       function FileTimeToUnixTimeSec(const aFileTime:TFileTime):TPasRISCVUInt64;
+       function UnixTimeSecToFileTime(const aUnixTimeSec:TPasRISCVUInt64):TFileTime;
+      public
+       constructor Create(const aRootPath:TPasRISCVRawByteString); reintroduce;
+       destructor Destroy; override;
+       function Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32; override;
+       function StatFS(out aStat:TFileSystemStat):TPasRISCVInt32; override;
+       function OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
+       function CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
+       function ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function CloseFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function FlushFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
+       function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32; override;
+       function ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; override;
+       function CloseDir(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32; override;
+       function Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; override;
+       function SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
+       function MkNod(const aPath:TPasRISCVRawByteString;const aMode,aRDev:TPasRISCVUInt32):TPasRISCVInt32; override;
+       function Access(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32):TPasRISCVInt32; override;
+       function ComposePath(const aBase,aName:TPasRISCVRawByteString):TPasRISCVRawByteString; override;
+     end;
+{$ifend}
+
+     TPasRISCVFUSEFileSystemNative={$if defined(fpc) and defined(Unix)}TPasRISCVFUSEFileSystemPOSIX{$elseif defined(Windows)}TPasRISCVFUSEFileSystemWindows{$else}TPasRISCVFUSEFileSystem{$ifend};
+
      { TPasRISCVEthernetDevice }
      TPasRISCVEthernetDevice=class
       public
@@ -5178,6 +5395,423 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property OnDisconnect:TOnVSockDisconnect read fOnDisconnect write fOnDisconnect;
               property OnReceive:TOnVSockReceive read fOnReceive write fOnReceive;
             end;
+            { TVirtIOFSDevice }
+            TVirtIOFSDevice=class(TVirtIODevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($1005b000);
+                    DefaultSize=TPasRISCVUInt64($1000);
+                    DefaultIRQ=TPasRISCVUInt64($1b);
+                    DeviceID=26;
+                    VIRTIO_FS_QUEUE_HIPRIO=0;
+                    VIRTIO_FS_QUEUE_REQUEST=1;
+                    VIRTIO_FS_TAG_MAX_LEN=36;
+                    VIRTIO_FS_DEFAULT_NUM_QUEUES=1;
+                    // FUSE protocol version
+                    FUSE_KERNEL_VERSION=7;
+                    FUSE_KERNEL_MINOR_VERSION=31;
+                    // FUSE root inode
+                    FUSE_ROOT_ID=1;
+                    // FUSE opcodes
+                    FUSE_LOOKUP=1;
+                    FUSE_FORGET=2;
+                    FUSE_GETATTR=3;
+                    FUSE_SETATTR=4;
+                    FUSE_READLINK=5;
+                    FUSE_SYMLINK=6;
+                    FUSE_MKNOD=8;
+                    FUSE_MKDIR=9;
+                    FUSE_UNLINK=10;
+                    FUSE_RMDIR=11;
+                    FUSE_RENAME=12;
+                    FUSE_LINK=13;
+                    FUSE_OPEN=14;
+                    FUSE_READ=15;
+                    FUSE_WRITE=16;
+                    FUSE_STATFS=17;
+                    FUSE_RELEASE=18;
+                    FUSE_FSYNC=20;
+                    FUSE_SETXATTR=21;
+                    FUSE_GETXATTR=22;
+                    FUSE_LISTXATTR=23;
+                    FUSE_REMOVEXATTR=24;
+                    FUSE_FLUSH=25;
+                    FUSE_INIT=26;
+                    FUSE_OPENDIR=27;
+                    FUSE_READDIR=28;
+                    FUSE_RELEASEDIR=29;
+                    FUSE_FSYNCDIR=30;
+                    FUSE_ACCESS=34;
+                    FUSE_CREATE=35;
+                    FUSE_INTERRUPT=36;
+                    FUSE_DESTROY=38;
+                    FUSE_BATCH_FORGET=42;
+                    FUSE_READDIRPLUS=44;
+                    FUSE_RENAME2=45;
+                    FUSE_LSEEK=46;
+                    // FUSE init flags
+                    FUSE_ASYNC_READ=TPasRISCVUInt32(1) shl 0;
+                    FUSE_POSIX_LOCKS=TPasRISCVUInt32(1) shl 1;
+                    FUSE_ATOMIC_O_TRUNC=TPasRISCVUInt32(1) shl 3;
+                    FUSE_EXPORT_SUPPORT=TPasRISCVUInt32(1) shl 4;
+                    FUSE_BIG_WRITES=TPasRISCVUInt32(1) shl 5;
+                    FUSE_DONT_MASK=TPasRISCVUInt32(1) shl 6;
+                    FUSE_FLOCK_LOCKS=TPasRISCVUInt32(1) shl 10;
+                    FUSE_AUTO_INVAL_DATA=TPasRISCVUInt32(1) shl 12;
+                    FUSE_DO_READDIRPLUS=TPasRISCVUInt32(1) shl 13;
+                    FUSE_READDIRPLUS_AUTO=TPasRISCVUInt32(1) shl 14;
+                    FUSE_ASYNC_DIO=TPasRISCVUInt32(1) shl 15;
+                    FUSE_WRITEBACK_CACHE=TPasRISCVUInt32(1) shl 16;
+                    FUSE_NO_OPEN_SUPPORT=TPasRISCVUInt32(1) shl 17;
+                    FUSE_PARALLEL_DIROPS=TPasRISCVUInt32(1) shl 18;
+                    FUSE_MAX_PAGES=TPasRISCVUInt32(1) shl 22;
+                    FUSE_NO_OPENDIR_SUPPORT=TPasRISCVUInt32(1) shl 24;
+                    FUSE_EXPLICIT_INVAL_DATA=TPasRISCVUInt32(1) shl 25;
+                    FUSE_SUBMOUNTS=TPasRISCVUInt32(1) shl 27;
+                    // FUSE attr/entry validity timeouts
+                    FUSE_ATTR_TIMEOUT=1;
+                    FUSE_ENTRY_TIMEOUT=1;
+                    // FUSE open response flags
+                    FOPEN_DIRECT_IO=TPasRISCVUInt32(1) shl 0;
+                    FOPEN_KEEP_CACHE=TPasRISCVUInt32(1) shl 1;
+                    // FUSE setattr valid flags
+                    FATTR_MODE=TPasRISCVUInt32(1) shl 0;
+                    FATTR_UID=TPasRISCVUInt32(1) shl 1;
+                    FATTR_GID=TPasRISCVUInt32(1) shl 2;
+                    FATTR_SIZE=TPasRISCVUInt32(1) shl 3;
+                    FATTR_ATIME=TPasRISCVUInt32(1) shl 4;
+                    FATTR_MTIME=TPasRISCVUInt32(1) shl 5;
+                    FATTR_FH=TPasRISCVUInt32(1) shl 6;
+                    FATTR_ATIME_NOW=TPasRISCVUInt32(1) shl 7;
+                    FATTR_MTIME_NOW=TPasRISCVUInt32(1) shl 8;
+                    FATTR_CTIME=TPasRISCVUInt32(1) shl 10;
+                    // FUSE header sizes
+                    FUSE_IN_HEADER_SIZE=40;
+                    FUSE_OUT_HEADER_SIZE=16;
+                    // FUSE dirent
+                    FUSE_DIRENT_NAME_OFFSET=24;
+              type TFUSEInHeader=packed record
+                    Len:TPasRISCVUInt32;
+                    Opcode:TPasRISCVUInt32;
+                    Unique:TPasRISCVUInt64;
+                    NodeID:TPasRISCVUInt64;
+                    UID:TPasRISCVUInt32;
+                    GID:TPasRISCVUInt32;
+                    PID:TPasRISCVUInt32;
+                    TotalExtLen:TPasRISCVUInt16;
+                    Padding:TPasRISCVUInt16;
+                   end;
+                   PFUSEInHeader=^TFUSEInHeader;
+                   TFUSEOutHeader=packed record
+                    Len:TPasRISCVUInt32;
+                    Error:TPasRISCVInt32;
+                    Unique:TPasRISCVUInt64;
+                   end;
+                   PFUSEOutHeader=^TFUSEOutHeader;
+                   TFUSEInitIn=packed record
+                    Major:TPasRISCVUInt32;
+                    Minor:TPasRISCVUInt32;
+                    MaxReadahead:TPasRISCVUInt32;
+                    Flags:TPasRISCVUInt32;
+                   end;
+                   PFUSEInitIn=^TFUSEInitIn;
+                   TFUSEInitOut=packed record
+                    Major:TPasRISCVUInt32;
+                    Minor:TPasRISCVUInt32;
+                    MaxReadahead:TPasRISCVUInt32;
+                    Flags:TPasRISCVUInt32;
+                    MaxBackground:TPasRISCVUInt16;
+                    CongestionThreshold:TPasRISCVUInt16;
+                    MaxWrite:TPasRISCVUInt32;
+                    TimeGran:TPasRISCVUInt32;
+                    MaxPages:TPasRISCVUInt16;
+                    MapAlignment:TPasRISCVUInt16;
+                    Flags2:TPasRISCVUInt32;
+                    Unused:array[0..6] of TPasRISCVUInt32;
+                   end;
+                   PFUSEInitOut=^TFUSEInitOut;
+                   TFUSEAttr=packed record
+                    Ino:TPasRISCVUInt64;
+                    Size:TPasRISCVUInt64;
+                    Blocks:TPasRISCVUInt64;
+                    ATime:TPasRISCVUInt64;
+                    MTime:TPasRISCVUInt64;
+                    CTime:TPasRISCVUInt64;
+                    ATimeNSec:TPasRISCVUInt32;
+                    MTimeNSec:TPasRISCVUInt32;
+                    CTimeNSec:TPasRISCVUInt32;
+                    Mode:TPasRISCVUInt32;
+                    NLink:TPasRISCVUInt32;
+                    UID:TPasRISCVUInt32;
+                    GID:TPasRISCVUInt32;
+                    RDev:TPasRISCVUInt32;
+                    BlkSize:TPasRISCVUInt32;
+                    Flags:TPasRISCVUInt32;
+                   end;
+                   PFUSEAttr=^TFUSEAttr;
+                   TFUSEEntryOut=packed record
+                    NodeID:TPasRISCVUInt64;
+                    Generation:TPasRISCVUInt64;
+                    EntryValid:TPasRISCVUInt64;
+                    AttrValid:TPasRISCVUInt64;
+                    EntryValidNSec:TPasRISCVUInt32;
+                    AttrValidNSec:TPasRISCVUInt32;
+                    Attr:TFUSEAttr;
+                   end;
+                   PFUSEEntryOut=^TFUSEEntryOut;
+                   TFUSEAttrOut=packed record
+                    AttrValid:TPasRISCVUInt64;
+                    AttrValidNSec:TPasRISCVUInt32;
+                    Dummy:TPasRISCVUInt32;
+                    Attr:TFUSEAttr;
+                   end;
+                   PFUSEAttrOut=^TFUSEAttrOut;
+                   TFUSEOpenIn=packed record
+                    Flags:TPasRISCVUInt32;
+                    OpenFlags:TPasRISCVUInt32;
+                   end;
+                   PFUSEOpenIn=^TFUSEOpenIn;
+                   TFUSEOpenOut=packed record
+                    FH:TPasRISCVUInt64;
+                    OpenFlags:TPasRISCVUInt32;
+                    BackingID:TPasRISCVInt32;
+                   end;
+                   PFUSEOpenOut=^TFUSEOpenOut;
+                   TFUSEReadIn=packed record
+                    FH:TPasRISCVUInt64;
+                    Offset:TPasRISCVUInt64;
+                    Size:TPasRISCVUInt32;
+                    ReadFlags:TPasRISCVUInt32;
+                    LockOwner:TPasRISCVUInt64;
+                    Flags:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSEReadIn=^TFUSEReadIn;
+                   TFUSEWriteIn=packed record
+                    FH:TPasRISCVUInt64;
+                    Offset:TPasRISCVUInt64;
+                    Size:TPasRISCVUInt32;
+                    WriteFlags:TPasRISCVUInt32;
+                    LockOwner:TPasRISCVUInt64;
+                    Flags:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSEWriteIn=^TFUSEWriteIn;
+                   TFUSEWriteOut=packed record
+                    Size:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSEWriteOut=^TFUSEWriteOut;
+                   TFUSEReleaseIn=packed record
+                    FH:TPasRISCVUInt64;
+                    Flags:TPasRISCVUInt32;
+                    ReleaseFlags:TPasRISCVUInt32;
+                    LockOwner:TPasRISCVUInt64;
+                   end;
+                   PFUSEReleaseIn=^TFUSEReleaseIn;
+                   TFUSEFlushIn=packed record
+                    FH:TPasRISCVUInt64;
+                    Unused:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                    LockOwner:TPasRISCVUInt64;
+                   end;
+                   PFUSEFlushIn=^TFUSEFlushIn;
+                   TFUSEGetAttrIn=packed record
+                    GetAttrFlags:TPasRISCVUInt32;
+                    Dummy:TPasRISCVUInt32;
+                    FH:TPasRISCVUInt64;
+                   end;
+                   PFUSEGetAttrIn=^TFUSEGetAttrIn;
+                   TFUSESetAttrIn=packed record
+                    Valid:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                    FH:TPasRISCVUInt64;
+                    Size:TPasRISCVUInt64;
+                    LockOwner:TPasRISCVUInt64;
+                    ATime:TPasRISCVUInt64;
+                    MTime:TPasRISCVUInt64;
+                    CTime:TPasRISCVUInt64;
+                    ATimeNSec:TPasRISCVUInt32;
+                    MTimeNSec:TPasRISCVUInt32;
+                    CTimeNSec:TPasRISCVUInt32;
+                    Mode:TPasRISCVUInt32;
+                    Unused4:TPasRISCVUInt32;
+                    UID:TPasRISCVUInt32;
+                    GID:TPasRISCVUInt32;
+                    Unused5:TPasRISCVUInt32;
+                   end;
+                   PFUSESetAttrIn=^TFUSESetAttrIn;
+                   TFUSEMkDirIn=packed record
+                    Mode:TPasRISCVUInt32;
+                    Umask:TPasRISCVUInt32;
+                   end;
+                   PFUSEMkDirIn=^TFUSEMkDirIn;
+                   TFUSECreateIn=packed record
+                    Flags:TPasRISCVUInt32;
+                    Mode:TPasRISCVUInt32;
+                    Umask:TPasRISCVUInt32;
+                    OpenFlags:TPasRISCVUInt32;
+                   end;
+                   PFUSECreateIn=^TFUSECreateIn;
+                   TFUSEDirent=packed record
+                    Ino:TPasRISCVUInt64;
+                    Off:TPasRISCVUInt64;
+                    NameLen:TPasRISCVUInt32;
+                    Type_:TPasRISCVUInt32;
+                    // followed by char name[NameLen] aligned to 8 bytes
+                   end;
+                   PFUSEDirent=^TFUSEDirent;
+                   TFUSEStatFSOut=packed record
+                    Blocks:TPasRISCVUInt64;
+                    BFree:TPasRISCVUInt64;
+                    BAvail:TPasRISCVUInt64;
+                    Files:TPasRISCVUInt64;
+                    FFree:TPasRISCVUInt64;
+                    BSize:TPasRISCVUInt32;
+                    NameLen:TPasRISCVUInt32;
+                    FRSize:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                    Spare:array[0..5] of TPasRISCVUInt32;
+                   end;
+                   PFUSEStatFSOut=^TFUSEStatFSOut;
+                   TFUSELinkIn=packed record
+                    OldNodeID:TPasRISCVUInt64;
+                   end;
+                   PFUSELinkIn=^TFUSELinkIn;
+                   TFUSERenameIn=packed record
+                    NewDir:TPasRISCVUInt64;
+                   end;
+                   PFUSERenameIn=^TFUSERenameIn;
+                   TFUSERename2In=packed record
+                    NewDir:TPasRISCVUInt64;
+                    Flags:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSERename2In=^TFUSERename2In;
+                   TFUSEFSyncIn=packed record
+                    FH:TPasRISCVUInt64;
+                    FSyncFlags:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSEFSyncIn=^TFUSEFSyncIn;
+                   TFUSEMkNodIn=packed record
+                    Mode:TPasRISCVUInt32;
+                    RDev:TPasRISCVUInt32;
+                    Umask:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSEMkNodIn=^TFUSEMkNodIn;
+                   TFUSELSeekIn=packed record
+                    FH:TPasRISCVUInt64;
+                    Offset:TPasRISCVUInt64;
+                    Whence:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSELSeekIn=^TFUSELSeekIn;
+                   TFUSELSeekOut=packed record
+                    Offset:TPasRISCVUInt64;
+                   end;
+                   PFUSELSeekOut=^TFUSELSeekOut;
+                   TFUSEForgetIn=packed record
+                    NLookup:TPasRISCVUInt64;
+                   end;
+                   PFUSEForgetIn=^TFUSEForgetIn;
+                   TFUSEBatchForgetIn=packed record
+                    Count:TPasRISCVUInt32;
+                    Dummy:TPasRISCVUInt32;
+                   end;
+                   PFUSEBatchForgetIn=^TFUSEBatchForgetIn;
+                   TFUSEForgetOne=packed record
+                    NodeID:TPasRISCVUInt64;
+                    NLookup:TPasRISCVUInt64;
+                   end;
+                   PFUSEForgetOne=^TFUSEForgetOne;
+                   TFUSEAccessIn=packed record
+                    Mask:TPasRISCVUInt32;
+                    Padding:TPasRISCVUInt32;
+                   end;
+                   PFUSEAccessIn=^TFUSEAccessIn;
+                   TNodeEntry=class
+                    private
+                     fNodeID:TPasRISCVUInt64;
+                     fParentNodeID:TPasRISCVUInt64;
+                     fLookupCount:TPasRISCVInt64;
+                     fName:TPasRISCVRawByteString;
+                     fPath:TPasRISCVRawByteString;
+                     fIsDirectory:Boolean;
+                    public
+                     constructor Create;
+                     destructor Destroy; override;
+                     property NodeID:TPasRISCVUInt64 read fNodeID write fNodeID;
+                     property ParentNodeID:TPasRISCVUInt64 read fParentNodeID write fParentNodeID;
+                     property LookupCount:TPasRISCVInt64 read fLookupCount write fLookupCount;
+                     property Name:TPasRISCVRawByteString read fName write fName;
+                     property Path:TPasRISCVRawByteString read fPath write fPath;
+                     property IsDirectory:Boolean read fIsDirectory write fIsDirectory;
+                   end;
+                   TNodeEntryHashMap=TPasRISCVHashMap<TPasRISCVUInt64,TNodeEntry>;
+                   TFHEntry=class
+                    private
+                     fNodeID:TPasRISCVUInt64;
+                     fFileHandle:TPasRISCVFUSEFileSystem.TFileHandle;
+                     fIsDirectory:Boolean;
+                    public
+                     constructor Create;
+                     destructor Destroy; override;
+                     property NodeID:TPasRISCVUInt64 read fNodeID write fNodeID;
+                     property FileHandle:TPasRISCVFUSEFileSystem.TFileHandle read fFileHandle write fFileHandle;
+                     property IsDirectory:Boolean read fIsDirectory write fIsDirectory;
+                   end;
+                   TFHEntryHashMap=TPasRISCVHashMap<TPasRISCVUInt64,TFHEntry>;
+             private
+              fFileSystem:TPasRISCVFUSEFileSystem;
+              fNextNodeID:TPasRISCVUInt64;
+              fNextFH:TPasRISCVUInt64;
+              fNodeEntries:TNodeEntryHashMap;
+              fFHEntries:TFHEntryHashMap;
+              fLock:TPasMPCriticalSection;
+              fRecvBuffer:TPasRISCVUInt8DynamicArray;
+              fSendBuffer:TPasRISCVUInt8DynamicArray;
+              fInitDone:Boolean;
+              function AllocNodeID:TPasRISCVUInt64;
+              function AllocFH:TPasRISCVUInt64;
+              function FindNode(const aNodeID:TPasRISCVUInt64):TNodeEntry;
+              function FindOrCreateChildNode(const aParentNodeID:TPasRISCVUInt64;const aName:TPasRISCVRawByteString):TNodeEntry;
+              function GetNodePath(const aNodeID:TPasRISCVUInt64):TPasRISCVRawByteString;
+              procedure RemoveNode(const aNodeID:TPasRISCVUInt64);
+              procedure FillAttr(var aAttr:TFUSEAttr;const aStat:TPasRISCVFUSEFileSystem.TFileStat;const aNodeID:TPasRISCVUInt64);
+              procedure SendReply(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aUnique:TPasRISCVUInt64;const aPayload:Pointer;const aPayloadSize:TPasRISCVUInt32);
+              procedure SendError(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aUnique:TPasRISCVUInt64;const aError:TPasRISCVInt32);
+              procedure HandleInit(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleLookup(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleGetAttr(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleSetAttr(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleOpen(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aIsDir:Boolean);
+              procedure HandleRelease(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aIsDir:Boolean);
+              procedure HandleRead(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleWrite(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleReadDir(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aPlus:Boolean);
+              procedure HandleCreate(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleMkDir(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleUnlink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aIsDir:Boolean);
+              procedure HandleRename(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleStatFS(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleFlush(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleFSync(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleForget(const aHeader:PFUSEInHeader);
+              procedure HandleBatchForget(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleAccess(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleSymLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleReadLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleMkNod(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              destructor Destroy; override;
+              procedure DeviceReset; override;
+              function DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean; override;
+             public
+              property FileSystem:TPasRISCVFUSEFileSystem read fFileSystem write fFileSystem;
+            end;
             { TUARTDevice }
             TUARTDevice=class(TBusDevice)
              public
@@ -7348,6 +7982,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIORTCSize:TPasRISCVUInt64;
               fVirtIORTCIRQ:TPasRISCVUInt64;
 
+              fVirtIOFSBase:TPasRISCVUInt64;
+              fVirtIOFSSize:TPasRISCVUInt64;
+              fVirtIOFSIRQ:TPasRISCVUInt64;
+
+              fVirtIOFSMountTag:TPasRISCVRawByteString;
+
               fBIOS:TMemoryStream;
 
               fKernel:TMemoryStream;
@@ -7507,6 +8147,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIORTCSize:TPasRISCVUInt64 read fVirtIORTCSize write fVirtIORTCSize;
               property VirtIORTCIRQ:TPasRISCVUInt64 read fVirtIORTCIRQ write fVirtIORTCIRQ;
 
+              property VirtIOFSBase:TPasRISCVUInt64 read fVirtIOFSBase write fVirtIOFSBase;
+              property VirtIOFSSize:TPasRISCVUInt64 read fVirtIOFSSize write fVirtIOFSSize;
+              property VirtIOFSIRQ:TPasRISCVUInt64 read fVirtIOFSIRQ write fVirtIOFSIRQ;
+
+              property VirtIOFSMountTag:TPasRISCVRawByteString read fVirtIOFSMountTag write fVirtIOFSMountTag;
+
               property BIOS:TMemoryStream read fBIOS;
 
               property Kernel:TMemoryStream read fKernel;
@@ -7636,6 +8282,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fVirtIOVSockDevice:TVirtIOVSockDevice;
 
        fVirtIORTCDevice:TVirtIORTCDevice;
+
+       fVirtIOFSDevice:TVirtIOFSDevice;
 
        fCountHARTs:TPasRISCVSizeInt;
 
@@ -7820,6 +8468,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property VirtIOVSockDevice:TVirtIOVSockDevice read fVirtIOVSockDevice;
 
        property VirtIORTCDevice:TVirtIORTCDevice read fVirtIORTCDevice;
+
+       property VirtIOFSDevice:TVirtIOFSDevice read fVirtIOFSDevice;
 
        property Debugger:TDebugger read fDebugger;
 
@@ -16792,6 +17442,1153 @@ begin
 
 end;
 
+{$ifend}
+
+{ TPasRISCVFUSEFileSystem }
+
+constructor TPasRISCVFUSEFileSystem.Create;
+begin
+ inherited Create;
+ fRootPath:='';
+end;
+
+destructor TPasRISCVFUSEFileSystem.Destroy;
+begin
+ inherited Destroy;
+end;
+
+function TPasRISCVFUSEFileSystem.Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32;
+begin
+ FillChar(aStat,SizeOf(TFileStat),0);
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.StatFS(out aStat:TFileSystemStat):TPasRISCVInt32;
+begin
+ FillChar(aStat,SizeOf(TFileSystemStat),0);
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ aHandle:=0;
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ aHandle:=0;
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.CloseFile(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.FlushFile(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ result:=FUSE_OK;
+end;
+
+function TPasRISCVFUSEFileSystem.FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
+begin
+ result:=FUSE_OK;
+end;
+
+function TPasRISCVFUSEFileSystem.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ aHandle:=0;
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
+begin
+ aCount:=0;
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.CloseDir(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ aTarget:='';
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.MkNod(const aPath:TPasRISCVRawByteString;const aMode,aRDev:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
+function TPasRISCVFUSEFileSystem.Access(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ result:=FUSE_OK;
+end;
+
+function TPasRISCVFUSEFileSystem.ComposePath(const aBase,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
+begin
+ if (aBase='') or (aBase='/') then begin
+  result:='/'+aName;
+ end else begin
+  result:=aBase+'/'+aName;
+ end;
+end;
+
+{$if defined(fpc) and defined(Unix)}
+{ TPasRISCVFUSEFileSystemPOSIX }
+
+constructor TPasRISCVFUSEFileSystemPOSIX.Create(const aRootPath:TPasRISCVRawByteString);
+begin
+ inherited Create;
+ fRootPath:=aRootPath;
+end;
+
+destructor TPasRISCVFUSEFileSystemPOSIX.Destroy;
+begin
+ fRootPath:='';
+ inherited Destroy;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.POSIXErrorToFUSEError(const aErrno:TPasRISCVInt32):TPasRISCVInt32;
+begin
+ case aErrno of
+  0:begin
+   result:=FUSE_OK;
+  end;
+  ESysEPERM:begin
+   result:=-FUSE_EPERM;
+  end;
+  ESysENOENT:begin
+   result:=-FUSE_ENOENT;
+  end;
+  ESysEIO:begin
+   result:=-FUSE_EIO;
+  end;
+  ESysEACCES:begin
+   result:=-FUSE_EACCES;
+  end;
+  ESysEEXIST:begin
+   result:=-FUSE_EEXIST;
+  end;
+  ESysENOTDIR:begin
+   result:=-FUSE_ENOTDIR;
+  end;
+  ESysEISDIR:begin
+   result:=-FUSE_EISDIR;
+  end;
+  ESysEINVAL:begin
+   result:=-FUSE_EINVAL;
+  end;
+  ESysENOSPC:begin
+   result:=-FUSE_ENOSPC;
+  end;
+  ESysEROFS:begin
+   result:=-FUSE_EROFS;
+  end;
+  ESysENAMETOOLONG:begin
+   result:=-FUSE_ENAMETOOLONG;
+  end;
+  ESysENOSYS:begin
+   result:=-FUSE_ENOSYS;
+  end;
+  ESysENOTEMPTY:begin
+   result:=-FUSE_ENOTEMPTY;
+  end;
+  ESysENODATA:begin
+   result:=-FUSE_ENODATA;
+  end;
+  else begin
+   result:=-FUSE_EIO;
+  end;
+ end;
+end;
+
+procedure TPasRISCVFUSEFileSystemPOSIX.StatBufToFileStat(const aSB:PStat;out aStat:TPasRISCVFUSEFileSystem.TFileStat);
+begin
+ FillChar(aStat,SizeOf(aStat),0);
+ aStat.Ino:=aSB^.st_ino;
+ aStat.Size:=aSB^.st_size;
+ aStat.Blocks:=aSB^.st_blocks;
+ aStat.ATimeSec:=aSB^.st_atime;
+ aStat.ATimeNSec:={$ifdef linux}aSB^.st_atime_nsec{$else}0{$endif};
+ aStat.MTimeSec:=aSB^.st_mtime;
+ aStat.MTimeNSec:={$ifdef linux}aSB^.st_mtime_nsec{$else}0{$endif};
+ aStat.CTimeSec:=aSB^.st_ctime;
+ aStat.CTimeNSec:={$ifdef linux}aSB^.st_ctime_nsec{$else}0{$endif};
+ aStat.Mode:=aSB^.st_mode;
+ aStat.NLink:=aSB^.st_nlink;
+ aStat.UID:=aSB^.st_uid;
+ aStat.GID:=aSB^.st_gid;
+ aStat.RDev:=aSB^.st_rdev;
+ aStat.BlkSize:=aSB^.st_blksize;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    SB:BaseUnix.Stat;
+begin
+ FullPath:=fRootPath+aPath;
+ if fpLStat(FullPath,SB)=0 then begin
+  StatBufToFileStat(@SB,aStat);
+  result:=FUSE_OK;
+ end else begin
+  FillChar(aStat,SizeOf(aStat),0);
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.StatFS(out aStat:TFileSystemStat):TPasRISCVInt32;
+var SVfs:TStatFS;
+begin
+ FillChar(aStat,SizeOf(aStat),0);
+ if fpStatFS(PAnsiChar(fRootPath),@SVfs)=0 then begin
+  aStat.Blocks:=SVfs.blocks;
+  aStat.BFree:=SVfs.bfree;
+  aStat.BAvail:=SVfs.bavail;
+  aStat.Files:=SVfs.files;
+  aStat.FFree:=SVfs.ffree;
+  aStat.BSize:=SVfs.bsize;
+  aStat.NameLen:=SVfs.namelen;
+  aStat.FRSize:=SVfs.frsize;
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    FD:cint;
+    POSIXFlags:cint;
+begin
+ FullPath:=fRootPath+aPath;
+ POSIXFlags:=aFlags and $3; // O_RDONLY/O_WRONLY/O_RDWR
+ if (aFlags and O_APPEND)<>0 then begin
+  POSIXFlags:=POSIXFlags or O_APPEND;
+ end;
+ if (aFlags and O_TRUNC)<>0 then begin
+  POSIXFlags:=POSIXFlags or O_TRUNC;
+ end;
+ FD:=fpOpen(FullPath,POSIXFlags);
+ if FD>=0 then begin
+  aHandle:=TFileHandle(FD);
+  result:=FUSE_OK;
+ end else begin
+  aHandle:=0;
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    FD:cint;
+    POSIXFlags:cint;
+begin
+ FullPath:=fRootPath+aPath;
+ POSIXFlags:=(aFlags and $3) or O_CREAT;
+ if (aFlags and O_EXCL)<>0 then begin
+  POSIXFlags:=POSIXFlags or O_EXCL;
+ end;
+ if (aFlags and O_TRUNC)<>0 then begin
+  POSIXFlags:=POSIXFlags or O_TRUNC;
+ end;
+ if (aFlags and O_APPEND)<>0 then begin
+  POSIXFlags:=POSIXFlags or O_APPEND;
+ end;
+ FD:=fpOpen(FullPath,POSIXFlags,aMode);
+ if FD>=0 then begin
+  aHandle:=TFileHandle(FD);
+  result:=FUSE_OK;
+ end else begin
+  aHandle:=0;
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+var BytesRead:TSSize;
+begin
+ BytesRead:=fppRead(cint(aHandle),aBuffer,aSize,aOffset);
+ if BytesRead>=0 then begin
+  result:=BytesRead;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+var BytesWritten:TSSize;
+begin
+ BytesWritten:=fppWrite(cint(aHandle),aBuffer,aSize,aOffset);
+ if BytesWritten>=0 then begin
+  result:=BytesWritten;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.CloseFile(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ if fpClose(cint(aHandle))=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.FlushFile(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ result:=FUSE_OK;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
+begin
+ if fpfsync(cint(aHandle))=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    Dir:PDIR;
+begin
+ FullPath:=fRootPath+aPath;
+ Dir:=fpOpenDir(PAnsiChar(FullPath));
+ if assigned(Dir) then begin
+  aHandle:=TFileHandle({%H-}PtrUInt(Dir));
+  result:=FUSE_OK;
+ end else begin
+  aHandle:=0;
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
+var Dir:PDIR;
+    DE:PDirEnt;
+    Index,EntryCapacity:TPasRISCVInt32;
+begin
+ Dir:={%H-}PDIR(PtrUInt(aHandle));
+ aCount:=0;
+ aEntries:=nil;
+ EntryCapacity:=0;
+ if aOffset=0 then begin
+  RewindDir(Dir);
+ end;
+ Index:=0;
+ repeat
+  DE:=fpReadDir(Dir^);
+  if DE=nil then begin
+   break;
+  end;
+  if Index>=EntryCapacity then begin
+   if EntryCapacity=0 then begin
+    EntryCapacity:=64;
+   end else begin
+    EntryCapacity:=EntryCapacity*2;
+   end;
+   SetLength(aEntries,EntryCapacity);
+  end;
+  aEntries[Index].Ino:=DE^.d_fileno;
+  aEntries[Index].Off:=aOffset+TPasRISCVUInt64(Index)+1;
+  aEntries[Index].Name:=DE^.d_name;
+  aEntries[Index].NameLen:=Length(aEntries[Index].Name);
+  case DE^.d_type of
+   DT_DIR:begin
+    aEntries[Index].Type_:=S_IFDIR shr 12;
+   end;
+   DT_REG:begin
+    aEntries[Index].Type_:=S_IFREG shr 12;
+   end;
+   DT_LNK:begin
+    aEntries[Index].Type_:=S_IFLNK shr 12;
+   end;
+   DT_CHR:begin
+    aEntries[Index].Type_:=S_IFCHR shr 12;
+   end;
+   DT_BLK:begin
+    aEntries[Index].Type_:=S_IFBLK shr 12;
+   end;
+   DT_FIFO:begin
+    aEntries[Index].Type_:=S_IFIFO shr 12;
+   end;
+   DT_SOCK:begin
+    aEntries[Index].Type_:=S_IFSOCK shr 12;
+   end;
+   else begin
+    aEntries[Index].Type_:=DT_UNKNOWN;
+   end;
+  end;
+  inc(Index);
+ until false;
+ aCount:=Index;
+ SetLength(aEntries,aCount);
+ result:=FUSE_OK;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.CloseDir(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ if fpCloseDir({%H-}PDIR(PtrUInt(aHandle))^)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+begin
+ FullPath:=fRootPath+aPath;
+ if fpMkDir(FullPath,aMode)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+begin
+ FullPath:=fRootPath+aPath;
+ if fpUnlink(FullPath)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+begin
+ FullPath:=fRootPath+aPath;
+ if fpRmDir(FullPath)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
+var FullOldPath,FullNewPath:TPasRISCVRawByteString;
+begin
+ FullOldPath:=fRootPath+aOldPath;
+ FullNewPath:=fRootPath+aNewPath;
+ if fpRename(FullOldPath,FullNewPath)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    fd:cint;
+    ts:tkernel_timespecs;
+begin
+ FullPath:=fRootPath+aPath;
+ result:=FUSE_OK;
+ if (aMask and $1)<>0 then begin // FATTR_MODE
+  if fpChmod(FullPath,aMode)<>0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end;
+ if (aMask and ($2 or $4))<>0 then begin // FATTR_UID | FATTR_GID
+  if lchown(PAnsiChar(FullPath),aUID,aGID)<>0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end;
+ if (aMask and $8)<>0 then begin // FATTR_SIZE
+  fd:=fpOpen(PAnsiChar(FullPath),O_WRONLY);
+  if fd>=0 then begin
+   if fpFTruncate(fd,aSize)<>0 then begin
+    result:=POSIXErrorToFUSEError(fpGetErrno);
+    fpClose(fd);
+    exit;
+   end;
+   fpClose(fd);
+  end else begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end;
+ if (aMask and ($10 or $20))<>0 then begin // FATTR_ATIME | FATTR_MTIME
+  ts[0].tv_sec:=aATimeSec;
+  ts[0].tv_nsec:=aATimeNSec;
+  ts[1].tv_sec:=aMTimeSec;
+  ts[1].tv_nsec:=aMTimeNSec;
+  if utimensat(AT_FDCWD,PAnsiChar(FullPath),ts,AT_SYMLINK_NOFOLLOW)<0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ if fpSymLink(PAnsiChar(aTarget),PAnsiChar(fRootPath+aLinkPath))=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    Buf:array[0..4095] of AnsiChar;
+    Len:TSSize;
+begin
+ FullPath:=fRootPath+aPath;
+ Len:=fpReadLink(PAnsiChar(FullPath),@Buf[0],SizeOf(Buf)-1);
+ if Len>=0 then begin
+  Buf[Len]:=#0;
+  aTarget:=Buf;
+  result:=FUSE_OK;
+ end else begin
+  aTarget:='';
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ if fpLink(PAnsiChar(fRootPath+aOldPath),PAnsiChar(fRootPath+aNewPath))=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.MkNod(const aPath:TPasRISCVRawByteString;const aMode,aRDev:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ if MkNod_(PAnsiChar(fRootPath+aPath),aMode,aRDev)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.Access(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ if fpAccess(fRootPath+aPath,aMask)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.ComposePath(const aBase,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
+begin
+ if (aBase='') or (aBase='/') then begin
+  result:='/'+aName;
+ end else begin
+  result:=aBase+'/'+aName;
+ end;
+end;
+{$ifend}
+
+{$if defined(Windows)}
+{ TPasRISCVFUSEFileSystemWindows }
+
+{ TPasRISCVFUSEFileSystemWindows.TDirHandleInfo }
+
+constructor TPasRISCVFUSEFileSystemWindows.TDirHandleInfo.Create(const aPath:TPasRISCVRawByteString;const aDirHandle:THandle);
+begin
+ inherited Create;
+ fPath:=aPath;
+ fDirHandle:=aDirHandle;
+end;
+
+destructor TPasRISCVFUSEFileSystemWindows.TDirHandleInfo.Destroy;
+begin
+ if fDirHandle<>INVALID_HANDLE_VALUE then begin
+  CloseHandle(fDirHandle);
+  fDirHandle:=INVALID_HANDLE_VALUE;
+ end;
+ fPath:='';
+ inherited Destroy;
+end;
+
+constructor TPasRISCVFUSEFileSystemWindows.Create(const aRootPath:TPasRISCVRawByteString);
+begin
+ inherited Create;
+ fRootPath:=aRootPath;
+end;
+
+destructor TPasRISCVFUSEFileSystemWindows.Destroy;
+begin
+ fRootPath:='';
+ inherited Destroy;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.Win32ErrorToFUSEError(const aErrorCode:DWORD):TPasRISCVInt32;
+begin
+ case aErrorCode of
+  ERROR_SUCCESS:begin
+   result:=FUSE_OK;
+  end;
+  ERROR_FILE_NOT_FOUND,ERROR_PATH_NOT_FOUND:begin
+   result:=-FUSE_ENOENT;
+  end;
+  ERROR_ACCESS_DENIED:begin
+   result:=-FUSE_EACCES;
+  end;
+  ERROR_FILE_EXISTS,ERROR_ALREADY_EXISTS:begin
+   result:=-FUSE_EEXIST;
+  end;
+  ERROR_DIRECTORY:begin
+   result:=-FUSE_ENOTDIR;
+  end;
+  ERROR_DISK_FULL:begin
+   result:=-FUSE_ENOSPC;
+  end;
+  ERROR_DIR_NOT_EMPTY:begin
+   result:=-FUSE_ENOTEMPTY;
+  end;
+  ERROR_INVALID_PARAMETER:begin
+   result:=-FUSE_EINVAL;
+  end;
+  ERROR_WRITE_PROTECT:begin
+   result:=-FUSE_EROFS;
+  end;
+  else begin
+   result:=-FUSE_EIO;
+  end;
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.FlagsToWin32Access(const aFlags:TPasRISCVUInt32):DWORD;
+begin
+ case aFlags and $3 of
+  O_RDONLY:begin
+   result:=GENERIC_READ;
+  end;
+  O_WRONLY:begin
+   result:=GENERIC_WRITE;
+  end;
+  O_RDWR:begin
+   result:=GENERIC_READ or GENERIC_WRITE;
+  end;
+  else begin
+   result:=GENERIC_READ;
+  end;
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.FlagsToWin32Disposition(const aFlags:TPasRISCVUInt32):DWORD;
+begin
+ if (aFlags and O_CREAT)<>0 then begin
+  if (aFlags and O_EXCL)<>0 then begin
+   result:=CREATE_NEW;
+  end else if (aFlags and O_TRUNC)<>0 then begin
+   result:=CREATE_ALWAYS;
+  end else begin
+   result:=OPEN_ALWAYS;
+  end;
+ end else begin
+  if (aFlags and O_TRUNC)<>0 then begin
+   result:=TRUNCATE_EXISTING;
+  end else begin
+   result:=OPEN_EXISTING;
+  end;
+ end;
+end;
+
+procedure TPasRISCVFUSEFileSystemWindows.Win32FileInfoToFileStat(const aInfo:BY_HANDLE_FILE_INFORMATION;const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat);
+begin
+ FillChar(aStat,SizeOf(aStat),0);
+ aStat.Ino:=(TPasRISCVUInt64(aInfo.nFileIndexHigh) shl 32) or aInfo.nFileIndexLow;
+ aStat.Size:=(TPasRISCVUInt64(aInfo.nFileSizeHigh) shl 32) or aInfo.nFileSizeLow;
+ aStat.Blocks:=(aStat.Size+511) div 512;
+ aStat.ATimeSec:=FileTimeToUnixTimeSec(aInfo.ftLastAccessTime);
+ aStat.MTimeSec:=FileTimeToUnixTimeSec(aInfo.ftLastWriteTime);
+ aStat.CTimeSec:=FileTimeToUnixTimeSec(aInfo.ftCreationTime);
+ aStat.NLink:=aInfo.nNumberOfLinks;
+ aStat.BlkSize:=4096;
+ if (aInfo.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY)<>0 then begin
+  aStat.Mode:=S_IFDIR or S_IRWXU or S_IRWXG or S_IRWXO;
+ end else begin
+  aStat.Mode:=S_IFREG or S_IRUSR or S_IWUSR or S_IRGRP or S_IROTH;
+ end;
+ if (aInfo.dwFileAttributes and FILE_ATTRIBUTE_READONLY)<>0 then begin
+  aStat.Mode:=aStat.Mode and (not (S_IWUSR or S_IWGRP or S_IWOTH));
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.FileTimeToUnixTimeSec(const aFileTime:TFileTime):TPasRISCVUInt64;
+var FT64:TPasRISCVUInt64;
+begin
+ FT64:=(TPasRISCVUInt64(aFileTime.dwHighDateTime) shl 32) or aFileTime.dwLowDateTime;
+ if FT64>116444736000000000 then begin
+  result:=(FT64-116444736000000000) div 10000000;
+ end else begin
+  result:=0;
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.UnixTimeSecToFileTime(const aUnixTimeSec:TPasRISCVUInt64):TFileTime;
+var FT64:TPasRISCVUInt64;
+begin
+ FT64:=(aUnixTimeSec*10000000)+116444736000000000;
+ result.dwLowDateTime:=DWORD(FT64);
+ result.dwHighDateTime:=DWORD(FT64 shr 32);
+end;
+
+function TPasRISCVFUSEFileSystemWindows.Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    H:THandle;
+    Info:BY_HANDLE_FILE_INFORMATION;
+begin
+ FillChar(aStat,SizeOf(aStat),0);
+ FullPath:=fRootPath+aPath;
+ H:=Windows.CreateFileA(PAnsiChar(FullPath),GENERIC_READ,FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE,nil,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,0);
+ if H=INVALID_HANDLE_VALUE then begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+  exit;
+ end;
+ try
+  if GetFileInformationByHandle(H,Info) then begin
+   Win32FileInfoToFileStat(Info,FullPath,aStat);
+   result:=FUSE_OK;
+  end else begin
+   result:=Win32ErrorToFUSEError(GetLastError);
+  end;
+ finally
+  CloseHandle(H);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.StatFS(out aStat:TFileSystemStat):TPasRISCVInt32;
+var FreeBytesAvailable,TotalBytes,TotalFreeBytes:TPasRISCVInt64;
+begin
+ FillChar(aStat,SizeOf(aStat),0);
+ if GetDiskFreeSpaceExA(PAnsiChar(fRootPath),{%H-}FreeBytesAvailable,{%H-}TotalBytes,PLargeInteger(@TotalFreeBytes)) then begin
+  aStat.BSize:=4096;
+  aStat.FRSize:=4096;
+  aStat.Blocks:=TPasRISCVUInt64(TotalBytes) div 4096;
+  aStat.BFree:=TPasRISCVUInt64(TotalFreeBytes) div 4096;
+  aStat.BAvail:=TPasRISCVUInt64(FreeBytesAvailable) div 4096;
+  aStat.Files:=1000000;
+  aStat.FFree:=500000;
+  aStat.NameLen:=255;
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    H:THandle;
+begin
+ FullPath:=fRootPath+aPath;
+ H:=Windows.CreateFileA(PAnsiChar(FullPath),FlagsToWin32Access(aFlags),FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE,nil,FlagsToWin32Disposition(aFlags),FILE_ATTRIBUTE_NORMAL,0);
+ if H<>INVALID_HANDLE_VALUE then begin
+  aHandle:=TFileHandle(H);
+  result:=FUSE_OK;
+ end else begin
+  aHandle:=0;
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    H:THandle;
+begin
+ FullPath:=fRootPath+aPath;
+ H:=Windows.CreateFileA(PAnsiChar(FullPath),FlagsToWin32Access(aFlags),FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE,nil,FlagsToWin32Disposition(aFlags or O_CREAT),FILE_ATTRIBUTE_NORMAL,0);
+ if H<>INVALID_HANDLE_VALUE then begin
+  aHandle:=TFileHandle(H);
+  result:=FUSE_OK;
+ end else begin
+  aHandle:=0;
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+var BytesRead:DWORD;
+    OVL:OVERLAPPED;
+begin
+ FillChar(OVL,SizeOf(OVL),0);
+ OVL.Offset:=DWORD(aOffset);
+ OVL.OffsetHigh:=DWORD(aOffset shr 32);
+ if Windows.ReadFile(THandle(aHandle),aBuffer^,aSize,BytesRead,@OVL) then begin
+  result:=BytesRead;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+var BytesWritten:DWORD;
+    OVL:OVERLAPPED;
+begin
+ FillChar(OVL,SizeOf(OVL),0);
+ OVL.Offset:=DWORD(aOffset);
+ OVL.OffsetHigh:=DWORD(aOffset shr 32);
+ if Windows.WriteFile(THandle(aHandle),aBuffer^,aSize,BytesWritten,@OVL) then begin
+  result:=BytesWritten;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.CloseFile(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ if CloseHandle(THandle(aHandle)) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.FlushFile(const aHandle:TFileHandle):TPasRISCVInt32;
+begin
+ if FlushFileBuffers(THandle(aHandle)) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=FUSE_OK; // silently ignore flush errors
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
+begin
+ if FlushFileBuffers(THandle(aHandle)) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    H:THandle;
+    DirInfo:TDirHandleInfo;
+begin
+ FullPath:=fRootPath+aPath;
+ H:=Windows.CreateFileA(PAnsiChar(FullPath),GENERIC_READ,FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE,nil,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,0);
+ if H<>INVALID_HANDLE_VALUE then begin
+  DirInfo:=TDirHandleInfo.Create(FullPath,H);
+  aHandle:=TFileHandle({%H-}PtrUInt(DirInfo));
+  result:=FUSE_OK;
+ end else begin
+  aHandle:=0;
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
+var DirInfo:TDirHandleInfo;
+    FindData:TWin32FindDataA;
+    FindHandle:THandle;
+    SearchPath:TPasRISCVRawByteString;
+    Index,Skip,EntryCapacity:TPasRISCVInt32;
+    FileName:TPasRISCVRawByteString;
+begin
+ DirInfo:={%H-}TDirHandleInfo(PtrUInt(aHandle));
+ aCount:=0;
+ aEntries:=nil;
+ EntryCapacity:=0;
+ SearchPath:=DirInfo.fPath+'\*';
+ FindHandle:=Windows.FindFirstFileA(PAnsiChar(SearchPath),FindData);
+ if FindHandle=INVALID_HANDLE_VALUE then begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+  exit;
+ end;
+ try
+  Index:=0;
+  Skip:=TPasRISCVInt32(aOffset);
+  repeat
+   if Skip>0 then begin
+    dec(Skip);
+    continue;
+   end;
+   FileName:=TPasRISCVRawByteString(PAnsiChar(@FindData.cFileName[0]));
+   if Index>=EntryCapacity then begin
+    if EntryCapacity=0 then begin
+     EntryCapacity:=64;
+    end else begin
+     EntryCapacity:=EntryCapacity*2;
+    end;
+    SetLength(aEntries,EntryCapacity);
+   end;
+   aEntries[Index].Ino:=0;
+   aEntries[Index].Off:=aOffset+TPasRISCVUInt64(Index)+1;
+   aEntries[Index].Name:=FileName;
+   aEntries[Index].NameLen:=Length(FileName);
+   if (FindData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY)<>0 then begin
+    aEntries[Index].Type_:=S_IFDIR shr 12;
+   end else begin
+    aEntries[Index].Type_:=S_IFREG shr 12;
+   end;
+   inc(Index);
+  until not Windows.FindNextFileA(FindHandle,FindData);
+  aCount:=Index;
+  SetLength(aEntries,aCount);
+  result:=FUSE_OK;
+ finally
+  Windows.FindClose(FindHandle);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.CloseDir(const aHandle:TFileHandle):TPasRISCVInt32;
+var DirInfo:TDirHandleInfo;
+begin
+ DirInfo:={%H-}TDirHandleInfo(PtrUInt(aHandle));
+ if assigned(DirInfo) then begin
+  DirInfo.Free;
+  result:=FUSE_OK;
+ end else begin
+  result:=-FUSE_EINVAL;
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ if Windows.CreateDirectoryA(PAnsiChar(fRootPath+aPath),nil) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ if Windows.DeleteFileA(PAnsiChar(fRootPath+aPath)) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ if Windows.RemoveDirectoryA(PAnsiChar(fRootPath+aPath)) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ if MoveFileExA(PAnsiChar(fRootPath+aOldPath),PAnsiChar(fRootPath+aNewPath),MOVEFILE_REPLACE_EXISTING) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    H:THandle;
+    FT:TFileTime;
+begin
+ FullPath:=fRootPath+aPath;
+ result:=FUSE_OK;
+
+ if (aMask and $8)<>0 then begin // FATTR_SIZE
+  H:=Windows.CreateFileA(PAnsiChar(FullPath),GENERIC_WRITE,FILE_SHARE_READ or FILE_SHARE_WRITE,nil,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,0);
+  if H<>INVALID_HANDLE_VALUE then begin
+   try
+    SetFilePointerEx(H,Int64(aSize),nil,FILE_BEGIN);
+    SetEndOfFile(H);
+   finally
+    CloseHandle(H);
+   end;
+  end else begin
+   result:=Win32ErrorToFUSEError(GetLastError);
+   exit;
+  end;
+ end;
+
+ if (aMask and ($10 or $20))<>0 then begin // FATTR_ATIME | FATTR_MTIME
+  H:=Windows.CreateFileA(PAnsiChar(FullPath),FILE_WRITE_ATTRIBUTES,FILE_SHARE_READ or FILE_SHARE_WRITE,nil,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,0);
+  if H<>INVALID_HANDLE_VALUE then begin
+   try
+    if (aMask and $10)<>0 then begin
+     FT:=UnixTimeSecToFileTime(aATimeSec);
+     SetFileTime(H,nil,@FT,nil);
+    end;
+    if (aMask and $20)<>0 then begin
+     FT:=UnixTimeSecToFileTime(aMTimeSec);
+     SetFileTime(H,nil,nil,@FT);
+    end;
+   finally
+    CloseHandle(H);
+   end;
+  end;
+ end;
+
+ if (aMask and $1)<>0 then begin // FATTR_MODE
+  if (aMode and S_IWUSR)=0 then begin
+   SetFileAttributesA(PAnsiChar(FullPath),FILE_ATTRIBUTE_READONLY);
+  end else begin
+   SetFileAttributesA(PAnsiChar(FullPath),FILE_ATTRIBUTE_NORMAL);
+  end;
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32;
+const FUSE_SYMBOLIC_LINK_FLAG_DIRECTORY=$1;
+var FullLinkPath:TPasRISCVRawByteString;
+    Attrs:DWORD;
+    Flags:DWORD;
+begin
+ FullLinkPath:=fRootPath+aLinkPath;
+ Flags:=0;
+ // Check if target is a directory
+ Attrs:=GetFileAttributesA(PAnsiChar(fRootPath+aTarget));
+ if (Attrs<>INVALID_FILE_ATTRIBUTES) and ((Attrs and FILE_ATTRIBUTE_DIRECTORY)<>0) then begin
+  Flags:=FUSE_SYMBOLIC_LINK_FLAG_DIRECTORY;
+ end;
+ if CreateSymbolicLinkA(PAnsiChar(FullLinkPath),PAnsiChar(TPasRISCVRawByteString(aTarget)),Flags) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+{$if not declared(GetFinalPathNameByHandleA)}
+function GetFinalPathNameByHandleA(hFile:THandle;lpszFilePath:LPSTR;cchFilePath:DWORD;dwFlags:DWORD):DWORD; {$ifdef cpu386}stdcall;{$endif} external 'kernel32.dll' name 'GetFinalPathNameByHandleA';
+{$ifend}
+
+function TPasRISCVFUSEFileSystemWindows.ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    H:THandle;
+    Buf:array[0..4095] of AnsiChar;
+    Len:DWORD;
+begin
+ aTarget:='';
+ FullPath:=fRootPath+aPath;
+ H:=Windows.CreateFileA(PAnsiChar(FullPath),GENERIC_READ,FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE,nil,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,0);
+ if H=INVALID_HANDLE_VALUE then begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+  exit;
+ end;
+ try
+  Len:=GetFinalPathNameByHandleA(H,@Buf[0],SizeOf(Buf)-1,0);
+  if (Len>0) and (Len<SizeOf(Buf)) then begin
+   Buf[Len]:=#0;
+   aTarget:=TPasRISCVRawByteString(PAnsiChar(@Buf[0]));
+   // Strip \\?\ prefix if present
+   if (length(aTarget)>4) and (Copy(aTarget,1,4)='\\?\') then begin
+    Delete(aTarget,1,4);
+   end;
+   // Make relative to root path if possible
+   if (length(aTarget)>=length(fRootPath)) and (Copy(aTarget,1,length(fRootPath))=fRootPath) then begin
+    Delete(aTarget,1,length(fRootPath));
+   end;
+   result:=FUSE_OK;
+  end else begin
+   result:=-FUSE_EIO;
+  end;
+ finally
+  CloseHandle(H);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
+begin
+ if CreateHardLinkA(PAnsiChar(fRootPath+aNewPath),PAnsiChar(fRootPath+aOldPath),nil) then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.MkNod(const aPath:TPasRISCVRawByteString;const aMode,aRDev:TPasRISCVUInt32):TPasRISCVInt32;
+var FullPath:TPasRISCVRawByteString;
+    H:THandle;
+begin
+ // On Windows, mknod only supports creating regular files
+ if (aMode and S_IFMT)=S_IFREG then begin
+  FullPath:=fRootPath+aPath;
+  H:=Windows.CreateFileA(PAnsiChar(FullPath),GENERIC_WRITE,0,nil,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,0);
+  if H<>INVALID_HANDLE_VALUE then begin
+   CloseHandle(H);
+   result:=FUSE_OK;
+  end else begin
+   result:=Win32ErrorToFUSEError(GetLastError);
+  end;
+ end else begin
+  result:=-FUSE_ENOSYS;
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.Access(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32):TPasRISCVInt32;
+var Attrs:DWORD;
+begin
+ Attrs:=GetFileAttributesA(PAnsiChar(fRootPath+aPath));
+ if Attrs<>INVALID_FILE_ATTRIBUTES then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=Win32ErrorToFUSEError(GetLastError);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemWindows.ComposePath(const aBase,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
+begin
+ if (aBase='') or (aBase='\') or (aBase='/') then begin
+  result:='\'+aName;
+ end else begin
+  result:=aBase+'\'+aName;
+ end;
+end;
 {$ifend}
 
 { TPasRISCVEthernetDevice }
@@ -29366,6 +31163,1628 @@ begin
 
  end;
 
+end;
+
+{ TPasRISCV.TVirtIOFSDevice.TNodeEntry }
+
+constructor TPasRISCV.TVirtIOFSDevice.TNodeEntry.Create;
+begin
+ inherited Create;
+ fNodeID:=0;
+ fParentNodeID:=0;
+ fLookupCount:=0;
+ fName:='';
+ fPath:='';
+ fIsDirectory:=false;
+end;
+
+destructor TPasRISCV.TVirtIOFSDevice.TNodeEntry.Destroy;
+begin
+ fName:='';
+ fPath:='';
+ inherited Destroy;
+end;
+
+{ TPasRISCV.TVirtIOFSDevice.TFHEntry }
+
+constructor TPasRISCV.TVirtIOFSDevice.TFHEntry.Create;
+begin
+ inherited Create;
+ fNodeID:=0;
+ fFileHandle:=0;
+ fIsDirectory:=false;
+end;
+
+destructor TPasRISCV.TVirtIOFSDevice.TFHEntry.Destroy;
+begin
+ inherited Destroy;
+end;
+
+{ TPasRISCV.TVirtIOFSDevice }
+
+constructor TPasRISCV.TVirtIOFSDevice.Create(const aMachine:TPasRISCV);
+var RootNode:TNodeEntry;
+    MountTag:TPasRISCVRawByteString;
+begin
+
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIOFSBase,aMachine.fConfiguration.fVirtIOFSSize,TVirtIODevice.TKind.MMIO);
+
+ fIRQ:=aMachine.fConfiguration.fVirtIOFSIRQ;
+
+ fFileSystem:=nil;
+
+ fDeviceID:=DeviceID;
+
+ fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
+
+ // Queue 0 = hiprio, Queue 1 = request
+ fQueues[VIRTIO_FS_QUEUE_HIPRIO].ManualRecv:=false;
+ fQueues[VIRTIO_FS_QUEUE_HIPRIO].Asynchronous:=false;
+ fQueues[VIRTIO_FS_QUEUE_REQUEST].ManualRecv:=false;
+ fQueues[VIRTIO_FS_QUEUE_REQUEST].Asynchronous:=false;
+
+ // Config space: tag[36] + num_request_queues(le32)
+ fConfigSpaceSize:=40;
+ FillChar(fConfigSpace,SizeOf(fConfigSpace),0);
+
+ // Write tag (max 36 bytes, zero-padded, NOT null-terminated)
+ MountTag:=aMachine.fConfiguration.fVirtIOFSMountTag;
+ if length(MountTag)<=VIRTIO_FS_TAG_MAX_LEN then begin
+  Move(MountTag[1],fConfigSpace[0],length(MountTag));
+ end else begin
+  Move(MountTag[1],fConfigSpace[0],VIRTIO_FS_TAG_MAX_LEN);
+ end;
+
+ // num_request_queues at offset 36 (le32)
+ fConfigSpace[36]:=VIRTIO_FS_DEFAULT_NUM_QUEUES and $ff;
+ fConfigSpace[37]:=(VIRTIO_FS_DEFAULT_NUM_QUEUES shr 8) and $ff;
+ fConfigSpace[38]:=(VIRTIO_FS_DEFAULT_NUM_QUEUES shr 16) and $ff;
+ fConfigSpace[39]:=(VIRTIO_FS_DEFAULT_NUM_QUEUES shr 24) and $ff;
+
+ fNextNodeID:=FUSE_ROOT_ID+1;
+ fNextFH:=1;
+
+ fNodeEntries:=TNodeEntryHashMap.Create(nil);
+ fFHEntries:=TFHEntryHashMap.Create(nil);
+
+ // Create root node
+ RootNode:=TNodeEntry.Create;
+ RootNode.fNodeID:=FUSE_ROOT_ID;
+ RootNode.fParentNodeID:=FUSE_ROOT_ID;
+ RootNode.fLookupCount:=1;
+ RootNode.fName:='';
+ RootNode.fPath:='/';
+ RootNode.fIsDirectory:=true;
+ fNodeEntries[FUSE_ROOT_ID]:=RootNode;
+
+ fInitDone:=false;
+
+ fRecvBuffer:=nil;
+ SetLength(fRecvBuffer,65536);
+
+ fSendBuffer:=nil;
+ SetLength(fSendBuffer,65536);
+
+ fLock:=TPasMPCriticalSection.Create;
+
+end;
+
+destructor TPasRISCV.TVirtIOFSDevice.Destroy;
+var NodeEntity:TNodeEntryHashMap.TEntity;
+    FHEntity:TFHEntryHashMap.TEntity;
+begin
+ if assigned(fNodeEntries) then begin
+  for NodeEntity in fNodeEntries.Entities do begin
+   if (NodeEntity.State=TNodeEntryHashMap.TEntity.Used) and assigned(NodeEntity.Value) then begin
+    NodeEntity.Value.Free;
+   end;
+  end;
+  FreeAndNil(fNodeEntries);
+ end;
+ if assigned(fFHEntries) then begin
+  for FHEntity in fFHEntries.Entities do begin
+   if (FHEntity.State=TFHEntryHashMap.TEntity.Used) and assigned(FHEntity.Value) then begin
+    FHEntity.Value.Free;
+   end;
+  end;
+  FreeAndNil(fFHEntries);
+ end;
+ FreeAndNil(fLock);
+ fRecvBuffer:=nil;
+ fSendBuffer:=nil;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.DeviceReset;
+begin
+ inherited DeviceReset;
+ fInitDone:=false;
+end;
+
+function TPasRISCV.TVirtIOFSDevice.AllocNodeID:TPasRISCVUInt64;
+begin
+ result:=fNextNodeID;
+ inc(fNextNodeID);
+end;
+
+function TPasRISCV.TVirtIOFSDevice.AllocFH:TPasRISCVUInt64;
+begin
+ result:=fNextFH;
+ inc(fNextFH);
+end;
+
+function TPasRISCV.TVirtIOFSDevice.FindNode(const aNodeID:TPasRISCVUInt64):TNodeEntry;
+begin
+ result:=fNodeEntries[aNodeID];
+end;
+
+function TPasRISCV.TVirtIOFSDevice.FindOrCreateChildNode(const aParentNodeID:TPasRISCVUInt64;const aName:TPasRISCVRawByteString):TNodeEntry;
+var ParentNode:TNodeEntry;
+    Entity:TNodeEntryHashMap.TEntity;
+    ChildPath:TPasRISCVRawByteString;
+    NewNode:TNodeEntry;
+begin
+ result:=nil;
+ ParentNode:=FindNode(aParentNodeID);
+ if ParentNode=nil then begin
+  exit;
+ end;
+ if assigned(fFileSystem) then begin
+  ChildPath:=fFileSystem.ComposePath(ParentNode.fPath,aName);
+ end else begin
+  if (ParentNode.fPath='') or (ParentNode.fPath='/') then begin
+   ChildPath:='/'+aName;
+  end else begin
+   ChildPath:=ParentNode.fPath+'/'+aName;
+  end;
+ end;
+ // Check if child already exists
+ for Entity in fNodeEntries.Entities do begin
+  if (Entity.State=TNodeEntryHashMap.TEntity.Used) and
+     assigned(Entity.Value) and
+     (Entity.Value.fParentNodeID=aParentNodeID) and
+     (Entity.Value.fName=aName) then begin
+   inc(Entity.Value.fLookupCount);
+   result:=Entity.Value;
+   exit;
+  end;
+ end;
+ // Create new node
+ NewNode:=TNodeEntry.Create;
+ NewNode.fNodeID:=AllocNodeID;
+ NewNode.fParentNodeID:=aParentNodeID;
+ NewNode.fLookupCount:=1;
+ NewNode.fName:=aName;
+ NewNode.fPath:=ChildPath;
+ NewNode.fIsDirectory:=false;
+ fNodeEntries[NewNode.fNodeID]:=NewNode;
+ result:=NewNode;
+end;
+
+function TPasRISCV.TVirtIOFSDevice.GetNodePath(const aNodeID:TPasRISCVUInt64):TPasRISCVRawByteString;
+var Node:TNodeEntry;
+begin
+ Node:=FindNode(aNodeID);
+ if assigned(Node) then begin
+  result:=Node.fPath;
+ end else begin
+  result:='';
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.RemoveNode(const aNodeID:TPasRISCVUInt64);
+var Node:TNodeEntry;
+begin
+ Node:=fNodeEntries[aNodeID];
+ if assigned(Node) then begin
+  Node.Free;
+  fNodeEntries.Delete(aNodeID);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.FillAttr(var aAttr:TFUSEAttr;const aStat:TPasRISCVFUSEFileSystem.TFileStat;const aNodeID:TPasRISCVUInt64);
+begin
+ FillChar(aAttr,SizeOf(aAttr),0);
+ aAttr.Ino:=aNodeID;
+ aAttr.Size:=aStat.Size;
+ aAttr.Blocks:=aStat.Blocks;
+ aAttr.ATime:=aStat.ATimeSec;
+ aAttr.ATimeNSec:=aStat.ATimeNSec;
+ aAttr.MTime:=aStat.MTimeSec;
+ aAttr.MTimeNSec:=aStat.MTimeNSec;
+ aAttr.CTime:=aStat.CTimeSec;
+ aAttr.CTimeNSec:=aStat.CTimeNSec;
+ aAttr.Mode:=aStat.Mode;
+ aAttr.NLink:=aStat.NLink;
+ aAttr.UID:=aStat.UID;
+ aAttr.GID:=aStat.GID;
+ aAttr.RDev:=aStat.RDev;
+ aAttr.BlkSize:=aStat.BlkSize;
+ if aAttr.BlkSize=0 then begin
+  aAttr.BlkSize:=4096;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.SendReply(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aUnique:TPasRISCVUInt64;const aPayload:Pointer;const aPayloadSize:TPasRISCVUInt32);
+var OutHeader:TFUSEOutHeader;
+    TotalSize:TPasRISCVUInt32;
+begin
+ TotalSize:=FUSE_OUT_HEADER_SIZE+aPayloadSize;
+ OutHeader.Len:=TotalSize;
+ OutHeader.Error:=0;
+ OutHeader.Unique:=aUnique;
+ Move(OutHeader,fSendBuffer[0],FUSE_OUT_HEADER_SIZE);
+ if assigned(aPayload) and (aPayloadSize>0) then begin
+  Move(aPayload^,fSendBuffer[FUSE_OUT_HEADER_SIZE],aPayloadSize);
+ end;
+ if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],TotalSize) and
+         ConsumeDescriptor(aQueueIndex,aDescriptorIndex,TotalSize) and
+         UsedRingSync(aQueueIndex)) then begin
+  NotifyDeviceNeedsReset;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.SendError(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aUnique:TPasRISCVUInt64;const aError:TPasRISCVInt32);
+var OutHeader:TFUSEOutHeader;
+begin
+ OutHeader.Len:=FUSE_OUT_HEADER_SIZE;
+ if aError>0 then begin
+  OutHeader.Error:=-aError;
+ end else begin
+  OutHeader.Error:=aError;
+ end;
+ OutHeader.Unique:=aUnique;
+ if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@OutHeader,FUSE_OUT_HEADER_SIZE) and
+         ConsumeDescriptor(aQueueIndex,aDescriptorIndex,FUSE_OUT_HEADER_SIZE) and
+         UsedRingSync(aQueueIndex)) then begin
+  NotifyDeviceNeedsReset;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleInit(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var InitIn:TFUSEInitIn;
+    InitOut:TFUSEInitOut;
+begin
+ if CopyMemoryFromQueue(@InitIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEInitIn)) then begin
+  FillChar(InitOut,SizeOf(InitOut),0);
+  InitOut.Major:=FUSE_KERNEL_VERSION;
+  InitOut.Minor:=FUSE_KERNEL_MINOR_VERSION;
+  InitOut.MaxReadahead:=InitIn.MaxReadahead;
+  InitOut.Flags:=FUSE_BIG_WRITES or
+                 FUSE_DO_READDIRPLUS or
+                 FUSE_ATOMIC_O_TRUNC or
+                 FUSE_EXPORT_SUPPORT or
+                 FUSE_DONT_MASK;
+  InitOut.MaxBackground:=16;
+  InitOut.CongestionThreshold:=12;
+  InitOut.MaxWrite:=65536;
+  InitOut.TimeGran:=1;
+  InitOut.MaxPages:=(65536+4095) div 4096;
+  fInitDone:=true;
+  SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@InitOut,SizeOf(TFUSEInitOut));
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleLookup(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var NameBuf:array[0..4095] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
+    ChildNode:TNodeEntry;
+    ChildPath:TPasRISCVRawByteString;
+    ChildNodeID:TPasRISCVUInt64;
+    ChildFound:Boolean;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    EntryOut:TFUSEEntryOut;
+    Err:TPasRISCVInt32;
+begin
+ NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE;
+ if NameLen>SizeOf(NameBuf)-1 then begin
+  NameLen:=SizeOf(NameBuf)-1;
+ end;
+ if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,NameLen) then begin
+  NameBuf[NameLen]:=#0;
+  // Trim trailing null
+  while (NameLen>0) and (NameBuf[NameLen-1]=#0) do begin
+   dec(NameLen);
+  end;
+  SetLength(Name,NameLen);
+  if NameLen>0 then begin
+   Move(NameBuf[0],Name[1],NameLen);
+  end;
+
+  ChildFound:=false;
+  fLock.Acquire;
+  try
+   ChildNode:=FindOrCreateChildNode(aHeader^.NodeID,Name);
+   if assigned(ChildNode) then begin
+    ChildPath:=ChildNode.fPath;
+    ChildNodeID:=ChildNode.fNodeID;
+    ChildFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+
+  if ChildFound and assigned(fFileSystem) then begin
+   Err:=fFileSystem.Stat(ChildPath,FileStat);
+   if Err=0 then begin
+    fLock.Acquire;
+    try
+     ChildNode:=FindNode(ChildNodeID);
+     if assigned(ChildNode) then begin
+      ChildNode.fIsDirectory:=(FileStat.Mode and TPasRISCVFUSEFileSystem.S_IFDIR)<>0;
+     end;
+    finally
+     fLock.Release;
+    end;
+    FillChar(EntryOut,SizeOf(EntryOut),0);
+    EntryOut.NodeID:=ChildNodeID;
+    EntryOut.Generation:=0;
+    EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+    EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+    FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
+   end else begin
+    // stat failed, remove node and report error
+    fLock.Acquire;
+    try
+     RemoveNode(ChildNodeID);
+    finally
+     fLock.Release;
+    end;
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleGetAttr(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var Node:TNodeEntry;
+    NodePath:TPasRISCVRawByteString;
+    NodeFound:Boolean;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    AttrOut:TFUSEAttrOut;
+    Err:TPasRISCVInt32;
+begin
+ NodeFound:=false;
+ fLock.Acquire;
+ try
+  Node:=FindNode(aHeader^.NodeID);
+  if assigned(Node) then begin
+   NodePath:=Node.fPath;
+   NodeFound:=true;
+  end;
+ finally
+  fLock.Release;
+ end;
+ if NodeFound and assigned(fFileSystem) then begin
+  Err:=fFileSystem.Stat(NodePath,FileStat);
+  if Err=0 then begin
+   FillChar(AttrOut,SizeOf(AttrOut),0);
+   AttrOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+   FillAttr(AttrOut.Attr,FileStat,aHeader^.NodeID);
+   SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@AttrOut,SizeOf(TFUSEAttrOut));
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleSetAttr(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var SetAttrIn:TFUSESetAttrIn;
+    Node:TNodeEntry;
+    NodePath:TPasRISCVRawByteString;
+    NodeFound:Boolean;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    AttrOut:TFUSEAttrOut;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@SetAttrIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSESetAttrIn)) then begin
+  NodeFound:=false;
+  fLock.Acquire;
+  try
+   Node:=FindNode(aHeader^.NodeID);
+   if assigned(Node) then begin
+    NodePath:=Node.fPath;
+    NodeFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if NodeFound and assigned(fFileSystem) then begin
+   Err:=fFileSystem.SetAttr(NodePath,SetAttrIn.Valid,
+                            SetAttrIn.Mode,SetAttrIn.UID,SetAttrIn.GID,
+                            SetAttrIn.Size,
+                            SetAttrIn.ATime,SetAttrIn.ATimeNSec,
+                            SetAttrIn.MTime,SetAttrIn.MTimeNSec);
+   if Err=0 then begin
+    Err:=fFileSystem.Stat(NodePath,FileStat);
+    if Err=0 then begin
+     FillChar(AttrOut,SizeOf(AttrOut),0);
+     AttrOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+     FillAttr(AttrOut.Attr,FileStat,aHeader^.NodeID);
+     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@AttrOut,SizeOf(TFUSEAttrOut));
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleOpen(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aIsDir:Boolean);
+var OpenIn:TFUSEOpenIn;
+    OpenOut:TFUSEOpenOut;
+    Node:TNodeEntry;
+    NodePath:TPasRISCVRawByteString;
+    NodeFound:Boolean;
+    FH:TPasRISCVFUSEFileSystem.TFileHandle;
+    NewFHEntry:TFHEntry;
+    FHID:TPasRISCVUInt64;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@OpenIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEOpenIn)) then begin
+  NodeFound:=false;
+  fLock.Acquire;
+  try
+   Node:=FindNode(aHeader^.NodeID);
+   if assigned(Node) then begin
+    NodePath:=Node.fPath;
+    NodeFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if NodeFound and assigned(fFileSystem) then begin
+   if aIsDir then begin
+    Err:=fFileSystem.OpenDir(NodePath,FH);
+   end else begin
+    Err:=fFileSystem.OpenFile(NodePath,OpenIn.Flags,FH);
+   end;
+   if Err=0 then begin
+    NewFHEntry:=TFHEntry.Create;
+    NewFHEntry.fNodeID:=aHeader^.NodeID;
+    NewFHEntry.fFileHandle:=FH;
+    NewFHEntry.fIsDirectory:=aIsDir;
+    fLock.Acquire;
+    try
+     FHID:=AllocFH;
+     fFHEntries[FHID]:=NewFHEntry;
+    finally
+     fLock.Release;
+    end;
+    FillChar(OpenOut,SizeOf(OpenOut),0);
+    OpenOut.FH:=FHID;
+    OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
+    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@OpenOut,SizeOf(TFUSEOpenOut));
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleRelease(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aIsDir:Boolean);
+var ReleaseIn:TFUSEReleaseIn;
+    FHEntry:TFHEntry;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
+    LocalIsDir:Boolean;
+begin
+ if CopyMemoryFromQueue(@ReleaseIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEReleaseIn)) then begin
+  FHEntry:=nil;
+  fLock.Acquire;
+  try
+   FHEntry:=fFHEntries[ReleaseIn.FH];
+   if assigned(FHEntry) then begin
+    LocalFH:=FHEntry.fFileHandle;
+    LocalIsDir:=FHEntry.fIsDirectory;
+    fFHEntries.Delete(ReleaseIn.FH);
+   end;
+  finally
+   fLock.Release;
+  end;
+  if assigned(FHEntry) and assigned(fFileSystem) then begin
+   if LocalIsDir then begin
+    fFileSystem.CloseDir(LocalFH);
+   end else begin
+    fFileSystem.CloseFile(LocalFH);
+   end;
+   FHEntry.Free;
+  end;
+  SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleRead(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var ReadIn:TFUSEReadIn;
+    FHEntry:TFHEntry;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
+    FHFound:Boolean;
+    Buf:Pointer;
+    BytesRead:TPasRISCVInt64;
+begin
+ if CopyMemoryFromQueue(@ReadIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEReadIn)) then begin
+  FHFound:=false;
+  fLock.Acquire;
+  try
+   FHEntry:=fFHEntries[ReadIn.FH];
+   if assigned(FHEntry) then begin
+    LocalFH:=FHEntry.fFileHandle;
+    FHFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if FHFound and assigned(fFileSystem) then begin
+   GetMem(Buf,ReadIn.Size);
+   try
+    BytesRead:=fFileSystem.ReadFile(LocalFH,ReadIn.Offset,Buf,ReadIn.Size);
+    if BytesRead>=0 then begin
+     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Buf,BytesRead);
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVInt32(BytesRead));
+    end;
+   finally
+    FreeMem(Buf);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleWrite(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var WriteIn:TFUSEWriteIn;
+    WriteOut:TFUSEWriteOut;
+    FHEntry:TFHEntry;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
+    FHFound:Boolean;
+    Buf:Pointer;
+    BytesWritten:TPasRISCVInt64;
+begin
+ if CopyMemoryFromQueue(@WriteIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEWriteIn)) then begin
+  FHFound:=false;
+  fLock.Acquire;
+  try
+   FHEntry:=fFHEntries[WriteIn.FH];
+   if assigned(FHEntry) then begin
+    LocalFH:=FHEntry.fFileHandle;
+    FHFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if FHFound and assigned(fFileSystem) then begin
+   GetMem(Buf,WriteIn.Size);
+   try
+    if CopyMemoryFromQueue(Buf,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSEWriteIn),WriteIn.Size) then begin
+     BytesWritten:=fFileSystem.WriteFile(LocalFH,WriteIn.Offset,Buf,WriteIn.Size);
+     if BytesWritten>=0 then begin
+      FillChar(WriteOut,SizeOf(WriteOut),0);
+      WriteOut.Size:=BytesWritten;
+      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@WriteOut,SizeOf(TFUSEWriteOut));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVInt32(BytesWritten));
+     end;
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+    end;
+   finally
+    FreeMem(Buf);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleReadDir(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aPlus:Boolean);
+var ReadIn:TFUSEReadIn;
+    FHEntry:TFHEntry;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
+    LocalNodeID:TPasRISCVUInt64;
+    FHFound:Boolean;
+    DirEntries:TPasRISCVFUSEFileSystem.TDirEntries;
+    DirEntryCount:TPasRISCVInt32;
+    Err:TPasRISCVInt32;
+    Buf:Pointer;
+    BufSize,BufOfs:TPasRISCVUInt32;
+    Dirent:TFUSEDirent;
+    PadLen,EntryLen:TPasRISCVUInt32;
+    Index:TPasRISCVInt32;
+    DirentPlusEntryOut:TFUSEEntryOut;
+    DirentPlusFileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    DirentPlusChildNode:TNodeEntry;
+    DirentPlusChildPath:TPasRISCVRawByteString;
+    DirentPlusChildNodeID:TPasRISCVUInt64;
+    DirentPlusChildFound:Boolean;
+begin
+ if CopyMemoryFromQueue(@ReadIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEReadIn)) then begin
+  FHFound:=false;
+  fLock.Acquire;
+  try
+   FHEntry:=fFHEntries[ReadIn.FH];
+   if assigned(FHEntry) then begin
+    LocalFH:=FHEntry.fFileHandle;
+    LocalNodeID:=FHEntry.fNodeID;
+    FHFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if FHFound and assigned(fFileSystem) then begin
+   DirEntries:=nil;
+   Err:=fFileSystem.ReadDir(LocalFH,ReadIn.Offset,DirEntries,DirEntryCount);
+   if Err=0 then begin
+    BufSize:=ReadIn.Size;
+    GetMem(Buf,BufSize);
+    try
+     BufOfs:=0;
+     for Index:=0 to DirEntryCount-1 do begin
+      if aPlus then begin
+       // READDIRPLUS: entry_out + dirent
+       EntryLen:=SizeOf(TFUSEEntryOut)+FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen;
+       PadLen:=(8-(EntryLen and 7)) and 7;
+       EntryLen:=EntryLen+PadLen;
+       if BufOfs+EntryLen>BufSize then begin
+        break;
+       end;
+       // Get child node for attributes
+       DirentPlusChildFound:=false;
+       fLock.Acquire;
+       try
+        if assigned(FindNode(LocalNodeID)) then begin
+         DirentPlusChildNode:=FindOrCreateChildNode(LocalNodeID,DirEntries[Index].Name);
+         if assigned(DirentPlusChildNode) then begin
+          DirentPlusChildPath:=DirentPlusChildNode.fPath;
+          DirentPlusChildNodeID:=DirentPlusChildNode.fNodeID;
+          DirentPlusChildFound:=true;
+         end;
+        end;
+       finally
+        fLock.Release;
+       end;
+       FillChar(DirentPlusEntryOut,SizeOf(DirentPlusEntryOut),0);
+       if DirentPlusChildFound and (fFileSystem.Stat(DirentPlusChildPath,DirentPlusFileStat)=0) then begin
+        fLock.Acquire;
+        try
+         DirentPlusChildNode:=FindNode(DirentPlusChildNodeID);
+         if assigned(DirentPlusChildNode) then begin
+          DirentPlusChildNode.fIsDirectory:=(DirentPlusFileStat.Mode and TPasRISCVFUSEFileSystem.S_IFDIR)<>0;
+         end;
+        finally
+         fLock.Release;
+        end;
+        DirentPlusEntryOut.NodeID:=DirentPlusChildNodeID;
+        DirentPlusEntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+        DirentPlusEntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+        FillAttr(DirentPlusEntryOut.Attr,DirentPlusFileStat,DirentPlusChildNodeID);
+       end;
+       Move(DirentPlusEntryOut,PPasRISCVUInt8Array(Buf)^[BufOfs],SizeOf(TFUSEEntryOut));
+       inc(BufOfs,SizeOf(TFUSEEntryOut));
+       Dirent.Ino:=DirEntries[Index].Ino;
+       Dirent.Off:=DirEntries[Index].Off;
+       Dirent.NameLen:=DirEntries[Index].NameLen;
+       Dirent.Type_:=DirEntries[Index].Type_;
+       Move(Dirent,PPasRISCVUInt8Array(Buf)^[BufOfs],FUSE_DIRENT_NAME_OFFSET);
+       Move(DirEntries[Index].Name[1],PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET],DirEntries[Index].NameLen);
+       PadLen:=(8-((FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen) and 7)) and 7;
+       if PadLen>0 then begin
+        FillChar(PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen],PadLen,0);
+       end;
+       inc(BufOfs,FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen+PadLen);
+      end else begin
+       // Normal READDIR: just dirent
+       EntryLen:=FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen;
+       PadLen:=(8-(EntryLen and 7)) and 7;
+       EntryLen:=EntryLen+PadLen;
+       if BufOfs+EntryLen>BufSize then begin
+        break;
+       end;
+       Dirent.Ino:=DirEntries[Index].Ino;
+       Dirent.Off:=DirEntries[Index].Off;
+       Dirent.NameLen:=DirEntries[Index].NameLen;
+       Dirent.Type_:=DirEntries[Index].Type_;
+       Move(Dirent,PPasRISCVUInt8Array(Buf)^[BufOfs],FUSE_DIRENT_NAME_OFFSET);
+       Move(DirEntries[Index].Name[1],PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET],DirEntries[Index].NameLen);
+       if PadLen>0 then begin
+        FillChar(PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen],PadLen,0);
+       end;
+       inc(BufOfs,EntryLen);
+      end;
+     end;
+     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Buf,BufOfs);
+    finally
+     FreeMem(Buf);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleCreate(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var CreateIn:TFUSECreateIn;
+    NameBuf:array[0..4095] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
+    ChildNode:TNodeEntry;
+    ChildPath:TPasRISCVRawByteString;
+    ChildNodeID:TPasRISCVUInt64;
+    ChildFound:Boolean;
+    FH:TPasRISCVFUSEFileSystem.TFileHandle;
+    FHID:TPasRISCVUInt64;
+    EntryOut:TFUSEEntryOut;
+    OpenOut:TFUSEOpenOut;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    NewFHEntry:TFHEntry;
+    Err:TPasRISCVInt32;
+    ReplyBuf:array[0..SizeOf(TFUSEEntryOut)+SizeOf(TFUSEOpenOut)-1] of TPasRISCVUInt8;
+begin
+ if CopyMemoryFromQueue(@CreateIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSECreateIn)) then begin
+  NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE-SizeOf(TFUSECreateIn);
+  if NameLen>SizeOf(NameBuf)-1 then begin
+   NameLen:=SizeOf(NameBuf)-1;
+  end;
+  if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSECreateIn),NameLen) then begin
+   NameBuf[NameLen]:=#0;
+   while (NameLen>0) and (NameBuf[NameLen-1]=#0) do begin
+    dec(NameLen);
+   end;
+   SetLength(Name,NameLen);
+   if NameLen>0 then begin
+    Move(NameBuf[0],Name[1],NameLen);
+   end;
+
+   ChildFound:=false;
+   fLock.Acquire;
+   try
+    ChildNode:=FindOrCreateChildNode(aHeader^.NodeID,Name);
+    if assigned(ChildNode) then begin
+     ChildPath:=ChildNode.fPath;
+     ChildNodeID:=ChildNode.fNodeID;
+     ChildFound:=true;
+    end;
+   finally
+    fLock.Release;
+   end;
+
+   if ChildFound and assigned(fFileSystem) then begin
+    Err:=fFileSystem.CreateFile(ChildPath,CreateIn.Flags,CreateIn.Mode,FH);
+    if Err=0 then begin
+     NewFHEntry:=TFHEntry.Create;
+     NewFHEntry.fNodeID:=ChildNodeID;
+     NewFHEntry.fFileHandle:=FH;
+     NewFHEntry.fIsDirectory:=false;
+     fLock.Acquire;
+     try
+      FHID:=AllocFH;
+      fFHEntries[FHID]:=NewFHEntry;
+     finally
+      fLock.Release;
+     end;
+     Err:=fFileSystem.Stat(ChildPath,FileStat);
+     if Err=0 then begin
+      FillChar(EntryOut,SizeOf(EntryOut),0);
+      EntryOut.NodeID:=ChildNodeID;
+      EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+      EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+      FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+      FillChar(OpenOut,SizeOf(OpenOut),0);
+      OpenOut.FH:=FHID;
+      OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
+      Move(EntryOut,ReplyBuf[0],SizeOf(TFUSEEntryOut));
+      Move(OpenOut,ReplyBuf[SizeOf(TFUSEEntryOut)],SizeOf(TFUSEOpenOut));
+      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@ReplyBuf[0],SizeOf(TFUSEEntryOut)+SizeOf(TFUSEOpenOut));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+     end;
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleMkDir(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var MkDirIn:TFUSEMkDirIn;
+    NameBuf:array[0..4095] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
+    ChildNode:TNodeEntry;
+    ChildPath:TPasRISCVRawByteString;
+    ChildNodeID:TPasRISCVUInt64;
+    ChildFound:Boolean;
+    EntryOut:TFUSEEntryOut;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@MkDirIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEMkDirIn)) then begin
+  NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE-SizeOf(TFUSEMkDirIn);
+  if NameLen>SizeOf(NameBuf)-1 then begin
+   NameLen:=SizeOf(NameBuf)-1;
+  end;
+  if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSEMkDirIn),NameLen) then begin
+   NameBuf[NameLen]:=#0;
+   while (NameLen>0) and (NameBuf[NameLen-1]=#0) do begin
+    dec(NameLen);
+   end;
+   SetLength(Name,NameLen);
+   if NameLen>0 then begin
+    Move(NameBuf[0],Name[1],NameLen);
+   end;
+
+   ChildFound:=false;
+   fLock.Acquire;
+   try
+    ChildNode:=FindOrCreateChildNode(aHeader^.NodeID,Name);
+    if assigned(ChildNode) then begin
+     ChildPath:=ChildNode.fPath;
+     ChildNodeID:=ChildNode.fNodeID;
+     ChildFound:=true;
+    end;
+   finally
+    fLock.Release;
+   end;
+
+   if ChildFound and assigned(fFileSystem) then begin
+    Err:=fFileSystem.MkDir(ChildPath,MkDirIn.Mode);
+    if Err=0 then begin
+     fLock.Acquire;
+     try
+      ChildNode:=FindNode(ChildNodeID);
+      if assigned(ChildNode) then begin
+       ChildNode.fIsDirectory:=true;
+      end;
+     finally
+      fLock.Release;
+     end;
+     Err:=fFileSystem.Stat(ChildPath,FileStat);
+     if Err=0 then begin
+      FillChar(EntryOut,SizeOf(EntryOut),0);
+      EntryOut.NodeID:=ChildNodeID;
+      EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+      EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+      FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+     end;
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleUnlink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aIsDir:Boolean);
+var NameBuf:array[0..4095] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    Name,Path:TPasRISCVRawByteString;
+    ParentNode:TNodeEntry;
+    ParentPath:TPasRISCVRawByteString;
+    ParentFound:Boolean;
+    Err:TPasRISCVInt32;
+begin
+ NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE;
+ if NameLen>SizeOf(NameBuf)-1 then begin
+  NameLen:=SizeOf(NameBuf)-1;
+ end;
+ if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,NameLen) then begin
+  NameBuf[NameLen]:=#0;
+  while (NameLen>0) and (NameBuf[NameLen-1]=#0) do begin
+   dec(NameLen);
+  end;
+  SetLength(Name,NameLen);
+  if NameLen>0 then begin
+   Move(NameBuf[0],Name[1],NameLen);
+  end;
+
+  ParentFound:=false;
+  fLock.Acquire;
+  try
+   ParentNode:=FindNode(aHeader^.NodeID);
+   if assigned(ParentNode) then begin
+    ParentPath:=ParentNode.fPath;
+    ParentFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+
+  if ParentFound and assigned(fFileSystem) then begin
+   Path:=fFileSystem.ComposePath(ParentPath,Name);
+   if aIsDir then begin
+    Err:=fFileSystem.RmDir(Path);
+   end else begin
+    Err:=fFileSystem.Unlink(Path);
+   end;
+   if Err=0 then begin
+    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleRename(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var RenameIn:TFUSERenameIn;
+    NameBuf:array[0..8191] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    OldName,NewName,OldPath,NewPath:TPasRISCVRawByteString;
+    ParentNode,NewParentNode:TNodeEntry;
+    ParentPath,NewParentPath:TPasRISCVRawByteString;
+    BothFound:Boolean;
+    NullPos:TPasRISCVInt32;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@RenameIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSERenameIn)) then begin
+  NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE-SizeOf(TFUSERenameIn);
+  if NameLen>SizeOf(NameBuf)-1 then begin
+   NameLen:=SizeOf(NameBuf)-1;
+  end;
+  if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSERenameIn),NameLen) then begin
+   NameBuf[NameLen]:=#0;
+   // Names are null-separated: oldname\0newname
+   NullPos:=0;
+   while (NullPos<TPasRISCVInt32(NameLen)) and (NameBuf[NullPos]<>#0) do begin
+    inc(NullPos);
+   end;
+   OldName:=Copy(TPasRISCVRawByteString(@NameBuf[0]),1,NullPos);
+   if NullPos<TPasRISCVInt32(NameLen) then begin
+    NewName:='';
+    SetLength(NewName,TPasRISCVInt32(NameLen)-NullPos-1);
+    if length(NewName)>0 then begin
+     Move(NameBuf[NullPos+1],NewName[1],length(NewName));
+    end;
+    // Trim trailing nulls
+    while (length(NewName)>0) and (NewName[length(NewName)]=#0) do begin
+     SetLength(NewName,length(NewName)-1);
+    end;
+   end else begin
+    NewName:=OldName;
+   end;
+
+   BothFound:=false;
+   fLock.Acquire;
+   try
+    ParentNode:=FindNode(aHeader^.NodeID);
+    NewParentNode:=FindNode(RenameIn.NewDir);
+    if assigned(ParentNode) and assigned(NewParentNode) then begin
+     ParentPath:=ParentNode.fPath;
+     NewParentPath:=NewParentNode.fPath;
+     BothFound:=true;
+    end;
+   finally
+    fLock.Release;
+   end;
+
+   if BothFound and assigned(fFileSystem) then begin
+    OldPath:=fFileSystem.ComposePath(ParentPath,OldName);
+    NewPath:=fFileSystem.ComposePath(NewParentPath,NewName);
+    Err:=fFileSystem.Rename(OldPath,NewPath);
+    if Err=0 then begin
+     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleStatFS(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var FSStat:TPasRISCVFUSEFileSystem.TFileSystemStat;
+    StatFSOut:TFUSEStatFSOut;
+    Err:TPasRISCVInt32;
+begin
+ if assigned(fFileSystem) then begin
+  Err:=fFileSystem.StatFS(FSStat);
+  if Err=0 then begin
+   FillChar(StatFSOut,SizeOf(StatFSOut),0);
+   StatFSOut.Blocks:=FSStat.Blocks;
+   StatFSOut.BFree:=FSStat.BFree;
+   StatFSOut.BAvail:=FSStat.BAvail;
+   StatFSOut.Files:=FSStat.Files;
+   StatFSOut.FFree:=FSStat.FFree;
+   StatFSOut.BSize:=FSStat.BSize;
+   StatFSOut.NameLen:=FSStat.NameLen;
+   StatFSOut.FRSize:=FSStat.FRSize;
+   SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@StatFSOut,SizeOf(TFUSEStatFSOut));
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOSYS);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleFlush(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var FlushIn:TFUSEFlushIn;
+    FHEntry:TFHEntry;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
+    FHFound:Boolean;
+begin
+ if CopyMemoryFromQueue(@FlushIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEFlushIn)) then begin
+  FHFound:=false;
+  fLock.Acquire;
+  try
+   FHEntry:=fFHEntries[FlushIn.FH];
+   if assigned(FHEntry) then begin
+    LocalFH:=FHEntry.fFileHandle;
+    FHFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if FHFound and assigned(fFileSystem) then begin
+   fFileSystem.FlushFile(LocalFH);
+  end;
+  SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleFSync(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var FSyncIn:TFUSEFSyncIn;
+    FHEntry:TFHEntry;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
+    FHFound:Boolean;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@FSyncIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEFSyncIn)) then begin
+  FHFound:=false;
+  fLock.Acquire;
+  try
+   FHEntry:=fFHEntries[FSyncIn.FH];
+   if assigned(FHEntry) then begin
+    LocalFH:=FHEntry.fFileHandle;
+    FHFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if FHFound and assigned(fFileSystem) then begin
+   Err:=fFileSystem.FSyncFile(LocalFH,(FSyncIn.FSyncFlags and 1)<>0);
+   if Err=0 then begin
+    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleForget(const aHeader:PFUSEInHeader);
+var ForgetIn:TFUSEForgetIn;
+    Node:TNodeEntry;
+begin
+ // FORGET has no reply
+ fLock.Acquire;
+ try
+  Node:=FindNode(aHeader^.NodeID);
+  if assigned(Node) then begin
+   dec(Node.fLookupCount);
+   if (Node.fLookupCount<=0) and (Node.fNodeID<>FUSE_ROOT_ID) then begin
+    RemoveNode(Node.fNodeID);
+   end;
+  end;
+ finally
+  fLock.Release;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleBatchForget(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var BatchForgetIn:TFUSEBatchForgetIn;
+    ForgetOne:TFUSEForgetOne;
+    Index:TPasRISCVUInt32;
+    Node:TNodeEntry;
+begin
+ if CopyMemoryFromQueue(@BatchForgetIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEBatchForgetIn)) then begin
+  fLock.Acquire;
+  try
+   for Index:=0 to BatchForgetIn.Count-1 do begin
+    if CopyMemoryFromQueue(@ForgetOne,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSEBatchForgetIn)+(Index*SizeOf(TFUSEForgetOne)),SizeOf(TFUSEForgetOne)) then begin
+     Node:=FindNode(ForgetOne.NodeID);
+     if assigned(Node) then begin
+      dec(Node.fLookupCount,ForgetOne.NLookup);
+      if (Node.fLookupCount<=0) and (Node.fNodeID<>FUSE_ROOT_ID) then begin
+       RemoveNode(Node.fNodeID);
+      end;
+     end;
+    end;
+   end;
+  finally
+   fLock.Release;
+  end;
+  // BATCH_FORGET has no reply
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleAccess(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var AccessIn:TFUSEAccessIn;
+    Node:TNodeEntry;
+    NodePath:TPasRISCVRawByteString;
+    NodeFound:Boolean;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@AccessIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEAccessIn)) then begin
+  NodeFound:=false;
+  fLock.Acquire;
+  try
+   Node:=FindNode(aHeader^.NodeID);
+   if assigned(Node) then begin
+    NodePath:=Node.fPath;
+    NodeFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+  if NodeFound and assigned(fFileSystem) then begin
+   Err:=fFileSystem.Access(NodePath,AccessIn.Mask);
+   if Err=0 then begin
+    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var LinkIn:TFUSELinkIn;
+    NameBuf:array[0..4095] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
+    OldNode,ChildNode:TNodeEntry;
+    OldPath,ChildPath:TPasRISCVRawByteString;
+    ChildNodeID:TPasRISCVUInt64;
+    BothFound:Boolean;
+    EntryOut:TFUSEEntryOut;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@LinkIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSELinkIn)) then begin
+  NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE-SizeOf(TFUSELinkIn);
+  if NameLen>SizeOf(NameBuf)-1 then begin
+   NameLen:=SizeOf(NameBuf)-1;
+  end;
+  if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSELinkIn),NameLen) then begin
+   NameBuf[NameLen]:=#0;
+   while (NameLen>0) and (NameBuf[NameLen-1]=#0) do begin
+    dec(NameLen);
+   end;
+   SetLength(Name,NameLen);
+   if NameLen>0 then begin
+    Move(NameBuf[0],Name[1],NameLen);
+   end;
+
+   BothFound:=false;
+   fLock.Acquire;
+   try
+    OldNode:=FindNode(LinkIn.OldNodeID);
+    ChildNode:=FindOrCreateChildNode(aHeader^.NodeID,Name);
+    if assigned(OldNode) and assigned(ChildNode) then begin
+     OldPath:=OldNode.fPath;
+     ChildPath:=ChildNode.fPath;
+     ChildNodeID:=ChildNode.fNodeID;
+     BothFound:=true;
+    end;
+   finally
+    fLock.Release;
+   end;
+
+   if BothFound and assigned(fFileSystem) then begin
+    Err:=fFileSystem.HardLink(OldPath,ChildPath);
+    if Err=0 then begin
+     Err:=fFileSystem.Stat(ChildPath,FileStat);
+     if Err=0 then begin
+      FillChar(EntryOut,SizeOf(EntryOut),0);
+      EntryOut.NodeID:=ChildNodeID;
+      EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+      EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+      FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+     end;
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleSymLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var NameBuf:array[0..8191] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    LinkName,Target:TPasRISCVRawByteString;
+    ChildNode:TNodeEntry;
+    ChildPath:TPasRISCVRawByteString;
+    ChildNodeID:TPasRISCVUInt64;
+    ChildFound:Boolean;
+    EntryOut:TFUSEEntryOut;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    NullPos:TPasRISCVInt32;
+    Err:TPasRISCVInt32;
+begin
+ NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE;
+ if NameLen>SizeOf(NameBuf)-1 then begin
+  NameLen:=SizeOf(NameBuf)-1;
+ end;
+ if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,NameLen) then begin
+  NameBuf[NameLen]:=#0;
+  // Format: linkname\0target
+  NullPos:=0;
+  while (NullPos<TPasRISCVInt32(NameLen)) and (NameBuf[NullPos]<>#0) do begin
+   inc(NullPos);
+  end;
+  LinkName:=Copy(TPasRISCVRawByteString(@NameBuf[0]),1,NullPos);
+  if NullPos<TPasRISCVInt32(NameLen) then begin
+   Target:='';
+   SetLength(Target,TPasRISCVInt32(NameLen)-NullPos-1);
+   if length(Target)>0 then begin
+    Move(NameBuf[NullPos+1],Target[1],length(Target));
+   end;
+   while (length(Target)>0) and (Target[length(Target)]=#0) do begin
+    SetLength(Target,length(Target)-1);
+   end;
+  end else begin
+   Target:='';
+  end;
+
+  ChildFound:=false;
+  fLock.Acquire;
+  try
+   ChildNode:=FindOrCreateChildNode(aHeader^.NodeID,LinkName);
+   if assigned(ChildNode) then begin
+    ChildPath:=ChildNode.fPath;
+    ChildNodeID:=ChildNode.fNodeID;
+    ChildFound:=true;
+   end;
+  finally
+   fLock.Release;
+  end;
+
+  if ChildFound and assigned(fFileSystem) then begin
+   Err:=fFileSystem.SymLink(Target,ChildPath);
+   if Err=0 then begin
+    Err:=fFileSystem.Stat(ChildPath,FileStat);
+    if Err=0 then begin
+     FillChar(EntryOut,SizeOf(EntryOut),0);
+     EntryOut.NodeID:=ChildNodeID;
+     EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+     EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+     FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleReadLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var Node:TNodeEntry;
+    NodePath:TPasRISCVRawByteString;
+    NodeFound:Boolean;
+    Target:TPasRISCVRawByteString;
+    Err:TPasRISCVInt32;
+begin
+ NodeFound:=false;
+ fLock.Acquire;
+ try
+  Node:=FindNode(aHeader^.NodeID);
+  if assigned(Node) then begin
+   NodePath:=Node.fPath;
+   NodeFound:=true;
+  end;
+ finally
+  fLock.Release;
+ end;
+ if NodeFound and assigned(fFileSystem) then begin
+  Err:=fFileSystem.ReadLink(NodePath,Target);
+  if Err=0 then begin
+   SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@Target[1],length(Target));
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleMkNod(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var MkNodIn:TFUSEMkNodIn;
+    NameBuf:array[0..4095] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
+    ChildNode:TNodeEntry;
+    ChildPath:TPasRISCVRawByteString;
+    ChildNodeID:TPasRISCVUInt64;
+    ChildFound:Boolean;
+    EntryOut:TFUSEEntryOut;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@MkNodIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEMkNodIn)) then begin
+  NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE-SizeOf(TFUSEMkNodIn);
+  if NameLen>SizeOf(NameBuf)-1 then begin
+   NameLen:=SizeOf(NameBuf)-1;
+  end;
+  if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSEMkNodIn),NameLen) then begin
+   NameBuf[NameLen]:=#0;
+   while (NameLen>0) and (NameBuf[NameLen-1]=#0) do begin
+    dec(NameLen);
+   end;
+   SetLength(Name,NameLen);
+   if NameLen>0 then begin
+    Move(NameBuf[0],Name[1],NameLen);
+   end;
+
+   ChildFound:=false;
+   fLock.Acquire;
+   try
+    ChildNode:=FindOrCreateChildNode(aHeader^.NodeID,Name);
+    if assigned(ChildNode) then begin
+     ChildPath:=ChildNode.fPath;
+     ChildNodeID:=ChildNode.fNodeID;
+     ChildFound:=true;
+    end;
+   finally
+    fLock.Release;
+   end;
+
+   if ChildFound and assigned(fFileSystem) then begin
+    Err:=fFileSystem.MkNod(ChildPath,MkNodIn.Mode,MkNodIn.RDev);
+    if Err=0 then begin
+     Err:=fFileSystem.Stat(ChildPath,FileStat);
+     if Err=0 then begin
+      FillChar(EntryOut,SizeOf(EntryOut),0);
+      EntryOut.NodeID:=ChildNodeID;
+      EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+      EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+      FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+     end;
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+function TPasRISCV.TVirtIOFSDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
+var Header:TFUSEInHeader;
+begin
+ result:=true;
+
+ // hiprio queue - only INTERRUPT and FORGET
+ if aQueueIndex=VIRTIO_FS_QUEUE_HIPRIO then begin
+  if aReadSize>=FUSE_IN_HEADER_SIZE then begin
+   if CopyMemoryFromQueue(@Header,aQueueIndex,aDescriptorIndex,0,FUSE_IN_HEADER_SIZE) then begin
+    case Header.Opcode of
+     FUSE_INTERRUPT:begin
+      // We don't support interrupts yet, just consume
+      ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
+      UsedRingSync(aQueueIndex);
+     end;
+     FUSE_FORGET:begin
+      HandleForget(@Header);
+      ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
+      UsedRingSync(aQueueIndex);
+     end;
+     FUSE_BATCH_FORGET:begin
+      HandleBatchForget(aQueueIndex,aDescriptorIndex,@Header);
+      ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
+      UsedRingSync(aQueueIndex);
+     end;
+     else begin
+      ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
+      UsedRingSync(aQueueIndex);
+     end;
+    end;
+   end;
+  end;
+  exit;
+ end;
+
+ // Request queue
+ if aReadSize<FUSE_IN_HEADER_SIZE then begin
+  exit;
+ end;
+
+ if not CopyMemoryFromQueue(@Header,aQueueIndex,aDescriptorIndex,0,FUSE_IN_HEADER_SIZE) then begin
+  exit;
+ end;
+
+ case Header.Opcode of
+  FUSE_INIT:begin
+   HandleInit(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_LOOKUP:begin
+   HandleLookup(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_GETATTR:begin
+   HandleGetAttr(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_SETATTR:begin
+   HandleSetAttr(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_OPEN:begin
+   HandleOpen(aQueueIndex,aDescriptorIndex,@Header,false);
+  end;
+  FUSE_OPENDIR:begin
+   HandleOpen(aQueueIndex,aDescriptorIndex,@Header,true);
+  end;
+  FUSE_RELEASE:begin
+   HandleRelease(aQueueIndex,aDescriptorIndex,@Header,false);
+  end;
+  FUSE_RELEASEDIR:begin
+   HandleRelease(aQueueIndex,aDescriptorIndex,@Header,true);
+  end;
+  FUSE_READ:begin
+   HandleRead(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_WRITE:begin
+   HandleWrite(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_READDIR:begin
+   HandleReadDir(aQueueIndex,aDescriptorIndex,@Header,false);
+  end;
+  FUSE_READDIRPLUS:begin
+   HandleReadDir(aQueueIndex,aDescriptorIndex,@Header,true);
+  end;
+  FUSE_CREATE:begin
+   HandleCreate(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_MKDIR:begin
+   HandleMkDir(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_UNLINK:begin
+   HandleUnlink(aQueueIndex,aDescriptorIndex,@Header,false);
+  end;
+  FUSE_RMDIR:begin
+   HandleUnlink(aQueueIndex,aDescriptorIndex,@Header,true);
+  end;
+  FUSE_RENAME:begin
+   HandleRename(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_RENAME2:begin
+   HandleRename(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_STATFS:begin
+   HandleStatFS(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_FLUSH:begin
+   HandleFlush(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_FSYNC,
+  FUSE_FSYNCDIR:begin
+   HandleFSync(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_FORGET:begin
+   HandleForget(@Header);
+   // FORGET has no reply, but we need to consume the descriptor
+   ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
+   UsedRingSync(aQueueIndex);
+  end;
+  FUSE_BATCH_FORGET:begin
+   HandleBatchForget(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_ACCESS:begin
+   HandleAccess(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_LINK:begin
+   HandleLink(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_SYMLINK:begin
+   HandleSymLink(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_READLINK:begin
+   HandleReadLink(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_MKNOD:begin
+   HandleMkNod(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_DESTROY:begin
+   fInitDone:=false;
+   SendReply(aQueueIndex,aDescriptorIndex,Header.Unique,nil,0);
+  end;
+  FUSE_SETXATTR,FUSE_GETXATTR,FUSE_LISTXATTR,FUSE_REMOVEXATTR:begin
+   // xattr not supported
+   SendError(aQueueIndex,aDescriptorIndex,Header.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOSYS);
+  end;
+  else begin
+   SendError(aQueueIndex,aDescriptorIndex,Header.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOSYS);
+  end;
+ end;
 end;
 
 { TPasRISCV.TVirtIONetDevice }
@@ -62807,6 +66226,12 @@ begin
  fVirtIORTCSize:=TPasRISCV.TVirtIORTCDevice.DefaultSize;
  fVirtIORTCIRQ:=TPasRISCV.TVirtIORTCDevice.DefaultIRQ;
 
+ fVirtIOFSBase:=TPasRISCV.TVirtIOFSDevice.DefaultBaseAddress;
+ fVirtIOFSSize:=TPasRISCV.TVirtIOFSDevice.DefaultSize;
+ fVirtIOFSIRQ:=TPasRISCV.TVirtIOFSDevice.DefaultIRQ;
+
+ fVirtIOFSMountTag:='myfs';
+
  fBIOS:=TMemoryStream.Create;
 
  fKernel:=TMemoryStream.Create;
@@ -62963,6 +66388,12 @@ begin
  fVirtIORTCBase:=aConfiguration.fVirtIORTCBase;
  fVirtIORTCSize:=aConfiguration.fVirtIORTCSize;
  fVirtIORTCIRQ:=aConfiguration.fVirtIORTCIRQ;
+
+ fVirtIOFSBase:=aConfiguration.fVirtIOFSBase;
+ fVirtIOFSSize:=aConfiguration.fVirtIOFSSize;
+ fVirtIOFSIRQ:=aConfiguration.fVirtIOFSIRQ;
+
+ fVirtIOFSMountTag:=aConfiguration.fVirtIOFSMountTag;
 
  fIVSHMEMSharedMemorySize:=aConfiguration.fIVSHMEMSharedMemorySize;
 
@@ -63296,6 +66727,8 @@ begin
 
  fVirtIOVSockDevice:=TVirtIOVSockDevice.Create(self);
 
+ fVirtIOFSDevice:=TVirtIOFSDevice.Create(self);
+
  if fConfiguration.fRTCMode=TRTCMode.VirtIO then begin
   fVirtIORTCDevice:=TVirtIORTCDevice.Create(self);
  end else begin
@@ -63357,6 +66790,8 @@ begin
   fBus.AddBusDevice(fVirtIOGPUDevice);
  end;
  fBus.AddBusDevice(fVirtIOVSockDevice);
+
+ fBus.AddBusDevice(fVirtIOFSDevice);
 
  if assigned(fVirtIORTCDevice) then begin
   fBus.AddBusDevice(fVirtIORTCDevice);
@@ -63539,6 +66974,7 @@ begin
  FreeAndNil(fVirtIORandomGeneratorDevice);
  FreeAndNil(fVirtIOGPUDevice);
  FreeAndNil(fVirtIOVSockDevice);
+ FreeAndNil(fVirtIOFSDevice);
  FreeAndNil(fVirtIORTCDevice);
 
  FreeAndNil(fBus);
@@ -63638,6 +67074,7 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     VirtIORandomGeneratorNode,
     VirtIOGPUNode,
     VirtIOVSockNode,
+    VirtIOFSNode,
     VirtIORTCNode,
     SimpleFrameBufferNode,
     ReservedMemoryNode,SharedMemoryNode:TPasRISCV.TFDT.TFDTNode;
@@ -64627,6 +68064,21 @@ begin
       VirtIOVSockNode.AddPropertyCells('interrupts-extended',@Cells,2);
      finally
       SoCNode.AddChild(VirtIOVSockNode);
+     end;
+
+     VirtIOFSNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOFSBase);
+     try
+      VirtIOFSNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIOFSBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIOFSSize;
+      VirtIOFSNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=INTC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOFSIRQ);
+      VirtIOFSNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     finally
+      SoCNode.AddChild(VirtIOFSNode);
      end;
 
      if fConfiguration.fRTCMode=TRTCMode.VirtIO then begin
