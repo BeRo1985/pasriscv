@@ -281,7 +281,7 @@ unit PasRISCV;
 {$define Zicfiss} // Zicfiss: Shadow Stack (Backward-Edge CFI) - comment out to disable for performance
 
 {-$define PasRISCVDebugVirtIO9P}
-{$define PasRISCVDebugVirtIOFS}
+{-$define PasRISCVDebugVirtIOFS}
 
 {$if defined(fpc) and (defined(cpux86_64) or defined(cpuamd64))}
  {$optimization level3}
