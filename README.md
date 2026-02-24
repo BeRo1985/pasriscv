@@ -110,6 +110,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - Network
     - Random/Entropy
     - 9P filesystem
+    - Filesystem (virtio-fs, FUSE-based host directory sharing)
     - Keyboard
     - Mouse
     - Sound
