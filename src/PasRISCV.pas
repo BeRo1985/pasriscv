@@ -5017,7 +5017,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               const DefaultBaseAddress=TPasRISCVUInt64($1005a000);
                     DefaultSize=TPasRISCVUInt64($1000);
-                    DefaultIRQ=TPasRISCVUInt64($1b);
+                    DefaultIRQ=TPasRISCVUInt64($1a);
                     DeviceID=17;
                     // Message types
                     VIRTIO_RTC_REQ_CFG=$1000;
@@ -5433,7 +5433,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               const DefaultBaseAddress=TPasRISCVUInt64($2f000000);
                     DefaultSize=TPasRISCVUInt64($100000); // 1 MB
-                    DefaultIRQ=TPasRISCVUInt64($1a); // 26
+                    DefaultIRQ=TPasRISCVUInt64($1f); // 31, for to leave some room for other devices such as virtio devices
                     REG_DOORBELL=$00;
                     REG_HOST_FLAGS=$04;
                     REG_GUEST_FLAGS=$08;

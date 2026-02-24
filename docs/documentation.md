@@ -62,19 +62,20 @@ The emulator supports four RTC modes, selectable via `Configuration.RTCMode`:
 These devices are the VirtIO devices that are used to connect to the system. They are partly required for the system to boot, but not all of them
 are required. The VirtIO devices are used to provide a standard interface for devices for virtual machines.
 
-| What                  | Where     | Size      | IRQ(s)                    | Description                                 |
-|-----------------------|-----------|-----------|---------------------------|---------------------------------------------|
-| VIRTIO BLOCK          | $10050000 | $1000     | $10                       | VirtIO block device                         |
-| VIRTIO INPUT KEYBOARD | $10051000 | $1000     | $11                       | VirtIO keyboard input                       |
-| VIRTIO INPUT MOUSE    | $10052000 | $1000     | $12                       | VirtIO mouse input                          |
-| VIRTIO INPUT TOUCH    | $10053000 | $1000     | $13                       | VirtIO touch input (planned)                |
-| VIRTIO SOUND          | $10054000 | $1000     | $14                       | VirtIO sound device                         |
-| VIRTIO 9P             | $10055000 | $1000     | $15                       | VirtIO 9P device                            |
-| VIRTIO NET            | $10056000 | $1000     | $16                       | VirtIO network device                       |
-| VIRTIO RNG            | $10057000 | $1000     | $17                       | VirtIO random number generator              |
-| VIRTIO GPU            | $10058000 | $1000     | $18                       | VirtIO GPU device (if DisplayMode=VirtIOGPU) |
-| VIRTIO VSOCK          | $10059000 | $1000     | $19                       | VirtIO socket device                        |
-| VIRTIO RTC            | $1005a000 | $1000     | $1b                       | VirtIO RTC device (if RTCMode=VirtIO)       |
+| What                  | Where     | Size      | IRQ(s)                    | Description                                   |
+|-----------------------|-----------|-----------|---------------------------|-----------------------------------------------|
+| VIRTIO BLOCK          | $10050000 | $1000     | $10                       | VirtIO block device                           |
+| VIRTIO INPUT KEYBOARD | $10051000 | $1000     | $11                       | VirtIO keyboard input                         |
+| VIRTIO INPUT MOUSE    | $10052000 | $1000     | $12                       | VirtIO mouse input                            |
+| VIRTIO INPUT TOUCH    | $10053000 | $1000     | $13                       | VirtIO touch input (planned)                  |
+| VIRTIO SOUND          | $10054000 | $1000     | $14                       | VirtIO sound device                           |
+| VIRTIO 9P             | $10055000 | $1000     | $15                       | VirtIO 9P device                              |
+| VIRTIO NET            | $10056000 | $1000     | $16                       | VirtIO network device                         |
+| VIRTIO RNG            | $10057000 | $1000     | $17                       | VirtIO random number generator                |
+| VIRTIO GPU            | $10058000 | $1000     | $18                       | VirtIO GPU device (if DisplayMode=VirtIOGPU)  |
+| VIRTIO VSOCK          | $10059000 | $1000     | $19                       | VirtIO socket device                          |
+| VIRTIO RTC            | $1005a000 | $1000     | $1a                       | VirtIO RTC device (if RTCMode=VirtIO)         |
+| VIRTIO FS             | $1005b000 | $1000     | $1b                       | VirtIO filesystem device                      |
 
 For each VirtIO device, the MMIO region size is $1000. For the VirtIO GPU device, the guest OS allocates its own frame buffer memory ranges, so $1000 as MMIO region size remains valid for the device registers in this case.
 
@@ -97,7 +98,7 @@ The shared memory device provides a simple flat memory-mapped region for zero-co
 
 | What                  | Where     | Size      | IRQ(s)                    | Description                                 |
 |-----------------------|-----------|-----------|---------------------------|---------------------------------------------|
-| SHARED MEMORY         | $2f000000 | $100000   | $1a                       | Shared memory with doorbell IRQ             |
+| SHARED MEMORY         | $2f000000 | $100000   | $1f                       | Shared memory with doorbell IRQ             |
 
 Register layout (offsets from base address):
 
