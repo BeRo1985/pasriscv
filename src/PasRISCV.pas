@@ -1427,18 +1427,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
       public
        constructor Create(const aRootPath:TPasRISCVRawByteString); reintroduce;
        destructor Destroy; override;
-       function Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32; override;
-       function StatFS(out aStat:TFileSystemStat):TPasRISCVInt32; override;
-       function OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
-       function CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
-       function ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
-       function WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
-       function CloseFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
-       function FlushFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
-       function FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
-       function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32; override;
-       function ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; override;
-       function CloseDir(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function Stat(const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat):TPasRISCVInt32; override;
+       function StatFS(out aStat:TPasRISCVFUSEFileSystem.TFileSystemStat):TPasRISCVInt32; override;
+       function OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function ReadFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function WriteFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function CloseFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function FlushFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function FSyncFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
+       function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function ReadDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TPasRISCVFUSEFileSystem.TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; override;
+       function CloseDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
        function MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32; override;
        function Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
@@ -1474,18 +1474,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
       public
        constructor Create(const aRootPath:TPasRISCVRawByteString); reintroduce;
        destructor Destroy; override;
-       function Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32; override;
-       function StatFS(out aStat:TFileSystemStat):TPasRISCVInt32; override;
-       function OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
-       function CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32; override;
-       function ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
-       function WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
-       function CloseFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
-       function FlushFile(const aHandle:TFileHandle):TPasRISCVInt32; override;
-       function FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
-       function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32; override;
-       function ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; override;
-       function CloseDir(const aHandle:TFileHandle):TPasRISCVInt32; override;
+       function Stat(const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat):TPasRISCVInt32; override;
+       function StatFS(out aStat:TPasRISCVFUSEFileSystem.TFileSystemStat):TPasRISCVInt32; override;
+       function OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function ReadFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function WriteFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64; override;
+       function CloseFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function FlushFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function FSyncFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
+       function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
+       function ReadDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TPasRISCVFUSEFileSystem.TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; override;
+       function CloseDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
        function MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32; override;
        function Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
@@ -17674,7 +17674,7 @@ begin
  aStat.BlkSize:=aSB^.st_blksize;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.Stat(const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     SB:BaseUnix.Stat;
 begin
@@ -17697,7 +17697,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.StatFS(out aStat:TFileSystemStat):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.StatFS(out aStat:TPasRISCVFUSEFileSystem.TFileSystemStat):TPasRISCVInt32;
 var SVfs:TStatFS;
 begin
  FillChar(aStat,SizeOf(aStat),0);
@@ -17716,7 +17716,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     FD:cint;
     POSIXFlags:cint;
@@ -17739,7 +17739,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     FD:cint;
     POSIXFlags:cint;
@@ -17765,7 +17765,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+function TPasRISCVFUSEFileSystemPOSIX.ReadFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
 var BytesRead:TSSize;
 begin
  BytesRead:=fppRead(cint(aHandle),aBuffer,aSize,aOffset);
@@ -17776,7 +17776,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+function TPasRISCVFUSEFileSystemPOSIX.WriteFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
 var BytesWritten:TSSize;
 begin
  BytesWritten:=fppWrite(cint(aHandle),aBuffer,aSize,aOffset);
@@ -17787,7 +17787,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.CloseFile(const aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.CloseFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 begin
  if fpClose(cint(aHandle))=0 then begin
   result:=FUSE_OK;
@@ -17796,12 +17796,12 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.FlushFile(const aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.FlushFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 begin
  result:=FUSE_OK;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.FSyncFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
 begin
  if fpfsync(cint(aHandle))=0 then begin
   result:=FUSE_OK;
@@ -17810,7 +17810,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     Dir:PDIR;
 begin
@@ -17834,7 +17834,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.ReadDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TPasRISCVFUSEFileSystem.TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
 var Dir:PDIR;
     DE:PDirEnt;
     Index,EntryCapacity:TPasRISCVInt32;
@@ -17909,7 +17909,7 @@ begin
  result:=FUSE_OK;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.CloseDir(const aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemPOSIX.CloseDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 begin
  if fpCloseDir({%H-}PDIR(PtrUInt(aHandle))^)=0 then begin
   result:=FUSE_OK;
@@ -18218,7 +18218,7 @@ begin
  result.dwHighDateTime:=DWORD(FT64 shr 32);
 end;
 
-function TPasRISCVFUSEFileSystemWindows.Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.Stat(const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     H:THandle;
     Info:BY_HANDLE_FILE_INFORMATION;
@@ -18242,7 +18242,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.StatFS(out aStat:TFileSystemStat):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.StatFS(out aStat:TPasRISCVFUSEFileSystem.TFileSystemStat):TPasRISCVInt32;
 var FreeBytesAvailable,TotalBytes,TotalFreeBytes:TPasRISCVInt64;
 begin
  FillChar(aStat,SizeOf(aStat),0);
@@ -18261,7 +18261,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     H:THandle;
 begin
@@ -18276,7 +18276,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     H:THandle;
 begin
@@ -18291,7 +18291,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.ReadFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+function TPasRISCVFUSEFileSystemWindows.ReadFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
 var BytesRead:DWORD;
     OVL:OVERLAPPED;
 begin
@@ -18305,7 +18305,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.WriteFile(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
+function TPasRISCVFUSEFileSystemWindows.WriteFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVUInt32):TPasRISCVInt64;
 var BytesWritten:DWORD;
     OVL:OVERLAPPED;
 begin
@@ -18319,7 +18319,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.CloseFile(const aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.CloseFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 begin
  if CloseHandle(THandle(aHandle)) then begin
   result:=FUSE_OK;
@@ -18328,7 +18328,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.FlushFile(const aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.FlushFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 begin
  if FlushFileBuffers(THandle(aHandle)) then begin
   result:=FUSE_OK;
@@ -18337,7 +18337,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.FSyncFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
 begin
  if FlushFileBuffers(THandle(aHandle)) then begin
   result:=FUSE_OK;
@@ -18346,7 +18346,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 var FullPath:TPasRISCVRawByteString;
     H:THandle;
     DirInfo:TDirHandleInfo;
@@ -18417,7 +18417,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.CloseDir(const aHandle:TFileHandle):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.CloseDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
 var DirInfo:TDirHandleInfo;
 begin
  DirInfo:={%H-}TDirHandleInfo(TPasRISCVPtrUInt(aHandle));
