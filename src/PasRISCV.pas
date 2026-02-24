@@ -7960,6 +7960,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIO9PBase:TPasRISCVUInt64;
               fVirtIO9PSize:TPasRISCVUInt64;
               fVirtIO9PIRQ:TPasRISCVUInt64;
+              fVirtIO9PMountTag:TPasRISCVRawByteString;
 
               fVirtIONetBase:TPasRISCVUInt64;
               fVirtIONetSize:TPasRISCVUInt64;
@@ -7985,7 +7986,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIOFSBase:TPasRISCVUInt64;
               fVirtIOFSSize:TPasRISCVUInt64;
               fVirtIOFSIRQ:TPasRISCVUInt64;
-
               fVirtIOFSMountTag:TPasRISCVRawByteString;
 
               fBIOS:TMemoryStream;
@@ -8125,6 +8125,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIO9PBase:TPasRISCVUInt64 read fVirtIO9PBase write fVirtIO9PBase;
               property VirtIO9PSize:TPasRISCVUInt64 read fVirtIO9PSize write fVirtIO9PSize;
               property VirtIO9PIRQ:TPasRISCVUInt64 read fVirtIO9PIRQ write fVirtIO9PIRQ;
+              property VirtIO9PMountTag:TPasRISCVRawByteString read fVirtIO9PMountTag write fVirtIO9PMountTag;
 
               property VirtIONetBase:TPasRISCVUInt64 read fVirtIONetBase write fVirtIONetBase;
               property VirtIONetSize:TPasRISCVUInt64 read fVirtIONetSize write fVirtIONetSize;
@@ -8150,7 +8151,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIOFSBase:TPasRISCVUInt64 read fVirtIOFSBase write fVirtIOFSBase;
               property VirtIOFSSize:TPasRISCVUInt64 read fVirtIOFSSize write fVirtIOFSSize;
               property VirtIOFSIRQ:TPasRISCVUInt64 read fVirtIOFSIRQ write fVirtIOFSIRQ;
-
               property VirtIOFSMountTag:TPasRISCVRawByteString read fVirtIOFSMountTag write fVirtIOFSMountTag;
 
               property BIOS:TMemoryStream read fBIOS;
@@ -30302,12 +30302,14 @@ end;
 { TPasRISCV.TVirtIO9PDevice }
 
 constructor TPasRISCV.TVirtIO9PDevice.Create(const aMachine:TPasRISCV);
-const MountTag:TPasRISCVRawByteString='extern';
+var MountTag:TPasRISCVRawByteString;
 begin
 
  inherited Create(aMachine,aMachine.fConfiguration.fVirtIO9PBase,aMachine.fConfiguration.fVirtIO9PSize,TVirtIODevice.TKind.MMIO);
 
  fIRQ:=aMachine.fConfiguration.fVirtIO9PIRQ;
+
+ MountTag:=aMachine.fConfiguration.fVirtIO9PMountTag;
 
  fFileSystem:=nil;
 
@@ -66204,6 +66206,7 @@ begin
  fVirtIO9PBase:=TPasRISCV.TVirtIO9PDevice.DefaultBaseAddress;
  fVirtIO9PSize:=TPasRISCV.TVirtIO9PDevice.DefaultSize;
  fVirtIO9PIRQ:=TPasRISCV.TVirtIO9PDevice.DefaultIRQ;
+ fVirtIO9PMountTag:='extern';
 
  fVirtIONetBase:=TPasRISCV.TVirtIONetDevice.DefaultBaseAddress;
  fVirtIONetSize:=TPasRISCV.TVirtIONetDevice.DefaultSize;
@@ -66229,8 +66232,7 @@ begin
  fVirtIOFSBase:=TPasRISCV.TVirtIOFSDevice.DefaultBaseAddress;
  fVirtIOFSSize:=TPasRISCV.TVirtIOFSDevice.DefaultSize;
  fVirtIOFSIRQ:=TPasRISCV.TVirtIOFSDevice.DefaultIRQ;
-
- fVirtIOFSMountTag:='myfs';
+ fVirtIOFSMountTag:='extern';
 
  fBIOS:=TMemoryStream.Create;
 
@@ -66367,6 +66369,7 @@ begin
  fVirtIO9PBase:=aConfiguration.fVirtIO9PBase;
  fVirtIO9PSize:=aConfiguration.fVirtIO9PSize;
  fVirtIO9PIRQ:=aConfiguration.fVirtIO9PIRQ;
+ fVirtIO9PMountTag:=aConfiguration.fVirtIO9PMountTag;
 
  fVirtIONetBase:=aConfiguration.fVirtIONetBase;
  fVirtIONetSize:=aConfiguration.fVirtIONetSize;
@@ -66392,7 +66395,6 @@ begin
  fVirtIOFSBase:=aConfiguration.fVirtIOFSBase;
  fVirtIOFSSize:=aConfiguration.fVirtIOFSSize;
  fVirtIOFSIRQ:=aConfiguration.fVirtIOFSIRQ;
-
  fVirtIOFSMountTag:=aConfiguration.fVirtIOFSMountTag;
 
  fIVSHMEMSharedMemorySize:=aConfiguration.fIVSHMEMSharedMemorySize;
