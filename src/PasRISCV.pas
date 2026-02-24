@@ -18355,7 +18355,7 @@ begin
  H:=Windows.CreateFileA(PAnsiChar(FullPath),GENERIC_READ,FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE,nil,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,0);
  if H<>INVALID_HANDLE_VALUE then begin
   DirInfo:=TDirHandleInfo.Create(FullPath,H);
-  aHandle:=TFileHandle({%H-}PtrUInt(DirInfo));
+  aHandle:=TFileHandle({%H-}TPasRISCVPtrUInt(DirInfo));
   result:=FUSE_OK;
  end else begin
   aHandle:=0;
@@ -18365,13 +18365,13 @@ end;
 
 function TPasRISCVFUSEFileSystemWindows.ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
 var DirInfo:TDirHandleInfo;
-    FindData:TWin32FindDataA;
+    FindData:WIN32_FIND_DATAA;
     FindHandle:THandle;
     SearchPath:TPasRISCVRawByteString;
     Index,Skip,EntryCapacity:TPasRISCVInt32;
     FileName:TPasRISCVRawByteString;
 begin
- DirInfo:={%H-}TDirHandleInfo(PtrUInt(aHandle));
+ DirInfo:={%H-}TDirHandleInfo(TPasRISCVPtrUInt(aHandle));
  aCount:=0;
  aEntries:=nil;
  EntryCapacity:=0;
@@ -18420,7 +18420,7 @@ end;
 function TPasRISCVFUSEFileSystemWindows.CloseDir(const aHandle:TFileHandle):TPasRISCVInt32;
 var DirInfo:TDirHandleInfo;
 begin
- DirInfo:={%H-}TDirHandleInfo(PtrUInt(aHandle));
+ DirInfo:={%H-}TDirHandleInfo(TPasRISCVPtrUInt(aHandle));
  if assigned(DirInfo) then begin
   DirInfo.Free;
   result:=FUSE_OK;
