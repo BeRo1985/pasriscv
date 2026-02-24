@@ -5794,6 +5794,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure HandleMkDir(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleUnlink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader;const aIsDir:Boolean);
               procedure HandleRename(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleRename2(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleStatFS(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleFlush(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleFSync(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
@@ -31265,7 +31266,7 @@ begin
  SetLength(fRecvBuffer,65536);
 
  fSendBuffer:=nil;
- SetLength(fSendBuffer,65536);
+ SetLength(fSendBuffer,65536+FUSE_OUT_HEADER_SIZE);
 
  fLock:=TPasMPCriticalSection.Create;
 
@@ -32229,6 +32230,78 @@ begin
  end;
 end;
 
+procedure TPasRISCV.TVirtIOFSDevice.HandleRename2(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var Rename2In:TFUSERename2In;
+    NameBuf:array[0..8191] of AnsiChar;
+    NameLen:TPasRISCVUInt32;
+    OldName,NewName,OldPath,NewPath:TPasRISCVRawByteString;
+    ParentNode,NewParentNode:TNodeEntry;
+    ParentPath,NewParentPath:TPasRISCVRawByteString;
+    BothFound:Boolean;
+    NullPos:TPasRISCVInt32;
+    Err:TPasRISCVInt32;
+begin
+ if CopyMemoryFromQueue(@Rename2In,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSERename2In)) then begin
+  NameLen:=aHeader^.Len-FUSE_IN_HEADER_SIZE-SizeOf(TFUSERename2In);
+  if NameLen>SizeOf(NameBuf)-1 then begin
+   NameLen:=SizeOf(NameBuf)-1;
+  end;
+  if CopyMemoryFromQueue(@NameBuf[0],aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSERename2In),NameLen) then begin
+   NameBuf[NameLen]:=#0;
+   // Names are null-separated: oldname\0newname
+   NullPos:=0;
+   while (NullPos<TPasRISCVInt32(NameLen)) and (NameBuf[NullPos]<>#0) do begin
+    inc(NullPos);
+   end;
+   OldName:=Copy(TPasRISCVRawByteString(@NameBuf[0]),1,NullPos);
+   if NullPos<TPasRISCVInt32(NameLen) then begin
+    NewName:='';
+    SetLength(NewName,TPasRISCVInt32(NameLen)-NullPos-1);
+    if length(NewName)>0 then begin
+     Move(NameBuf[NullPos+1],NewName[1],length(NewName));
+    end;
+    // Trim trailing nulls
+    while (length(NewName)>0) and (NewName[length(NewName)]=#0) do begin
+     SetLength(NewName,length(NewName)-1);
+    end;
+   end else begin
+    NewName:=OldName;
+   end;
+
+   BothFound:=false;
+   fLock.Acquire;
+   try
+    ParentNode:=FindNode(aHeader^.NodeID);
+    NewParentNode:=FindNode(Rename2In.NewDir);
+    if assigned(ParentNode) and assigned(NewParentNode) then begin
+     ParentPath:=ParentNode.fPath;
+     NewParentPath:=NewParentNode.fPath;
+     BothFound:=true;
+    end;
+   finally
+    fLock.Release;
+   end;
+
+   if BothFound and assigned(fFileSystem) then begin
+    OldPath:=fFileSystem.ComposePath(ParentPath,OldName);
+    NewPath:=fFileSystem.ComposePath(NewParentPath,NewName);
+    Err:=fFileSystem.Rename(OldPath,NewPath);
+    if Err=0 then begin
+     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
 procedure TPasRISCV.TVirtIOFSDevice.HandleStatFS(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
 var FSStat:TPasRISCVFUSEFileSystem.TFileSystemStat;
     StatFSOut:TFUSEStatFSOut;
@@ -32739,7 +32812,7 @@ begin
    HandleRename(aQueueIndex,aDescriptorIndex,@Header);
   end;
   FUSE_RENAME2:begin
-   HandleRename(aQueueIndex,aDescriptorIndex,@Header);
+   HandleRename2(aQueueIndex,aDescriptorIndex,@Header);
   end;
   FUSE_STATFS:begin
    HandleStatFS(aQueueIndex,aDescriptorIndex,@Header);
@@ -32759,6 +32832,9 @@ begin
   end;
   FUSE_BATCH_FORGET:begin
    HandleBatchForget(aQueueIndex,aDescriptorIndex,@Header);
+   // BATCH_FORGET has no reply, but we need to consume the descriptor  
+   ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
+   UsedRingSync(aQueueIndex);
   end;
   FUSE_ACCESS:begin
    HandleAccess(aQueueIndex,aDescriptorIndex,@Header);
