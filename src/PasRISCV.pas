@@ -19963,36 +19963,38 @@ begin
  AddInstruction32('vclmulh.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($34002057));
 
  // Zvkg - GHASH (must come before less-specific base-V entries)
- AddInstruction32('vghsh.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($b2002057));
- AddInstruction32('vgmul.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a208a057));
+ AddInstruction32('vghsh.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($b2002077));
+ AddInstruction32('vgmul.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a208a077));
 
  // Zvkned - AES .vv (unary, fixed vs1 sub-opcode, vm=1)
- AddInstruction32('vaesdm.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2002057));
- AddInstruction32('vaesdf.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a200a057));
- AddInstruction32('vaesem.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2012057));
- AddInstruction32('vaesef.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a201a057));
+ AddInstruction32('vaesdm.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2002077));
+ AddInstruction32('vaesdf.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a200a077));
+ AddInstruction32('vaesem.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2012077));
+ AddInstruction32('vaesef.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a201a077));
  // Zvkned - AES .vs (unary, fixed vs1 sub-opcode, vm=1)
- AddInstruction32('vaesdm.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6002057));
- AddInstruction32('vaesdf.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a600a057));
- AddInstruction32('vaesem.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6012057));
- AddInstruction32('vaesef.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a601a057));
+ AddInstruction32('vaesdm.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6002077));
+ AddInstruction32('vaesdf.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a600a077));
+ AddInstruction32('vaesem.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6012077));
+ AddInstruction32('vaesef.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a601a077));
+ AddInstruction32('vaesz.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a603a077));
+
  // Zvkned - AES key schedule .vi (vm=1, uimm5 in vs1 field)
- AddInstruction32('vaeskf1.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($8a002057));
- AddInstruction32('vaeskf2.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($aa002057));
+ AddInstruction32('vaeskf1.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($8a002077));
+ AddInstruction32('vaeskf2.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($aa002077));
 
  // Zvknha/b - SHA-2 (vm=1)
- AddInstruction32('vsha2ms.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($b6002057));
- AddInstruction32('vsha2ch.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($ba002057));
- AddInstruction32('vsha2cl.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($be002057));
+ AddInstruction32('vsha2ms.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($b6002077));
+ AddInstruction32('vsha2ch.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($ba002077));
+ AddInstruction32('vsha2cl.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($be002077));
 
  // Zvksed - SM4 (vm=1)
- AddInstruction32('vsm4k.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($86002057));
- AddInstruction32('vsm4r.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2082057));
- AddInstruction32('vsm4r.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6082057));
+ AddInstruction32('vsm4k.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($86002077));
+ AddInstruction32('vsm4r.vv',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a2082077));
+ AddInstruction32('vsm4r.vs',TInstructionFormat.VUnaryV,TPasRISCVUInt32($fe0ff07f),TPasRISCVUInt32($a6082077));
 
  // Zvksh - SM3 (vm=1)
- AddInstruction32('vsm3me.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($82002057));
- AddInstruction32('vsm3c.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($ae002057));
+ AddInstruction32('vsm3me.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($82002077));
+ AddInstruction32('vsm3c.vi',TInstructionFormat.VCryptoVI,TPasRISCVUInt32($fe00707f),TPasRISCVUInt32($ae002077));
 
  AddInstruction32('vwaddu.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c0002057));
  AddInstruction32('vwadd.vv',TInstructionFormat.VVVV,TPasRISCVUInt32($fc00707f),TPasRISCVUInt32($c4002057));
@@ -44581,16 +44583,16 @@ begin
 
   //////////////////////////////////////////////////////////////////////////////
   // Vector Arithmetic (opcode $57)                                           //
+  //////////////////////////////////////////////////////////////////////////////
 
   $57:begin
-   //////////////////////////////////////////////////////////////////////////////
 
    funct3:=(aInstruction shr 12) and 7;
 
    case funct3 of
 
     //////////////////////////////////////////////////////////////////////////////
-    // OPCFG: vsetvli / vsetivli / vsetvl (funct3=7)                           //
+    // OPCFG: vsetvli / vsetivli / vsetvl (funct3=7)                            //
     //////////////////////////////////////////////////////////////////////////////
     $07:begin
 
@@ -44865,6 +44867,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $01:begin
@@ -44876,6 +44882,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and (not VectorGetElement(vs1,Index,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $02:begin
@@ -44887,6 +44897,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $04:begin
@@ -44904,6 +44918,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $05:begin
@@ -44921,6 +44939,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $06:begin
@@ -44938,6 +44960,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $07:begin
@@ -44955,6 +44981,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $09:begin
@@ -44966,6 +44996,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0a:begin
@@ -44977,6 +45011,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0b:begin
@@ -44988,6 +45026,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0c:begin
@@ -45018,6 +45060,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0e:begin
@@ -45067,6 +45113,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $10:begin
@@ -45087,6 +45137,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW)+SourceValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $11:begin
@@ -45121,6 +45175,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $12:begin
@@ -45141,6 +45199,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW)-SourceValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $13:begin
@@ -45166,6 +45228,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $14:begin
@@ -45179,6 +45245,10 @@ begin
          VectorSetElement(vd,Index,SEW,(SourceValue shr OperandValue) or (SourceValue shl ((SEW-OperandValue) and (SEW-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $15:begin
@@ -45192,6 +45262,10 @@ begin
          VectorSetElement(vd,Index,SEW,(SourceValue shl OperandValue) or (SourceValue shr ((SEW-OperandValue) and (SEW-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $17:begin
@@ -45221,6 +45295,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $18:begin
@@ -45237,6 +45315,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $19:begin
@@ -45253,6 +45335,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1a:begin
@@ -45269,6 +45355,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1b:begin
@@ -45285,6 +45375,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1c:begin
@@ -45301,6 +45395,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1d:begin
@@ -45317,6 +45415,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $20:begin
@@ -45348,6 +45450,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $21:begin
@@ -45370,6 +45476,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $22:begin
@@ -45389,6 +45499,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $23:begin
@@ -45411,6 +45525,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $25:begin
@@ -45422,6 +45540,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl (VectorGetElement(vs1,Index,SEW) and (SEW-1)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $27:begin
@@ -45506,6 +45628,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $28:begin
@@ -45517,6 +45643,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr (VectorGetElement(vs1,Index,SEW) and (SEW-1)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $29:begin
@@ -45530,6 +45660,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(SourceValue,SEW),OperandValue)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2a:begin
@@ -45543,6 +45677,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorRoundoffShift(SourceValue,OperandValue));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2b:begin
@@ -45556,6 +45694,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(VectorRoundoffShiftSigned(TPasRISCVInt64(SignExtend(SourceValue,SEW)),OperandValue)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2c:begin
@@ -45569,6 +45711,10 @@ begin
          VectorSetElement(vd,Index,SEW,SourceValue shr OperandValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2d:begin
@@ -45582,6 +45728,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(SourceValue,SEW*2),OperandValue)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2e:begin
@@ -45617,6 +45767,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2f:begin
@@ -45638,6 +45792,10 @@ begin
          VectorSetElement(vd,Index,SEW,Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $30:begin
@@ -45651,6 +45809,10 @@ begin
         end;
        end;
        VectorSetElement(vd,0,SEW*2,Address);
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $31:begin
@@ -45664,6 +45826,10 @@ begin
         end;
        end;
        VectorSetElement(vd,0,SEW*2,Address);
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $35:begin
@@ -45677,17 +45843,19 @@ begin
          VectorSetElement(vd,Index,SEW*2,SourceValue shl OperandValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
+
       else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
       end;
      end;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     fState.CSR.SetVSDirty;
-     result:=4;
-     exit;
+     
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -45774,6 +45942,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $01:begin
@@ -45821,6 +45993,10 @@ begin
          exit;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $02:begin
@@ -45856,6 +46032,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $03:begin
@@ -45903,6 +46083,10 @@ begin
          exit;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $04:begin
@@ -46005,6 +46189,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $05:begin
@@ -46091,6 +46279,10 @@ begin
          exit;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $06:begin
@@ -46194,6 +46386,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $07:begin
@@ -46280,6 +46476,10 @@ begin
          exit;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $08:begin
@@ -46312,6 +46512,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $09:begin
@@ -46344,6 +46548,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $0a:begin
@@ -46376,6 +46584,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $10:begin
@@ -46402,6 +46614,10 @@ begin
          exit;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $12:begin
@@ -47023,6 +47239,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $13:begin
@@ -47375,6 +47595,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $18:begin
@@ -47420,6 +47644,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $19:begin
@@ -47465,6 +47693,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $1b:begin
@@ -47510,6 +47742,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $1c:begin
@@ -47555,6 +47791,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $20:begin
@@ -47590,6 +47830,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $24:begin
@@ -47625,6 +47869,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $28:begin
@@ -47663,6 +47911,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $29:begin
@@ -47701,6 +47953,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2a:begin
@@ -47739,6 +47995,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2b:begin
@@ -47777,6 +48037,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2c:begin
@@ -47815,6 +48079,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2d:begin
@@ -47853,6 +48121,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2e:begin
@@ -47891,6 +48163,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2f:begin
@@ -47929,6 +48205,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $30:begin
@@ -47960,6 +48240,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $31:begin
@@ -47995,6 +48279,10 @@ begin
          exit;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $32:begin
@@ -48026,6 +48314,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $33:begin
@@ -48061,6 +48353,10 @@ begin
          exit;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $34:begin
@@ -48091,6 +48387,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $36:begin
@@ -48121,6 +48421,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $38:begin
@@ -48152,6 +48456,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3b:begin
@@ -48173,6 +48481,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3c:begin
@@ -48204,6 +48516,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3d:begin
@@ -48235,6 +48551,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3e:begin
@@ -48297,6 +48617,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
       else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -48304,10 +48628,7 @@ begin
        exit;
       end;
      end;
-     SetFPUExceptions;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     result:=4;
-     exit;
+
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -48405,6 +48726,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $09:begin
@@ -48475,6 +48800,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0a:begin
@@ -48517,6 +48846,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0b:begin
@@ -48585,6 +48918,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0c:begin
@@ -48601,6 +48938,10 @@ begin
          VectorSetElement(vd,Index,SEW,CLMul64(VectorGetElement(vs2,Index,SEW),VectorGetElement(vs1,Index,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0d:begin
@@ -48617,159 +48958,104 @@ begin
          VectorSetElement(vd,Index,SEW,CLMulH64(VectorGetElement(vs2,Index,SEW),VectorGetElement(vs1,Index,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $20:begin
-       if Unmasked and (SEW=32) then begin
-        // vsm3me.vv (Zvksh) - SM3 message expansion, EGS=8, EGW=256
-        for Index:=0 to (EVL div 8)-1 do begin
-         SubIndex:=Index*8;
-         VecCryptoSM3ME(
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+4,32)),
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+5,32)),
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+6,32)),
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+7,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+4,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+5,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+6,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+7,32)),
-          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
-          SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-         for OperandValue:=0 to 7 do begin
-          VectorSetElement(vd,SubIndex+OperandValue,32,SegmentBuffer[OperandValue]);
-         end;
-        end;
-       end else begin
-         // vdivu.vv
-        for Index:=0 to EVL-1 do begin
-         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         end else begin
-          SourceValue:=VectorGetElement(vs2,Index,SEW);
-          OperandValue:=VectorGetElement(vs1,Index,SEW);
-          if OperandValue=0 then begin
-           case SEW of
-            $08:begin
-             Address:=$ff;
-            end;
-            $10:begin
-             Address:=$ffff;
-            end;
-            $20:begin
-             Address:=$ffffffff;
-            end;
-            else begin
-             Address:=TPasRISCVUInt64($ffffffffffffffff);
-            end;
+       // vdivu.vv
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         OperandValue:=VectorGetElement(vs1,Index,SEW);
+         if OperandValue=0 then begin
+          case SEW of
+           $08:begin
+            Address:=$ff;
            end;
-          end else begin
-           Address:=SourceValue div OperandValue;
+           $10:begin
+            Address:=$ffff;
+           end;
+           $20:begin
+            Address:=$ffffffff;
+           end;
+           else begin
+            Address:=TPasRISCVUInt64($ffffffffffffffff);
+           end;
           end;
-          VectorSetElement(vd,Index,SEW,Address);
+         end else begin
+          Address:=SourceValue div OperandValue;
          end;
+         VectorSetElement(vd,Index,SEW,Address);
         end;
-       end; // end if Unmasked/vsm3me else vdivu
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $21:begin
-       if Unmasked and (SEW=32) then begin
-        // vsm4k.vi (Zvksed) - SM4 key expansion, EGS=4, EGW=128
-        SourceValue:=vs1 and 7; // round group
-        for Index:=0 to (EVL div 4)-1 do begin
-         SubIndex:=Index*4;
-         VecCryptoSM4KeyExp(
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-          TPasRISCVUInt32(SourceValue),
-          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-        end;
-       end else begin
-        // vdiv.vv
-        for Index:=0 to EVL-1 do begin
-         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         end else begin
-          SourceValue:=VectorGetElement(vs2,Index,SEW);
-          OperandValue:=VectorGetElement(vs1,Index,SEW);
-          if OperandValue=0 then begin
-           case SEW of
-            $08:begin
-             Address:=$ff;
-            end;
-            $10:begin
-             Address:=$ffff;
-            end;
-            $20:begin
-             Address:=$ffffffff;
-            end;
-            else begin
-             Address:=TPasRISCVUInt64($ffffffffffffffff);
-            end;
+       // vdiv.vv
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         OperandValue:=VectorGetElement(vs1,Index,SEW);
+         if OperandValue=0 then begin
+          case SEW of
+           $08:begin
+            Address:=$ff;
            end;
-          end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(OperandValue)=-1) then begin
-           Address:=SourceValue;
-          end else begin
-           Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(OperandValue,SEW));
+           $10:begin
+            Address:=$ffff;
+           end;
+           $20:begin
+            Address:=$ffffffff;
+           end;
+           else begin
+            Address:=TPasRISCVUInt64($ffffffffffffffff);
+           end;
           end;
-          VectorSetElement(vd,Index,SEW,Address);
+         end else if (SEW=64) and (TPasRISCVInt64(SourceValue)=Low(TPasRISCVInt64)) and (TPasRISCVInt64(OperandValue)=-1) then begin
+          Address:=SourceValue;
+         end else begin
+          Address:=TPasRISCVUInt64(SignExtend(SourceValue,SEW) div SignExtend(OperandValue,SEW));
          end;
+         VectorSetElement(vd,Index,SEW,Address);
         end;
-       end; // end if Unmasked/vsm4k else vdiv
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $22:begin
-       if Unmasked and (SEW=32) then begin
-        // vaeskf1.vi (Zvkned) - AES-128 key schedule, EGS=4, EGW=128
-        // vs1 field = uimm5 (round number, use bits[3:0] = 1..10)
-        SourceValue:=vs1 and $f;
-        if (SourceValue=0) or (SourceValue>10) then begin
-         SourceValue:=SourceValue xor 8;
-        end;
-        for Index:=0 to (EVL div 4)-1 do begin
-         SubIndex:=Index*4;
-         VecCryptoAESKF1(
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-          TPasRISCVUInt32(SourceValue),
-          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-        end;
-       end else begin
-        // vremu.vv
-        for Index:=0 to EVL-1 do begin
-         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+       // vremu.vv
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs2,Index,SEW);
+         OperandValue:=VectorGetElement(vs1,Index,SEW);
+         if OperandValue=0 then begin
+          Address:=SourceValue;
          end else begin
-          SourceValue:=VectorGetElement(vs2,Index,SEW);
-          OperandValue:=VectorGetElement(vs1,Index,SEW);
-          if OperandValue=0 then begin
-           Address:=SourceValue;
-          end else begin
-           Address:=SourceValue mod OperandValue;
-          end;
-          VectorSetElement(vd,Index,SEW,Address);
+          Address:=SourceValue mod OperandValue;
          end;
+         VectorSetElement(vd,Index,SEW,Address);
         end;
-       end; // end if Unmasked/vaeskf1 else vremu
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $23:begin
@@ -48790,6 +49076,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $24:begin
@@ -48817,6 +49107,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $25:begin
@@ -48828,6 +49122,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)*VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $26:begin
@@ -48855,6 +49153,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $27:begin
@@ -48882,455 +49184,110 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $28:begin
-       // Vector crypto AES/SM4/GHASH .vv (Unmasked only, sub-decode on vs1)
-       if (not Unmasked) or (SEW<>32) then begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
-       end;
-       case vs1 of
-        0,1,2,3:begin
-         // vaesdm.vv (0), vaesdf.vv (1), vaesem.vv (2), vaesef.vv (3)
-         for Index:=0 to (EVL div 4)-1 do begin
-          SubIndex:=Index*4;
-          VecCryptoAESRound(
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-           vs1,
-           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-         end;
-        end;
-        16:begin
-         // vsm4r.vv
-         for Index:=0 to (EVL div 4)-1 do begin
-          SubIndex:=Index*4;
-          VecCryptoSM4Rounds(
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-         end;
-        end;
-        17:begin
-         // vgmul.vv
-         for Index:=0 to (EVL div 4)-1 do begin
-          SubIndex:=Index*4;
-          VecCryptoGHASHMul(
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-         end;
-        end;
-        else begin
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-         result:=4;
-         exit;
-        end;
-       end;
+       // Reserved for OP-P ($77) under OP-V ($57)
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
 
       $29:begin
-       // Vector crypto AES/SM4 .vs (Unmasked + vs1 in {0..3,16}) or vmadd.vv
-       if Unmasked and (vs1 in [0,1,2,3]) then begin
-        // vaesdm.vs (0), vaesdf.vs (1), vaesem.vs (2), vaesef.vs (3)
-        if SEW<>32 then begin
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-         result:=4;
-         exit;
-        end;
-        // Read scalar key from vs2 element group 0 into SegmentBuffer[4..7]
-        SegmentBuffer[4]:=VectorGetElement(vs2,0,32);
-        SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
-        SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
-        SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
-        for Index:=0 to (EVL div 4)-1 do begin
-         SubIndex:=Index*4;
-         VecCryptoAESRound(
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-          TPasRISCVUInt32(SegmentBuffer[4]),
-          TPasRISCVUInt32(SegmentBuffer[5]),
-          TPasRISCVUInt32(SegmentBuffer[6]),
-          TPasRISCVUInt32(SegmentBuffer[7]),
-          vs1,
-          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-        end;
-       end else if Unmasked and (vs1=16) then begin
-        // vsm4r.vs
-        if SEW<>32 then begin
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-         result:=4;
-         exit;
-        end;
-        // Read scalar round keys from vs2 element group 0 into SegmentBuffer[4..7]
-        SegmentBuffer[4]:=VectorGetElement(vs2,0,32);
-        SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
-        SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
-        SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
-        for Index:=0 to (EVL div 4)-1 do begin
-         SubIndex:=Index*4;
-         VecCryptoSM4Rounds(
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-          TPasRISCVUInt32(SegmentBuffer[4]),
-          TPasRISCVUInt32(SegmentBuffer[5]),
-          TPasRISCVUInt32(SegmentBuffer[6]),
-          TPasRISCVUInt32(SegmentBuffer[7]),
-          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-        end;
-       end else begin
-        // vmadd.vv: vd[i] = (vs1[i] * vd[i]) + vs2[i]
-        for Index:=0 to EVL-1 do begin
-         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         end else begin
-          SourceValue:=VectorGetElement(vd,Index,SEW);
-          OperandValue:=VectorGetElement(vs1,Index,SEW);
-          Address:=VectorGetElement(vs2,Index,SEW);
-          VectorSetElement(vd,Index,SEW,(SourceValue*OperandValue)+Address);
-         end;
+       // vmadd.vv: vd[i] = (vs1[i] * vd[i]) + vs2[i]
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vd,Index,SEW);
+         OperandValue:=VectorGetElement(vs1,Index,SEW);
+         Address:=VectorGetElement(vs2,Index,SEW);
+         VectorSetElement(vd,Index,SEW,(SourceValue*OperandValue)+Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2a:begin
-       // vaeskf2.vi (Unmasked only)
-       if (not Unmasked) or (SEW<>32) then begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
-       end;
-       for Index:=0 to (EVL div 4)-1 do begin
-        SubIndex:=Index*4;
-        VecCryptoAESKF2(
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-         vs1 and $f,
-         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-       end;
+       // Reserved for OP-P ($77) under OP-V ($57)
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
 
       $2b:begin
-       if Unmasked then begin
-        // vsm3c.vi (SM3 compression)
-        if SEW<>32 then begin
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-         result:=4;
-         exit;
-        end;
-        for Index:=0 to (EVL div 8)-1 do begin
-         SubIndex:=Index*8;
-         // Perform 2 SM3 compression rounds
-         VecCryptoSM3Compress(
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+4,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+5,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+6,32)),
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+7,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-          vs1 and $1f,
-          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
-          SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-         // Write back state
-         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-         VectorSetElement(vd,SubIndex+4,32,SegmentBuffer[4]);
-         VectorSetElement(vd,SubIndex+5,32,SegmentBuffer[5]);
-         VectorSetElement(vd,SubIndex+6,32,SegmentBuffer[6]);
-         VectorSetElement(vd,SubIndex+7,32,SegmentBuffer[7]);
-        end;
-       end else begin
-        // vnmsub.vv: vd[i] = -(vs1[i] * vd[i]) + vs2[i]
-        for Index:=0 to EVL-1 do begin
-         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         end else begin
-          SourceValue:=VectorGetElement(vd,Index,SEW);
-          OperandValue:=VectorGetElement(vs1,Index,SEW);
-          Address:=VectorGetElement(vs2,Index,SEW);
-          VectorSetElement(vd,Index,SEW,Address-(SourceValue*OperandValue));
-         end;
+       // vnmsub.vv: vd[i] = -(vs1[i] * vd[i]) + vs2[i]
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vd,Index,SEW);
+         OperandValue:=VectorGetElement(vs1,Index,SEW);
+         Address:=VectorGetElement(vs2,Index,SEW);
+         VectorSetElement(vd,Index,SEW,Address-(SourceValue*OperandValue));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2c:begin
-       // vghsh.vv (Unmasked only)
-       if (not Unmasked) or (SEW<>32) then begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
-       end;
-       for Index:=0 to (EVL div 4)-1 do begin
-        SubIndex:=Index*4;
-        VecCryptoGHSH(
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
-         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-       end;
+       // Reserved for OP-P ($77) under OP-V ($57)
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
 
       $2d:begin
-       if Unmasked then begin
-        // vsha2ms.vv (SHA-2 message schedule)
-        if not (SEW in [32,64]) then begin
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-         result:=4;
-         exit;
-        end;
-        for Index:=0 to (EVL div 4)-1 do begin
-         SubIndex:=Index*4;
-         if SEW=32 then begin
-          // SHA-256 message schedule
-          // vd = {W3, W2, W1, W0}, vs2 = {W11, W10, W9, W4}, vs1 = {W15, W14, W13, W12}
-          VecCryptoSHA256MsgSched(
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),   // W0
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),   // W1
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),   // W2
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),   // W3
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),  // W4
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),  // W9
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),  // W10
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),  // W11
-           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),  // W12
-           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),  // W13
-           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),  // W14
-           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),  // W15
-           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-         end else begin
-          // SHA-512 message schedule (SEW=64)
-          SegmentBuffer[0]:=VectorGetElement(vd,SubIndex+0,64);   // W0
-          SegmentBuffer[1]:=VectorGetElement(vd,SubIndex+1,64);   // W1
-          SegmentBuffer[2]:=VectorGetElement(vd,SubIndex+2,64);   // W2
-          SegmentBuffer[3]:=VectorGetElement(vd,SubIndex+3,64);   // W3
-          SegmentBuffer[4]:=VectorGetElement(vs2,SubIndex+0,64);  // W4
-          SegmentBuffer[5]:=VectorGetElement(vs2,SubIndex+1,64);  // W9
-          SegmentBuffer[6]:=VectorGetElement(vs2,SubIndex+2,64);  // W10
-          SegmentBuffer[7]:=VectorGetElement(vs2,SubIndex+3,64);  // W11
-          SourceValue:=VectorGetElement(vs1,SubIndex+0,64);       // W12
-          OperandValue:=VectorGetElement(vs1,SubIndex+2,64);       // W14
-          Address:=VectorGetElement(vs1,SubIndex+3,64);            // W15
-          // W16 = sig1(W14) + W9 + sig0(W1) + W0
-          Stride:=SHA512sig1(OperandValue)+SegmentBuffer[5]+SHA512sig0(SegmentBuffer[1])+SegmentBuffer[0];
-          // W17 = sig1(W15) + W10 + sig0(W2) + W1
-          SourceValue:=SHA512sig1(Address)+SegmentBuffer[6]+SHA512sig0(SegmentBuffer[2])+SegmentBuffer[1];
-          // W18 = sig1(W16) + W11 + sig0(W3) + W2
-          OperandValue:=SHA512sig1(Stride)+SegmentBuffer[7]+SHA512sig0(SegmentBuffer[3])+SegmentBuffer[2];
-          // W19 = sig1(W17) + W12 + sig0(W4) + W3
-          Address:=SHA512sig1(SourceValue)+VectorGetElement(vs1,SubIndex+0,64)+SHA512sig0(SegmentBuffer[4])+SegmentBuffer[3];
-          VectorSetElement(vd,SubIndex+0,64,Stride);
-          VectorSetElement(vd,SubIndex+1,64,SourceValue);
-          VectorSetElement(vd,SubIndex+2,64,OperandValue);
-          VectorSetElement(vd,SubIndex+3,64,Address);
-         end;
-        end;
-       end else begin
-        // vmacc.vv: vd[i] = (vs1[i] * vs2[i]) + vd[i]
-        for Index:=0 to EVL-1 do begin
-         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         end else begin
-          SourceValue:=VectorGetElement(vs1,Index,SEW);
-          OperandValue:=VectorGetElement(vs2,Index,SEW);
-          Address:=VectorGetElement(vd,Index,SEW);
-          VectorSetElement(vd,Index,SEW,(SourceValue*OperandValue)+Address);
-         end;
+       // vmacc.vv: vd[i] = (vs1[i] * vs2[i]) + vd[i]
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs1,Index,SEW);
+         OperandValue:=VectorGetElement(vs2,Index,SEW);
+         Address:=VectorGetElement(vd,Index,SEW);
+         VectorSetElement(vd,Index,SEW,(SourceValue*OperandValue)+Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2e:begin
-       // vsha2ch.vv (Unmasked only)
-       if (not Unmasked) or (not (SEW in [32,64])) then begin
-        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-        result:=4;
-        exit;
-       end;
-       for Index:=0 to (EVL div 4)-1 do begin
-        SubIndex:=Index*4;
-        if SEW=32 then begin
-         // SHA-256 compression (high half): f1=vs1[2], f2=vs1[3]
-         VecCryptoSHA256Compress(
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)), // a
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)), // b
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)), // e
-          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)), // f
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),  // c
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),  // d
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),  // g
-          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),  // h
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)), // f1 (high half elem 2)
-          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)), // f2 (high half elem 3)
-          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-         VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-         VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-         VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-         VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-        end else begin
-         // SHA-512 compression (high half): f1=vs1[2], f2=vs1[3]
-         SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64); // a
-         SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64); // b
-         SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64); // e
-         SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64); // f
-         SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);  // c
-         SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);  // d
-         SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);  // g
-         SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);  // h
-         SourceValue:=VectorGetElement(vs1,SubIndex+2,64);      // f1
-         OperandValue:=VectorGetElement(vs1,SubIndex+3,64);     // f2
-         VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
-                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
-                                SourceValue,OperandValue,
-                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-         VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
-         VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
-         VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
-         VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
-        end;
-       end;
+       // Reserved for OP-P ($77) under OP-V ($57)
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
 
       $2f:begin
-       if Unmasked then begin
-        // vsha2cl.vv (SHA-2 compression low half)
-        if not (SEW in [32,64]) then begin
-         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-         result:=4;
-         exit;
-        end;
-        for Index:=0 to (EVL div 4)-1 do begin
-         SubIndex:=Index*4;
-         if SEW=32 then begin
-          // SHA-256 compression (low half): f1=vs1[0], f2=vs1[1]
-          VecCryptoSHA256Compress(
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)), // a
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)), // b
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)), // e
-           TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)), // f
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),  // c
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),  // d
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),  // g
-           TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),  // h
-           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)), // f1 (low half elem 0)
-           TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)), // f2 (low half elem 1)
-           SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-          VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-          VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-          VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-          VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-         end else begin
-          // SHA-512 compression (low half): f1=vs1[0], f2=vs1[1]
-          SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64); // a
-          SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64); // b
-          SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64); // e
-          SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64); // f
-          SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);  // c
-          SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);  // d
-          SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);  // g
-          SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);  // h
-          SourceValue:=VectorGetElement(vs1,SubIndex+0,64);      // f1
-          OperandValue:=VectorGetElement(vs1,SubIndex+1,64);     // f2
-          VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
-                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
-                                 SourceValue,OperandValue,
-                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-          VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
-          VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
-          VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
-          VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
-         end;
-        end;
-       end else begin
-        // vnmsac.vv: vd[i] = -(vs1[i] * vs2[i]) + vd[i]
-        for Index:=0 to EVL-1 do begin
-         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         end else begin
-          SourceValue:=VectorGetElement(vs1,Index,SEW);
-          OperandValue:=VectorGetElement(vs2,Index,SEW);
-          Address:=VectorGetElement(vd,Index,SEW);
-          VectorSetElement(vd,Index,SEW,Address-(SourceValue*OperandValue));
-         end;
+       // vnmsac.vv: vd[i] = -(vs1[i] * vs2[i]) + vd[i]
+       for Index:=0 to EVL-1 do begin
+        if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
+        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else begin
+         SourceValue:=VectorGetElement(vs1,Index,SEW);
+         OperandValue:=VectorGetElement(vs2,Index,SEW);
+         Address:=VectorGetElement(vd,Index,SEW);
+         VectorSetElement(vd,Index,SEW,Address-(SourceValue*OperandValue));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $30:begin
@@ -49342,6 +49299,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $31:begin
@@ -49353,6 +49314,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $32:begin
@@ -49364,6 +49329,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $33:begin
@@ -49375,6 +49344,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $34:begin
@@ -49386,6 +49359,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)+VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $35:begin
@@ -49397,6 +49374,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $36:begin
@@ -49408,6 +49389,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)-VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $37:begin
@@ -49419,6 +49404,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))-SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $38:begin
@@ -49430,6 +49419,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)*VectorGetElement(vs1,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3a:begin
@@ -49441,6 +49434,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs1,Index,SEW))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3b:begin
@@ -49452,6 +49449,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3c:begin
@@ -49463,6 +49464,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vd,Index,SEW*2)+(VectorGetElement(vs1,Index,SEW)*VectorGetElement(vs2,Index,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3d:begin
@@ -49474,6 +49479,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3f:begin
@@ -49485,6 +49494,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs1,Index,SEW))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $00:begin
@@ -49500,6 +49513,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $01:begin
@@ -49515,6 +49532,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $02:begin
@@ -49530,6 +49551,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $03:begin
@@ -49545,6 +49570,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $04:begin
@@ -49563,6 +49592,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $05:begin
@@ -49581,6 +49614,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $06:begin
@@ -49599,6 +49636,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $07:begin
@@ -49617,6 +49658,10 @@ begin
        if EVL>0 then begin
         VectorSetElement(vd,0,SEW,Address);
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $10:begin
@@ -49686,6 +49731,10 @@ begin
          exit;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $12:begin
@@ -49872,6 +49921,10 @@ begin
          exit;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $14:begin
@@ -49998,6 +50051,10 @@ begin
          exit;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $17:begin
@@ -50026,6 +50083,10 @@ begin
          inc(SubIndex);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $18:begin
@@ -50051,6 +50112,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $19:begin
@@ -50067,6 +50132,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1a:begin
@@ -50083,6 +50152,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1b:begin
@@ -50099,6 +50172,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1c:begin
@@ -50115,6 +50192,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1d:begin
@@ -50131,6 +50212,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1e:begin
@@ -50147,6 +50232,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1f:begin
@@ -50163,17 +50252,19 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
+
       else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
       end;
      end;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     fState.CSR.SetVSDirty;
-     result:=4;
-     exit;
+
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -50219,6 +50310,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $03:begin
@@ -50230,6 +50325,10 @@ begin
          VectorSetElement(vd,Index,SEW,Stride-VectorGetElement(vs2,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $09:begin
@@ -50241,6 +50340,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0a:begin
@@ -50252,6 +50355,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0b:begin
@@ -50263,6 +50370,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0c:begin
@@ -50291,6 +50402,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0e:begin
@@ -50312,6 +50427,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0f:begin
@@ -50329,6 +50448,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $10:begin
@@ -50349,6 +50472,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride+SourceValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $11:begin
@@ -50382,6 +50509,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $14,$15:begin
@@ -50395,6 +50526,10 @@ begin
          VectorSetElement(vd,Index,SEW,(SourceValue shr OperandValue) or (SourceValue shl ((SEW-OperandValue) and (SEW-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $17:begin
@@ -50424,6 +50559,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $18:begin
@@ -50440,6 +50579,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $19:begin
@@ -50456,6 +50599,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1c:begin
@@ -50472,6 +50619,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1d:begin
@@ -50488,6 +50639,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1e:begin
@@ -50504,6 +50659,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1f:begin
@@ -50520,6 +50679,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $20:begin
@@ -50550,6 +50713,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $21:begin
@@ -50571,6 +50738,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $27:begin
@@ -50598,6 +50769,10 @@ begin
         result:=4;
         exit;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $25:begin
@@ -50610,6 +50785,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl SubIndex);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $28:begin
@@ -50622,6 +50801,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr SubIndex);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $29:begin
@@ -50634,6 +50817,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW),SubIndex)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2a:begin
@@ -50646,6 +50833,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorRoundoffShift(VectorGetElement(vs2,Index,SEW),SubIndex));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2b:begin
@@ -50658,6 +50849,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(VectorRoundoffShiftSigned(TPasRISCVInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)),SubIndex)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2c:begin
@@ -50670,6 +50865,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW*2) shr SubIndex);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2d:begin
@@ -50682,6 +50881,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),SubIndex)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2e:begin
@@ -50716,6 +50919,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2f:begin
@@ -50736,6 +50943,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $35:begin
@@ -50749,17 +50960,19 @@ begin
          VectorSetElement(vd,Index,SEW*2,SourceValue shl OperandValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
+
       else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
       end;
      end;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     fState.CSR.SetVSDirty;
-     result:=4;
-     exit;
+
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -50809,6 +51022,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $01:begin
@@ -50820,6 +51037,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and (not Stride));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $02:begin
@@ -50831,6 +51052,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $03:begin
@@ -50842,6 +51067,10 @@ begin
          VectorSetElement(vd,Index,SEW,Stride-VectorGetElement(vs2,Index,SEW));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $04:begin
@@ -50858,6 +51087,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $05:begin
@@ -50874,6 +51107,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $06:begin
@@ -50890,6 +51127,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $07:begin
@@ -50906,6 +51147,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $09:begin
@@ -50917,6 +51162,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0a:begin
@@ -50928,6 +51177,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0b:begin
@@ -50939,6 +51192,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0c:begin
@@ -50967,6 +51224,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0e:begin
@@ -50988,6 +51249,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0f:begin
@@ -51005,6 +51270,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $10:begin
@@ -51025,6 +51294,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride+SourceValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $11:begin
@@ -51058,6 +51331,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $12:begin
@@ -51078,6 +51355,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-Stride-SourceValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $13:begin
@@ -51102,6 +51383,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $14:begin
@@ -51115,6 +51400,10 @@ begin
          VectorSetElement(vd,Index,SEW,(SourceValue shr OperandValue) or (SourceValue shl ((SEW-OperandValue) and (SEW-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $15:begin
@@ -51128,6 +51417,10 @@ begin
          VectorSetElement(vd,Index,SEW,(SourceValue shl OperandValue) or (SourceValue shr ((SEW-OperandValue) and (SEW-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $17:begin
@@ -51157,6 +51450,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $18:begin
@@ -51173,6 +51470,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $19:begin
@@ -51189,6 +51490,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1a:begin
@@ -51205,6 +51510,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1b:begin
@@ -51221,6 +51530,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1c:begin
@@ -51237,6 +51550,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1d:begin
@@ -51253,6 +51570,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1e:begin
@@ -51269,6 +51590,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $1f:begin
@@ -51285,6 +51610,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $20:begin
@@ -51315,6 +51644,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $21:begin
@@ -51336,6 +51669,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $22:begin
@@ -51354,6 +51691,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $23:begin
@@ -51375,6 +51716,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $25:begin
@@ -51386,6 +51731,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl (Stride and (SEW-1)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $27:begin
@@ -51469,6 +51818,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $28:begin
@@ -51480,6 +51833,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr (Stride and (SEW-1)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $29:begin
@@ -51491,6 +51848,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW),Stride and (SEW-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2a:begin
@@ -51502,6 +51863,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorRoundoffShift(VectorGetElement(vs2,Index,SEW),Stride and (SEW-1)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2b:begin
@@ -51513,6 +51878,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(VectorRoundoffShiftSigned(TPasRISCVInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)),Stride and (SEW-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2c:begin
@@ -51524,6 +51893,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW*2) shr (Stride and ((SEW*2)-1)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2d:begin
@@ -51535,6 +51908,10 @@ begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),Stride and ((SEW*2)-1))));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2e:begin
@@ -51568,6 +51945,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $2f:begin
@@ -51587,6 +51968,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $35:begin
@@ -51600,6 +51985,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,SourceValue shl OperandValue);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
       else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -51607,10 +51996,6 @@ begin
        exit;
       end;
      end;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     fState.CSR.SetVSDirty;
-     result:=4;
-     exit;
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -51695,6 +52080,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $02:begin
@@ -51727,6 +52116,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $04:begin
@@ -51823,6 +52216,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $06:begin
@@ -51919,6 +52316,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $27:begin
@@ -51951,6 +52352,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $08:begin
@@ -51980,6 +52385,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $09:begin
@@ -52009,6 +52418,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $0a:begin
@@ -52038,6 +52451,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $0e:begin
@@ -52068,6 +52485,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $0f:begin
@@ -52098,6 +52519,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $10:begin
@@ -52126,6 +52551,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $17:begin
@@ -52196,6 +52625,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $18:begin
@@ -52238,6 +52671,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $19:begin
@@ -52280,6 +52717,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $1b:begin
@@ -52322,6 +52763,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $1c:begin
@@ -52364,6 +52809,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $1d:begin
@@ -52406,6 +52855,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $1f:begin
@@ -52448,6 +52901,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $20:begin
@@ -52480,6 +52937,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $21:begin
@@ -52512,6 +52973,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $24:begin
@@ -52544,6 +53009,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $28:begin
@@ -52579,6 +53048,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $29:begin
@@ -52614,6 +53087,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2a:begin
@@ -52649,6 +53126,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2b:begin
@@ -52684,6 +53165,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2c:begin
@@ -52719,6 +53204,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2d:begin
@@ -52754,6 +53243,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2e:begin
@@ -52789,6 +53282,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $2f:begin
@@ -52824,6 +53321,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $30:begin
@@ -52853,6 +53354,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $32:begin
@@ -52882,6 +53387,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $34:begin
@@ -52910,6 +53419,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $36:begin
@@ -52938,6 +53451,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $38:begin
@@ -52967,6 +53484,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3b:begin
@@ -52990,6 +53511,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3c:begin
@@ -53019,6 +53544,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3d:begin
@@ -53048,6 +53577,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3e:begin
@@ -53077,6 +53610,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
 
       $3f:begin
@@ -53106,6 +53643,10 @@ begin
          end;
         end;
        end;
+       SetFPUExceptions;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       result:=4;
+       exit;
       end;
       else begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -53113,10 +53654,6 @@ begin
        exit;
       end;
      end;
-     SetFPUExceptions;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     result:=4;
-     exit;
     end;
 
     //////////////////////////////////////////////////////////////////////////////
@@ -53295,6 +53832,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0b:begin
@@ -53359,6 +53900,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0c:begin
@@ -53375,6 +53920,10 @@ begin
          VectorSetElement(vd,Index,SEW,CLMul64(VectorGetElement(vs2,Index,SEW),Stride));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0d:begin
@@ -53391,6 +53940,10 @@ begin
          VectorSetElement(vd,Index,SEW,CLMulH64(VectorGetElement(vs2,Index,SEW),Stride));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0e:begin
@@ -53406,6 +53959,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $0f:begin
@@ -53421,6 +53978,10 @@ begin
          end;
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $10:begin
@@ -53433,6 +53994,10 @@ begin
        if (EVL>0) and (fState.CSR.fData[TCSR.TAddress.VSTART]<EVL) then begin
         VectorSetElement(vd,0,SEW,TPasRISCVUInt64(fState.Registers[rs1]));
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $20:begin
@@ -53463,6 +54028,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $21:begin
@@ -53495,6 +54064,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $22:begin
@@ -53512,6 +54085,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $23:begin
@@ -53531,6 +54108,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $24:begin
@@ -53557,6 +54138,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $25:begin
@@ -53568,6 +54153,10 @@ begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)*Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $26:begin
@@ -53594,6 +54183,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $27:begin
@@ -53620,6 +54213,10 @@ begin
          VectorSetElement(vd,Index,SEW,Address);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $30:begin
@@ -53631,6 +54228,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)+Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $31:begin
@@ -53642,6 +54243,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(Stride,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $32:begin
@@ -53653,6 +54258,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)-Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $33:begin
@@ -53664,6 +54273,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(Stride,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $34:begin
@@ -53675,6 +54288,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)+Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $35:begin
@@ -53686,6 +54303,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))+SignExtend(Stride,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $36:begin
@@ -53697,6 +54318,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)-Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $37:begin
@@ -53708,6 +54333,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))-SignExtend(Stride,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $38:begin
@@ -53719,6 +54348,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)*Stride);
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3a:begin
@@ -53730,6 +54363,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(Stride)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3b:begin
@@ -53741,6 +54378,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*SignExtend(Stride,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3c:begin
@@ -53752,6 +54393,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vd,Index,SEW*2)+(Stride*VectorGetElement(vs2,Index,SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3d:begin
@@ -53763,6 +54408,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(Stride,SEW)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3e:begin
@@ -53774,6 +54423,10 @@ begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+TPasRISCVInt64(Stride)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
         end;
        end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
       end;
 
       $3f:begin
@@ -53784,6 +54437,220 @@ begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(Stride)));
         end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      else begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
+    end;
+
+
+   end; // case funct3
+
+  end; // $57
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Vector Crypto OP-P (opcode $77)                                          //
+  // Zvkned, Zvknha/b, Zvkg, Zvksed, Zvksh                                   //
+  //////////////////////////////////////////////////////////////////////////////
+  $77:begin
+
+   funct3:=(aInstruction shr 12) and 7;
+
+   // All OP-P crypto instructions use funct3=$02 (OPMVV)
+   if funct3<>$02 then begin
+    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+    result:=4;
+    exit;
+   end;
+
+   vd:=(aInstruction shr 7) and $1f;
+   vs1:=(aInstruction shr 15) and $1f;
+   vs2:=(aInstruction shr 20) and $1f;
+   Unmasked:=((aInstruction shr 25) and 1)<>0;
+   funct6:=(aInstruction shr 26) and $3f;
+   if (fState.CSR.fData[TCSR.TAddress.VTYPE] and TPasRISCVUInt64($8000000000000000))<>0 then begin
+    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+    result:=4;
+    exit;
+   end;
+   SEW:=VectorGetSEW;
+   EVL:=fState.CSR.fData[TCSR.TAddress.VL];
+   LMUL8:=VectorGetLMUL;
+
+   case funct6 of
+
+    $20:begin
+     // vsm3me.vv (Zvksh) - SM3 message expansion, EGS=8, EGW=256
+     if (not Unmasked) or (SEW<>32) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     for Index:=0 to (EVL div 8)-1 do begin
+      SubIndex:=Index*8;
+      VecCryptoSM3ME(
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+4,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+5,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+6,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+7,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+4,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+5,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+6,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+7,32)),
+       SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+       SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+      for OperandValue:=0 to 7 do begin
+       VectorSetElement(vd,SubIndex+OperandValue,32,SegmentBuffer[OperandValue]);
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $21:begin
+     // vsm4k.vi (Zvksed) - SM4 key expansion, EGS=4, EGW=128
+     if (not Unmasked) or (SEW<>32) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     SourceValue:=vs1 and 7; // round group
+     for Index:=0 to (EVL div 4)-1 do begin
+      SubIndex:=Index*4;
+      VecCryptoSM4KeyExp(
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+       TPasRISCVUInt32(SourceValue),
+       SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+      VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+      VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+      VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+      VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $22:begin
+     // vaeskf1.vi (Zvkned) - AES-128 key schedule, EGS=4, EGW=128
+     if (not Unmasked) or (SEW<>32) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     SourceValue:=vs1 and $f;
+     if (SourceValue=0) or (SourceValue>10) then begin
+      SourceValue:=SourceValue xor 8;
+     end;
+     for Index:=0 to (EVL div 4)-1 do begin
+      SubIndex:=Index*4;
+      VecCryptoAESKF1(
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+       TPasRISCVUInt32(SourceValue),
+       SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+      VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+      VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+      VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+      VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $28:begin
+     // Vector crypto AES/SM4/GHASH .vv (sub-decode on vs1)
+     if (not Unmasked) or (SEW<>32) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     case vs1 of
+      0,1,2,3:begin
+       // vaesdm.vv (0), vaesdf.vv (1), vaesem.vv (2), vaesef.vv (3)
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoAESRound(
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         vs1,
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+       end;
+      end;
+      16:begin
+       // vsm4r.vv
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoSM4Rounds(
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+       end;
+      end;
+      17:begin
+       // vgmul.vv
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoGHASHMul(
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
        end;
       end;
       else begin
@@ -53798,10 +54665,385 @@ begin
      exit;
     end;
 
+    $29:begin
+     // Vector crypto AES/SM4 .vs (sub-decode on vs1)
+     if not Unmasked then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     if vs1 in [0,1,2,3] then begin
+      // vaesdm.vs (0), vaesdf.vs (1), vaesem.vs (2), vaesef.vs (3)
+      if SEW<>32 then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      SegmentBuffer[4]:=VectorGetElement(vs2,0,32);
+      SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
+      SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
+      SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
+      for Index:=0 to (EVL div 4)-1 do begin
+       SubIndex:=Index*4;
+       VecCryptoAESRound(
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+        TPasRISCVUInt32(SegmentBuffer[4]),
+        TPasRISCVUInt32(SegmentBuffer[5]),
+        TPasRISCVUInt32(SegmentBuffer[6]),
+        TPasRISCVUInt32(SegmentBuffer[7]),
+        vs1,
+        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+      end;
+     end else if vs1=7 then begin
+      // vaesz.vs (AES round zero - just XOR with round key)
+      if SEW<>32 then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      SegmentBuffer[4]:=VectorGetElement(vs2,0,32);
+      SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
+      SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
+      SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
+      for Index:=0 to (EVL div 4)-1 do begin
+       SubIndex:=Index*4;
+       VectorSetElement(vd,SubIndex+0,32,VectorGetElement(vd,SubIndex+0,32) xor SegmentBuffer[4]);
+       VectorSetElement(vd,SubIndex+1,32,VectorGetElement(vd,SubIndex+1,32) xor SegmentBuffer[5]);
+       VectorSetElement(vd,SubIndex+2,32,VectorGetElement(vd,SubIndex+2,32) xor SegmentBuffer[6]);
+       VectorSetElement(vd,SubIndex+3,32,VectorGetElement(vd,SubIndex+3,32) xor SegmentBuffer[7]);
+      end;
+     end else if vs1=16 then begin
+      // vsm4r.vs
+      if SEW<>32 then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      SegmentBuffer[4]:=VectorGetElement(vs2,0,32);
+      SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
+      SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
+      SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
+      for Index:=0 to (EVL div 4)-1 do begin
+       SubIndex:=Index*4;
+       VecCryptoSM4Rounds(
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+        TPasRISCVUInt32(SegmentBuffer[4]),
+        TPasRISCVUInt32(SegmentBuffer[5]),
+        TPasRISCVUInt32(SegmentBuffer[6]),
+        TPasRISCVUInt32(SegmentBuffer[7]),
+        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+      end;
+     end else begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
 
-   end; // case funct3
+    $2a:begin
+     // vaeskf2.vi (Zvkned)
+     if (not Unmasked) or (SEW<>32) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     for Index:=0 to (EVL div 4)-1 do begin
+      SubIndex:=Index*4;
+      VecCryptoAESKF2(
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+       vs1 and $f,
+       SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+      VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+      VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+      VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+      VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
 
-  end; // $57
+    $2b:begin
+     // vsm3c.vi (Zvksh) - SM3 compression
+     if (not Unmasked) or (SEW<>32) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     for Index:=0 to (EVL div 8)-1 do begin
+      SubIndex:=Index*8;
+      VecCryptoSM3Compress(
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+4,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+5,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+6,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+7,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+       vs1 and $1f,
+       SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+       SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+      VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+      VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+      VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+      VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+      VectorSetElement(vd,SubIndex+4,32,SegmentBuffer[4]);
+      VectorSetElement(vd,SubIndex+5,32,SegmentBuffer[5]);
+      VectorSetElement(vd,SubIndex+6,32,SegmentBuffer[6]);
+      VectorSetElement(vd,SubIndex+7,32,SegmentBuffer[7]);
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $2c:begin
+     // vghsh.vv (Zvkg)
+     if (not Unmasked) or (SEW<>32) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     for Index:=0 to (EVL div 4)-1 do begin
+      SubIndex:=Index*4;
+      VecCryptoGHSH(
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+       SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+      VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+      VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+      VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+      VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $2d:begin
+     // vsha2ms.vv (Zvknha/b) - SHA-2 message schedule
+     if not Unmasked then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     if not (SEW in [32,64]) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     for Index:=0 to (EVL div 4)-1 do begin
+      SubIndex:=Index*4;
+      if SEW=32 then begin
+       // SHA-256 message schedule
+       VecCryptoSHA256MsgSched(
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+      end else begin
+       // SHA-512 message schedule (SEW=64)
+       SegmentBuffer[0]:=VectorGetElement(vd,SubIndex+0,64);
+       SegmentBuffer[1]:=VectorGetElement(vd,SubIndex+1,64);
+       SegmentBuffer[2]:=VectorGetElement(vd,SubIndex+2,64);
+       SegmentBuffer[3]:=VectorGetElement(vd,SubIndex+3,64);
+       SegmentBuffer[4]:=VectorGetElement(vs2,SubIndex+0,64);
+       SegmentBuffer[5]:=VectorGetElement(vs2,SubIndex+1,64);
+       SegmentBuffer[6]:=VectorGetElement(vs2,SubIndex+2,64);
+       SegmentBuffer[7]:=VectorGetElement(vs2,SubIndex+3,64);
+       SourceValue:=VectorGetElement(vs1,SubIndex+0,64);
+       OperandValue:=VectorGetElement(vs1,SubIndex+2,64);
+       Address:=VectorGetElement(vs1,SubIndex+3,64);
+       Stride:=SHA512sig1(OperandValue)+SegmentBuffer[5]+SHA512sig0(SegmentBuffer[1])+SegmentBuffer[0];
+       SourceValue:=SHA512sig1(Address)+SegmentBuffer[6]+SHA512sig0(SegmentBuffer[2])+SegmentBuffer[1];
+       OperandValue:=SHA512sig1(Stride)+SegmentBuffer[7]+SHA512sig0(SegmentBuffer[3])+SegmentBuffer[2];
+       Address:=SHA512sig1(SourceValue)+VectorGetElement(vs1,SubIndex+0,64)+SHA512sig0(SegmentBuffer[4])+SegmentBuffer[3];
+       VectorSetElement(vd,SubIndex+0,64,Stride);
+       VectorSetElement(vd,SubIndex+1,64,SourceValue);
+       VectorSetElement(vd,SubIndex+2,64,OperandValue);
+       VectorSetElement(vd,SubIndex+3,64,Address);
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $2e:begin
+     // vsha2ch.vv (Zvknha/b) - SHA-2 compression high half
+     if (not Unmasked) or (not (SEW in [32,64])) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     for Index:=0 to (EVL div 4)-1 do begin
+      SubIndex:=Index*4;
+      if SEW=32 then begin
+       VecCryptoSHA256Compress(
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+      end else begin
+       SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
+       SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
+       SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
+       SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
+       SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
+       SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
+       SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
+       SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
+       SourceValue:=VectorGetElement(vs1,SubIndex+2,64);
+       OperandValue:=VectorGetElement(vs1,SubIndex+3,64);
+       VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
+                               SourceValue,OperandValue,
+                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+       VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
+       VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
+       VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
+       VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    $2f:begin
+     // vsha2cl.vv (Zvknha/b) - SHA-2 compression low half
+     if not Unmasked then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     if not (SEW in [32,64]) then begin
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
+     for Index:=0 to (EVL div 4)-1 do begin
+      SubIndex:=Index*4;
+      if SEW=32 then begin
+       VecCryptoSHA256Compress(
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+      end else begin
+       SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
+       SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
+       SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
+       SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
+       SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
+       SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
+       SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
+       SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
+       SourceValue:=VectorGetElement(vs1,SubIndex+0,64);
+       OperandValue:=VectorGetElement(vs1,SubIndex+1,64);
+       VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
+                               SourceValue,OperandValue,
+                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+       VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
+       VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
+       VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
+       VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+      end;
+     end;
+     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+     fState.CSR.SetVSDirty;
+     result:=4;
+     exit;
+    end;
+
+    else begin
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     result:=4;
+     exit;
+    end;
+
+   end; // case funct6
+
+  end; // $77
 
   else begin
    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -61417,6 +62659,14 @@ begin
     // Vector (V, Zvbb, Zvkt, Zvfhmin)                                         //
     //////////////////////////////////////////////////////////////////////////////
     $57{$ifdef TryToForceCaseJumpTableOnLevel1},$d7{$endif}:begin
+     result:=ExecuteVectorInstruction(aInstruction);
+     exit;
+    end;
+
+    //////////////////////////////////////////////////////////////////////////////
+    // Vector Crypto OP-P (Zvkned, Zvknha/b, Zvkg, Zvksed, Zvksh)               //
+    //////////////////////////////////////////////////////////////////////////////
+    $77{$ifdef TryToForceCaseJumpTableOnLevel1},$f7{$endif}:begin
      result:=ExecuteVectorInstruction(aInstruction);
      exit;
     end;
