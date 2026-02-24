@@ -18363,7 +18363,7 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemWindows.ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
+function TPasRISCVFUSEFileSystemWindows.ReadDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TPasRISCVFUSEFileSystem.TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
 var DirInfo:TDirHandleInfo;
     FindData:WIN32_FIND_DATAA;
     FindHandle:THandle;
