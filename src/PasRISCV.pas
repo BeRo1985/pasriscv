@@ -280,7 +280,7 @@ unit PasRISCV;
 {$define Zicfilp} // Zicfilp: Landing Pad (Forward-Edge CFI) - comment out to disable for performance
 {$define Zicfiss} // Zicfiss: Shadow Stack (Backward-Edge CFI) - comment out to disable for performance
 
-{-$define PasRISCVDebugVirtIO9P}
+{$define PasRISCVDebugVirtIO9P}
 
 {$if defined(fpc) and (defined(cpux86_64) or defined(cpuamd64))}
  {$optimization level3}
@@ -15090,7 +15090,7 @@ begin
  if fpLStat(PAnsiChar(aFile.fPath),@StatData)=0 then begin
   StatToQID(aQID,@StatData);
   Flags:=P9OpenFlagsToPOSIXOpenFlags(aFlags);
-  if (aFlags and P9_O_DIRECTORY)<>0 then begin
+  if ((aFlags and P9_O_DIRECTORY)<>0) or ((StatData.st_mode and S_IFMT)=S_IFDIR) then begin
    aFile.fDirectory:=FpOpenDir(PAnsiChar(aFile.fPath));
    if assigned(aFile.fDirectory) then begin
     aFile.fIsOpened:=true;
@@ -28802,6 +28802,9 @@ begin
 
       VIRTIO_9P_LOPEN:begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'ww',[@FID,@Flags]) then begin
+{$ifdef PasRISCVDebugVirtIO9P}
+        writeln('9p: LOPEN fid=',FID,' flags=$',HexStr(Flags,8));
+{$endif}
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
          GetMem(OpenInfo,SizeOf(TOpenInfo));
@@ -28989,11 +28992,17 @@ begin
         Size:=Val32;
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
+{$ifdef PasRISCVDebugVirtIO9P}
+         writeln('9p: READDIR fid=',FID,' offset=',FSOffset,' count=',Size,' path=',FIDDescriptor.fFile.fPath,' isOpened=',FIDDescriptor.fFile.fIsOpened,' isDir=',FIDDescriptor.fFile.fIsDirectory);
+{$endif}
          if length(fSendBuffer)<Size+4 then begin
           SetLength(fSendBuffer,(Size+4)*2);
          end;
          FillChar(fSendBuffer[0],Size+4,#0);
          Count:=fFileSystem.ReadDir(FIDDescriptor.fFile,FSOffset,@fSendBuffer[4],Size);
+{$ifdef PasRISCVDebugVirtIO9P}
+         writeln('9p: READDIR result=',Count);
+{$endif}
          if Count<0 then begin
           Error:=Count;
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
