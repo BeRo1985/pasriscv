@@ -17838,6 +17838,7 @@ function TPasRISCVFUSEFileSystemPOSIX.ReadDir(const aHandle:TFileHandle;const aO
 var Dir:PDIR;
     DE:PDirEnt;
     Index,EntryCapacity:TPasRISCVInt32;
+    DirOffset:TOff;
 begin
  Dir:={%H-}PDIR(PtrUInt(aHandle));
  aCount:=0;
@@ -17846,9 +17847,7 @@ begin
 {$ifdef PasRISCVDebugVirtIOFS}
  writeln('FUSEFileSystemPOSIX.ReadDir: handle=',aHandle,' offset=',aOffset,' dir=',{%H-}PtrUInt(Dir));
 {$endif}
- if aOffset=0 then begin
-  RewindDir(Dir);
- end;
+ SeekDir(Dir,aOffset);
  Index:=0;
  repeat
   DE:=fpReadDir(Dir^);
@@ -17858,6 +17857,7 @@ begin
 {$endif}
    break;
   end;
+  DirOffset:=TellDir(Dir);
   if Index>=EntryCapacity then begin
    if EntryCapacity=0 then begin
     EntryCapacity:=64;
@@ -17867,9 +17867,12 @@ begin
    SetLength(aEntries,EntryCapacity);
   end;
   aEntries[Index].Ino:=DE^.d_fileno;
-  aEntries[Index].Off:=aOffset+TPasRISCVUInt64(Index)+1;
+  aEntries[Index].Off:=DirOffset;
   aEntries[Index].Name:=DE^.d_name;
   aEntries[Index].NameLen:=Length(aEntries[Index].Name);
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('FUSEFileSystemPOSIX.ReadDir: entry[',Index,'] name="',aEntries[Index].Name,'" ino=',aEntries[Index].Ino,' off=',aEntries[Index].Off,' type=',DE^.d_type);
+{$endif}
   case DE^.d_type of
    DT_DIR:begin
     aEntries[Index].Type_:=S_IFDIR shr 12;
