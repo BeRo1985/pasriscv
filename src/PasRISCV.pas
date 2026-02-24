@@ -17830,7 +17830,7 @@ begin
  Index:=0;
  repeat
   DE:=fpReadDir(Dir^);
-  if DE=nil then begin
+  if not assigned(DE) then begin
    break;
   end;
   if Index>=EntryCapacity then begin
@@ -31329,7 +31329,7 @@ var ParentNode:TNodeEntry;
 begin
  result:=nil;
  ParentNode:=FindNode(aParentNodeID);
- if ParentNode=nil then begin
+ if not assigned(ParentNode) then begin
   exit;
  end;
  if assigned(fFileSystem) then begin
@@ -31453,11 +31453,16 @@ begin
   InitOut.Major:=FUSE_KERNEL_VERSION;
   InitOut.Minor:=FUSE_KERNEL_MINOR_VERSION;
   InitOut.MaxReadahead:=InitIn.MaxReadahead;
-  InitOut.Flags:=FUSE_BIG_WRITES or
-                 FUSE_DO_READDIRPLUS or
-                 FUSE_ATOMIC_O_TRUNC or
-                 FUSE_EXPORT_SUPPORT or
-                 FUSE_DONT_MASK;
+  InitOut.Flags:=InitIn.Flags and (FUSE_BIG_WRITES or
+                                   FUSE_DO_READDIRPLUS or
+                                   FUSE_READDIRPLUS_AUTO or
+                                   FUSE_ATOMIC_O_TRUNC or
+                                   FUSE_EXPORT_SUPPORT or
+                                   FUSE_DONT_MASK or
+                                   FUSE_ASYNC_READ or
+                                   FUSE_PARALLEL_DIROPS or
+                                   FUSE_MAX_PAGES or
+                                   FUSE_SUBMOUNTS);
   InitOut.MaxBackground:=16;
   InitOut.CongestionThreshold:=12;
   InitOut.MaxWrite:=65536;
