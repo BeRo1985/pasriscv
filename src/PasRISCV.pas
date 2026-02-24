@@ -280,7 +280,7 @@ unit PasRISCV;
 {$define Zicfilp} // Zicfilp: Landing Pad (Forward-Edge CFI) - comment out to disable for performance
 {$define Zicfiss} // Zicfiss: Shadow Stack (Backward-Edge CFI) - comment out to disable for performance
 
-{$define PasRISCVDebugVirtIO9P}
+{-$define PasRISCVDebugVirtIO9P}
 
 {$if defined(fpc) and (defined(cpux86_64) or defined(cpuamd64))}
  {$optimization level3}
@@ -16123,7 +16123,7 @@ var FindHandle:THandle;
     EntryOffset,RequiredSize:TPasRISCVSizeInt;
     BytesWritten:TPasRISCVSizeInt;
     NameLen:TPasRISCVUInt16;
-    EntryType:TPasRISCVUInt8;
+    QIDType,DType:TPasRISCVUInt8;
     PathU64:TPasRISCVUInt64;
     FileInfo:BY_HANDLE_FILE_INFORMATION;
     FileName:TPasRISCVUTF8String;
@@ -16178,19 +16178,16 @@ begin
     break;
    end;
 
-   // Determine Type
-   EntryType:=0;
+   // Determine QID type (P9_QT* for qid.type) and DType (Linux DT_* for d_type) separately
+   QIDType:=P9_QTFILE;
+   DType:=8; // DT_REG
 
    if (FindData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY)<>0 then begin
-    EntryType:=EntryType or P9_QTDIR;
-   end;
-
-   if (FindData.dwFileAttributes and FILE_ATTRIBUTE_REPARSE_POINT)<>0 then begin
-    EntryType:=EntryType or P9_QTSYMLINK;
-   end;
-
-   if (FindData.dwFileAttributes and FILE_ATTRIBUTE_TEMPORARY)<>0 then begin
-    EntryType:=EntryType or P9_QTTMP;
+    QIDType:=P9_QTDIR;
+    DType:=4; // DT_DIR
+   end else if (FindData.dwFileAttributes and FILE_ATTRIBUTE_REPARSE_POINT)<>0 then begin
+    QIDType:=P9_QTSYMLINK;
+    DType:=10; // DT_LNK
    end;
 
    FileName:=ComposePath(aFile.fPath,RawByteString(FindData.cFileName));
@@ -16220,11 +16217,11 @@ begin
 
    end;
 
-   PPasRISCVUInt8Array(aBuffer)^[BytesWritten]:=EntryType; inc(BytesWritten);
+   PPasRISCVUInt8Array(aBuffer)^[BytesWritten]:=QIDType; inc(BytesWritten);
    PPasRISCVUInt32(@PPasRISCVUInt8Array(aBuffer)^[BytesWritten])^:=0; inc(BytesWritten,SizeOf(TPasRISCVUInt32));
    PPasRISCVUInt64(@PPasRISCVUInt8Array(aBuffer)^[BytesWritten])^:=PathU64; inc(BytesWritten,SizeOf(TPasRISCVUInt64));
    PPasRISCVUInt64(@PPasRISCVUInt8Array(aBuffer)^[BytesWritten])^:=EntryOffset; inc(BytesWritten,SizeOf(TPasRISCVUInt64));
-   PPasRISCVUInt8Array(aBuffer)^[BytesWritten]:=EntryType; inc(BytesWritten);
+   PPasRISCVUInt8Array(aBuffer)^[BytesWritten]:=DType; inc(BytesWritten);
    PPasRISCVUInt16(@PPasRISCVUInt8Array(aBuffer)^[BytesWritten])^:=NameLen; inc(BytesWritten,SizeOf(TPasRISCVUInt16));
    FileName:=UTF8String(FindData.cFileName);
    Move(FileName[1],PPasRISCVUInt8Array(aBuffer)^[BytesWritten],NameLen); inc(BytesWritten,NameLen);
