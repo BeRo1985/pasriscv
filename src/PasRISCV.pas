@@ -281,6 +281,7 @@ unit PasRISCV;
 {$define Zicfiss} // Zicfiss: Shadow Stack (Backward-Edge CFI) - comment out to disable for performance
 
 {-$define PasRISCVDebugVirtIO9P}
+{$define PasRISCVDebugVirtIOFS}
 
 {$if defined(fpc) and (defined(cpux86_64) or defined(cpuamd64))}
  {$optimization level3}
@@ -17678,12 +17679,21 @@ var FullPath:TPasRISCVRawByteString;
     SB:BaseUnix.Stat;
 begin
  FullPath:=fRootPath+aPath;
+{$ifdef PasRISCVDebugVirtIOFS}
+ writeln('FUSEFileSystemPOSIX.Stat: rootPath="',fRootPath,'" path="',aPath,'" fullPath="',FullPath,'"');
+{$endif}
  if fpLStat(FullPath,SB)=0 then begin
   StatBufToFileStat(@SB,aStat);
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('FUSEFileSystemPOSIX.Stat: OK mode=$',IntToHex(aStat.Mode,8),' size=',aStat.Size,' nlink=',aStat.NLink);
+{$endif}
   result:=FUSE_OK;
  end else begin
   FillChar(aStat,SizeOf(aStat),0);
   result:=POSIXErrorToFUSEError(fpGetErrno);
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('FUSEFileSystemPOSIX.Stat: FAILED path="',FullPath,'" errno=',fpGetErrno,' fuseErr=',result);
+{$endif}
  end;
 end;
 
@@ -17805,13 +17815,22 @@ var FullPath:TPasRISCVRawByteString;
     Dir:PDIR;
 begin
  FullPath:=fRootPath+aPath;
+{$ifdef PasRISCVDebugVirtIOFS}
+ writeln('FUSEFileSystemPOSIX.OpenDir: rootPath="',fRootPath,'" path="',aPath,'" fullPath="',FullPath,'"');
+{$endif}
  Dir:=fpOpenDir(PAnsiChar(FullPath));
  if assigned(Dir) then begin
   aHandle:=TFileHandle({%H-}PtrUInt(Dir));
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('FUSEFileSystemPOSIX.OpenDir: OK handle=',aHandle);
+{$endif}
   result:=FUSE_OK;
  end else begin
   aHandle:=0;
   result:=POSIXErrorToFUSEError(fpGetErrno);
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('FUSEFileSystemPOSIX.OpenDir: FAILED errno=',fpGetErrno,' fuseErr=',result);
+{$endif}
  end;
 end;
 
@@ -17824,6 +17843,9 @@ begin
  aCount:=0;
  aEntries:=nil;
  EntryCapacity:=0;
+{$ifdef PasRISCVDebugVirtIOFS}
+ writeln('FUSEFileSystemPOSIX.ReadDir: handle=',aHandle,' offset=',aOffset,' dir=',{%H-}PtrUInt(Dir));
+{$endif}
  if aOffset=0 then begin
   RewindDir(Dir);
  end;
@@ -17831,6 +17853,9 @@ begin
  repeat
   DE:=fpReadDir(Dir^);
   if not assigned(DE) then begin
+{$ifdef PasRISCVDebugVirtIOFS}
+   writeln('FUSEFileSystemPOSIX.ReadDir: fpReadDir returned nil after ',Index,' entries, errno=',fpGetErrno);
+{$endif}
    break;
   end;
   if Index>=EntryCapacity then begin
@@ -17875,6 +17900,9 @@ begin
  until false;
  aCount:=Index;
  SetLength(aEntries,aCount);
+{$ifdef PasRISCVDebugVirtIOFS}
+ writeln('FUSEFileSystemPOSIX.ReadDir: done, total entries=',aCount);
+{$endif}
  result:=FUSE_OK;
 end;
 
@@ -31412,6 +31440,9 @@ procedure TPasRISCV.TVirtIOFSDevice.SendReply(const aQueueIndex,aDescriptorIndex
 var OutHeader:TFUSEOutHeader;
     TotalSize:TPasRISCVUInt32;
 begin
+{$ifdef PasRISCVDebugVirtIOFS}
+ writeln('VirtIOFS: SendReply unique=',aUnique,' payloadSize=',aPayloadSize);
+{$endif}
  TotalSize:=FUSE_OUT_HEADER_SIZE+aPayloadSize;
  OutHeader.Len:=TotalSize;
  OutHeader.Error:=0;
@@ -31430,6 +31461,9 @@ end;
 procedure TPasRISCV.TVirtIOFSDevice.SendError(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aUnique:TPasRISCVUInt64;const aError:TPasRISCVInt32);
 var OutHeader:TFUSEOutHeader;
 begin
+{$ifdef PasRISCVDebugVirtIOFS}
+ writeln('VirtIOFS: SendError unique=',aUnique,' error=',aError);
+{$endif}
  OutHeader.Len:=FUSE_OUT_HEADER_SIZE;
  if aError>0 then begin
   OutHeader.Error:=-aError;
@@ -31469,6 +31503,9 @@ begin
   InitOut.TimeGran:=1;
   InitOut.MaxPages:=(65536+4095) div 4096;
   fInitDone:=true;
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('VirtIOFS: INIT done, major=',InitOut.Major,' minor=',InitOut.Minor,' flags=$',IntToHex(InitOut.Flags,8),' maxWrite=',InitOut.MaxWrite,' maxPages=',InitOut.MaxPages,' fs=',assigned(fFileSystem));
+{$endif}
   SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@InitOut,SizeOf(TFUSEInitOut));
  end else begin
   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
@@ -31501,6 +31538,9 @@ begin
   if NameLen>0 then begin
    Move(NameBuf[0],Name[1],NameLen);
   end;
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('VirtIOFS: LOOKUP parentNodeID=',aHeader^.NodeID,' name="',Name,'"');
+{$endif}
 
   ChildFound:=false;
   fLock.Acquire;
@@ -31516,6 +31556,9 @@ begin
   end;
 
   if ChildFound and assigned(fFileSystem) then begin
+{$ifdef PasRISCVDebugVirtIOFS}
+   writeln('VirtIOFS: LOOKUP stat path="',ChildPath,'" nodeID=',ChildNodeID);
+{$endif}
    Err:=fFileSystem.Stat(ChildPath,FileStat);
    if Err=0 then begin
     fLock.Acquire;
@@ -31533,8 +31576,14 @@ begin
     EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
     EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
     FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+{$ifdef PasRISCVDebugVirtIOFS}
+    writeln('VirtIOFS: LOOKUP OK nodeID=',ChildNodeID,' mode=$',IntToHex(FileStat.Mode,8),' size=',FileStat.Size);
+{$endif}
     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
    end else begin
+{$ifdef PasRISCVDebugVirtIOFS}
+    writeln('VirtIOFS: LOOKUP stat failed path="',ChildPath,'" err=',Err);
+{$endif}
     // stat failed, remove node and report error
     fLock.Acquire;
     try
@@ -31572,16 +31621,28 @@ begin
   fLock.Release;
  end;
  if NodeFound and assigned(fFileSystem) then begin
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('VirtIOFS: GETATTR nodeID=',aHeader^.NodeID,' path="',NodePath,'"');
+{$endif}
   Err:=fFileSystem.Stat(NodePath,FileStat);
   if Err=0 then begin
+{$ifdef PasRISCVDebugVirtIOFS}
+   writeln('VirtIOFS: GETATTR OK mode=$',IntToHex(FileStat.Mode,8),' size=',FileStat.Size);
+{$endif}
    FillChar(AttrOut,SizeOf(AttrOut),0);
    AttrOut.AttrValid:=FUSE_ATTR_TIMEOUT;
    FillAttr(AttrOut.Attr,FileStat,aHeader^.NodeID);
    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@AttrOut,SizeOf(TFUSEAttrOut));
   end else begin
+{$ifdef PasRISCVDebugVirtIOFS}
+   writeln('VirtIOFS: GETATTR failed nodeID=',aHeader^.NodeID,' err=',Err);
+{$endif}
    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
   end;
  end else begin
+{$ifdef PasRISCVDebugVirtIOFS}
+  writeln('VirtIOFS: GETATTR node not found nodeID=',aHeader^.NodeID,' fs=',assigned(fFileSystem));
+{$endif}
   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
  end;
 end;
@@ -31658,6 +31719,13 @@ begin
    fLock.Release;
   end;
   if NodeFound and assigned(fFileSystem) then begin
+{$ifdef PasRISCVDebugVirtIOFS}
+   if aIsDir then begin
+    writeln('VirtIOFS: OPENDIR nodeID=',aHeader^.NodeID,' path="',NodePath,'"');
+   end else begin
+    writeln('VirtIOFS: OPEN nodeID=',aHeader^.NodeID,' path="',NodePath,'"');
+   end;
+{$endif}
    if aIsDir then begin
     Err:=fFileSystem.OpenDir(NodePath,FH);
    end else begin
@@ -31678,8 +31746,22 @@ begin
     FillChar(OpenOut,SizeOf(OpenOut),0);
     OpenOut.FH:=FHID;
     OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
+{$ifdef PasRISCVDebugVirtIOFS}
+    if aIsDir then begin
+     writeln('VirtIOFS: OPENDIR OK fhID=',FHID,' fh=',FH);
+    end else begin
+     writeln('VirtIOFS: OPEN OK fhID=',FHID,' fh=',FH);
+    end;
+{$endif}
     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@OpenOut,SizeOf(TFUSEOpenOut));
    end else begin
+{$ifdef PasRISCVDebugVirtIOFS}
+    if aIsDir then begin
+     writeln('VirtIOFS: OPENDIR failed path="',NodePath,'" err=',Err);
+    end else begin
+     writeln('VirtIOFS: OPEN failed path="',NodePath,'" err=',Err);
+    end;
+{$endif}
     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
    end;
   end else begin
@@ -31846,7 +31928,21 @@ begin
   end;
   if FHFound and assigned(fFileSystem) then begin
    DirEntries:=nil;
+{$ifdef PasRISCVDebugVirtIOFS}
+   if aPlus then begin
+    writeln('VirtIOFS: READDIRPLUS fh=',ReadIn.FH,' localFH=',LocalFH,' offset=',ReadIn.Offset,' size=',ReadIn.Size);
+   end else begin
+    writeln('VirtIOFS: READDIR fh=',ReadIn.FH,' localFH=',LocalFH,' offset=',ReadIn.Offset,' size=',ReadIn.Size);
+   end;
+{$endif}
    Err:=fFileSystem.ReadDir(LocalFH,ReadIn.Offset,DirEntries,DirEntryCount);
+{$ifdef PasRISCVDebugVirtIOFS}
+   if aPlus then begin
+    writeln('VirtIOFS: READDIRPLUS result: err=',Err,' count=',DirEntryCount);
+   end else begin
+    writeln('VirtIOFS: READDIR result: err=',Err,' count=',DirEntryCount);
+   end;
+{$endif}
    if Err=0 then begin
     BufSize:=ReadIn.Size;
     GetMem(Buf,BufSize);
@@ -31925,14 +32021,35 @@ begin
        inc(BufOfs,EntryLen);
       end;
      end;
+{$ifdef PasRISCVDebugVirtIOFS}
+     if aPlus then begin
+      writeln('VirtIOFS: READDIRPLUS sending ',BufOfs,' bytes for ',DirEntryCount,' entries');
+     end else begin
+      writeln('VirtIOFS: READDIR sending ',BufOfs,' bytes for ',DirEntryCount,' entries');
+     end;
+{$endif}
      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Buf,BufOfs);
     finally
      FreeMem(Buf);
     end;
    end else begin
+{$ifdef PasRISCVDebugVirtIOFS}
+    if aPlus then begin
+     writeln('VirtIOFS: READDIRPLUS ReadDir failed err=',Err);
+    end else begin
+     writeln('VirtIOFS: READDIR ReadDir failed err=',Err);
+    end;
+{$endif}
     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
    end;
   end else begin
+{$ifdef PasRISCVDebugVirtIOFS}
+   if aPlus then begin
+    writeln('VirtIOFS: READDIRPLUS FH not found or no filesystem fh=',ReadIn.FH,' fhFound=',FHFound,' fs=',assigned(fFileSystem));
+   end else begin
+    writeln('VirtIOFS: READDIR FH not found or no filesystem fh=',ReadIn.FH,' fhFound=',FHFound,' fs=',assigned(fFileSystem));
+   end;
+{$endif}
    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
   end;
  end else begin
@@ -32764,6 +32881,9 @@ begin
   exit;
  end;
 
+{$ifdef PasRISCVDebugVirtIOFS}
+ writeln('VirtIOFS: DeviceRecv opcode=',Header.Opcode,' nodeID=',Header.NodeID,' unique=',Header.Unique,' len=',Header.Len);
+{$endif}
  case Header.Opcode of
   FUSE_INIT:begin
    HandleInit(aQueueIndex,aDescriptorIndex,@Header);
