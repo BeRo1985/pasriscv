@@ -15147,7 +15147,8 @@ end;
 
 function TPasRISCV9PFileSystemPOSIX.ReadDir(const aFile:TPasRISCV9PFileSystem.TFSFile;const aOffset:TPasRISCVUInt64;const aBuffer:Pointer;const aSize:TPasRISCVInt64):TPasRISCVInt64;
 var de:Pdirent;
-    len,pos,name_len,dflags:TPasRISCVSizeInt;
+    len,pos,name_len:TPasRISCVSizeInt;
+    qid_type,dtype:TPasRISCVUInt8;
     StatData:TStat;
     Path:TPasRISCVRawByteString;
     Offset:TOff;
@@ -15170,30 +15171,83 @@ begin
     Len:=13+8+1+2+name_len;
     if (pos+len)<=aSize then begin
      Offset:=TellDir(aFile.fDirectory);
-     dflags:=0;
+     qid_type:=P9_QTFILE;
+     dtype:=DT_REG;
      if de^.d_type=DT_UNKNOWN then begin
       Path:=ComposePath(aFile.fPath,de^.d_name);
       if fpLStat(PAnsiChar(Path),@StatData)=0 then begin
-       if (StatData.st_mode and S_IFDIR)<>0 then begin
-        dflags:=dflags or P9_QTDIR;
-       end;
-       if (StatData.st_mode and S_IFLNK)<>0 then begin
-        dflags:=dflags or P9_QTSYMLINK;
+       case StatData.st_mode and S_IFMT of
+        S_IFDIR:begin
+         qid_type:=P9_QTDIR;
+         dtype:=DT_DIR;
+        end;
+        S_IFLNK:begin
+         qid_type:=P9_QTSYMLINK;
+         dtype:=DT_LNK;
+        end;
+        S_IFREG:begin
+         qid_type:=P9_QTFILE;
+         dtype:=DT_REG;
+        end;
+        S_IFBLK:begin
+         qid_type:=P9_QTFILE;
+         dtype:=DT_BLK;
+        end;
+        S_IFCHR:begin
+         qid_type:=P9_QTFILE;
+         dtype:=DT_CHR;
+        end;
+        S_IFIFO:begin
+         qid_type:=P9_QTFILE;
+         dtype:=DT_FIFO;
+        end;
+        S_IFSOCK:begin
+         qid_type:=P9_QTFILE;
+         dtype:=DT_SOCK;
+        end;
        end;
       end;
      end else begin
-      if (de^.d_type and (S_IFDIR shr 12))<>0 then begin
-       dflags:=dflags or P9_QTDIR;
-      end;
-      if (de^.d_type and (S_IFLNK shr 12))<>0 then begin
-       dflags:=dflags or P9_QTSYMLINK;
+      case de^.d_type of
+       DT_DIR:begin
+        qid_type:=P9_QTDIR;
+        dtype:=DT_DIR;
+       end;
+       DT_LNK:begin
+        qid_type:=P9_QTSYMLINK;
+        dtype:=DT_LNK;
+       end;
+       DT_REG:begin
+        qid_type:=P9_QTFILE;
+        dtype:=DT_REG;
+       end;
+       DT_BLK:begin
+        qid_type:=P9_QTFILE;
+        dtype:=DT_BLK;
+       end;
+       DT_CHR:begin
+        qid_type:=P9_QTFILE;
+        dtype:=DT_CHR;
+       end;
+       DT_FIFO:begin
+        qid_type:=P9_QTFILE;
+        dtype:=DT_FIFO;
+       end;
+       DT_SOCK:begin
+        qid_type:=P9_QTFILE;
+        dtype:=DT_SOCK;
+       end;
+       else begin
+        qid_type:=P9_QTFILE;
+        dtype:=DT_UNKNOWN;
+       end;
       end;
      end;
-     PPasRISCVUInt8Array(aBuffer)^[pos]:=dflags; inc(pos);
+     PPasRISCVUInt8Array(aBuffer)^[pos]:=qid_type; inc(pos);
      PPasRISCVUInt32(@PPasRISCVUInt8Array(aBuffer)^[pos])^:=0; inc(pos,SizeOf(TPasRISCVUInt32));
      PPasRISCVUInt64(@PPasRISCVUInt8Array(aBuffer)^[pos])^:=de^.d_fileno; inc(pos,SizeOf(TPasRISCVUInt64));
      PPasRISCVUInt64(@PPasRISCVUInt8Array(aBuffer)^[pos])^:=Offset; inc(pos,SizeOf(TPasRISCVUInt64));
-     PPasRISCVUInt8Array(aBuffer)^[pos]:=dflags; inc(pos);
+     PPasRISCVUInt8Array(aBuffer)^[pos]:=dtype; inc(pos);
      PPasRISCVUInt16(@PPasRISCVUInt8Array(aBuffer)^[pos])^:=name_len; inc(pos,SizeOf(TPasRISCVUInt16));
      Move(de^.d_name,PPasRISCVUInt8Array(aBuffer)^[pos],name_len); inc(pos,name_len);
     end else begin
