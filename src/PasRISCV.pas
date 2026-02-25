@@ -295,6 +295,8 @@ unit PasRISCV;
 
 {$define NewPCI}
 
+{$define AIAIPrio} // AIA iprio: full interrupt priority byte lookup for *topi CSRs — comment out to use simplified default-priority model
+
 {$define GStageQEMUParity}
 
 {$define NVMELevelTriggeredPCIEInterrupts}
@@ -7015,6 +7017,88 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            // Indirect CSRs
                            CSRI_MIPRIO_0=$30;
                            CSRI_MIPRIO_15=$3f;
+{$ifdef AIAIPrio}
+                           // AIA iprio: number of priority entries per iselect register on RV64 (8 bytes per 64-bit register)
+                           IPRIO_BYTES_PER_REG=8;
+                           // AIA iprio: maximum interrupt number covered by iprio (64 standard interrupts)
+                           IPRIO_MAX_IRQ=64;
+                           // AIA iselect-to-IRQ mapping for RV64: iselect 0x30+k, byte j -> IRQ number
+                           // Entry [k*8+j] gives the IRQ number for iselect=(0x30+k), byte position j
+                           // Invalid/reserved entries are 0 (IRQ 0 is never a valid interrupt)
+                           // k=0: IRQs {1, 5, 13, 21, 29, 37, 45, 53}
+                           // k=1: IRQs {3, 7, 15, 23, 31, 39, 47, 55}
+                           // k=2: IRQs {2, 6, 14, 22, 30, 38, 46, 54}
+                           // k=3: IRQs {4, 8, 16, 24, 32, 40, 48, 56}
+                           // k=4..15: IRQs {9,10,11,12,17..20,25..28,33..36,41..44,49..52,57..60 interleaved}
+                           IPRIO_ISELECT_MAP:array[0..127] of TPasRISCVUInt8=
+                            (
+                             // k=0 (iselect $30): odd-low group A
+                              1, 5,13,21,29,37,45,53,
+                             // k=1 (iselect $31): odd-low group B
+                              3, 7,15,23,31,39,47,55,
+                             // k=2 (iselect $32): even-low group A
+                              2, 6,14,22,30,38,46,54,
+                             // k=3 (iselect $33): even-low group B
+                              4, 8,16,24,32,40,48,56,
+                             // k=4 (iselect $34): odd-high group A
+                              9, 0, 0, 0, 0, 0, 0, 0,
+                             // k=5 (iselect $35): odd-high group B
+                             11, 0, 0, 0, 0, 0, 0, 0,
+                             // k=6 (iselect $36): even-high group A
+                             10, 0, 0, 0, 0, 0, 0, 0,
+                             // k=7 (iselect $37): even-high group B
+                             12, 0, 0, 0, 0, 0, 0, 0,
+                             // k=8..15 (iselect $38-$3f): reserved, all zero
+                              0, 0, 0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0, 0, 0,
+                              0, 0, 0, 0, 0, 0, 0, 0
+                            );
+                           // AIA default priority numbers per interrupt (Table 3.2 of AIA spec)
+                           // Lower number = higher priority. 0 means "use iprio value or default if iprio=0"
+                           // These are only used when iprio[i]=0 (the default)
+                           // For MTOPI: M-level interrupts have specific defaults
+                           // For STOPI: S-level interrupts have the same defaults applied to S-level causes
+                           IPRIO_DEFAULTS:array[0..15] of TPasRISCVUInt8=
+                            (
+                             // IRQ 0: reserved (no interrupt)
+                             0,
+                             // IRQ 1 (SSI): default priority 13
+                             13,
+                             // IRQ 2 (reserved/VS-SSI): default priority 14
+                             14,
+                             // IRQ 3 (MSI): default priority 12
+                             12,
+                             // IRQ 4 (reserved/VS-timer): default priority 10
+                             10,
+                             // IRQ 5 (STI): default priority 9
+                             9,
+                             // IRQ 6 (reserved/VS-external): default priority 6
+                             6,
+                             // IRQ 7 (MTI): default priority 8
+                             8,
+                             // IRQ 8 (reserved): default priority 11
+                             11,
+                             // IRQ 9 (SEI): default priority 5
+                             5,
+                             // IRQ 10 (reserved): default priority 7
+                             7,
+                             // IRQ 11 (MEI): default priority 4
+                             4,
+                             // IRQ 12 (SGEI): default priority 3
+                             3,
+                             // IRQ 13 (LCOFI): default priority 2
+                             2,
+                             // IRQ 14 (reserved): default priority 15
+                             15,
+                             // IRQ 15 (reserved): default priority 16
+                             16
+                            );
+{$endif}
                            CSRI_EIDELIVERY=$70;
                            CSRI_EITHRESHOLD=$72;
                            CSRI_EIP0=$80;
@@ -7604,6 +7688,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPHandle:TPasRISCVUInt32;
               fBus:TBus;
               fAIARegFiles:TAIARegFiles;
+{$ifdef AIAIPrio}
+              fMIPrio:array[0..TCSR.IPRIO_MAX_IRQ-1] of TPasRISCVUInt8; // M-level iprio bytes (per-interrupt priority, 0=use default)
+              fSIPrio:array[0..TCSR.IPRIO_MAX_IRQ-1] of TPasRISCVUInt8; // S-level iprio bytes (per-interrupt priority, 0=use default)
+{$endif}
               fACLINTDevice:TACLINTDevice;
               fMTIMECMP:TPasRISCVUInt64;
               fSTIMECMP:TPasRISCVUInt64;
@@ -7771,6 +7859,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
               function GetVGEIN:TPasRISCVUInt32; inline;
               function IsVGEINValid:Boolean; inline;
+{$ifdef AIAIPrio}
+              function GetEffectiveIPrio(const aIRQ:TPasRISCVUInt32;const aMLevel:Boolean):TPasRISCVUInt8;
+              function ReadIPrioCSR(const aISelectOffset:TPasRISCVUInt32;const aMLevel:Boolean):TPasRISCVUInt64;
+              procedure WriteIPrioCSR(const aISelectOffset:TPasRISCVUInt32;const aValue:TPasRISCVUInt64;const aMLevel:Boolean);
+{$endif}
               function UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
               function UpdateAIAState(const aAIARegFileMode:TPasRISCV.TAIARegFileMode):TPasRISCVUInt32;
               function GetAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aClaim:Boolean):TPasRISCVUInt32;
@@ -41913,6 +42006,10 @@ begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
    fAIARegFiles[AIARegFileMode]:=TAIARegFile.Create(self.fMachine,self);
   end;
+{$ifdef AIAIPrio}
+  FillChar(fMIPrio,SizeOf(fMIPrio),#0); // all zero = use default priorities
+  FillChar(fSIPrio,SizeOf(fSIPrio),#0);
+{$endif}
  end else begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
    fAIARegFiles[AIARegFileMode]:=nil;
@@ -42281,6 +42378,10 @@ begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
    fAIARegFiles[AIARegFileMode].Reset;
   end;
+{$ifdef AIAIPrio}
+  FillChar(fMIPrio,SizeOf(fMIPrio),#0);
+  FillChar(fSIPrio,SizeOf(fSIPrio),#0);
+{$endif}
  end;
 
  FillChar(fState,SizeOf(TState),#0);
@@ -45222,6 +45323,11 @@ end;
 procedure TPasRISCV.THART.CSRHandlerMTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     PendingValue,CSRValue,IRQ:TPasRISCVUInt64;
+{$ifdef AIAIPrio}
+    Bit,BestIRQ:TPasRISCVUInt32;
+    BestPrio,CurPrio:TPasRISCVUInt8;
+    Tmp:TPasRISCVUInt64;
+{$endif}
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -45229,11 +45335,31 @@ begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   PendingValue:=InterruptsPending and TCSR.CSR_MEIP_MASK;
   if PendingValue<>0 then begin
+{$ifdef AIAIPrio}
+   // AIA iprio: scan all pending bits, find highest-priority (lowest prio number) interrupt
+   // On tie: lowest IRQ number wins (per spec: "the smallest-numbered interrupt")
+   BestIRQ:=0;
+   BestPrio:=255;
+   Tmp:=PendingValue;
+   while Tmp<>0 do begin
+    Bit:=CTZDWord(Tmp); // lowest set bit = lowest IRQ number first
+    CurPrio:=GetEffectiveIPrio(Bit,true);
+    if (CurPrio<BestPrio) or ((CurPrio=BestPrio) and (Bit<BestIRQ)) then begin
+     BestPrio:=CurPrio;
+     BestIRQ:=Bit;
+    end;
+    Tmp:=Tmp and (Tmp-1); // clear lowest set bit
+   end;
+   IRQ:=BestIRQ;
+   CSRValue:=TPasRISCVUInt64(BestPrio) or (IRQ shl 16);
+{$else}
    IRQ:=CLZDWord(PendingValue) xor 31;
+   CSRValue:=(ord(IRQ<>0) and 1) or (IRQ shl 16);
+{$endif}
   end else begin
    IRQ:=0;
+   CSRValue:=0;
   end;
-  CSRValue:=(ord(IRQ<>0) and 1) or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
@@ -45243,6 +45369,11 @@ end;
 procedure TPasRISCV.THART.CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     PendingValue,CSRValue,IRQ:TPasRISCVUInt64;
+{$ifdef AIAIPrio}
+    Bit,BestIRQ:TPasRISCVUInt32;
+    BestPrio,CurPrio:TPasRISCVUInt8;
+    Tmp:TPasRISCVUInt64;
+{$endif}
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -45259,11 +45390,30 @@ begin
   end else begin
    PendingValue:=InterruptsPending and TCSR.CSR_SEIP_MASK;
    if PendingValue<>0 then begin
+{$ifdef AIAIPrio}
+    // AIA iprio: scan all pending bits, find highest-priority (lowest prio number) interrupt
+    BestIRQ:=0;
+    BestPrio:=255;
+    Tmp:=PendingValue;
+    while Tmp<>0 do begin
+     Bit:=CTZDWord(Tmp);
+     CurPrio:=GetEffectiveIPrio(Bit,false);
+     if (CurPrio<BestPrio) or ((CurPrio=BestPrio) and (Bit<BestIRQ)) then begin
+      BestPrio:=CurPrio;
+      BestIRQ:=Bit;
+     end;
+     Tmp:=Tmp and (Tmp-1);
+    end;
+    IRQ:=BestIRQ;
+    CSRValue:=TPasRISCVUInt64(BestPrio) or (IRQ shl 16);
+{$else}
     IRQ:=CLZDWord(PendingValue) xor 31;
+    CSRValue:=(ord(IRQ<>0) and 1) or (IRQ shl 16);
+{$endif}
    end else begin
     IRQ:=0;
+    CSRValue:=0;
    end;
-   CSRValue:=(ord(IRQ<>0) and 1) or (IRQ shl 16);
   end;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -45501,7 +45651,27 @@ begin
     end;
     TCSR.CSRI_MIPRIO_0..TCSR.CSRI_MIPRIO_15:begin
      if fMachine.fAIA then begin
+{$ifdef AIAIPrio}
+      Reg:=ISelect-TCSR.CSRI_MIPRIO_0;
+      CSRValue:=ReadIPrioCSR(Reg,Mode=THART.TMode.Machine);
+      case aOperation of
+       TCSROperation.Swap:begin
+        WriteIPrioCSR(Reg,aRHS,Mode=THART.TMode.Machine);
+       end;
+       TCSROperation.SetBits:begin
+        if aRHS<>0 then begin
+         WriteIPrioCSR(Reg,CSRValue or aRHS,Mode=THART.TMode.Machine);
+        end;
+       end;
+       TCSROperation.ClearBits:begin
+        if aRHS<>0 then begin
+         WriteIPrioCSR(Reg,CSRValue and (not aRHS),Mode=THART.TMode.Machine);
+        end;
+       end;
+      end;
+{$else}
       CSRValue:=0;
+{$endif}
       {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
        fState.Registers[rd]:=CSRValue;
       end;
@@ -67231,6 +67401,79 @@ begin
  VGEIN:=GetVGEIN;
  result:=(VGEIN>=1) and (VGEIN<=TCSR.TMask.GEILEN);
 end;
+
+{$ifdef AIAIPrio}
+function TPasRISCV.THART.GetEffectiveIPrio(const aIRQ:TPasRISCVUInt32;const aMLevel:Boolean):TPasRISCVUInt8;
+var Prio:TPasRISCVUInt8;
+begin
+ // Returns the effective priority number for interrupt aIRQ
+ // Lower number = higher priority; 1 is highest, 255 is lowest
+ if aIRQ<TCSR.IPRIO_MAX_IRQ then begin
+  if aMLevel then begin
+   Prio:=fMIPrio[aIRQ];
+  end else begin
+   Prio:=fSIPrio[aIRQ];
+  end;
+  if Prio=0 then begin
+   // iprio[i]=0 means use default priority from the AIA spec table
+   if aIRQ<Length(TCSR.IPRIO_DEFAULTS) then begin
+    result:=TCSR.IPRIO_DEFAULTS[aIRQ];
+   end else begin
+    // For interrupts >= 16 with no specific default, use a value based on IRQ number
+    // Higher IRQ numbers get lower priority (higher number)
+    result:=TPasRISCVUInt8(aIRQ);
+   end;
+  end else begin
+   result:=Prio;
+  end;
+ end else begin
+  result:=255; // Out of range: lowest priority
+ end;
+end;
+
+function TPasRISCV.THART.ReadIPrioCSR(const aISelectOffset:TPasRISCVUInt32;const aMLevel:Boolean):TPasRISCVUInt64;
+var ByteIdx,IRQ:TPasRISCVUInt32;
+    MapBase:TPasRISCVUInt32;
+begin
+ // Read iprio CSR at iselect offset k (0..15) — returns packed 8-byte value for RV64
+ result:=0;
+ if aISelectOffset<16 then begin
+  MapBase:=aISelectOffset*TCSR.IPRIO_BYTES_PER_REG;
+  for ByteIdx:=0 to TCSR.IPRIO_BYTES_PER_REG-1 do begin
+   IRQ:=TCSR.IPRIO_ISELECT_MAP[MapBase+ByteIdx];
+   if (IRQ>0) and (IRQ<TCSR.IPRIO_MAX_IRQ) then begin
+    if aMLevel then begin
+     result:=result or (TPasRISCVUInt64(fMIPrio[IRQ]) shl (ByteIdx*8));
+    end else begin
+     result:=result or (TPasRISCVUInt64(fSIPrio[IRQ]) shl (ByteIdx*8));
+    end;
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.WriteIPrioCSR(const aISelectOffset:TPasRISCVUInt32;const aValue:TPasRISCVUInt64;const aMLevel:Boolean);
+var ByteIdx,IRQ:TPasRISCVUInt32;
+    MapBase:TPasRISCVUInt32;
+    PrioByte:TPasRISCVUInt8;
+begin
+ // Write iprio CSR at iselect offset k (0..15) — unpacks 8-byte value for RV64
+ if aISelectOffset<16 then begin
+  MapBase:=aISelectOffset*TCSR.IPRIO_BYTES_PER_REG;
+  for ByteIdx:=0 to TCSR.IPRIO_BYTES_PER_REG-1 do begin
+   IRQ:=TCSR.IPRIO_ISELECT_MAP[MapBase+ByteIdx];
+   if (IRQ>0) and (IRQ<TCSR.IPRIO_MAX_IRQ) then begin
+    PrioByte:=TPasRISCVUInt8((aValue shr (ByteIdx*8)) and $ff);
+    if aMLevel then begin
+     fMIPrio[IRQ]:=PrioByte;
+    end else begin
+     fSIPrio[IRQ]:=PrioByte;
+    end;
+   end;
+  end;
+ end;
+end;
+{$endif}
 
 procedure TPasRISCV.THART.SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
 var AIARegFile:TPasRISCV.THART.TAIARegFile;
