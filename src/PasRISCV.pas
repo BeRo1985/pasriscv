@@ -56586,13 +56586,13 @@ begin
       result:=4;
       exit;
      end;
-     // Overlap constraint: vs2 must not be within vd register group for .vs forms
+     // Overlap constraint: vd and vs2 register groups must not overlap for .vs forms
      begin
       OperandValue:=LMUL8 shr 3;
       if OperandValue<1 then begin
        OperandValue:=1;
       end;
-      if (vs2>=vd) and (vs2<(vd+OperandValue)) then begin
+      if (vd<(vs2+1)) and (vs2<(vd+OperandValue)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -56746,11 +56746,17 @@ begin
       result:=4;
       exit;
      end;
-     // Overlap constraint: vs2 must not equal vd
-     if vd=vs2 then begin
-      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-      result:=4;
-      exit;
+     // Overlap constraint: vd and vs2 register groups must not overlap
+     begin
+      OperandValue:=LMUL8 shr 3;
+      if OperandValue<1 then begin
+       OperandValue:=1;
+      end;
+      if (vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue)) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
      end;
      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 3 to (EVL shr 3)-1 do begin
       SubIndex:=Index*8;
