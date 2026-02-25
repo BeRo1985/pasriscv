@@ -56347,6 +56347,19 @@ begin
       result:=4;
       exit;
      end;
+     // Overlap constraint: vd register group must not overlap vs1 or vs2 register groups
+     begin
+      OperandValue:=LMUL8 shr 3;
+      if OperandValue<1 then begin
+       OperandValue:=1;
+      end;
+      if ((vd<(vs1+OperandValue)) and (vs1<(vd+OperandValue))) or
+         ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 3 to (EVL shr 3)-1 do begin
       SubIndex:=Index*8;
       VecCryptoSM3ME(
@@ -56573,11 +56586,17 @@ begin
       result:=4;
       exit;
      end;
-     // Overlap constraint: vd must not equal vs2 for .vs forms
-     if vd=vs2 then begin
-      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-      result:=4;
-      exit;
+     // Overlap constraint: vs2 must not be within vd register group for .vs forms
+     begin
+      OperandValue:=LMUL8 shr 3;
+      if OperandValue<1 then begin
+       OperandValue:=1;
+      end;
+      if (vs2>=vd) and (vs2<(vd+OperandValue)) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
      end;
      if vs1 in [0,1,2,3] then begin
       // vaesdm.vs (0), vaesdf.vs (1), vaesem.vs (2), vaesef.vs (3)
@@ -56823,6 +56842,19 @@ begin
       result:=4;
       exit;
      end;
+     // Overlap constraint: vd register group must not overlap vs1 or vs2 register groups
+     begin
+      OperandValue:=LMUL8 shr 3;
+      if OperandValue<1 then begin
+       OperandValue:=1;
+      end;
+      if ((vd<(vs1+OperandValue)) and (vs1<(vd+OperandValue))) or
+         ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case SEW of
       32:begin
        // SHA-256 message schedule, EGW=128
@@ -56914,6 +56946,19 @@ begin
       result:=4;
       exit;
      end;
+     // Overlap constraint: vd register group must not overlap vs1 or vs2 register groups
+     begin
+      OperandValue:=LMUL8 shr 3;
+      if OperandValue<1 then begin
+       OperandValue:=1;
+      end;
+      if ((vd<(vs1+OperandValue)) and (vs1<(vd+OperandValue))) or
+         ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+     end;
      case SEW of
       32:begin
        // LMUL*VLEN >= EGW=128 constraint
@@ -56999,6 +57044,19 @@ begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
+     end;
+     // Overlap constraint: vd register group must not overlap vs1 or vs2 register groups
+     begin
+      OperandValue:=LMUL8 shr 3;
+      if OperandValue<1 then begin
+       OperandValue:=1;
+      end;
+      if ((vd<(vs1+OperandValue)) and (vs1<(vd+OperandValue))) or
+         ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
      end;
      case SEW of
       32:begin
@@ -62462,6 +62520,14 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           if ((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).Value and $7c00)=$7c00) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).Value and $0200)=0) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).Value and $01ff)<>0) then begin
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end;
+           if ((ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).Value and $7c00)=$7c00) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).Value and $0200)=0) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).Value and $01ff)<>0) then begin
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end;
+          end;
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=ord(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<=ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat) and 1;
           end;
@@ -62474,6 +62540,14 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
+          if ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).IsNaN or ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).IsNaN then begin
+           if ((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).Value and $7c00)=$7c00) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).Value and $0200)=0) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).Value and $01ff)<>0) then begin
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end;
+           if ((ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).Value and $7c00)=$7c00) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).Value and $0200)=0) and ((ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).Value and $01ff)<>0) then begin
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end;
+          end;
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=ord(ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat<ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat) and 1;
           end;
