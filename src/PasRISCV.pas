@@ -43522,7 +43522,7 @@ begin
  if (LMUL8<=0) or (SEW=0) then begin
   result:=0;
  end else begin
-  result:=(VLEN div SEW)*TPasRISCVUInt32(LMUL8) div 8;
+  result:=(VLEN div SEW)*TPasRISCVUInt32(LMUL8) shr 3;
  end;
 end;
 
