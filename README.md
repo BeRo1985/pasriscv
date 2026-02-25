@@ -119,6 +119,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - GPU (2D only, no 3D/virgl support yet)
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
     - RTC (if RTCMode=VirtIO) — real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
+    - Crypto — virtual cryptographic accelerator with CIPHER, HASH, MAC and AEAD services (VirtIO 1.2 Device ID 20)
   - Display mode support with three selectable backends:
     - SimpleFB — custom MMIO framebuffer (default, for baremetal and simple guests)
     - VirtIO GPU — standard VirtIO 2D GPU with EDID support (for Linux with virtio-gpu driver)

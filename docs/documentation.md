@@ -76,6 +76,7 @@ are required. The VirtIO devices are used to provide a standard interface for de
 | VIRTIO VSOCK          | $10059000 | $1000     | $19                       | VirtIO socket device                          |
 | VIRTIO RTC            | $1005a000 | $1000     | $1a                       | VirtIO RTC device (if RTCMode=VirtIO)         |
 | VIRTIO FS             | $1005b000 | $1000     | $1b                       | VirtIO filesystem device                      |
+| VIRTIO CRYPTO         | $1005c000 | $1000     | $1c                       | VirtIO crypto device                          |
 
 For each VirtIO device, the MMIO region size is $1000. For the VirtIO GPU device, the guest OS allocates its own frame buffer memory ranges, so $1000 as MMIO region size remains valid for the device registers in this case.
 
