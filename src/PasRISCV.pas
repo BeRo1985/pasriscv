@@ -10701,7 +10701,7 @@ begin
  end;
  if (aRnd and 1)=0 then begin
   // Even round: RotWord + SubWord + Rcon
-  r0:=VecAESSubByteFwd(ROLDWord(ck3,8)) xor AESRoundConstants[(aRnd shr 1)-1] xor pk0;
+  r0:=VecAESSubByteFwd(RORDWord(ck3,8)) xor AESRoundConstants[(aRnd shr 1)-1] xor pk0;
  end else begin
   // Odd round: SubWord only (no RotWord, no Rcon)
   r0:=VecAESSubByteFwd(ck3) xor pk0;
