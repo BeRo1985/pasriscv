@@ -73712,7 +73712,7 @@ begin
 
     INTC0:=nil;
 
-    for AIARegFileMode:=TPasRISCV.TAIARegFileMode.Machine to TPasRISCV.TAIARegFileMode.Supervisor do begin
+    for AIARegFileMode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
 
      case AIARegFileMode of
       TPasRISCV.TAIARegFileMode.Machine:begin

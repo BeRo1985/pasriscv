@@ -102,7 +102,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
 - Emulated peripherals
   - ACLINT
   - PLIC when AIA is not enabled (default), otherwise APLIC and IMSIC if AIA is enabled
-  - AIA (Advanced Interrupt Architecture) support with APLIC and IMSIC devices, including VS-mode guest interrupt file support (disabled by default, because not fully tested yet, enable at your own risk)
+  - AIA (Advanced Interrupt Architecture) support with APLIC and IMSIC devices, including VS-mode guest interrupt file support and AIA iprio support (interrupt priority)
   - UART NS16550A
   - SysCon   
   - VirtIO MMIO with following devices support
