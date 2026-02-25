@@ -10189,26 +10189,26 @@ end;
 
 function AES64ES(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64es (Zkne)
 begin
- result:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs1,aRs2));
+ result:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs2,aRs1));
 end;
 
 function AES64ESM(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64esm (Zkne)
 var sb:TPasRISCVUInt64;
 begin
- sb:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs1,aRs2));
+ sb:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs2,aRs1));
  result:=TPasRISCVUInt64(AESMixColumnFwd(TPasRISCVUInt32(sb))) or
          (TPasRISCVUInt64(AESMixColumnFwd(TPasRISCVUInt32(sb shr 32))) shl 32);
 end;
 
 function AES64DS(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64ds (Zknd)
 begin
- result:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs1,aRs2));
+ result:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs2,aRs1));
 end;
 
 function AES64DSM(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64dsm (Zknd)
 var sb:TPasRISCVUInt64;
 begin
- sb:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs1,aRs2));
+ sb:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs2,aRs1));
  result:=TPasRISCVUInt64(AESMixColumnInv(TPasRISCVUInt32(sb))) or
          (TPasRISCVUInt64(AESMixColumnInv(TPasRISCVUInt32(sb shr 32))) shl 32);
 end;
@@ -41717,7 +41717,8 @@ begin
    // ChaCha20 instead of RC4. If a more robust and direct entropy source is needed, the guest
    // system should use virtio-rng. Note, however, that virtio-rng may block when its entropy
    // pool is exhausted, causing delays as the pool is rekeyed.
-   result:=(fHART.fPCG32.Get32 shr 16) and TPasRISCVUInt64($ffff); // limited to 16 physical entropy bits
+   // Return OPST=ES16 (bits[31:30]=0b10) with 16 bits of entropy in bits[15:0]
+   result:=TPasRISCVUInt64($80000000) or (TPasRISCVUInt64(fHART.fPCG32.Get32 shr 16) and TPasRISCVUInt64($ffff));
   end;
   TAddress.SSTATUS:begin
    result:=fData[TAddress.MSTATUS] and TMask.SSTATUS;
