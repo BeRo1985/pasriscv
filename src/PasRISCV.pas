@@ -10189,26 +10189,26 @@ end;
 
 function AES64ES(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64es (Zkne)
 begin
- result:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs2,aRs1));
+ result:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs1,aRs2));
 end;
 
 function AES64ESM(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64esm (Zkne)
 var sb:TPasRISCVUInt64;
 begin
- sb:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs2,aRs1));
+ sb:=AESApplyFwdSBoxToEachByte(AESShiftRowsFwd64(aRs1,aRs2));
  result:=TPasRISCVUInt64(AESMixColumnFwd(TPasRISCVUInt32(sb))) or
          (TPasRISCVUInt64(AESMixColumnFwd(TPasRISCVUInt32(sb shr 32))) shl 32);
 end;
 
 function AES64DS(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64ds (Zknd)
 begin
- result:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs2,aRs1));
+ result:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs1,aRs2));
 end;
 
 function AES64DSM(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // aes64dsm (Zknd)
 var sb:TPasRISCVUInt64;
 begin
- sb:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs2,aRs1));
+ sb:=AESApplyInvSBoxToEachByte(AESShiftRowsInv64(aRs1,aRs2));
  result:=TPasRISCVUInt64(AESMixColumnInv(TPasRISCVUInt32(sb))) or
          (TPasRISCVUInt64(AESMixColumnInv(TPasRISCVUInt32(sb shr 32))) shl 32);
 end;
