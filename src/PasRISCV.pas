@@ -10761,36 +10761,39 @@ end;
 
 // SM3 compression: 2 rounds per vsm3c.vi invocation
 // aH0..aH7 = state from vd (element order: aH0=elem0..aH7=elem7)
-// w0,w1 = message words from vs2
+// w0,w1,w4,w5 = message words from vs2 (elements 0,1,4,5)
 // rH0..rH7 = output state
+// Element mapping per QEMU/spec: A=elem0, B=elem1, ..., H=elem7
 procedure VecCryptoSM3Compress(const aH0,aH1,aH2,aH3,aH4,aH5,aH6,aH7:TPasRISCVUInt32;
-                               const w0,w1:TPasRISCVUInt32;
+                               const w0,w1,w4,w5:TPasRISCVUInt32;
                                const aRnd:TPasRISCVUInt32;
                                out rH0,rH1,rH2,rH3,rH4,rH5,rH6,rH7:TPasRISCVUInt64);
 var j:TPasRISCVUInt32;
     A_,B_,C_,D_,E_,F_,G_,H_:TPasRISCVUInt32;
-    SS1,SS2,TT1,TT2,W_:TPasRISCVUInt32;
+    SS1,SS2,TT1,TT2,W_,WP:TPasRISCVUInt32;
 begin
- // H[7]=A, H[6]=B, H[5]=C, H[4]=D, H[3]=E, H[2]=F, H[1]=G, H[0]=H (reversed element order)
- A_:=ByteSwap32(aH7); B_:=ByteSwap32(aH6); C_:=ByteSwap32(aH5); D_:=ByteSwap32(aH4);
- E_:=ByteSwap32(aH3); F_:=ByteSwap32(aH2); G_:=ByteSwap32(aH1); H_:=ByteSwap32(aH0);
+ // A=elem0, B=elem1, C=elem2, D=elem3, E=elem4, F=elem5, G=elem6, H=elem7
+ A_:=ByteSwap32(aH0); B_:=ByteSwap32(aH1); C_:=ByteSwap32(aH2); D_:=ByteSwap32(aH3);
+ E_:=ByteSwap32(aH4); F_:=ByteSwap32(aH5); G_:=ByteSwap32(aH6); H_:=ByteSwap32(aH7);
  // 2 rounds
  for j:=0 to 1 do begin
   if j=0 then begin
    W_:=ByteSwap32(w0);
+   WP:=ByteSwap32(w0) xor ByteSwap32(w4); // W'[j] = W[j] XOR W[j+4]
   end else begin
    W_:=ByteSwap32(w1);
+   WP:=ByteSwap32(w1) xor ByteSwap32(w5); // W'[j] = W[j] XOR W[j+4]
   end;
   SS1:=ROLDWord(ROLDWord(A_,12)+E_+ROLDWord(SM3T(aRnd*2+j),aRnd*2+j),7);
   SS2:=SS1 xor ROLDWord(A_,12);
-  TT1:=SM3FF(A_,B_,C_,aRnd*2+j)+D_+SS2+(W_ xor SM3P1(W_));
+  TT1:=SM3FF(A_,B_,C_,aRnd*2+j)+D_+SS2+WP;
   TT2:=SM3GG(E_,F_,G_,aRnd*2+j)+H_+SS1+W_;
   D_:=C_; C_:=ROLDWord(B_,9); B_:=A_; A_:=TT1;
   H_:=G_; G_:=ROLDWord(F_,19); F_:=E_; E_:=SM3P0(TT2);
  end;
- // Write back (byte-swap)
- rH7:=ByteSwap32(A_); rH6:=ByteSwap32(B_); rH5:=ByteSwap32(C_); rH4:=ByteSwap32(D_);
- rH3:=ByteSwap32(E_); rH2:=ByteSwap32(F_); rH1:=ByteSwap32(G_); rH0:=ByteSwap32(H_);
+ // Write back (byte-swap), A=elem0, H=elem7
+ rH0:=ByteSwap32(A_); rH1:=ByteSwap32(B_); rH2:=ByteSwap32(C_); rH3:=ByteSwap32(D_);
+ rH4:=ByteSwap32(E_); rH5:=ByteSwap32(F_); rH6:=ByteSwap32(G_); rH7:=ByteSwap32(H_);
 end;
 
 // SM3 message expansion for one element group (vsm3me.vv)
@@ -59301,6 +59304,8 @@ begin
        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+7,32)),
        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+4,32)),
+       TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+5,32)),
        vs1 and $1f,
        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
        SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
@@ -59505,22 +59510,26 @@ begin
        end;
        for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
+        // Per QEMU/spec: a=vs2[3], b=vs2[2], e=vs2[1], f=vs2[0]
+        //                c=vd[3],  d=vd[2],  g=vd[1],  h=vd[0]
+        //                W0=vs1[2], W1=vs1[3] (high half)
         VecCryptoSHA256Compress(
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+        // Output: vd[3]=a', vd[2]=b', vd[1]=e', vd[0]=f'
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[0]);
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
        fState.CSR.SetVSDirty;
@@ -59536,24 +59545,28 @@ begin
        end;
        for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
-        SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
-        SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
-        SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
-        SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
-        SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
-        SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
-        SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
-        SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
+        // Per QEMU/spec: a=vs2[3], b=vs2[2], e=vs2[1], f=vs2[0]
+        //                c=vd[3],  d=vd[2],  g=vd[1],  h=vd[0]
+        //                W0=vs1[2], W1=vs1[3] (high half)
+        SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+3,64);
+        SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+2,64);
+        SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+1,64);
+        SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+0,64);
+        SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+3,64);
+        SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+2,64);
+        SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+1,64);
+        SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+0,64);
         SourceValue:=VectorGetElement(vs1,SubIndex+2,64);
         OperandValue:=VectorGetElement(vs1,SubIndex+3,64);
         VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
                                 SourceValue,OperandValue,
                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-        VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
-        VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
-        VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
-        VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+        // Output: vd[3]=a', vd[2]=b', vd[1]=e', vd[0]=f'
+        VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[7]);
+        VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[6]);
+        VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[5]);
+        VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[4]);
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
        fState.CSR.SetVSDirty;
@@ -59604,22 +59617,26 @@ begin
        end;
        for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
+        // Per QEMU/spec: a=vs2[3], b=vs2[2], e=vs2[1], f=vs2[0]
+        //                c=vd[3],  d=vd[2],  g=vd[1],  h=vd[0]
+        //                W0=vs1[0], W1=vs1[1] (low half)
         VecCryptoSHA256Compress(
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
          TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
          SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+        // Output: vd[3]=a', vd[2]=b', vd[1]=e', vd[0]=f'
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[0]);
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
        fState.CSR.SetVSDirty;
@@ -59635,24 +59652,28 @@ begin
        end;
        for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
-        SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
-        SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
-        SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
-        SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
-        SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
-        SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
-        SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
-        SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
+        // Per QEMU/spec: a=vs2[3], b=vs2[2], e=vs2[1], f=vs2[0]
+        //                c=vd[3],  d=vd[2],  g=vd[1],  h=vd[0]
+        //                W0=vs1[0], W1=vs1[1] (low half)
+        SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+3,64);
+        SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+2,64);
+        SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+1,64);
+        SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+0,64);
+        SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+3,64);
+        SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+2,64);
+        SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+1,64);
+        SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+0,64);
         SourceValue:=VectorGetElement(vs1,SubIndex+0,64);
         OperandValue:=VectorGetElement(vs1,SubIndex+1,64);
         VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
                                 SourceValue,OperandValue,
                                 SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-        VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
-        VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
-        VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
-        VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+        // Output: vd[3]=a', vd[2]=b', vd[1]=e', vd[0]=f'
+        VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[7]);
+        VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[6]);
+        VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[5]);
+        VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[4]);
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
        fState.CSR.SetVSDirty;
