@@ -3113,7 +3113,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PCI_BAR_PREFETCH=$8;
                     PCI_EXPANSION_ROM_ENABLED=$1;
                     PCI_CAP_LIST_OFF=$80;
-                    PCI_MSI_CAP_OFF=$c0;
+                    PCI_MSI_CAP_OFF=$d0;
                     PCIE_CAP_PORT_ENDPOINT=$0;
                     PCIE_CAP_ROOT_PORT=$4;
                     PCIE_CAP_UPSTREAM_SWITCH=$5;
@@ -3216,6 +3216,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fBARMemoryDevices:TPCIBarMemoryDevices;
               fBARIsIO:array[0..TPCI.PCI_FUNC_BARS-1] of Boolean;
               fExpansionROM:TPCIMemoryDevice;
+              // MSI state
+              fMSIControl:TPasRISCVUInt32;     // MSI control register (enable, MMC/MME, 64bit, mask capable)
+              fMSIAddressLow:TPasRISCVUInt32;  // MSI message address low
+              fMSIAddressHigh:TPasRISCVUInt32; // MSI message address high (64-bit only)
+              fMSIData:TPasRISCVUInt32;        // MSI message data
+              fMSIMask:TPasRISCVUInt32;        // MSI per-vector mask
+              fMSIPending:TPasRISCVUInt32;     // MSI pending bits
              public
               constructor Create(const aBus:TPCIBusDevice;const aDevice:TPCIDevice;const aFuncDesc:TPCIFuncDescriptor);
               destructor Destroy; override;
@@ -7044,14 +7051,22 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   HTIMEDELTA=$605;
                                   HCOUNTEREN=$606;
                                   HGEIE=$607;
+                                  HVIEN=$608;
                                   HVICTL=$609;
                                   HENVCFG=$60a;
+                                  HIDELEGH=$613;
                                   HENVCFGH=$61a;
                                   HTIMEDELTAH=$615;
+                                  HVIENH=$618;
                                   HTVAL=$643;
                                   HIP=$644;
                                   HVIP=$645;
+                                  HVIPRIO1=$646;
+                                  HVIPRIO2=$647;
                                   HTINST=$64a;
+                                  HVIPH=$655;
+                                  HVIPRIO1H=$656;
+                                  HVIPRIO2H=$657;
                                   HGATP=$680;
                                   HGEIP=$e12;
                                   // H-extension: VS-mode CSRs
@@ -7065,8 +7080,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   VSIP=$244;
                                   VSISELECT=$250;
                                   VSIREG=$251;
+                                  VSTOPEI=$25c;
                                   VSTIMECMP=$24d;
                                   VSATP=$280;
+                                  VSTOPI=$eb0;
                                   // Ssstateen CSRs
                                   SSTATEEN0=$10c;
                                   SSTATEEN1=$10d;
@@ -7149,7 +7166,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            public
                             const MSTATUS=TPasRISCVUInt64($cf007fffaa){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}) or (TPasRISCVUInt64(1) shl 41{MPELP}){$endif}; // includes MPV (39), GVA (38)
                                   SSTATUS=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif};
-                                  HSTATUS_MASK=TPasRISCVUInt64($007003e0); // SPV, SPVP, HU, GVA, VSBE, VTVM, VTW, VTSR (no VSXL: hardwired to 2)
+                                  HSTATUS_MASK_BASE=TPasRISCVUInt64($007003e0); // SPV, SPVP, HU, GVA, VSBE, VTVM, VTW, VTSR (no VSXL: hardwired to 2, no VGEIN: AIA-only)
+                                  HSTATUS_MASK_AIA=TPasRISCVUInt64($0003f000); // VGEIN bits (17:12) — only writable when AIA is active
                                   MSTATUS_SWAP_MASK=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif}; // Bits swapped between HS and VS
                             type TStatus=class
                                   public
@@ -7654,6 +7672,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerVSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               // H-extension CSR handlers
               procedure CSRHandlerHPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerHPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
@@ -8352,6 +8372,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
       private
 
        fConfiguration:TConfiguration;
+
+       fAIA:Boolean;
 
        fGlobalLock:TPasMPMultipleReaderSingleWriterSpinLock;
 
@@ -21999,7 +22021,7 @@ var Mask:TPasRISCVUInt32;
 begin
  if (aIRQ>0) and (aIRQ<APLIC_SRC_LIMIT) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
-  if ((TPasMPInterlocked.ExchangeBitwiseAnd(fRaised[aIRQ shr 5],not Mask)) and not Mask)<>0 then begin
+  if ((TPasMPInterlocked.ExchangeBitwiseAnd(fRaised[aIRQ shr 5],not Mask)) and Mask)<>0 then begin
    UpdateInterrupt(aIRQ);
   end;
   result:=true;
@@ -22486,6 +22508,13 @@ begin
   fIRQLine:=0;
  end;
  fExpansionROM:=nil;
+ // Initialize MSI state (disabled, 64-bit capable, per-vector masking capable)
+ fMSIControl:=TPCI.PCIExpressCapabilities[(TPCI.PCI_MSI_CAP_OFF-TPCI.PCI_CAP_LIST_OFF) shr 2];
+ fMSIAddressLow:=0;
+ fMSIAddressHigh:=0;
+ fMSIData:=0;
+ fMSIMask:=0;
+ fMSIPending:=0;
 //writeln('PCI Func: ',LowerCase(IntToHex(fVendorID,4)),' ',LowerCase(IntToHex(fDeviceID,4)),' ',LowerCase(IntToHex(fClassCode,6)),' ',LowerCase(IntToHex(fProgIF,2)),' ',LowerCase(IntToHex(fRevisionID,2)),' ',LowerCase(IntToHex(fIRQPin,2)),' ',LowerCase(IntToHex(fIRQLine,2)));
  for BARIndex:=0 to TPCI.PCI_FUNC_BARS-1 do begin
   fBARMemoryDevices[BARIndex]:=nil;
@@ -22599,7 +22628,39 @@ end;
 
 procedure TPasRISCV.TPCIFunc.SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
 var IRQ:TPasRISCVUInt32;
+    MSIAddress:TPasRISCVUInt64;
+    MSIData:TPasRISCVUInt32;
+    MSIControl:TPasRISCVUInt32;
 begin
+ // Check MSI first (when AIA active)
+ if fBus.fMachine.fAIA then begin
+  MSIControl:=TPasMPInterlocked.Read(fMSIControl);
+  if (MSIControl and $10000)<>0 then begin // MSI Enable bit (bit 16)
+   // MSI is enabled — bus mastering required for actual delivery, otherwise silently drop
+   if (TPasMPInterlocked.Read(fCommand) and TPCI.PCI_CMD_BUS_MASTER)=0 then begin
+    exit; // MSI enabled but no bus mastering: drop the IRQ (don't fall through to INTx)
+   end;
+   // Check per-vector mask
+   if (TPasMPInterlocked.Read(fMSIMask) and (TPasRISCVUInt32(1) shl (aMSIID and 31)))<>0 then begin
+    // Masked: set pending bit
+    TPasMPInterlocked.BitwiseOr(fMSIPending,TPasRISCVUInt32(1) shl (aMSIID and 31));
+    exit;
+   end;
+   // Build MSI address
+   MSIAddress:=TPasMPInterlocked.Read(fMSIAddressLow);
+   if (MSIControl and $800000)<>0 then begin // 64-bit capable (bit 23)
+    MSIAddress:=MSIAddress or (TPasRISCVUInt64(TPasMPInterlocked.Read(fMSIAddressHigh)) shl 32);
+   end;
+   // MSI data: for single-message mode (MME=0), data register directly
+   MSIData:=TPasMPInterlocked.Read(fMSIData);
+   if MSIAddress<>0 then begin
+    // Write MSI: 32-bit LE write to address, data = identity
+    fBus.fMachine.fBus.StoreEx(MSIAddress,MSIData,4);
+   end;
+   exit; // MSI handled (even if address was 0), don't fall through to INTx
+  end;
+ end;
+ // Fallback to legacy INTx
  if (fIRQPin<>0) and ((TPasMPInterlocked.Read(fCommand) and TPCI.PCI_CMD_INTX_DISABLE)=0) then begin
   TPasMPInterlocked.BitwiseOr(fStatus,TPCI.PCI_STATUS_INTX);
   IRQ:=fBus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(self)];
@@ -22968,7 +23029,38 @@ begin
     if BusAddress<>0 then begin
      CapabilityID:=(Register-TPCI.PCI_CAP_LIST_OFF) shr 2;
      if CapabilityID<Length(TPCI.PCIExpressCapabilities) then begin
-      result:=TPCI.PCIExpressCapabilities[CapabilityID];
+      if fMachine.fAIA and (CapabilityID>=20) and (CapabilityID<=25) then begin
+       // MSI capability registers (indices 20-25 = offsets $d0-$e4): return live per-function state when AIA active
+       case CapabilityID of
+        20:begin // $d0: MSI Control
+         result:=TPasMPInterlocked.Read(Func.fMSIControl);
+        end;
+        21:begin // $d4: MSI Address Low
+         result:=TPasMPInterlocked.Read(Func.fMSIAddressLow);
+        end;
+        22:begin // $d8: MSI Address High
+         result:=TPasMPInterlocked.Read(Func.fMSIAddressHigh);
+        end;
+        23:begin // $dc: MSI Data
+         result:=TPasMPInterlocked.Read(Func.fMSIData);
+        end;
+        24:begin // $e0: MSI Mask
+         result:=TPasMPInterlocked.Read(Func.fMSIMask);
+        end;
+        25:begin // $e4: MSI Pending (read-only)
+         result:=TPasMPInterlocked.Read(Func.fMSIPending);
+        end;
+        else begin
+         result:=0;
+        end;
+       end;
+      end else begin
+       result:=TPCI.PCIExpressCapabilities[CapabilityID];
+       // When AIA is off, hide MSI capability by terminating cap chain at PM (next_ptr=0)
+       if (not fMachine.fAIA) and (CapabilityID=16) then begin
+        result:=result and $ffff00ff; // clear next_ptr byte (bits 15:8) in PM cap header
+       end;
+      end;
      end else begin
       result:=0;
      end;
@@ -23000,7 +23092,7 @@ begin
 end;
 
 procedure TPasRISCV.TPCIBusDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
-var Address,BusAddress,BarID,BarAddress,BarSize,ROMAddress,ROMSize:TPasRISCVUInt64;
+var Address,BusAddress,BarID,BarAddress,BarSize,ROMAddress,ROMSize,CapabilityID:TPasRISCVUInt64;
     Old,IRQ:TPasRISCVUInt32;
     BusID,DevID,FuncID,Register:TPasRISCVUInt8;
     Func:TPasRISCV.TPCIFunc;
@@ -23085,6 +23177,44 @@ begin
      ROMAddress:=ROMAddress and TPasRISCVUInt64(not TPasRISCVUInt64(ROMSize-1));
      TPasMPInterlocked.Write(Func.fExpansionROM.fBase,ROMAddress);
      TPasMPMemoryBarrier.ReadWrite;
+    end;
+{$endif}
+   end;
+   else begin
+{$ifdef NewPCI}
+    // Handle MSI capability register writes (offsets $d0-$e4) — only when AIA is active
+    if BusAddress<>0 then begin
+     CapabilityID:=(Register-TPCI.PCI_CAP_LIST_OFF) shr 2;
+     if fMachine.fAIA then begin
+      case CapabilityID of
+       20:begin // $d0: MSI Control — only MSI Enable (bit 16) and MME (bits 22:20) writable
+        TPasMPInterlocked.Write(Func.fMSIControl,
+         (TPCI.PCIExpressCapabilities[20] and TPasRISCVUInt32(not $710000)) or (TPasRISCVUInt32(aValue) and $710000));
+       end;
+       21:begin // $d4: MSI Address Low (bits 31:2 writable, bits 1:0 reserved)
+        TPasMPInterlocked.Write(Func.fMSIAddressLow,TPasRISCVUInt32(aValue) and $fffffffc);
+       end;
+       22:begin // $d8: MSI Address High (all bits writable for 64-bit MSI)
+        TPasMPInterlocked.Write(Func.fMSIAddressHigh,TPasRISCVUInt32(aValue));
+       end;
+       23:begin // $dc: MSI Data (lower 16 bits writable)
+        TPasMPInterlocked.Write(Func.fMSIData,TPasRISCVUInt32(aValue) and $ffff);
+       end;
+       24:begin // $e0: MSI Mask (all bits writable)
+        Old:=TPasMPInterlocked.Exchange(Func.fMSIMask,TPasRISCVUInt32(aValue));
+        // When mask bits are cleared, check if pending IRQs should fire
+        if (Old and (not TPasRISCVUInt32(aValue)))<>0 then begin
+         IRQ:=TPasMPInterlocked.Read(Func.fMSIPending) and (not TPasRISCVUInt32(aValue));
+         if IRQ<>0 then begin
+          // Clear pending bit and fire MSI for each newly-unmasked pending interrupt
+          TPasMPInterlocked.BitwiseAnd(Func.fMSIPending,TPasRISCVUInt32(aValue));
+          Func.SendIRQ(0,false);
+         end;
+        end;
+       end;
+       // 25 ($e4): MSI Pending — read-only, writes ignored
+      end;
+     end; // fAIA
     end;
 {$endif}
    end;
@@ -41596,7 +41726,7 @@ begin
  fExecuteInstructionMethod:=fExecuteInstructionTable[false];
 {$endif}
 
- if fMachine.fConfiguration.fAIA then begin
+ if fMachine.fAIA then begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
    fAIARegFiles[AIARegFileMode]:=TAIARegFile.Create(self.fMachine,self);
   end;
@@ -41685,12 +41815,20 @@ begin
    TCSR.TAddress.HTIMEDELTA,
    TCSR.TAddress.HCOUNTEREN,
    TCSR.TAddress.HGEIE,
+   TCSR.TAddress.HVIEN,
    TCSR.TAddress.HVICTL,
    TCSR.TAddress.HENVCFG,
+   TCSR.TAddress.HIDELEGH,
+   TCSR.TAddress.HVIENH,
    TCSR.TAddress.HTVAL,
    TCSR.TAddress.HIP,
    TCSR.TAddress.HVIP,
+   TCSR.TAddress.HVIPRIO1,
+   TCSR.TAddress.HVIPRIO2,
    TCSR.TAddress.HTINST,
+   TCSR.TAddress.HVIPH,
+   TCSR.TAddress.HVIPRIO1H,
+   TCSR.TAddress.HVIPRIO2H,
    TCSR.TAddress.HGATP,
    TCSR.TAddress.HGEIP,
    // VS-mode CSRs
@@ -41877,17 +42015,29 @@ begin
  fCSRHandlerMap[TCSR.TAddress.HSTATEEN2]:=CSRHandlerPrivileged;
  fCSRHandlerMap[TCSR.TAddress.HSTATEEN3]:=CSRHandlerPrivileged;
 
- if fMachine.fConfiguration.fAIA then begin
+ if fMachine.fAIA then begin
 
-  fCSRHandlerMap[TCSR.TAddress.STOPEI]:=CSRHandlerSTOPEI; // MTOPEI
-  fCSRHandlerMap[TCSR.TAddress.STOPI]:=CSRHandlerSTOPI; // MTOPI
+  fCSRHandlerMap[TCSR.TAddress.STOPEI]:=CSRHandlerSTOPEI; // STOPEI
+  fCSRHandlerMap[TCSR.TAddress.STOPI]:=CSRHandlerSTOPI; // STOPI
 
   fCSRHandlerMap[TCSR.TAddress.MTOPEI]:=CSRHandlerMTOPEI; // MTOPEI
   fCSRHandlerMap[TCSR.TAddress.MTOPI]:=CSRHandlerMTOPI; // MTOPI
 
+  fCSRHandlerMap[TCSR.TAddress.VSTOPEI]:=CSRHandlerVSTOPEI; // VSTOPEI (H-extension AIA)
+  fCSRHandlerMap[TCSR.TAddress.VSTOPI]:=CSRHandlerVSTOPI; // VSTOPI (H-extension AIA)
+
+  fCSRHandlerMap[TCSR.TAddress.HVIEN]:=CSRHandlerHPrivileged; // HVIEN
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO1]:=CSRHandlerHPrivileged; // HVIPRIO1
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO2]:=CSRHandlerHPrivileged; // HVIPRIO2
+  fCSRHandlerMap[TCSR.TAddress.HIDELEGH]:=CSRHandlerHPrivileged; // HIDELEGH
+  fCSRHandlerMap[TCSR.TAddress.HVIENH]:=CSRHandlerHPrivileged; // HVIENH
+  fCSRHandlerMap[TCSR.TAddress.HVIPH]:=CSRHandlerHPrivileged; // HVIPH
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO1H]:=CSRHandlerHPrivileged; // HVIPRIO1H
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO2H]:=CSRHandlerHPrivileged; // HVIPRIO2H
+
   fCSRHandlerMap[TCSR.TAddress.MISELECT]:=CSRHandlerPrivileged; // MISELECT
   fCSRHandlerMap[TCSR.TAddress.SISELECT]:=CSRHandlerPrivileged; // SISELECT
-  fCSRHandlerMap[TCSR.TAddress.VSISELECT]:=CSRHandlerPrivileged; // VSISELECT (H-extension)
+  fCSRHandlerMap[TCSR.TAddress.VSISELECT]:=CSRHandlerHPrivileged; // VSISELECT (H-extension, must trap in VS-mode)
 
   fCSRHandlerMap[TCSR.TAddress.MIREG]:=CSRHandlerIndirect; // MIREG
   fCSRHandlerMap[TCSR.TAddress.SIREG]:=CSRHandlerIndirect; // SIREG
@@ -41900,6 +42050,18 @@ begin
 
   fCSRHandlerMap[TCSR.TAddress.MTOPEI]:=CSRHandlerIllegal; // MTOPEI
   fCSRHandlerMap[TCSR.TAddress.MTOPI]:=CSRHandlerIllegal; // MTOPI
+
+  fCSRHandlerMap[TCSR.TAddress.VSTOPEI]:=CSRHandlerIllegal; // VSTOPEI
+  fCSRHandlerMap[TCSR.TAddress.VSTOPI]:=CSRHandlerIllegal; // VSTOPI
+
+  fCSRHandlerMap[TCSR.TAddress.HVIEN]:=CSRHandlerIllegal; // HVIEN
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO1]:=CSRHandlerIllegal; // HVIPRIO1
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO2]:=CSRHandlerIllegal; // HVIPRIO2
+  fCSRHandlerMap[TCSR.TAddress.HIDELEGH]:=CSRHandlerIllegal; // HIDELEGH
+  fCSRHandlerMap[TCSR.TAddress.HVIENH]:=CSRHandlerIllegal; // HVIENH
+  fCSRHandlerMap[TCSR.TAddress.HVIPH]:=CSRHandlerIllegal; // HVIPH
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO1H]:=CSRHandlerIllegal; // HVIPRIO1H
+  fCSRHandlerMap[TCSR.TAddress.HVIPRIO2H]:=CSRHandlerIllegal; // HVIPRIO2H
 
   fCSRHandlerMap[TCSR.TAddress.MISELECT]:=CSRHandlerIllegal; // MISELECT
   fCSRHandlerMap[TCSR.TAddress.SISELECT]:=CSRHandlerIllegal; // SISELECT
@@ -41920,7 +42082,7 @@ var AIARegFileMode:TAIARegFileMode;
 begin
  fExecutionThread.Shutdown;
  FreeAndNil(fExecutionThread);
- if fMachine.fConfiguration.fAIA then begin
+ if fMachine.fAIA then begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
    FreeAndNil(fAIARegFiles[AIARegFileMode]);
   end;
@@ -41932,7 +42094,7 @@ procedure TPasRISCV.THART.Init;
 var AIARegFileMode:TAIARegFileMode;
 begin
 
- if fMachine.fConfiguration.fAIA then begin
+ if fMachine.fAIA then begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
    fAIARegFiles[AIARegFileMode].Reset;
   end;
@@ -44671,7 +44833,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerHSTATUS(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue:TPasRISCVUInt64;
+    Value,CSRValue,CSRMask:TPasRISCVUInt64;
 begin
  if fState.VirtualMode then begin
   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
@@ -44682,7 +44844,12 @@ begin
   Value:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
   CSRValue:=CSROperation(aOperation,Value,aRHS);
   // Mask writable bits; force VSXL=2 on read
-  CSRValue:=(CSRValue and TCSR.TMask.HSTATUS_MASK) or (TPasRISCVUInt64(2) shl TCSR.TMask.THSTATUSBit.VSXL);
+  // VGEIN is only writable when AIA is active
+  CSRMask:=TCSR.TMask.HSTATUS_MASK_BASE;
+  if fMachine.fAIA then begin
+   CSRMask:=CSRMask or TCSR.TMask.HSTATUS_MASK_AIA;
+  end;
+  CSRValue:=(CSRValue and CSRMask) or (TPasRISCVUInt64(2) shl TCSR.TMask.THSTATUSBit.VSXL);
   fState.CSR.fData[TCSR.TAddress.HSTATUS]:=CSRValue;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value or (TPasRISCVUInt64(2) shl TCSR.TMask.THSTATUSBit.VSXL);
@@ -44898,7 +45065,7 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  if fState.VirtualMode and fMachine.fConfiguration.fAIA then begin
+  if fState.VirtualMode and fMachine.fAIA then begin
    // V=1: STOPI access reflects VS-mode external interrupt state from VS AIA RegFile
    IRQ:=UpdateAIAInternal(TPasRISCV.TAIARegFileMode.VirtualSupervisor,false,false);
    CSRValue:=IRQ or (IRQ shl 16);
@@ -44926,7 +45093,7 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  IsWrite:=(rd<>TRegister.Zero) or (aOperation=TCSROperation.Swap);
+  IsWrite:=(aOperation=TCSROperation.Swap) or (TRegister((aInstruction shr 15) and $1f)<>TRegister.Zero); // rs1 determines write/claim
   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Machine,IsWrite);
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -44944,13 +45111,53 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  IsWrite:=(rd<>TRegister.Zero) or (aOperation=TCSROperation.Swap);
-  if fState.VirtualMode and fMachine.fConfiguration.fAIA then begin
+  IsWrite:=(aOperation=TCSROperation.Swap) or (TRegister((aInstruction shr 15) and $1f)<>TRegister.Zero); // rs1 determines write/claim
+  if fState.VirtualMode and fMachine.fAIA then begin
    // V=1: STOPEI access uses VS AIA RegFile (guest IMSIC file)
    IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
   end else begin
    IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
   end;
+  CSRValue:=IRQ or (IRQ shl 16);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVSTOPEI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    IRQ,CSRValue:TPasRISCVUInt64;
+    IsWrite:Boolean;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  IsWrite:=(aOperation=TCSROperation.Swap) or (TRegister((aInstruction shr 15) and $1f)<>TRegister.Zero); // rs1 determines write/claim
+  // HS-mode: VSTOPEI accesses the VS AIA RegFile (guest interrupt file selected by VGEIN)
+  IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
+  CSRValue:=IRQ or (IRQ shl 16);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerVSTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    IRQ,CSRValue:TPasRISCVUInt64;
+begin
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+ end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  // HS-mode: VSTOPI reports VS-mode external interrupt state from VS AIA RegFile
+  IRQ:=UpdateAIAInternal(TPasRISCV.TAIARegFileMode.VirtualSupervisor,false,false);
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -45044,6 +45251,11 @@ begin
     end;
    end;
    TCSR.TAddress.VSIREG:begin
+    if fState.VirtualMode then begin
+     // VS-mode cannot access VSIREG directly, must trap
+     SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+     exit;
+    end;
     // HS-mode access to VS indirect CSR: uses VSISELECT and VS AIA RegFile
     Mode:=THART.TMode.Supervisor;
     AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
@@ -45059,7 +45271,7 @@ begin
    OK:=false;
    case ISelect of
     TCSR.CSRI_EIDELIVERY:begin
-     if fMachine.fConfiguration.fAIA then begin
+     if fMachine.fAIA then begin
       OK:=CSRAIAHelper(Mode,AIARegFileMode,@fAIARegFiles[AIARegFileMode].fEIDelivery,aRHS and 1,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -45069,7 +45281,7 @@ begin
      end;
     end;
     TCSR.CSRI_EITHRESHOLD:begin
-     if fMachine.fConfiguration.fAIA then begin
+     if fMachine.fAIA then begin
       OK:=CSRAIAHelper(Mode,AIARegFileMode,@fAIARegFiles[AIARegFileMode].fEIThreshold,aRHS,CSRValue,aOperation);
       if OK then begin
        {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -45079,7 +45291,7 @@ begin
      end;
     end;
     TCSR.CSRI_MIPRIO_0..TCSR.CSRI_MIPRIO_15:begin
-     if fMachine.fConfiguration.fAIA then begin
+     if fMachine.fAIA then begin
       CSRValue:=0;
       {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
        fState.Registers[rd]:=CSRValue;
@@ -45088,7 +45300,7 @@ begin
      end;
     end;
     TCSR.CSRI_EIP0..TCSR.CSRI_EIP63:begin
-     if fMachine.fConfiguration.fAIA then begin
+     if fMachine.fAIA then begin
       Reg:=ISelect-TCSR.CSRI_EIP0;
       OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[AIARegFileMode].fEIP,aRHS,CSRValue,aOperation);
       if OK then begin
@@ -45099,7 +45311,7 @@ begin
      end;
     end;
     TCSR.CSRI_EIE0..TCSR.CSRI_EIE63:begin
-     if fMachine.fConfiguration.fAIA then begin
+     if fMachine.fAIA then begin
       Reg:=ISelect-TCSR.CSRI_EIE0;
       CSRValue:=aRHS;
       OK:=CSRAIAPairHelper(Mode,AIARegFileMode,Reg,@fAIARegFiles[AIARegFileMode].fEIE,aRHS,CSRValue,aOperation);
@@ -66806,10 +67018,15 @@ var AIARegFile:TPasRISCV.THART.TAIARegFile;
 begin
  AIARegFile:=fAIARegFiles[aAIARegFileMode];
  if assigned(AIARegFile) and (aIRQ>0) and (aIRQ<TPasRISCV.THART.TAIARegFile.IRQ_LIMIT) then begin
+  // Always set EIP bit regardless of eidelivery (per AIA spec: eidelivery has no effect on interrupt file state)
+  Reg:=aIRQ shr 5;
+  Value:=TPasRISCVUInt32(1) shl (aIRQ and $1f);
+  Previous:=TPasMPInterlocked.ExchangeBitwiseOr(AIARegFile.fEIP[Reg],Value);
+  // Only raise external interrupt signal if delivery is enabled
   TPasMPMemoryBarrier.ReadDependency;
   if AIARegFile.fEIDelivery<>0 then begin
    TPasMPMemoryBarrier.ReadDependency;
-   Threshold:=AIARegFile.fEIThreshold-1;
+   Threshold:=AIARegFile.fEIThreshold;
    case aAIARegFileMode of
     TPasRISCV.TAIARegFileMode.Machine:begin
      MSIP:=THART.TInterruptValue.MachineExternal;
@@ -66824,12 +67041,9 @@ begin
      MSIP:=THART.TInterruptValue.None;
     end;
    end;
-   Reg:=aIRQ shr 5;
-   Value:=TPasRISCVUInt32(1) shl (aIRQ and $1f);
    TPasMPMemoryBarrier.ReadDependency;
    EIE:=AIARegFile.fEIE[Reg];
-   Previous:=TPasMPInterlocked.ExchangeBitwiseOr(AIARegFile.fEIP[Reg],Value);
-   if (aIRQ<Threshold) and ((Value and EIE)<>0) and ((Value and Previous)=0) then begin
+   if ((Threshold=0) or (aIRQ<Threshold)) and ((Value and EIE)<>0) and ((Value and Previous)=0) then begin
     RaiseInterrupt(MSIP);
    end;
   end;
@@ -66841,12 +67055,15 @@ var AIARegFile:TPasRISCV.THART.TAIARegFile;
     MSIP:THART.TInterruptValue;
     Threshold,EIE,EIP,Bits,Bit,IRQ,Mask:TPasRISCVUInt32;
     Index:TPasRISCVInt32;
+    DeliveryEnabled:Boolean;
 begin
  result:=0;
  AIARegFile:=fAIARegFiles[aAIARegFileMode];
  if assigned(AIARegFile) then begin
   TPasMPMemoryBarrier.ReadDependency;
-  Threshold:=AIARegFile.fEIThreshold-1;
+  Threshold:=AIARegFile.fEIThreshold;
+  TPasMPMemoryBarrier.ReadDependency;
+  DeliveryEnabled:=AIARegFile.fEIDelivery<>0;
   case aAIARegFileMode of
    TPasRISCV.TAIARegFileMode.Machine:begin
     MSIP:=THART.TInterruptValue.MachineExternal;
@@ -66861,39 +67078,41 @@ begin
     MSIP:=THART.TInterruptValue.None;
    end;
   end;
-  if aUpdate then begin
+  if aUpdate and DeliveryEnabled then begin
    ClearInterrupt(MSIP);
   end;
-  TPasMPMemoryBarrier.ReadDependency;
-  if AIARegFile.fEIDelivery<>0 then begin
-   for Index:=0 to TPasRISCV.THART.TAIARegFile.ARRAY_LENGTH-1 do begin
-    TPasMPMemoryBarrier.ReadDependency;
-    EIE:=AIARegFile.fEIE[Index];
-    TPasMPMemoryBarrier.ReadDependency;
-    EIP:=AIARegFile.fEIP[Index];
-    Bits:=EIE and EIP;
-    if Bits<>0 then begin
-     if result<>0 then begin
+  // Scan pending-and-enabled interrupts regardless of eidelivery (per AIA spec: *topei is not affected by eidelivery)
+  for Index:=0 to TPasRISCV.THART.TAIARegFile.ARRAY_LENGTH-1 do begin
+   TPasMPMemoryBarrier.ReadDependency;
+   EIE:=AIARegFile.fEIE[Index];
+   TPasMPMemoryBarrier.ReadDependency;
+   EIP:=AIARegFile.fEIP[Index];
+   Bits:=EIE and EIP;
+   if Bits<>0 then begin
+    if result<>0 then begin
+     if DeliveryEnabled then begin
       RaiseInterrupt(MSIP);
-      exit;
-     end else begin
-      Bit:=CLZDWord(Bits) xor 31;
-      IRQ:=(Index shl 5) or Bit;
-      Mask:=not (TPasRISCVUInt32(1) shl Bit);
-      if IRQ<Threshold then begin
-       result:=IRQ;
-       if aClaim then begin
-        Bits:=Bits and Mask;
-        TPasMPInterlocked.BitwiseAnd(AIARegFile.fEIP[Index],Mask);
-       end;
-       if aUpdate then begin
-        if Bits<>0 then begin
+     end;
+     exit;
+    end else begin
+     Bit:=CTZDWord(Bits); // Lowest set bit = lowest IRQ number = highest priority per AIA spec
+     IRQ:=(Index shl 5) or Bit;
+     Mask:=not (TPasRISCVUInt32(1) shl Bit);
+     if (Threshold=0) or (IRQ<Threshold) then begin
+      result:=IRQ;
+      if aClaim then begin
+       Bits:=Bits and Mask;
+       TPasMPInterlocked.BitwiseAnd(AIARegFile.fEIP[Index],Mask);
+      end;
+      if aUpdate then begin
+       if Bits<>0 then begin
+        if DeliveryEnabled then begin
          RaiseInterrupt(MSIP);
-         exit;
         end;
-       end else begin
         exit;
        end;
+      end else begin
+       exit;
       end;
      end;
     end;
@@ -67125,7 +67344,7 @@ begin
   fState.CSR.fData[TCSR.TAddress.VSATP]:=Temp;
 
   // Swap siselect (Sscsrind)
-  if fMachine.fConfiguration.fAIA then begin
+  if fMachine.fAIA then begin
    Temp:=fState.CSR.fData[TCSR.TAddress.SISELECT];
    fState.CSR.fData[TCSR.TAddress.SISELECT]:=fState.HSMode_SISELECT;
    fState.CSR.fData[TCSR.TAddress.VSISELECT]:=Temp;
@@ -67163,7 +67382,7 @@ begin
   fState.CSR.fData[TCSR.TAddress.SATP]:=fState.CSR.fData[TCSR.TAddress.VSATP];
 
   // Swap siselect (Sscsrind)
-  if fMachine.fConfiguration.fAIA then begin
+  if fMachine.fAIA then begin
    fState.HSMode_SISELECT:=fState.CSR.fData[TCSR.TAddress.SISELECT];
    fState.CSR.fData[TCSR.TAddress.SISELECT]:=fState.CSR.fData[TCSR.TAddress.VSISELECT];
   end;
@@ -72034,6 +72253,8 @@ begin
   fConfiguration.Assign(aConfiguration);
  end;
 
+ fAIA:=fConfiguration.fAIA;
+
  fCountHARTs:=fConfiguration.fCountHARTs;
  if fCountHARTs<1 then begin
   fCountHARTs:=1;
@@ -72089,7 +72310,7 @@ begin
 
  fACLINTDevice:=TACLINTDevice.Create(self);
 
- if fConfiguration.fAIA then begin
+ if fAIA then begin
 
   fIMSICMachineDevice:=TIMSICDevice.Create(self,fConfiguration.fIMSICMachineBase,fConfiguration.fIMSICMachineSizePerHART*fConfiguration.CountHARTs,TPasRISCV.TAIARegFileMode.Machine);
 
@@ -72758,26 +72979,30 @@ begin
   AddISAExtension('shvsatpa');
   AddISAExtension('shvstvala');
   AddISAExtension('shvstvecd');
- if fConfiguration.fAIA then begin
+ if fAIA then begin
   AddISAExtension('smaia');
  end;
 //AddISAExtension('smcdeleg');
 //AddISAExtension('smcntrpmf');
+ if fAIA then begin
   AddISAExtension('smcsrind');
+ end;
 //AddISAExtension('smdbltrp');
 //AddISAExtension('smepmp');
 //AddISAExtension('smrnmi');
 //AddISAExtension('smmpm');
 //AddISAExtension('smnpm');
 //AddISAExtension('smstateen');
-  if fConfiguration.fAIA then begin
+  if fAIA then begin
    AddISAExtension('ssaia');
   end;
 //AddISAExtension('ssccfg');
   AddISAExtension('ssccptr');
   AddISAExtension('sscofpmf');
   AddISAExtension('sscounterenw');
-  AddISAExtension('sscsrind');
+  if fAIA then begin
+   AddISAExtension('sscsrind');
+  end;
 //AddISAExtension('ssdbltrp');
   AddISAExtension('ssnpm');
 //AddISAExtension('sspm');
@@ -72818,7 +73043,7 @@ begin
 //ISA:=ISA+'_svpbmt';
   ISAExtensions:='i'#0'm'#0'a'#0'f'#0'd'#0'c'#0'b'#0'zicsr'#0'zifencei'#0'zkr'#0+
                   'zicboz'#0'zicbom'#0'svadu'#0'sstc'#0'svnapot';
-  if fConfiguration.fAIA then begin
+  if fAIA then begin
    ISA:=ISA+'_smaia_ssaia';
    ISAExtensions:=ISAExtensions+#0'smaia'#0'ssaia';
   end;}
@@ -72995,7 +73220,7 @@ begin
    SoCNode.AddPropertyString('compatible','simple-bus');
    SoCNode.AddPropertyCells('ranges',nil,0);
 
-   if fConfiguration.fAIA then begin
+   if fAIA then begin
 
     INTC0:=nil;
 
@@ -73022,9 +73247,21 @@ begin
       IMSIC0.GetPHandle;
 
       Cells[0]:=0;
-      Cells[1]:=fConfiguration.fIMSICMachineBase;
       Cells[2]:=0;
-      Cells[3]:=fConfiguration.fIMSICMachineSizePerHART*fConfiguration.fCountHARTs;
+      case AIARegFileMode of
+       TPasRISCV.TAIARegFileMode.Machine:begin
+        Cells[1]:=fConfiguration.fIMSICMachineBase;
+        Cells[3]:=fConfiguration.fIMSICMachineSizePerHART*fConfiguration.fCountHARTs;
+       end;
+       TPasRISCV.TAIARegFileMode.Supervisor:begin
+        Cells[1]:=fConfiguration.fIMSICSupervisorBase;
+        Cells[3]:=fConfiguration.fIMSICSupervisorSizePerHART*fConfiguration.fCountHARTs;
+       end;
+       else begin
+        Cells[1]:=0;
+        Cells[3]:=0;
+       end;
+      end;
       IMSIC0.AddPropertyCells('reg',@Cells,4);
 
       IMSIC0.AddPropertyString('compatible','riscv,imsics');
@@ -73195,7 +73432,7 @@ begin
    UART0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'uart',fConfiguration.fUARTBase);
    try
 
-    if fConfiguration.fAIA then begin
+    if fAIA then begin
      // APLIC: #interrupt-cells=2, need IRQ number + trigger type (4 = level high)
      Cells[0]:=fConfiguration.fUARTIRQ;
      Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
@@ -73233,7 +73470,7 @@ begin
      RTCNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'rtc',fConfiguration.fGoldfishRTCBase);
      try
       RTCNode.AddPropertyReg('reg',fConfiguration.fGoldfishRTCBase,fConfiguration.fGoldfishRTCSize);
-      if fConfiguration.fAIA then begin
+      if fAIA then begin
        Cells[0]:=fConfiguration.fGoldfishRTCIRQ;
        Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
        RTCNode.AddPropertyCells('interrupts',@Cells,2);
@@ -73274,6 +73511,10 @@ begin
      PCIBusNode.AddPropertyCells('reg',@Cells,4);
 
      PCIBusNode.AddPropertyString('compatible','pci-host-ecam-generic');
+
+     if fAIA and assigned(IMSICS0) then begin
+      PCIBusNode.AddPropertyU32('msi-parent',IMSICS0.GetPHandle);
+     end;
 
      PCIBusNode.AddPropertyString('dma-coherent','');
 
@@ -73316,26 +73557,54 @@ begin
 
      InterruptMap:=nil;
      try
-      SetLength(InterruptMap,TPCI.PCI_BUS_IRQS*TPCI.PCI_BUS_IRQS*6);
-      Index:=0;
-      for DeviceID:=0 to TPCI.PCI_BUS_IRQS-1 do begin
-       for IRQPin:=1 to TPCI.PCI_BUS_IRQS do begin
+      if fAIA then begin
+       // APLIC: #interrupt-cells=2 → 7 cells per entry (3 addr + 1 pin + 1 phandle + 2 irq cells)
+       SetLength(InterruptMap,TPCI.PCI_BUS_IRQS*TPCI.PCI_BUS_IRQS*7);
+       Index:=0;
+       for DeviceID:=0 to TPCI.PCI_BUS_IRQS-1 do begin
+        for IRQPin:=1 to TPCI.PCI_BUS_IRQS do begin
 
-        // PCIe address
-        InterruptMap[Index+0]:=DeviceID shl 11;
-        InterruptMap[Index+1]:=0;
-        InterruptMap[Index+2]:=0;
+         // PCIe address
+         InterruptMap[Index+0]:=DeviceID shl 11;
+         InterruptMap[Index+1]:=0;
+         InterruptMap[Index+2]:=0;
 
-        // PCIe irq pin
-        InterruptMap[Index+3]:=IRQPin;
+         // PCIe irq pin
+         InterruptMap[Index+3]:=IRQPin;
 
-        // Interrupt controller handle
-        InterruptMap[Index+4]:=InterruptControllerHandle;
+         // Interrupt controller handle
+         InterruptMap[Index+4]:=InterruptControllerHandle;
 
-        // Interrupt cell(s)
-        InterruptMap[Index+5]:=TPCI.PCI_IRQs[TPasRISCV.TPCIBusDevice.GetIRQID(DeviceID,IRQPin)];
+         // Interrupt cells: IRQ number + trigger type
+         InterruptMap[Index+5]:=TPCI.PCI_IRQs[TPasRISCV.TPCIBusDevice.GetIRQID(DeviceID,IRQPin)];
+         InterruptMap[Index+6]:=4; // IRQ_TYPE_LEVEL_HIGH
 
-        inc(Index,6);
+         inc(Index,7);
+        end;
+       end;
+      end else begin
+       // PLIC: #interrupt-cells=1 → 6 cells per entry (3 addr + 1 pin + 1 phandle + 1 irq cell)
+       SetLength(InterruptMap,TPCI.PCI_BUS_IRQS*TPCI.PCI_BUS_IRQS*6);
+       Index:=0;
+       for DeviceID:=0 to TPCI.PCI_BUS_IRQS-1 do begin
+        for IRQPin:=1 to TPCI.PCI_BUS_IRQS do begin
+
+         // PCIe address
+         InterruptMap[Index+0]:=DeviceID shl 11;
+         InterruptMap[Index+1]:=0;
+         InterruptMap[Index+2]:=0;
+
+         // PCIe irq pin
+         InterruptMap[Index+3]:=IRQPin;
+
+         // Interrupt controller handle
+         InterruptMap[Index+4]:=InterruptControllerHandle;
+
+         // Interrupt cell(s)
+         InterruptMap[Index+5]:=TPCI.PCI_IRQs[TPasRISCV.TPCIBusDevice.GetIRQID(DeviceID,IRQPin)];
+
+         inc(Index,6);
+        end;
        end;
       end;
 
@@ -73414,7 +73683,7 @@ begin
       PS2KeyboardNode.AddPropertyCells('reg',@Cells,4);
       PS2KeyboardNode.AddPropertyString('compatible','altr,ps2-1.0');
       PS2KeyboardNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
-      if fConfiguration.fAIA then begin
+      if fAIA then begin
        Cells[0]:=fConfiguration.fPS2KeyboardIRQ;
        Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
        PS2KeyboardNode.AddPropertyCells('interrupts',@Cells,2);
@@ -73434,7 +73703,7 @@ begin
       PS2MouseNode.AddPropertyCells('reg',@Cells,4);
       PS2MouseNode.AddPropertyString('compatible','altr,ps2-1.0');
       PS2MouseNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
-      if fConfiguration.fAIA then begin
+      if fAIA then begin
        Cells[0]:=fConfiguration.fPS2MouseIRQ;
        Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
        PS2MouseNode.AddPropertyCells('interrupts',@Cells,2);
@@ -73459,7 +73728,12 @@ begin
       VirtIOInputKeyboardNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputKeyboardIRQ);
-      VirtIOInputKeyboardNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIOInputKeyboardNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIOInputKeyboardNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIOInputKeyboardNode);
      end;
@@ -73474,7 +73748,12 @@ begin
       VirtIOInputMouseNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputMouseIRQ);
-      VirtIOInputMouseNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIOInputMouseNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIOInputMouseNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIOInputMouseNode);
      end;
@@ -73490,7 +73769,12 @@ begin
        VirtIOSoundNode.AddPropertyCells('reg',@Cells,4);
        Cells[0]:=INTC0.GetPHandle;
        Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOSoundIRQ);
-       VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,2);
+       if fAIA then begin
+        Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+        VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,3);
+       end else begin
+        VirtIOSoundNode.AddPropertyCells('interrupts-extended',@Cells,2);
+       end;
       finally
        SoCNode.AddChild(VirtIOSoundNode);
       end;
@@ -73507,7 +73791,12 @@ begin
       VirtIO9PNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIO9PIRQ);
-      VirtIO9PNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIO9PNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIO9PNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIO9PNode);
      end;
@@ -73522,7 +73811,12 @@ begin
       VirtIONetNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIONetIRQ);
-      VirtIONetNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIONetNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIONetNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIONetNode);
      end;
@@ -73537,7 +73831,12 @@ begin
       VirtIORandomGeneratorNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIORandomGeneratorIRQ);
-      VirtIORandomGeneratorNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIORandomGeneratorNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIORandomGeneratorNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIORandomGeneratorNode);
      end;
@@ -73553,7 +73852,12 @@ begin
        VirtIOGPUNode.AddPropertyCells('reg',@Cells,4);
        Cells[0]:=INTC0.GetPHandle;
        Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOGPUIRQ);
-       VirtIOGPUNode.AddPropertyCells('interrupts-extended',@Cells,2);
+       if fAIA then begin
+        Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+        VirtIOGPUNode.AddPropertyCells('interrupts-extended',@Cells,3);
+       end else begin
+        VirtIOGPUNode.AddPropertyCells('interrupts-extended',@Cells,2);
+       end;
       finally
        SoCNode.AddChild(VirtIOGPUNode);
       end;
@@ -73569,7 +73873,12 @@ begin
       VirtIOVSockNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOVSockIRQ);
-      VirtIOVSockNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIOVSockNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIOVSockNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIOVSockNode);
      end;
@@ -73584,7 +73893,12 @@ begin
       VirtIOFSNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOFSIRQ);
-      VirtIOFSNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIOFSNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIOFSNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIOFSNode);
      end;
@@ -73599,7 +73913,12 @@ begin
       VirtIOCryptoNode.AddPropertyCells('reg',@Cells,4);
       Cells[0]:=INTC0.GetPHandle;
       Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOCryptoIRQ);
-      VirtIOCryptoNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIOCryptoNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIOCryptoNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
      finally
       SoCNode.AddChild(VirtIOCryptoNode);
      end;
@@ -73615,7 +73934,12 @@ begin
        VirtIORTCNode.AddPropertyCells('reg',@Cells,4);
        Cells[0]:=INTC0.GetPHandle;
        Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIORTCIRQ);
-       VirtIORTCNode.AddPropertyCells('interrupts-extended',@Cells,2);
+       if fAIA then begin
+        Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+        VirtIORTCNode.AddPropertyCells('interrupts-extended',@Cells,3);
+       end else begin
+        VirtIORTCNode.AddPropertyCells('interrupts-extended',@Cells,2);
+       end;
       finally
        SoCNode.AddChild(VirtIORTCNode);
       end;
@@ -73668,7 +73992,7 @@ begin
       end;
      end;
      I2CNode.AddPropertyU32('interrupt-parent',INTC0.GetPHandle);
-     if fConfiguration.fAIA then begin
+     if fAIA then begin
       // APLIC: #interrupt-cells=2, need IRQ number + trigger type (4 = level high)
       Cells[0]:=TI2CDevice.IRQ;
       Cells[1]:=4; // IRQ_TYPE_LEVEL_HIGH
@@ -73722,7 +74046,12 @@ begin
      VirtIOBlockNode.AddPropertyCells('reg',@Cells,4);
      Cells[0]:=INTC0.GetPHandle;
      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOBlockIRQ);
-     VirtIOBlockNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     if fAIA then begin
+      Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+      VirtIOBlockNode.AddPropertyCells('interrupts-extended',@Cells,3);
+     end else begin
+      VirtIOBlockNode.AddPropertyCells('interrupts-extended',@Cells,2);
+     end;
     finally
      SoCNode.AddChild(VirtIOBlockNode);
     end;
@@ -73749,7 +74078,12 @@ begin
     SharedMemoryNode.AddProperty('no-map',Cells,0);
     Cells[0]:=INTC0.GetPHandle;
     Cells[1]:=TPasRISCVUInt32(fConfiguration.fSharedMemoryIRQ);
-    SharedMemoryNode.AddPropertyCells('interrupts-extended',@Cells,2);
+    if fAIA then begin
+     Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+     SharedMemoryNode.AddPropertyCells('interrupts-extended',@Cells,3);
+    end else begin
+     SharedMemoryNode.AddPropertyCells('interrupts-extended',@Cells,2);
+    end;
    finally
     ReservedMemoryNode.AddChild(SharedMemoryNode);
    end;
