@@ -44030,7 +44030,7 @@ begin
        end;
        // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
        if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-          ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
+          ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
           ((not Unmasked) and (vd<FieldStride)) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -44063,7 +44063,7 @@ begin
        // vlNre8/16/32/64.v — whole register load
        // NumFields+1 registers, evl = (NumFields+1)*VLEN/EEW
        // NREG must be 1, 2, 4, or 8 and vd must be aligned; vm must be 1
-       if (not Unmasked) or (not ((NumFields+1) in [1,2,4,8])) or ((vd mod (NumFields+1))<>0) then begin
+       if (not Unmasked) or (not ((NumFields+1) in [1,2,4,8])) or ((vd and NumFields)<>0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
@@ -44134,7 +44134,7 @@ begin
        end;
        // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
        if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-          ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
+          ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
           ((not Unmasked) and (vd<FieldStride)) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -44207,7 +44207,7 @@ begin
      end;
      // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
      if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
+        ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
         ((not Unmasked) and (vd<FieldStride)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
@@ -44244,7 +44244,7 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      LMUL8:=VectorGetLMUL;
      if LMUL8>0 then begin
-      FieldStride:=LMUL8 div 8;
+      FieldStride:=LMUL8 shr 3;
      end else begin
       FieldStride:=1;
      end;
@@ -44257,13 +44257,13 @@ begin
      if SubIndex<8 then begin
       OperandValue:=1; // IndexEMULRegs
      end else begin
-      OperandValue:=SubIndex div 8; // IndexEMULRegs
+      OperandValue:=SubIndex shr 3; // IndexEMULRegs
      end;
      // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
      // Also check Index-EMUL range, vs2 alignment and vs2 register group fits
      // Also check destination register groups don't overlap with index register group vs2
      if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
+        ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
         (not VectorCheckRegAlign(vs2,SubIndex)) or ((vs2+OperandValue)>32) or
         ((not Unmasked) and (vd<FieldStride)) or
         ((vd<(vs2+OperandValue)) and (vs2<(vd+((NumFields+1)*FieldStride)))) then begin
@@ -44378,7 +44378,7 @@ begin
        end;
        // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
        if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-          ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) then begin
+          ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
@@ -44409,7 +44409,7 @@ begin
       $08:begin
        // vsNr.v — whole register store
        // NREG must be 1, 2, 4, or 8, vd must be aligned, vm must be 1, width must be 000 (EEW=8)
-       if (not Unmasked) or (EEW<>8) or (not ((NumFields+1) in [1,2,4,8])) or ((vd mod (NumFields+1))<>0) then begin
+       if (not Unmasked) or (EEW<>8) or (not ((NumFields+1) in [1,2,4,8])) or ((vd and NumFields)<>0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
         exit;
@@ -44489,7 +44489,7 @@ begin
      end;
      // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
      if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) then begin
+        ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -44525,7 +44525,7 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      LMUL8:=VectorGetLMUL;
      if LMUL8>0 then begin
-      FieldStride:=LMUL8 div 8;
+      FieldStride:=LMUL8 shr 3;
      end else begin
       FieldStride:=1;
      end;
@@ -44538,12 +44538,12 @@ begin
      if SubIndex<8 then begin
       OperandValue:=1; // IndexEMULRegs
      end else begin
-      OperandValue:=SubIndex div 8; // IndexEMULRegs
+      OperandValue:=SubIndex shr 3; // IndexEMULRegs
      end;
      // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
      // Also check Index-EMUL range, vs2 alignment and vs2 register group fits
      if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
-        ((vd mod FieldStride)<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
+        ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
         (not VectorCheckRegAlign(vs2,SubIndex)) or ((vs2+OperandValue)>32) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
@@ -44723,7 +44723,7 @@ begin
      end;
 
      // Compute VLMAX = (VLEN/SEW) * LMUL
-     VLMAX:=(VLEN div SEW)*LMUL8 div 8;
+     VLMAX:=(VLEN div SEW)*LMUL8 shr 3;
 
      // Compute new vl from AVL
      if AVL<=VLMAX then begin
@@ -44777,7 +44777,7 @@ begin
        end;
       end;
       if (OldLMUL8>0) and (OldSEW>0) then begin
-       OldVLMAX:=(VLEN div OldSEW)*OldLMUL8 div 8;
+       OldVLMAX:=(VLEN div OldSEW)*OldLMUL8 shr 3;
       end else begin
        OldVLMAX:=0;
       end;
@@ -45035,7 +45035,7 @@ begin
       $0c:begin
        // vrgather.vv — vd must not overlap vs1 or vs2 (LMUL-aware), and when masked vd must not be v0
        begin
-        OperandValue:=LMUL8 div 8;
+        OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
          OperandValue:=1;
         end;
@@ -45052,7 +45052,7 @@ begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
          SubIndex:=VectorGetElement(vs1,Index,SEW);
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
          if SubIndex>=VLMAX then begin
           VectorSetElement(vd,Index,SEW,0);
          end else begin
@@ -45071,7 +45071,7 @@ begin
        // vd must not overlap vs1 or vs2 (LMUL-aware)
        // Index EMUL = (16/SEW)*LMUL, must be in [1/8..8]
        begin
-        OperandValue:=LMUL8 div 8;
+        OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
          OperandValue:=1;
         end;
@@ -45105,7 +45105,7 @@ begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
          SubIndex:=VectorGetElement(vs1,Index,16);
-         VLMAX:=((VLEN div SEW)*VectorGetLMUL) div 8;
+         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
          if SubIndex<VLMAX then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
          end else begin
@@ -50835,7 +50835,7 @@ begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
-           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW div 8));
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW shr 3));
           end;
          end;
         end;
@@ -50846,7 +50846,7 @@ begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
-           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW div 8),SEW div 8)));
+           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW shr 3),SEW shr 3)));
           end;
          end;
         end;
@@ -50857,7 +50857,7 @@ begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
-           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW div 4));
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW shr 2));
           end;
          end;
         end;
@@ -50868,7 +50868,7 @@ begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
-           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW div 4),SEW div 4)));
+           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW shr 2),SEW shr 2)));
           end;
          end;
         end;
@@ -50879,7 +50879,7 @@ begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
-           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW div 2));
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW shr 1));
           end;
          end;
         end;
@@ -50890,7 +50890,7 @@ begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
           end else begin
-           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW div 2),SEW div 2)));
+           VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW shr 1),SEW shr 1)));
           end;
          end;
         end;
@@ -50903,7 +50903,7 @@ begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
-           for SubIndex:=0 to (SEW div 8)-1 do begin
+           for SubIndex:=0 to (SEW shr 3)-1 do begin
             OperandValue:=(SourceValue shr (SubIndex*8)) and $ff;
             OperandValue:=((OperandValue and $f0) shr 4) or ((OperandValue and $0f) shl 4);
             OperandValue:=((OperandValue and $cc) shr 2) or ((OperandValue and $33) shl 2);
@@ -50923,8 +50923,8 @@ begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
-           for SubIndex:=0 to (SEW div 8)-1 do begin
-            Address:=Address or (((SourceValue shr (SubIndex*8)) and $ff) shl (((SEW div 8)-1-SubIndex)*8));
+           for SubIndex:=0 to (SEW shr 3)-1 do begin
+            Address:=Address or (((SourceValue shr (SubIndex*8)) and $ff) shl (((SEW shr 3)-1-SubIndex)*8));
            end;
            VectorSetElement(vd,Index,SEW,Address);
           end;
@@ -51155,7 +51155,7 @@ begin
        end;
        // Check vd does not overlap vs2 (LMUL-aware) or vs1 (mask source)
        begin
-        OperandValue:=LMUL8 div 8;
+        OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
          OperandValue:=1;
         end;
@@ -51468,7 +51468,7 @@ begin
       $0c:begin
        // vrgather.vi — vd must not overlap vs2 (LMUL-aware)
        begin
-        OperandValue:=LMUL8 div 8;
+        OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
          OperandValue:=1;
         end;
@@ -51483,7 +51483,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
          if SubIndex>=VLMAX then begin
           VectorSetElement(vd,Index,SEW,0);
          end else begin
@@ -51529,7 +51529,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
          if (Index+SubIndex)<VLMAX then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+SubIndex,SEW));
          end else begin
@@ -51845,13 +51845,13 @@ begin
         end;
         NumFields:=vs1+1;
         // vd and vs2 must be aligned to NumFields
-        if ((vd mod NumFields)<>0) or ((vs2 mod NumFields)<>0) then begin
+        if ((vd and (NumFields-1))<>0) or ((vs2 and (NumFields-1))<>0) then begin
          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          result:=4;
          exit;
         end;
         for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) to TPasRISCVUInt32(NumFields*VLENB)-1 do begin
-         fState.VectorRegisters[TVectorRegister((vd+(Index div VLENB)) and 31)][Index mod VLENB]:=fState.VectorRegisters[TVectorRegister((vs2+(Index div VLENB)) and 31)][Index mod VLENB];
+         fState.VectorRegisters[TVectorRegister((vd+(Index div VLENB)) and 31)][Index and (VLENB-1)]:=fState.VectorRegisters[TVectorRegister((vs2+(Index div VLENB)) and 31)][Index and (VLENB-1)];
         end;
        end else begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -52290,7 +52290,7 @@ begin
       $0c:begin
        // vrgather.vx — vd must not overlap vs2 (LMUL-aware)
        begin
-        OperandValue:=LMUL8 div 8;
+        OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
          OperandValue:=1;
         end;
@@ -52305,7 +52305,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
          if SubIndex>=VLMAX then begin
           VectorSetElement(vd,Index,SEW,0);
          end else begin
@@ -52351,7 +52351,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL div 8;
+         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
          if (Index+SubIndex)<VLMAX then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+SubIndex,SEW));
          end else begin
@@ -56342,12 +56342,12 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=8
-     if ((EVL mod 8)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 8)<>0) then begin
+     if ((EVL and 7)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 7)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
      end;
-     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 8 to (EVL div 8)-1 do begin
+     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 3 to (EVL shr 3)-1 do begin
       SubIndex:=Index*8;
       VecCryptoSM3ME(
        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
@@ -56392,13 +56392,13 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
      end;
      SourceValue:=vs1 and 7; // round group
-     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
       SubIndex:=Index*4;
       VecCryptoSM4KeyExp(
        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
@@ -56432,7 +56432,7 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -56441,7 +56441,7 @@ begin
      if (SourceValue=0) or (SourceValue>10) then begin
       SourceValue:=SourceValue xor 8;
      end;
-     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
       SubIndex:=Index*4;
       VecCryptoAESKF1(
        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
@@ -56475,7 +56475,7 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -56483,7 +56483,7 @@ begin
      case vs1 of
       0,1,2,3:begin
        // vaesdm.vv (0), vaesdf.vv (1), vaesem.vv (2), vaesef.vv (3)
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         VecCryptoAESRound(
          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56504,7 +56504,7 @@ begin
       end;
       16:begin
        // vsm4r.vv
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         VecCryptoSM4Rounds(
          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56524,7 +56524,7 @@ begin
       end;
       17:begin
        // vgmul.vv
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         VecCryptoGHASHMul(
          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56568,7 +56568,7 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -56590,7 +56590,7 @@ begin
       SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
       SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
       SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
-      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
        SubIndex:=Index*4;
        VecCryptoAESRound(
         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56619,7 +56619,7 @@ begin
       SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
       SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
       SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
-      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
        SubIndex:=Index*4;
        VectorSetElement(vd,SubIndex+0,32,VectorGetElement(vd,SubIndex+0,32) xor SegmentBuffer[4]);
        VectorSetElement(vd,SubIndex+1,32,VectorGetElement(vd,SubIndex+1,32) xor SegmentBuffer[5]);
@@ -56637,7 +56637,7 @@ begin
       SegmentBuffer[5]:=VectorGetElement(vs2,1,32);
       SegmentBuffer[6]:=VectorGetElement(vs2,2,32);
       SegmentBuffer[7]:=VectorGetElement(vs2,3,32);
-      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+      for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
        SubIndex:=Index*4;
        VecCryptoSM4Rounds(
         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56679,12 +56679,12 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
      end;
-     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
       SubIndex:=Index*4;
       VecCryptoAESKF2(
        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
@@ -56722,7 +56722,7 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=8
-     if ((EVL mod 8)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 8)<>0) then begin
+     if ((EVL and 7)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 7)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -56733,7 +56733,7 @@ begin
       result:=4;
       exit;
      end;
-     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 8 to (EVL div 8)-1 do begin
+     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 3 to (EVL shr 3)-1 do begin
       SubIndex:=Index*8;
       VecCryptoSM3Compress(
        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56778,12 +56778,12 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
      end;
-     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+     for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
       SubIndex:=Index*4;
       VecCryptoGHSH(
        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56818,7 +56818,7 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -56832,7 +56832,7 @@ begin
         result:=4;
         exit;
        end;
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         VecCryptoSHA256MsgSched(
          TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
@@ -56866,7 +56866,7 @@ begin
         result:=4;
         exit;
        end;
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         SegmentBuffer[0]:=VectorGetElement(vd,SubIndex+0,64);
         SegmentBuffer[1]:=VectorGetElement(vd,SubIndex+1,64);
@@ -56909,7 +56909,7 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -56922,7 +56922,7 @@ begin
         result:=4;
         exit;
        end;
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         VecCryptoSHA256Compress(
          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
@@ -56953,7 +56953,7 @@ begin
         result:=4;
         exit;
        end;
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
         SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
@@ -56995,7 +56995,7 @@ begin
       exit;
      end;
      // vl and vstart must be multiples of EGS=4
-     if ((EVL mod 4)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] mod 4)<>0) then begin
+     if ((EVL and 3)<>0) or ((fState.CSR.fData[TCSR.TAddress.VSTART] and 3)<>0) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -57008,7 +57008,7 @@ begin
         result:=4;
         exit;
        end;
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         VecCryptoSHA256Compress(
          TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
@@ -57039,7 +57039,7 @@ begin
         result:=4;
         exit;
        end;
-       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) div 4 to (EVL div 4)-1 do begin
+       for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) shr 2 to (EVL shr 2)-1 do begin
         SubIndex:=Index*4;
         SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
         SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
