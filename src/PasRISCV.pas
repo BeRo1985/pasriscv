@@ -10838,7 +10838,7 @@ procedure VecCryptoAESKF1(const ck0,ck1,ck2,ck3:TPasRISCVUInt32;
                           out r0,r1,r2,r3:TPasRISCVUInt64);
 var lr0,lr1,lr2,lr3:TPasRISCVUInt32;
 begin
- lr0:=VecAESSubByteFwd(ROLDWord(ck3,8)) xor AESRoundConstants[aRnd-1] xor ck0;
+ lr0:=VecAESSubByteFwd(RORDWord(ck3,8)) xor AESRoundConstants[aRnd-1] xor ck0;
  lr1:=lr0 xor ck1;
  lr2:=lr1 xor ck2;
  lr3:=lr2 xor ck3;
