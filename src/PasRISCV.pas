@@ -5932,7 +5932,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     SHA256_DIGEST_SIZE=32;
                     SHA384_DIGEST_SIZE=48;
                     SHA512_DIGEST_SIZE=64;
-              type TAESBlock=array[0..15] of TPasRISCVUInt8;
+                    CRYPTO_BUFFER_SIZE=65536;
+                    MAX_PADDED_SIZE=65792;     // CRYPTO_BUFFER_SIZE + 256 (max SHA-512 padding with HMAC overhead)
+                    MAX_HMAC_INNER_SIZE=65664; // 128 + CRYPTO_BUFFER_SIZE
+                    MAX_HMAC_OUTER_SIZE=192;   // 128 + SHA512_DIGEST_SIZE
+              type TCryptoBuffer=array[0..CRYPTO_BUFFER_SIZE-1] of TPasRISCVUInt8;
+                   PCryptoBuffer=^TCryptoBuffer;
+                   TDigestBuffer=array[0..SHA512_DIGEST_SIZE-1] of TPasRISCVUInt8;
+                   TPaddedBuffer=array[0..MAX_PADDED_SIZE-1] of TPasRISCVUInt8;
+                   PPaddedBuffer=^TPaddedBuffer;
+                   THMACInnerBuffer=array[0..MAX_HMAC_INNER_SIZE-1] of TPasRISCVUInt8;
+                   PHMACInnerBuffer=^THMACInnerBuffer;
+                   THMACOuterBuffer=array[0..MAX_HMAC_OUTER_SIZE-1] of TPasRISCVUInt8;
+                   TAESBlock=array[0..15] of TPasRISCVUInt8;
                    PAESBlock=^TAESBlock;
                    TAESRoundKeys=array[0..AES_MAX_ROUNDS] of TAESBlock;
                    PAESRoundKeys=^TAESRoundKeys;
@@ -5959,8 +5971,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    PCryptoSession=^TCryptoSession;
                    TCryptoSessions=array[0..MAX_SESSIONS-1] of TCryptoSession;
              private
-              fSendBuffer:TPasRISCVUInt8DynamicArray;
-              fReceiveBuffer:TPasRISCVUInt8DynamicArray;
+              fSendBuffer:TCryptoBuffer;
+              fReceiveBuffer:TCryptoBuffer;
               fSessions:TCryptoSessions;
               fNextSessionID:TPasRISCVUInt64;
 
@@ -5970,14 +5982,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               class procedure AESEncryptBlock(var aState:TAESBlock;const aRoundKeys:TAESRoundKeys;const aCountRounds:TPasRISCVUInt32); static;
               class procedure AESDecryptBlock(var aState:TAESBlock;const aRoundKeys:TAESRoundKeys;const aCountRounds:TPasRISCVUInt32); static;
               // SHA helpers
-              class procedure SHA1Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray); static;
-              class procedure SHA256Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray); static;
-              class procedure SHA384Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray); static;
-              class procedure SHA512Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray); static;
-              class procedure SHA512Core(const aData:Pointer;const aDataLen:TPasRISCVUInt64;const aInitState:TSHA512State;out aDigest:TPasRISCVUInt8DynamicArray;const aDigestLen:TPasRISCVUInt32); static;
+              class procedure SHA1Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer); static;
+              class procedure SHA256Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer); static;
+              class procedure SHA384Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer); static;
+              class procedure SHA512Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer); static;
+              class procedure SHA512Core(const aData:Pointer;const aDataLen:TPasRISCVUInt64;const aInitState:TSHA512State;out aDigest:TDigestBuffer;const aDigestLen:TPasRISCVUInt32); static;
               // HMAC helpers
-              class procedure HMACSHA256(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray); static;
-              class procedure HMACSHA512(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray); static;
+              class procedure HMACSHA256(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer); static;
+              class procedure HMACSHA512(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer); static;
 
               procedure AESCipherOp(const aEncrypt:Boolean;const aAlgo:TPasRISCVUInt32;const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aIV:Pointer;const aIVLen:TPasRISCVUInt32;const aInput:Pointer;const aInputLen:TPasRISCVUInt32;const aOutput:Pointer;const aOutputLen:TPasRISCVUInt32);
               procedure SetupConfigSpace;
@@ -34678,13 +34690,10 @@ begin
  fQueues[CRYPTO_CONTROLQ].ManualRecv:=false;
  fQueues[CRYPTO_CONTROLQ].Asynchronous:=false;
 
- fSendBuffer:=nil;
- SetLength(fSendBuffer,65536);
+ FillChar(fSendBuffer,SizeOf(fSendBuffer),#0);
+ FillChar(fReceiveBuffer,SizeOf(fReceiveBuffer),#0);
 
- fReceiveBuffer:=nil;
- SetLength(fReceiveBuffer,65536);
-
- FillChar(fSessions,SizeOf(fSessions),0);
+ FillChar(fSessions,SizeOf(fSessions),#0);
  fNextSessionID:=0;
 
  SetupConfigSpace;
@@ -34693,8 +34702,6 @@ end;
 
 destructor TPasRISCV.TVirtIOCryptoDevice.Destroy;
 begin
- fSendBuffer:=nil;
- fReceiveBuffer:=nil;
  inherited Destroy;
 end;
 
@@ -34731,7 +34738,7 @@ begin
  KeyWords:=aKeyLen div 4; // 4, 6, or 8
  aCountRounds:=KeyWords+6; // 10, 12, or 14
  TotalWords:=4*(aCountRounds+1);
- FillChar(ExpandedWords,SizeOf(ExpandedWords),0);
+ FillChar(ExpandedWords,SizeOf(ExpandedWords),#0);
 
  for WordIndex:=0 to KeyWords-1 do begin
   ExpandedWords[WordIndex]:=(TPasRISCVUInt32(KeyBytes^[4*WordIndex]) shl 24) or
@@ -34768,7 +34775,7 @@ begin
   ExpandedWords[WordIndex]:=ExpandedWords[WordIndex-KeyWords] xor TempWord;
  end;
 
- FillChar(aRoundKeys,SizeOf(aRoundKeys),0);
+ FillChar(aRoundKeys,SizeOf(aRoundKeys),#0);
  for WordIndex:=0 to aCountRounds do begin
   for SubWordIndex:=0 to 3 do begin
    aRoundKeys[WordIndex][SubWordIndex*4]:=TPasRISCVUInt8(ExpandedWords[(WordIndex*4)+SubWordIndex] shr 24);
@@ -34875,10 +34882,10 @@ begin
  end;
 end;
 
-class procedure TPasRISCV.TVirtIOCryptoDevice.SHA1Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray);
+class procedure TPasRISCV.TVirtIOCryptoDevice.SHA1Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer);
 var StateH0,StateH1,StateH2,StateH3,StateH4:TPasRISCVUInt32;
     BitLength:TPasRISCVUInt64;
-    PaddedMessage:TPasRISCVUInt8DynamicArray;
+    PaddedMessage:PPaddedBuffer;
     PaddedLength,ChunkOffset:TPasRISCVUInt64;
     Schedule:array[0..79] of TPasRISCVUInt32;
     WorkA,WorkB,WorkC,WorkD,WorkE,RoundF,RoundK,TempValue:TPasRISCVUInt32;
@@ -34898,75 +34905,76 @@ begin
   inc(PaddedLength);
  end;
  inc(PaddedLength,8);
- PaddedMessage:=nil;
- SetLength(PaddedMessage,PaddedLength);
- FillChar(PaddedMessage[0],PaddedLength,0);
- if aDataLen>0 then begin
-  Move(aData^,PaddedMessage[0],aDataLen);
- end;
- PaddedMessage[aDataLen]:=$80;
- // Append bit length big-endian
- PaddedMessage[PaddedLength-8]:=TPasRISCVUInt8(BitLength shr 56);
- PaddedMessage[PaddedLength-7]:=TPasRISCVUInt8(BitLength shr 48);
- PaddedMessage[PaddedLength-6]:=TPasRISCVUInt8(BitLength shr 40);
- PaddedMessage[PaddedLength-5]:=TPasRISCVUInt8(BitLength shr 32);
- PaddedMessage[PaddedLength-4]:=TPasRISCVUInt8(BitLength shr 24);
- PaddedMessage[PaddedLength-3]:=TPasRISCVUInt8(BitLength shr 16);
- PaddedMessage[PaddedLength-2]:=TPasRISCVUInt8(BitLength shr 8);
- PaddedMessage[PaddedLength-1]:=TPasRISCVUInt8(BitLength);
+ GetMem(PaddedMessage,PaddedLength);
+ try
+  FillChar(PaddedMessage^[0],PaddedLength,#0);
+  if aDataLen>0 then begin
+   Move(aData^,PaddedMessage^[0],aDataLen);
+  end;
+  PaddedMessage^[aDataLen]:=$80;
+  // Append bit length big-endian
+  PaddedMessage^[PaddedLength-8]:=TPasRISCVUInt8(BitLength shr 56);
+  PaddedMessage^[PaddedLength-7]:=TPasRISCVUInt8(BitLength shr 48);
+  PaddedMessage^[PaddedLength-6]:=TPasRISCVUInt8(BitLength shr 40);
+  PaddedMessage^[PaddedLength-5]:=TPasRISCVUInt8(BitLength shr 32);
+  PaddedMessage^[PaddedLength-4]:=TPasRISCVUInt8(BitLength shr 24);
+  PaddedMessage^[PaddedLength-3]:=TPasRISCVUInt8(BitLength shr 16);
+  PaddedMessage^[PaddedLength-2]:=TPasRISCVUInt8(BitLength shr 8);
+  PaddedMessage^[PaddedLength-1]:=TPasRISCVUInt8(BitLength);
 
- ChunkOffset:=0;
- while ChunkOffset<PaddedLength do begin
-  ChunkBytes:=@PaddedMessage[ChunkOffset];
-  for Index:=0 to 15 do begin
-   Schedule[Index]:=(TPasRISCVUInt32(ChunkBytes^[Index*4]) shl 24) or
-                    (TPasRISCVUInt32(ChunkBytes^[(Index*4)+1]) shl 16) or
-                    (TPasRISCVUInt32(ChunkBytes^[(Index*4)+2]) shl 8) or
-                    TPasRISCVUInt32(ChunkBytes^[(Index*4)+3]);
-  end;
-  for Index:=16 to 79 do begin
-   TempValue:=Schedule[Index-3] xor Schedule[Index-8] xor Schedule[Index-14] xor Schedule[Index-16];
-   Schedule[Index]:=(TempValue shl 1) or (TempValue shr 31);
-  end;
-  WorkA:=StateH0; WorkB:=StateH1; WorkC:=StateH2; WorkD:=StateH3; WorkE:=StateH4;
-  for Index:=0 to 79 do begin
-   case Index of
-    0..19:begin
-     RoundF:=(WorkB and WorkC) or ((not WorkB) and WorkD);
-     RoundK:=$5A827999;
-    end;
-    20..39:begin
-     RoundF:=WorkB xor WorkC xor WorkD;
-     RoundK:=$6ED9EBA1;
-    end;
-    40..59:begin
-     RoundF:=(WorkB and WorkC) or (WorkB and WorkD) or (WorkC and WorkD);
-     RoundK:=$8F1BBCDC;
-    end;
-    else begin
-     RoundF:=WorkB xor WorkC xor WorkD;
-     RoundK:=$CA62C1D6;
-    end;
+  ChunkOffset:=0;
+  while ChunkOffset<PaddedLength do begin
+   ChunkBytes:=@PaddedMessage^[ChunkOffset];
+   for Index:=0 to 15 do begin
+    Schedule[Index]:=(TPasRISCVUInt32(ChunkBytes^[Index*4]) shl 24) or
+                     (TPasRISCVUInt32(ChunkBytes^[(Index*4)+1]) shl 16) or
+                     (TPasRISCVUInt32(ChunkBytes^[(Index*4)+2]) shl 8) or
+                     TPasRISCVUInt32(ChunkBytes^[(Index*4)+3]);
    end;
-   TempValue:=((WorkA shl 5) or (WorkA shr 27))+RoundF+WorkE+RoundK+Schedule[Index];
-   WorkE:=WorkD;
-   WorkD:=WorkC;
-   WorkC:=(WorkB shl 30) or (WorkB shr 2);
-   WorkB:=WorkA;
-   WorkA:=TempValue;
+   for Index:=16 to 79 do begin
+    TempValue:=Schedule[Index-3] xor Schedule[Index-8] xor Schedule[Index-14] xor Schedule[Index-16];
+    Schedule[Index]:=(TempValue shl 1) or (TempValue shr 31);
+   end;
+   WorkA:=StateH0; WorkB:=StateH1; WorkC:=StateH2; WorkD:=StateH3; WorkE:=StateH4;
+   for Index:=0 to 79 do begin
+    case Index of
+     0..19:begin
+      RoundF:=(WorkB and WorkC) or ((not WorkB) and WorkD);
+      RoundK:=$5A827999;
+     end;
+     20..39:begin
+      RoundF:=WorkB xor WorkC xor WorkD;
+      RoundK:=$6ED9EBA1;
+     end;
+     40..59:begin
+      RoundF:=(WorkB and WorkC) or (WorkB and WorkD) or (WorkC and WorkD);
+      RoundK:=$8F1BBCDC;
+     end;
+     else begin
+      RoundF:=WorkB xor WorkC xor WorkD;
+      RoundK:=$CA62C1D6;
+     end;
+    end;
+    TempValue:=((WorkA shl 5) or (WorkA shr 27))+RoundF+WorkE+RoundK+Schedule[Index];
+    WorkE:=WorkD;
+    WorkD:=WorkC;
+    WorkC:=(WorkB shl 30) or (WorkB shr 2);
+    WorkB:=WorkA;
+    WorkA:=TempValue;
+   end;
+   StateH0:=StateH0+WorkA;
+   StateH1:=StateH1+WorkB;
+   StateH2:=StateH2+WorkC;
+   StateH3:=StateH3+WorkD;
+   StateH4:=StateH4+WorkE;
+   inc(ChunkOffset,64);
   end;
-  StateH0:=StateH0+WorkA;
-  StateH1:=StateH1+WorkB;
-  StateH2:=StateH2+WorkC;
-  StateH3:=StateH3+WorkD;
-  StateH4:=StateH4+WorkE;
-  inc(ChunkOffset,64);
+
+ finally
+  FreeMem(PaddedMessage);
  end;
 
- PaddedMessage:=nil;
-
- aDigest:=nil;
- SetLength(aDigest,SHA1_DIGEST_SIZE);
+ FillChar(aDigest,SizeOf(aDigest),#0);
  aDigest[0]:=TPasRISCVUInt8(StateH0 shr 24); aDigest[1]:=TPasRISCVUInt8(StateH0 shr 16); aDigest[2]:=TPasRISCVUInt8(StateH0 shr 8); aDigest[3]:=TPasRISCVUInt8(StateH0);
  aDigest[4]:=TPasRISCVUInt8(StateH1 shr 24); aDigest[5]:=TPasRISCVUInt8(StateH1 shr 16); aDigest[6]:=TPasRISCVUInt8(StateH1 shr 8); aDigest[7]:=TPasRISCVUInt8(StateH1);
  aDigest[8]:=TPasRISCVUInt8(StateH2 shr 24); aDigest[9]:=TPasRISCVUInt8(StateH2 shr 16); aDigest[10]:=TPasRISCVUInt8(StateH2 shr 8); aDigest[11]:=TPasRISCVUInt8(StateH2);
@@ -34974,10 +34982,10 @@ begin
  aDigest[16]:=TPasRISCVUInt8(StateH4 shr 24); aDigest[17]:=TPasRISCVUInt8(StateH4 shr 16); aDigest[18]:=TPasRISCVUInt8(StateH4 shr 8); aDigest[19]:=TPasRISCVUInt8(StateH4);
 end;
 
-class procedure TPasRISCV.TVirtIOCryptoDevice.SHA256Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray);
+class procedure TPasRISCV.TVirtIOCryptoDevice.SHA256Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer);
 var State:TSHA256State;
     BitLength:TPasRISCVUInt64;
-    PaddedMessage:TPasRISCVUInt8DynamicArray;
+    PaddedMessage:PPaddedBuffer;
     PaddedLength,ChunkOffset:TPasRISCVUInt64;
     Schedule:array[0..63] of TPasRISCVUInt32;
     WorkA,WorkB,WorkC,WorkD,WorkE,WorkF,WorkG,WorkH:TPasRISCVUInt32;
@@ -34994,67 +35002,68 @@ begin
   inc(PaddedLength);
  end;
  inc(PaddedLength,8);
- PaddedMessage:=nil;
- SetLength(PaddedMessage,PaddedLength);
- FillChar(PaddedMessage[0],PaddedLength,0);
- if aDataLen>0 then begin
-  Move(aData^,PaddedMessage[0],aDataLen);
+ GetMem(PaddedMessage,PaddedLength);
+ try
+  FillChar(PaddedMessage^[0],PaddedLength,#0);
+  if aDataLen>0 then begin
+   Move(aData^,PaddedMessage^[0],aDataLen);
+  end;
+  PaddedMessage^[aDataLen]:=$80;
+  PaddedMessage^[PaddedLength-8]:=TPasRISCVUInt8(BitLength shr 56);
+  PaddedMessage^[PaddedLength-7]:=TPasRISCVUInt8(BitLength shr 48);
+  PaddedMessage^[PaddedLength-6]:=TPasRISCVUInt8(BitLength shr 40);
+  PaddedMessage^[PaddedLength-5]:=TPasRISCVUInt8(BitLength shr 32);
+  PaddedMessage^[PaddedLength-4]:=TPasRISCVUInt8(BitLength shr 24);
+  PaddedMessage^[PaddedLength-3]:=TPasRISCVUInt8(BitLength shr 16);
+  PaddedMessage^[PaddedLength-2]:=TPasRISCVUInt8(BitLength shr 8);
+  PaddedMessage^[PaddedLength-1]:=TPasRISCVUInt8(BitLength);
+
+  ChunkOffset:=0;
+  while ChunkOffset<PaddedLength do begin
+   ChunkBytes:=@PaddedMessage^[ChunkOffset];
+   for Index:=0 to 15 do begin
+    Schedule[Index]:=(TPasRISCVUInt32(ChunkBytes^[Index*4]) shl 24) or
+                     (TPasRISCVUInt32(ChunkBytes^[(Index*4)+1]) shl 16) or
+                     (TPasRISCVUInt32(ChunkBytes^[(Index*4)+2]) shl 8) or
+                     TPasRISCVUInt32(ChunkBytes^[(Index*4)+3]);
+   end;
+   for Index:=16 to 63 do begin
+    Sigma0:=((Schedule[Index-15] shr 7) or (Schedule[Index-15] shl 25)) xor
+            ((Schedule[Index-15] shr 18) or (Schedule[Index-15] shl 14)) xor
+            (Schedule[Index-15] shr 3);
+    Sigma1:=((Schedule[Index-2] shr 17) or (Schedule[Index-2] shl 15)) xor
+            ((Schedule[Index-2] shr 19) or (Schedule[Index-2] shl 13)) xor
+            (Schedule[Index-2] shr 10);
+    Schedule[Index]:=Schedule[Index-16]+Sigma0+Schedule[Index-7]+Sigma1;
+   end;
+   WorkA:=State[0]; WorkB:=State[1]; WorkC:=State[2]; WorkD:=State[3];
+   WorkE:=State[4]; WorkF:=State[5]; WorkG:=State[6]; WorkH:=State[7];
+   for Index:=0 to 63 do begin
+    Sigma1:=((WorkE shr 6) or (WorkE shl 26)) xor ((WorkE shr 11) or (WorkE shl 21)) xor ((WorkE shr 25) or (WorkE shl 7));
+    Choose:=(WorkE and WorkF) xor ((not WorkE) and WorkG);
+    Temp1:=WorkH+Sigma1+Choose+SHA256_K[Index]+Schedule[Index];
+    Sigma0:=((WorkA shr 2) or (WorkA shl 30)) xor ((WorkA shr 13) or (WorkA shl 19)) xor ((WorkA shr 22) or (WorkA shl 10));
+    Majority:=(WorkA and WorkB) xor (WorkA and WorkC) xor (WorkB and WorkC);
+    Temp2:=Sigma0+Majority;
+    WorkH:=WorkG;
+    WorkG:=WorkF;
+    WorkF:=WorkE;
+    WorkE:=WorkD+Temp1;
+    WorkD:=WorkC;
+    WorkC:=WorkB;
+    WorkB:=WorkA;
+    WorkA:=Temp1+Temp2;
+   end;
+   State[0]:=State[0]+WorkA; State[1]:=State[1]+WorkB; State[2]:=State[2]+WorkC; State[3]:=State[3]+WorkD;
+   State[4]:=State[4]+WorkE; State[5]:=State[5]+WorkF; State[6]:=State[6]+WorkG; State[7]:=State[7]+WorkH;
+   inc(ChunkOffset,64);
+  end;
+
+ finally
+  FreeMem(PaddedMessage);
  end;
- PaddedMessage[aDataLen]:=$80;
- PaddedMessage[PaddedLength-8]:=TPasRISCVUInt8(BitLength shr 56);
- PaddedMessage[PaddedLength-7]:=TPasRISCVUInt8(BitLength shr 48);
- PaddedMessage[PaddedLength-6]:=TPasRISCVUInt8(BitLength shr 40);
- PaddedMessage[PaddedLength-5]:=TPasRISCVUInt8(BitLength shr 32);
- PaddedMessage[PaddedLength-4]:=TPasRISCVUInt8(BitLength shr 24);
- PaddedMessage[PaddedLength-3]:=TPasRISCVUInt8(BitLength shr 16);
- PaddedMessage[PaddedLength-2]:=TPasRISCVUInt8(BitLength shr 8);
- PaddedMessage[PaddedLength-1]:=TPasRISCVUInt8(BitLength);
 
- ChunkOffset:=0;
- while ChunkOffset<PaddedLength do begin
-  ChunkBytes:=@PaddedMessage[ChunkOffset];
-  for Index:=0 to 15 do begin
-   Schedule[Index]:=(TPasRISCVUInt32(ChunkBytes^[Index*4]) shl 24) or
-                    (TPasRISCVUInt32(ChunkBytes^[(Index*4)+1]) shl 16) or
-                    (TPasRISCVUInt32(ChunkBytes^[(Index*4)+2]) shl 8) or
-                    TPasRISCVUInt32(ChunkBytes^[(Index*4)+3]);
-  end;
-  for Index:=16 to 63 do begin
-   Sigma0:=((Schedule[Index-15] shr 7) or (Schedule[Index-15] shl 25)) xor
-           ((Schedule[Index-15] shr 18) or (Schedule[Index-15] shl 14)) xor
-           (Schedule[Index-15] shr 3);
-   Sigma1:=((Schedule[Index-2] shr 17) or (Schedule[Index-2] shl 15)) xor
-           ((Schedule[Index-2] shr 19) or (Schedule[Index-2] shl 13)) xor
-           (Schedule[Index-2] shr 10);
-   Schedule[Index]:=Schedule[Index-16]+Sigma0+Schedule[Index-7]+Sigma1;
-  end;
-  WorkA:=State[0]; WorkB:=State[1]; WorkC:=State[2]; WorkD:=State[3];
-  WorkE:=State[4]; WorkF:=State[5]; WorkG:=State[6]; WorkH:=State[7];
-  for Index:=0 to 63 do begin
-   Sigma1:=((WorkE shr 6) or (WorkE shl 26)) xor ((WorkE shr 11) or (WorkE shl 21)) xor ((WorkE shr 25) or (WorkE shl 7));
-   Choose:=(WorkE and WorkF) xor ((not WorkE) and WorkG);
-   Temp1:=WorkH+Sigma1+Choose+SHA256_K[Index]+Schedule[Index];
-   Sigma0:=((WorkA shr 2) or (WorkA shl 30)) xor ((WorkA shr 13) or (WorkA shl 19)) xor ((WorkA shr 22) or (WorkA shl 10));
-   Majority:=(WorkA and WorkB) xor (WorkA and WorkC) xor (WorkB and WorkC);
-   Temp2:=Sigma0+Majority;
-   WorkH:=WorkG;
-   WorkG:=WorkF;
-   WorkF:=WorkE;
-   WorkE:=WorkD+Temp1;
-   WorkD:=WorkC;
-   WorkC:=WorkB;
-   WorkB:=WorkA;
-   WorkA:=Temp1+Temp2;
-  end;
-  State[0]:=State[0]+WorkA; State[1]:=State[1]+WorkB; State[2]:=State[2]+WorkC; State[3]:=State[3]+WorkD;
-  State[4]:=State[4]+WorkE; State[5]:=State[5]+WorkF; State[6]:=State[6]+WorkG; State[7]:=State[7]+WorkH;
-  inc(ChunkOffset,64);
- end;
-
- PaddedMessage:=nil;
-
- aDigest:=nil;
- SetLength(aDigest,SHA256_DIGEST_SIZE);
+ FillChar(aDigest,SizeOf(aDigest),#0);
  for Index:=0 to 7 do begin
   aDigest[Index*4]:=TPasRISCVUInt8(State[Index] shr 24);
   aDigest[(Index*4)+1]:=TPasRISCVUInt8(State[Index] shr 16);
@@ -35063,10 +35072,10 @@ begin
  end;
 end;
 
-class procedure TPasRISCV.TVirtIOCryptoDevice.SHA512Core(const aData:Pointer;const aDataLen:TPasRISCVUInt64;const aInitState:TSHA512State;out aDigest:TPasRISCVUInt8DynamicArray;const aDigestLen:TPasRISCVUInt32);
+class procedure TPasRISCV.TVirtIOCryptoDevice.SHA512Core(const aData:Pointer;const aDataLen:TPasRISCVUInt64;const aInitState:TSHA512State;out aDigest:TDigestBuffer;const aDigestLen:TPasRISCVUInt32);
 var State:TSHA512State;
     BitLength:TPasRISCVUInt64;
-    PaddedMessage:TPasRISCVUInt8DynamicArray;
+    PaddedMessage:PPaddedBuffer;
     PaddedLength,ChunkOffset:TPasRISCVUInt64;
     Schedule:array[0..79] of TPasRISCVUInt64;
     WorkA,WorkB,WorkC,WorkD,WorkE,WorkF,WorkG,WorkH:TPasRISCVUInt64;
@@ -35083,77 +35092,78 @@ begin
   inc(PaddedLength);
  end;
  inc(PaddedLength,16); // 128-bit length field
- PaddedMessage:=nil;
- SetLength(PaddedMessage,PaddedLength);
- FillChar(PaddedMessage[0],PaddedLength,0);
- if aDataLen>0 then begin
-  Move(aData^,PaddedMessage[0],aDataLen);
- end;
- PaddedMessage[aDataLen]:=$80;
- // Append 128-bit length (upper 64 bits are zero for practical data sizes)
- PaddedMessage[PaddedLength-8]:=TPasRISCVUInt8(BitLength shr 56);
- PaddedMessage[PaddedLength-7]:=TPasRISCVUInt8(BitLength shr 48);
- PaddedMessage[PaddedLength-6]:=TPasRISCVUInt8(BitLength shr 40);
- PaddedMessage[PaddedLength-5]:=TPasRISCVUInt8(BitLength shr 32);
- PaddedMessage[PaddedLength-4]:=TPasRISCVUInt8(BitLength shr 24);
- PaddedMessage[PaddedLength-3]:=TPasRISCVUInt8(BitLength shr 16);
- PaddedMessage[PaddedLength-2]:=TPasRISCVUInt8(BitLength shr 8);
- PaddedMessage[PaddedLength-1]:=TPasRISCVUInt8(BitLength);
+ GetMem(PaddedMessage,PaddedLength);
+ try
+  FillChar(PaddedMessage^[0],PaddedLength,#0);
+  if aDataLen>0 then begin
+   Move(aData^,PaddedMessage^[0],aDataLen);
+  end;
+  PaddedMessage^[aDataLen]:=$80;
+  // Append 128-bit length (upper 64 bits are zero for practical data sizes)
+  PaddedMessage^[PaddedLength-8]:=TPasRISCVUInt8(BitLength shr 56);
+  PaddedMessage^[PaddedLength-7]:=TPasRISCVUInt8(BitLength shr 48);
+  PaddedMessage^[PaddedLength-6]:=TPasRISCVUInt8(BitLength shr 40);
+  PaddedMessage^[PaddedLength-5]:=TPasRISCVUInt8(BitLength shr 32);
+  PaddedMessage^[PaddedLength-4]:=TPasRISCVUInt8(BitLength shr 24);
+  PaddedMessage^[PaddedLength-3]:=TPasRISCVUInt8(BitLength shr 16);
+  PaddedMessage^[PaddedLength-2]:=TPasRISCVUInt8(BitLength shr 8);
+  PaddedMessage^[PaddedLength-1]:=TPasRISCVUInt8(BitLength);
 
- ChunkOffset:=0;
- while ChunkOffset<PaddedLength do begin
-  ChunkBytes:=@PaddedMessage[ChunkOffset];
-  for Index:=0 to 15 do begin
-   Schedule[Index]:=(TPasRISCVUInt64(ChunkBytes^[Index*8]) shl 56) or
-                    (TPasRISCVUInt64(ChunkBytes^[(Index*8)+1]) shl 48) or
-                    (TPasRISCVUInt64(ChunkBytes^[(Index*8)+2]) shl 40) or
-                    (TPasRISCVUInt64(ChunkBytes^[(Index*8)+3]) shl 32) or
-                    (TPasRISCVUInt64(ChunkBytes^[(Index*8)+4]) shl 24) or
-                    (TPasRISCVUInt64(ChunkBytes^[(Index*8)+5]) shl 16) or
-                    (TPasRISCVUInt64(ChunkBytes^[(Index*8)+6]) shl 8) or
-                    TPasRISCVUInt64(ChunkBytes^[(Index*8)+7]);
+  ChunkOffset:=0;
+  while ChunkOffset<PaddedLength do begin
+   ChunkBytes:=@PaddedMessage^[ChunkOffset];
+   for Index:=0 to 15 do begin
+    Schedule[Index]:=(TPasRISCVUInt64(ChunkBytes^[Index*8]) shl 56) or
+                     (TPasRISCVUInt64(ChunkBytes^[(Index*8)+1]) shl 48) or
+                     (TPasRISCVUInt64(ChunkBytes^[(Index*8)+2]) shl 40) or
+                     (TPasRISCVUInt64(ChunkBytes^[(Index*8)+3]) shl 32) or
+                     (TPasRISCVUInt64(ChunkBytes^[(Index*8)+4]) shl 24) or
+                     (TPasRISCVUInt64(ChunkBytes^[(Index*8)+5]) shl 16) or
+                     (TPasRISCVUInt64(ChunkBytes^[(Index*8)+6]) shl 8) or
+                     TPasRISCVUInt64(ChunkBytes^[(Index*8)+7]);
+   end;
+   for Index:=16 to 79 do begin
+    Sigma0:=((Schedule[Index-15] shr 1) or (Schedule[Index-15] shl 63)) xor
+            ((Schedule[Index-15] shr 8) or (Schedule[Index-15] shl 56)) xor
+            (Schedule[Index-15] shr 7);
+    Sigma1:=((Schedule[Index-2] shr 19) or (Schedule[Index-2] shl 45)) xor
+            ((Schedule[Index-2] shr 61) or (Schedule[Index-2] shl 3)) xor
+            (Schedule[Index-2] shr 6);
+    Schedule[Index]:=Schedule[Index-16]+Sigma0+Schedule[Index-7]+Sigma1;
+   end;
+   WorkA:=State[0]; WorkB:=State[1]; WorkC:=State[2]; WorkD:=State[3];
+   WorkE:=State[4]; WorkF:=State[5]; WorkG:=State[6]; WorkH:=State[7];
+   for Index:=0 to 79 do begin
+    Sigma1:=((WorkE shr 14) or (WorkE shl 50)) xor ((WorkE shr 18) or (WorkE shl 46)) xor ((WorkE shr 41) or (WorkE shl 23));
+    Choose:=(WorkE and WorkF) xor ((not WorkE) and WorkG);
+    Temp1:=WorkH+Sigma1+Choose+SHA512_K[Index]+Schedule[Index];
+    Sigma0:=((WorkA shr 28) or (WorkA shl 36)) xor ((WorkA shr 34) or (WorkA shl 30)) xor ((WorkA shr 39) or (WorkA shl 25));
+    Majority:=(WorkA and WorkB) xor (WorkA and WorkC) xor (WorkB and WorkC);
+    Temp2:=Sigma0+Majority;
+    WorkH:=WorkG;
+    WorkG:=WorkF;
+    WorkF:=WorkE;
+    WorkE:=WorkD+Temp1;
+    WorkD:=WorkC;
+    WorkC:=WorkB;
+    WorkB:=WorkA;
+    WorkA:=Temp1+Temp2;
+   end;
+   State[0]:=State[0]+WorkA; State[1]:=State[1]+WorkB; State[2]:=State[2]+WorkC; State[3]:=State[3]+WorkD;
+   State[4]:=State[4]+WorkE; State[5]:=State[5]+WorkF; State[6]:=State[6]+WorkG; State[7]:=State[7]+WorkH;
+   inc(ChunkOffset,128);
   end;
-  for Index:=16 to 79 do begin
-   Sigma0:=((Schedule[Index-15] shr 1) or (Schedule[Index-15] shl 63)) xor
-           ((Schedule[Index-15] shr 8) or (Schedule[Index-15] shl 56)) xor
-           (Schedule[Index-15] shr 7);
-   Sigma1:=((Schedule[Index-2] shr 19) or (Schedule[Index-2] shl 45)) xor
-           ((Schedule[Index-2] shr 61) or (Schedule[Index-2] shl 3)) xor
-           (Schedule[Index-2] shr 6);
-   Schedule[Index]:=Schedule[Index-16]+Sigma0+Schedule[Index-7]+Sigma1;
-  end;
-  WorkA:=State[0]; WorkB:=State[1]; WorkC:=State[2]; WorkD:=State[3];
-  WorkE:=State[4]; WorkF:=State[5]; WorkG:=State[6]; WorkH:=State[7];
-  for Index:=0 to 79 do begin
-   Sigma1:=((WorkE shr 14) or (WorkE shl 50)) xor ((WorkE shr 18) or (WorkE shl 46)) xor ((WorkE shr 41) or (WorkE shl 23));
-   Choose:=(WorkE and WorkF) xor ((not WorkE) and WorkG);
-   Temp1:=WorkH+Sigma1+Choose+SHA512_K[Index]+Schedule[Index];
-   Sigma0:=((WorkA shr 28) or (WorkA shl 36)) xor ((WorkA shr 34) or (WorkA shl 30)) xor ((WorkA shr 39) or (WorkA shl 25));
-   Majority:=(WorkA and WorkB) xor (WorkA and WorkC) xor (WorkB and WorkC);
-   Temp2:=Sigma0+Majority;
-   WorkH:=WorkG;
-   WorkG:=WorkF;
-   WorkF:=WorkE;
-   WorkE:=WorkD+Temp1;
-   WorkD:=WorkC;
-   WorkC:=WorkB;
-   WorkB:=WorkA;
-   WorkA:=Temp1+Temp2;
-  end;
-  State[0]:=State[0]+WorkA; State[1]:=State[1]+WorkB; State[2]:=State[2]+WorkC; State[3]:=State[3]+WorkD;
-  State[4]:=State[4]+WorkE; State[5]:=State[5]+WorkF; State[6]:=State[6]+WorkG; State[7]:=State[7]+WorkH;
-  inc(ChunkOffset,128);
- end;
 
- PaddedMessage:=nil;
+ finally
+  FreeMem(PaddedMessage);
+ end;
 
  DigestWordCount:=aDigestLen div 8;
  if DigestWordCount>8 then begin
   DigestWordCount:=8;
  end;
 
- aDigest:=nil;
- SetLength(aDigest,aDigestLen);
+ FillChar(aDigest,SizeOf(aDigest),#0);
  for Index:=0 to DigestWordCount-1 do begin
   aDigest[Index*8]:=TPasRISCVUInt8(State[Index] shr 56);
   aDigest[(Index*8)+1]:=TPasRISCVUInt8(State[Index] shr 48);
@@ -35166,7 +35176,7 @@ begin
  end;
 end;
 
-class procedure TPasRISCV.TVirtIOCryptoDevice.SHA512Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray);
+class procedure TPasRISCV.TVirtIOCryptoDevice.SHA512Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer);
 var InitState:TSHA512State;
 begin
  InitState[0]:=TPasRISCVUInt64($6a09e667f3bcc908);
@@ -35180,7 +35190,7 @@ begin
  SHA512Core(aData,aDataLen,InitState,aDigest,SHA512_DIGEST_SIZE);
 end;
 
-class procedure TPasRISCV.TVirtIOCryptoDevice.SHA384Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray);
+class procedure TPasRISCV.TVirtIOCryptoDevice.SHA384Compute(const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer);
 var InitState:TSHA512State;
 begin
  InitState[0]:=TPasRISCVUInt64($cbbb9d5dc1059ed8);
@@ -35194,82 +35204,82 @@ begin
  SHA512Core(aData,aDataLen,InitState,aDigest,SHA384_DIGEST_SIZE);
 end;
 
-class procedure TPasRISCV.TVirtIOCryptoDevice.HMACSHA256(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray);
+class procedure TPasRISCV.TVirtIOCryptoDevice.HMACSHA256(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer);
 var KeyBlock:array[0..63] of TPasRISCVUInt8;
-    InnerBuffer,OuterBuffer:TPasRISCVUInt8DynamicArray;
-    InnerDigest,HashedKey:TPasRISCVUInt8DynamicArray;
+    InnerBuffer:PHMACInnerBuffer;
+    OuterBuffer:THMACOuterBuffer;
+    InnerDigest,HashedKey:TDigestBuffer;
     Index:TPasRISCVSizeInt;
 begin
- FillChar(KeyBlock,64,0);
+ FillChar(KeyBlock,64,#0);
  if aKeyLen>64 then begin
   SHA256Compute(aKey,aKeyLen,HashedKey);
-  Move(HashedKey[0],KeyBlock,length(HashedKey));
-  HashedKey:=nil;
+  Move(HashedKey[0],KeyBlock,SHA256_DIGEST_SIZE);
  end else if aKeyLen>0 then begin
   Move(aKey^,KeyBlock,aKeyLen);
  end;
 
  // Inner: key XOR ipad || data
- InnerBuffer:=nil;
- SetLength(InnerBuffer,64+aDataLen);
- for Index:=0 to 63 do begin
-  InnerBuffer[Index]:=KeyBlock[Index] xor $36;
+ GetMem(InnerBuffer,64+aDataLen);
+ try
+  FillChar(InnerBuffer^[0],64+aDataLen,#0);
+  for Index:=0 to 63 do begin
+   InnerBuffer^[Index]:=KeyBlock[Index] xor $36;
+  end;
+  if aDataLen>0 then begin
+   Move(aData^,InnerBuffer^[64],aDataLen);
+  end;
+  SHA256Compute(@InnerBuffer^[0],64+aDataLen,InnerDigest);
+ finally
+  FreeMem(InnerBuffer);
  end;
- if aDataLen>0 then begin
-  Move(aData^,InnerBuffer[64],aDataLen);
- end;
- SHA256Compute(@InnerBuffer[0],64+aDataLen,InnerDigest);
- InnerBuffer:=nil;
 
  // Outer: key XOR opad || inner_hash
- OuterBuffer:=nil;
- SetLength(OuterBuffer,64+SHA256_DIGEST_SIZE);
+ FillChar(OuterBuffer,64+SHA256_DIGEST_SIZE,#0);
  for Index:=0 to 63 do begin
   OuterBuffer[Index]:=KeyBlock[Index] xor $5c;
  end;
  Move(InnerDigest[0],OuterBuffer[64],SHA256_DIGEST_SIZE);
- InnerDigest:=nil;
  SHA256Compute(@OuterBuffer[0],64+SHA256_DIGEST_SIZE,aDigest);
- OuterBuffer:=nil;
 end;
 
-class procedure TPasRISCV.TVirtIOCryptoDevice.HMACSHA512(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TPasRISCVUInt8DynamicArray);
+class procedure TPasRISCV.TVirtIOCryptoDevice.HMACSHA512(const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aData:Pointer;const aDataLen:TPasRISCVUInt64;out aDigest:TDigestBuffer);
 var KeyBlock:array[0..127] of TPasRISCVUInt8;
-    InnerBuffer,OuterBuffer:TPasRISCVUInt8DynamicArray;
-    InnerDigest,HashedKey:TPasRISCVUInt8DynamicArray;
+    InnerBuffer:PHMACInnerBuffer;
+    OuterBuffer:THMACOuterBuffer;
+    InnerDigest,HashedKey:TDigestBuffer;
     Index:TPasRISCVSizeInt;
 begin
- FillChar(KeyBlock,128,0);
+ FillChar(KeyBlock,128,#0);
  if aKeyLen>128 then begin
   SHA512Compute(aKey,aKeyLen,HashedKey);
-  Move(HashedKey[0],KeyBlock,length(HashedKey));
-  HashedKey:=nil;
+  Move(HashedKey[0],KeyBlock,SHA512_DIGEST_SIZE);
  end else if aKeyLen>0 then begin
   Move(aKey^,KeyBlock,aKeyLen);
  end;
 
  // Inner: key XOR ipad || data
- InnerBuffer:=nil;
- SetLength(InnerBuffer,128+aDataLen);
- for Index:=0 to 127 do begin
-  InnerBuffer[Index]:=KeyBlock[Index] xor $36;
+ GetMem(InnerBuffer,128+aDataLen);
+ try
+  FillChar(InnerBuffer^[0],128+aDataLen,#0);
+  for Index:=0 to 127 do begin
+   InnerBuffer^[Index]:=KeyBlock[Index] xor $36;
+  end;
+  if aDataLen>0 then begin
+   Move(aData^,InnerBuffer^[128],aDataLen);
+  end;
+  SHA512Compute(@InnerBuffer^[0],128+aDataLen,InnerDigest);
+ finally
+  FreeMem(InnerBuffer);
  end;
- if aDataLen>0 then begin
-  Move(aData^,InnerBuffer[128],aDataLen);
- end;
- SHA512Compute(@InnerBuffer[0],128+aDataLen,InnerDigest);
- InnerBuffer:=nil;
 
  // Outer: key XOR opad || inner_hash
- OuterBuffer:=nil;
- SetLength(OuterBuffer,128+SHA512_DIGEST_SIZE);
+ FillChar(OuterBuffer,128+SHA512_DIGEST_SIZE,#0);
  for Index:=0 to 127 do begin
   OuterBuffer[Index]:=KeyBlock[Index] xor $5c;
  end;
  Move(InnerDigest[0],OuterBuffer[128],SHA512_DIGEST_SIZE);
- InnerDigest:=nil;
  SHA512Compute(@OuterBuffer[0],128+SHA512_DIGEST_SIZE,aDigest);
- OuterBuffer:=nil;
 end;
 
 procedure TPasRISCV.TVirtIOCryptoDevice.AESCipherOp(const aEncrypt:Boolean;const aAlgo:TPasRISCVUInt32;const aKey:Pointer;const aKeyLen:TPasRISCVUInt32;const aIV:Pointer;const aIVLen:TPasRISCVUInt32;const aInput:Pointer;const aInputLen:TPasRISCVUInt32;const aOutput:Pointer;const aOutputLen:TPasRISCVUInt32);
@@ -35295,7 +35305,7 @@ begin
   VIRTIO_CRYPTO_CIPHER_AES_ECB:begin
    Offset:=0;
    while Offset<ProcessLen do begin
-    FillChar(Block,16,0);
+    FillChar(Block,16,#0);
     if (ProcessLen-Offset)>=16 then begin
      Move(InputBytes^[Offset],Block,16);
     end else begin
@@ -35315,7 +35325,7 @@ begin
    end;
   end;
   VIRTIO_CRYPTO_CIPHER_AES_CBC:begin
-   FillChar(PreviousBlock,16,0);
+   FillChar(PreviousBlock,16,#0);
    if (aIVLen>0) and assigned(IVBytes) then begin
     if aIVLen>=16 then begin
      Move(IVBytes^[0],PreviousBlock,16);
@@ -35326,7 +35336,7 @@ begin
    if aEncrypt then begin
     Offset:=0;
     while Offset<ProcessLen do begin
-     FillChar(Block,16,0);
+     FillChar(Block,16,#0);
      if (ProcessLen-Offset)>=16 then begin
       Move(InputBytes^[Offset],Block,16);
      end else begin
@@ -35347,7 +35357,7 @@ begin
    end else begin
     Offset:=0;
     while Offset<ProcessLen do begin
-     FillChar(Block,16,0);
+     FillChar(Block,16,#0);
      if (ProcessLen-Offset)>=16 then begin
       Move(InputBytes^[Offset],Block,16);
      end else begin
@@ -35369,7 +35379,7 @@ begin
    end;
   end;
   VIRTIO_CRYPTO_CIPHER_AES_CTR:begin
-   FillChar(CounterBlock,16,0);
+   FillChar(CounterBlock,16,#0);
    if (aIVLen>0) and assigned(IVBytes) then begin
     if aIVLen>=16 then begin
      Move(IVBytes^[0],CounterBlock,16);
@@ -35397,7 +35407,7 @@ begin
    end;
   end;
   else begin
-   FillChar(OutputBytes^[0],aOutputLen,0);
+   FillChar(OutputBytes^[0],aOutputLen,#0);
   end;
  end;
 end;
@@ -35405,7 +35415,7 @@ end;
 procedure TPasRISCV.TVirtIOCryptoDevice.SetupConfigSpace;
 begin
  fConfigSpaceSize:=CRYPTO_CONFIG_SIZE;
- FillChar(fConfigSpace,SizeOf(fConfigSpace),0);
+ FillChar(fConfigSpace,SizeOf(fConfigSpace),#0);
  // status: VIRTIO_CRYPTO_S_HW_READY
  fConfigSpace[0]:=TPasRISCVUInt8(VIRTIO_CRYPTO_S_HW_READY);
  fConfigSpace[1]:=0;
@@ -35490,7 +35500,7 @@ end;
 
 procedure TPasRISCV.TVirtIOCryptoDevice.DeviceReset;
 begin
- FillChar(fSessions,SizeOf(fSessions),0);
+ FillChar(fSessions,SizeOf(fSessions),#0);
  fNextSessionID:=0;
  SetupConfigSpace;
  inherited DeviceReset;
@@ -35501,7 +35511,7 @@ var Index:TPasRISCVSizeInt;
 begin
  for Index:=0 to MAX_SESSIONS-1 do begin
   if not fSessions[Index].Active then begin
-   FillChar(fSessions[Index],SizeOf(TCryptoSession),0);
+   FillChar(fSessions[Index],SizeOf(TCryptoSession),#0);
    fSessions[Index].Active:=true;
    result:=Index;
    exit;
@@ -35535,7 +35545,7 @@ begin
  // Read cipher session params: algo(4) + key_len(4) + op(4) + padding(4) = 16 bytes at offset 8 (after ctrl header)
  if aReadSize<24 then begin
   // Minimum: ctrl_header(8) + cipher_session_flf(16)
-  FillChar(fSendBuffer[0],16,0);
+  FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR; // status at offset 8 in create_session_input
   ResponseSize:=16;
   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],ResponseSize) and
@@ -35551,7 +35561,7 @@ begin
          (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
  Op:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
      (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
- FillChar(fSendBuffer[0],16,0);
+ FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
   fSendBuffer[8]:=VIRTIO_CRYPTO_NOSPC;
@@ -35596,7 +35606,7 @@ var Algo,HashResultLen:TPasRISCVUInt32;
     ResponseSize:TPasRISCVUInt64;
 begin
  if aReadSize<16 then begin
-  FillChar(fSendBuffer[0],16,0);
+  FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=16;
   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],ResponseSize) and
@@ -35610,7 +35620,7 @@ begin
        (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
  HashResultLen:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
                 (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- FillChar(fSendBuffer[0],16,0);
+ FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
   fSendBuffer[8]:=VIRTIO_CRYPTO_NOSPC;
@@ -35644,7 +35654,7 @@ var Algo,HashResultLen,AuthKeyLen:TPasRISCVUInt32;
     ResponseSize:TPasRISCVUInt64;
 begin
  if aReadSize<24 then begin
-  FillChar(fSendBuffer[0],16,0);
+  FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=16;
   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],ResponseSize) and
@@ -35660,7 +35670,7 @@ begin
                 (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
  AuthKeyLen:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
              (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
- FillChar(fSendBuffer[0],16,0);
+ FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
   fSendBuffer[8]:=VIRTIO_CRYPTO_NOSPC;
@@ -35703,7 +35713,7 @@ var Algo,KeyLen,TagLen,AADLen,Op:TPasRISCVUInt32;
     ResponseSize:TPasRISCVUInt64;
 begin
  if aReadSize<28 then begin
-  FillChar(fSendBuffer[0],16,0);
+  FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=16;
   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],ResponseSize) and
@@ -35723,7 +35733,7 @@ begin
          (TPasRISCVUInt32(fReceiveBuffer[22]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[23]) shl 24);
  Op:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
      (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
- FillChar(fSendBuffer[0],16,0);
+ FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
   fSendBuffer[8]:=VIRTIO_CRYPTO_NOSPC;
@@ -35765,7 +35775,7 @@ var SessionID:TPasRISCVUInt64;
     ResponseSize:TPasRISCVUInt64;
 begin
  if aReadSize<16 then begin
-  FillChar(fSendBuffer[0],1,0);
+  FillChar(fSendBuffer[0],1,#0);
   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=1;
   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],ResponseSize) and
@@ -35779,7 +35789,7 @@ begin
             (TPasRISCVUInt64(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt64(fReceiveBuffer[11]) shl 24) or
             (TPasRISCVUInt64(fReceiveBuffer[12]) shl 32) or (TPasRISCVUInt64(fReceiveBuffer[13]) shl 40) or
             (TPasRISCVUInt64(fReceiveBuffer[14]) shl 48) or (TPasRISCVUInt64(fReceiveBuffer[15]) shl 56);
- FillChar(fSendBuffer[0],1,0);
+ FillChar(fSendBuffer[0],1,#0);
  if (SessionID<MAX_SESSIONS) and fSessions[SessionID].Active then begin
   FreeSession(SessionID);
   fSendBuffer[0]:=VIRTIO_CRYPTO_OK;
@@ -35824,7 +35834,7 @@ begin
   end;
   else begin
    // Unknown opcode - return error
-   FillChar(fSendBuffer[0],16,0);
+   FillChar(fSendBuffer[0],16,#0);
    fSendBuffer[8]:=VIRTIO_CRYPTO_NOTSUPP;
    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],16) and
            ConsumeDescriptor(aQueueIndex,aDescriptorIndex,16) and
@@ -35872,10 +35882,18 @@ begin
                  (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
  // Variable-length data: iv[InitVectorLength] + src_data[SourceDataLength]
  DataOffset:=20+InitVectorLength; // offset where src_data begins
- if TPasRISCVSizeInt(length(fSendBuffer))<TPasRISCVSizeInt(DestDataLength+1) then begin
-  SetLength(fSendBuffer,DestDataLength+1+((DestDataLength+2) shr 1));
+ if (DestDataLength+1)>CRYPTO_BUFFER_SIZE then begin
+  if aWriteSize>=1 then begin
+   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
+   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
+           ConsumeDescriptor(aQueueIndex,aDescriptorIndex,1) and
+           UsedRingSync(aQueueIndex)) then begin
+    NotifyDeviceNeedsReset;
+   end;
+  end;
+  exit;
  end;
- FillChar(fSendBuffer[0],DestDataLength+1,0);
+ FillChar(fSendBuffer[0],DestDataLength+1,#0);
  // Validate key length
  if not (Session^.CipherKeyLen in [16,24,32]) then begin
   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
@@ -35911,7 +35929,7 @@ procedure TPasRISCV.TVirtIOCryptoDevice.HandleHashOp(const aQueueIndex,aDescript
 var Session:PCryptoSession;
     SourceDataLength,HashResultLength:TPasRISCVUInt32;
     DataOffset,ResponseSize:TPasRISCVUInt64;
-    DigestBuffer:TPasRISCVUInt8DynamicArray;
+    DigestBuffer:TDigestBuffer;
     DigestLength,CopyLength:TPasRISCVUInt32;
 begin
  Session:=FindSession(aSessionID);
@@ -35943,11 +35961,19 @@ begin
  HashResultLength:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
                    (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
  DataOffset:=16;
- if TPasRISCVSizeInt(length(fSendBuffer))<TPasRISCVSizeInt(HashResultLength+1) then begin
-  SetLength(fSendBuffer,HashResultLength+1+((HashResultLength+2) shr 1));
+ if (HashResultLength+1)>CRYPTO_BUFFER_SIZE then begin
+  if aWriteSize>=1 then begin
+   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
+   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
+           ConsumeDescriptor(aQueueIndex,aDescriptorIndex,1) and
+           UsedRingSync(aQueueIndex)) then begin
+    NotifyDeviceNeedsReset;
+   end;
+  end;
+  exit;
  end;
- FillChar(fSendBuffer[0],HashResultLength+1,0);
- DigestBuffer:=nil;
+ FillChar(fSendBuffer[0],HashResultLength+1,#0);
+ FillChar(DigestBuffer,SizeOf(DigestBuffer),#0);
  DigestLength:=0;
  if (SourceDataLength>0) and ((DataOffset+SourceDataLength)<=aReadSize) then begin
   case Session^.HashAlgo of
@@ -35981,7 +36007,7 @@ begin
   if CopyLength>HashResultLength then begin
    CopyLength:=HashResultLength;
   end;
-  if (CopyLength>0) and (length(DigestBuffer)>=TPasRISCVSizeInt(CopyLength)) then begin
+  if (CopyLength>0) and (SizeOf(DigestBuffer)>=CopyLength) then begin
    Move(DigestBuffer[0],fSendBuffer[0],CopyLength);
   end;
  end else if (SourceDataLength=0) then begin
@@ -36008,11 +36034,10 @@ begin
   if CopyLength>HashResultLength then begin
    CopyLength:=HashResultLength;
   end;
-  if (CopyLength>0) and (length(DigestBuffer)>=TPasRISCVSizeInt(CopyLength)) then begin
+  if (CopyLength>0) and (SizeOf(DigestBuffer)>=CopyLength) then begin
    Move(DigestBuffer[0],fSendBuffer[0],CopyLength);
   end;
  end;
- DigestBuffer:=nil;
  fSendBuffer[HashResultLength]:=VIRTIO_CRYPTO_OK;
  ResponseSize:=HashResultLength+1;
  if ResponseSize>aWriteSize then begin
@@ -36029,7 +36054,7 @@ procedure TPasRISCV.TVirtIOCryptoDevice.HandleMacOp(const aQueueIndex,aDescripto
 var Session:PCryptoSession;
     SourceDataLength,MacResultLength:TPasRISCVUInt32;
     DataOffset,ResponseSize:TPasRISCVUInt64;
-    DigestBuffer:TPasRISCVUInt8DynamicArray;
+    DigestBuffer:TDigestBuffer;
     DigestLength,CopyLength:TPasRISCVUInt32;
 begin
  Session:=FindSession(aSessionID);
@@ -36061,11 +36086,19 @@ begin
  MacResultLength:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
                   (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
  DataOffset:=16;
- if TPasRISCVSizeInt(length(fSendBuffer))<TPasRISCVSizeInt(MacResultLength+1) then begin
-  SetLength(fSendBuffer,MacResultLength+1+((MacResultLength+2) shr 1));
+ if (MacResultLength+1)>CRYPTO_BUFFER_SIZE then begin
+  if aWriteSize>=1 then begin
+   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
+   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
+           ConsumeDescriptor(aQueueIndex,aDescriptorIndex,1) and
+           UsedRingSync(aQueueIndex)) then begin
+    NotifyDeviceNeedsReset;
+   end;
+  end;
+  exit;
  end;
- FillChar(fSendBuffer[0],MacResultLength+1,0);
- DigestBuffer:=nil;
+ FillChar(fSendBuffer[0],MacResultLength+1,#0);
+ FillChar(DigestBuffer,SizeOf(DigestBuffer),#0);
  DigestLength:=0;
  if (DataOffset+SourceDataLength)<=aReadSize then begin
   case Session^.MacAlgo of
@@ -36099,11 +36132,10 @@ begin
   if CopyLength>MacResultLength then begin
    CopyLength:=MacResultLength;
   end;
-  if (CopyLength>0) and (length(DigestBuffer)>=TPasRISCVSizeInt(CopyLength)) then begin
+  if (CopyLength>0) and (SizeOf(DigestBuffer)>=CopyLength) then begin
    Move(DigestBuffer[0],fSendBuffer[0],CopyLength);
   end;
  end;
- DigestBuffer:=nil;
  fSendBuffer[MacResultLength]:=VIRTIO_CRYPTO_OK;
  ResponseSize:=MacResultLength+1;
  if ResponseSize>aWriteSize then begin
@@ -36121,8 +36153,8 @@ var Session:PCryptoSession;
     InitVectorLength,AssocDataLength,SourceDataLength,DestDataLength,TagLength:TPasRISCVUInt32;
     DataOffset,ResponseSize:TPasRISCVUInt64;
     PlaintextLength,CiphertextOffset:TPasRISCVUInt32;
-    TagDigest:TPasRISCVUInt8DynamicArray;
-    AuthInputData:TPasRISCVUInt8DynamicArray;
+    TagDigest:TDigestBuffer;
+    AuthInputData:PCryptoBuffer;
     TagCopyLength:TPasRISCVUInt32;
 begin
  Session:=FindSession(aSessionID);
@@ -36161,10 +36193,18 @@ begin
             (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
  DataOffset:=28+InitVectorLength+AssocDataLength;
  ResponseSize:=DestDataLength+1;
- if TPasRISCVSizeInt(length(fSendBuffer))<TPasRISCVSizeInt(ResponseSize) then begin
-  SetLength(fSendBuffer,ResponseSize+((ResponseSize+1) shr 1));
+ if ResponseSize>CRYPTO_BUFFER_SIZE then begin
+  if aWriteSize>=1 then begin
+   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
+   if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
+           ConsumeDescriptor(aQueueIndex,aDescriptorIndex,1) and
+           UsedRingSync(aQueueIndex)) then begin
+    NotifyDeviceNeedsReset;
+   end;
+  end;
+  exit;
  end;
- FillChar(fSendBuffer[0],ResponseSize,0);
+ FillChar(fSendBuffer[0],ResponseSize,#0);
  // Validate key length for AES-based AEAD
  if not (Session^.AEADKeyLen in [16,24,32]) then begin
   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
@@ -36175,7 +36215,7 @@ begin
   end;
   exit;
  end;
- TagDigest:=nil;
+ FillChar(TagDigest,SizeOf(TagDigest),#0);
  AuthInputData:=nil;
  if (SourceDataLength>0) and ((DataOffset+SourceDataLength)<=aReadSize) then begin
   if aEncrypt then begin
@@ -36196,23 +36236,26 @@ begin
    end;
    // Compute HMAC-SHA-256 tag over AAD || ciphertext as authentication tag
    if (TagLength>0) and (DestDataLength>=CiphertextOffset+TagLength) then begin
-    SetLength(AuthInputData,AssocDataLength+CiphertextOffset);
-    if AssocDataLength>0 then begin
-     Move(fReceiveBuffer[28+InitVectorLength],AuthInputData[0],AssocDataLength);
+    GetMem(AuthInputData,AssocDataLength+CiphertextOffset);
+    try
+     FillChar(AuthInputData^[0],AssocDataLength+CiphertextOffset,#0);
+     if AssocDataLength>0 then begin
+      Move(fReceiveBuffer[28+InitVectorLength],AuthInputData^[0],AssocDataLength);
+     end;
+     if CiphertextOffset>0 then begin
+      Move(fSendBuffer[0],AuthInputData^[AssocDataLength],CiphertextOffset);
+     end;
+     HMACSHA256(@Session^.AEADKey[0],Session^.AEADKeyLen,@AuthInputData^[0],AssocDataLength+CiphertextOffset,TagDigest);
+    finally
+     FreeMem(AuthInputData);
     end;
-    if CiphertextOffset>0 then begin
-     Move(fSendBuffer[0],AuthInputData[AssocDataLength],CiphertextOffset);
-    end;
-    HMACSHA256(@Session^.AEADKey[0],Session^.AEADKeyLen,@AuthInputData[0],AssocDataLength+CiphertextOffset,TagDigest);
-    AuthInputData:=nil;
     TagCopyLength:=TagLength;
-    if assigned(TagDigest) and (TPasRISCVUInt32(length(TagDigest))<TagCopyLength) then begin
-     TagCopyLength:=length(TagDigest);
+    if SHA256_DIGEST_SIZE<TagCopyLength then begin
+     TagCopyLength:=SHA256_DIGEST_SIZE;
     end;
-    if (TagCopyLength>0) and assigned(TagDigest) then begin
+    if TagCopyLength>0 then begin
      Move(TagDigest[0],fSendBuffer[CiphertextOffset],TagCopyLength);
     end;
-    TagDigest:=nil;
    end;
   end else begin
    // Decrypt: ciphertext + tag -> plaintext (verify tag first)
@@ -36293,10 +36336,11 @@ end;
 function TPasRISCV.TVirtIOCryptoDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
 begin
  result:=true;
- if TPasRISCVSizeInt(length(fReceiveBuffer))<TPasRISCVSizeInt(aReadSize) then begin
-  SetLength(fReceiveBuffer,aReadSize+((aReadSize+1) shr 1));
+ if aReadSize>CRYPTO_BUFFER_SIZE then begin
+  NotifyDeviceNeedsReset;
+  exit;
  end;
- if not CopyMemoryFromQueue(fReceiveBuffer,aQueueIndex,aDescriptorIndex,0,aReadSize) then begin
+ if not CopyMemoryFromQueue(@fReceiveBuffer[0],aQueueIndex,aDescriptorIndex,0,aReadSize) then begin
   NotifyDeviceNeedsReset;
   exit;
  end;
