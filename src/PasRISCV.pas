@@ -56587,12 +56587,17 @@ begin
       exit;
      end;
      // Overlap constraint: vd and vs2 register groups must not overlap for .vs forms
+     // vs2 scalar EG is 128 bits = ceil(128/VLEN) registers
      begin
       OperandValue:=LMUL8 shr 3;
       if OperandValue<1 then begin
        OperandValue:=1;
       end;
-      if (vd<(vs2+1)) and (vs2<(vd+OperandValue)) then begin
+      SubIndex:=(128+VLEN-1) div VLEN; // vs2 scalar EG register count
+      if SubIndex<1 then begin
+       SubIndex:=1;
+      end;
+      if (vd<(vs2+SubIndex)) and (vs2<(vd+OperandValue)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
