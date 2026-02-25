@@ -3114,6 +3114,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PCI_EXPANSION_ROM_ENABLED=$1;
                     PCI_CAP_LIST_OFF=$80;
                     PCI_MSI_CAP_OFF=$d0;
+                    PCI_MSIX_CAP_OFF=$e8;
+                    // MSI-X constants
+                    PCI_MSIX_MAX_IRQS=32;
+                    PCI_MSIX_TBL_SIZE=PCI_MSIX_MAX_IRQS*4; // 128 dwords (32 entries x 4 dwords each)
+                    PCI_MSIX_PBA_SIZE=(PCI_MSIX_MAX_IRQS+31) shr 5; // 1 dword for 32 vectors
+                    PCI_MSIX_BAR_SIZE=PCI_MSIX_TBL_SIZE+PCI_MSIX_PBA_SIZE; // 129 dwords total
+                    PCI_MSIX_ENABLED=$80000000;  // bit 31 of MSI-X control
+                    PCI_MSIX_MASKED=$40000000;   // bit 30 of MSI-X control (function mask)
+                    PCI_MSIX_VALID=$c0000000;    // writable bits in MSI-X control
                     PCIE_CAP_PORT_ENDPOINT=$0;
                     PCIE_CAP_ROOT_PORT=$4;
                     PCIE_CAP_UPSTREAM_SWITCH=$5;
@@ -3139,7 +3148,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PCI_MEM64_DEFAULT_MMIO=TPasRISCVUInt64($4000000000);
                     PCI_MEM64_DEFAULT_SIZE=TPasRISCVUInt64($4000000000);
                     PCI_IRQs:array[0..PCI_BUS_IRQS-1] of TPasRISCVUInt32=($01,$02,$03,$04);
-                    PCIExpressCapabilities:array[0..25] of TPasRISCVUInt32=
+                    PCIExpressCapabilities:array[0..28] of TPasRISCVUInt32=
                      (
                       $0102c010, // [80] PCI Express (v2) Endpoint, IntMsgNum 0
                       $00008002, // DevCap: MaxPayload 512 bytes, RBE+
@@ -3161,12 +3170,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                       $00000008, // NoSoftRst+
                       $00000000,
                       $00000000,
-                      $01800005, // [d0] MSI: Enable- Count=1/1 Maskable+ 64bit+
+                      $00e80005, // [d0] MSI: Enable- Count=1/1 Maskable+ 64bit+ (next=$e8 -> MSI-X)
                       $00000000, // Message Address Low
                       $00000000, // Message Address High
                       $00000000, // Message Data
                       $00000000, // Mask
-                      $00000000  // Pending
+                      $00000000, // Pending
+                      $001f0011, // [e8] MSI-X: Enable- Count=32 Masked- (cap_id=$11, next=$00)
+                      $00000000, // Table Offset/BIR (filled at runtime)
+                      $00000000  // PBA Offset/BIR (filled at runtime)
                      );
             end;
             TPCIBARRegion=record
@@ -3223,6 +3235,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fMSIData:TPasRISCVUInt32;        // MSI message data
               fMSIMask:TPasRISCVUInt32;        // MSI per-vector mask
               fMSIPending:TPasRISCVUInt32;     // MSI pending bits
+              // MSI-X state
+              fMSIXControl:TPasRISCVUInt32;    // MSI-X control: bit 31=enable, bit 30=function mask
+              fMSIXBAR:TPasRISCVUInt32;        // BAR index where MSI-X table/PBA lives (0 if none)
+              fMSIXTable:array[0..TPCI.PCI_MSIX_BAR_SIZE-1] of TPasRISCVUInt32; // MSI-X table + PBA flat array
+              fMSIXDevice:TPCIMemoryDevice;    // MMIO device for MSI-X BAR
              public
               constructor Create(const aBus:TPCIBusDevice;const aDevice:TPCIDevice;const aFuncDesc:TPCIFuncDescriptor);
               destructor Destroy; override;
@@ -3235,6 +3252,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure RaiseIRQ(const aMSIID:TPasRISCVUInt32);
               procedure LowerIRQ; overload;
               procedure LowerIRQ(const aMSIID:TPasRISCVUInt32); overload;
+              procedure UpdateMSIXMask;
+              function MSIXBarLoad(const aBusDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure MSIXBarStore(const aBusDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
             end;
             TPCIHostBridgeDevice=class;
             { TPCIIODevice }
@@ -7168,6 +7188,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   SSTATUS=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif};
                                   HSTATUS_MASK_BASE=TPasRISCVUInt64($007003e0); // SPV, SPVP, HU, GVA, VSBE, VTVM, VTW, VTSR (no VSXL: hardwired to 2, no VGEIN: AIA-only)
                                   HSTATUS_MASK_AIA=TPasRISCVUInt64($0003f000); // VGEIN bits (17:12) — only writable when AIA is active
+                                  GEILEN=1; // number of guest interrupt files per HART
                                   MSTATUS_SWAP_MASK=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif}; // Bits swapped between HS and VS
                             type TStatus=class
                                   public
@@ -7748,6 +7769,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
               function SetInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue):Boolean;
               procedure SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
+              function GetVGEIN:TPasRISCVUInt32; inline;
+              function IsVGEINValid:Boolean; inline;
               function UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
               function UpdateAIAState(const aAIARegFileMode:TPasRISCV.TAIARegFileMode):TPasRISCVUInt32;
               function GetAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aClaim:Boolean):TPasRISCVUInt32;
@@ -22515,6 +22538,15 @@ begin
  fMSIData:=0;
  fMSIMask:=0;
  fMSIPending:=0;
+ // Initialize MSI-X state (disabled, 32 vectors)
+ fMSIXControl:=0;
+ fMSIXBAR:=0;
+ fMSIXDevice:=nil;
+ FillChar(fMSIXTable,SizeOf(fMSIXTable),0);
+ // Set all MSI-X table entries to per-vector masked by default (bit 0 of vector_control)
+ for BARIndex:=0 to TPCI.PCI_MSIX_MAX_IRQS-1 do begin
+  fMSIXTable[(BARIndex shl 2)+3]:=1; // vector_control: masked
+ end;
 //writeln('PCI Func: ',LowerCase(IntToHex(fVendorID,4)),' ',LowerCase(IntToHex(fDeviceID,4)),' ',LowerCase(IntToHex(fClassCode,6)),' ',LowerCase(IntToHex(fProgIF,2)),' ',LowerCase(IntToHex(fRevisionID,2)),' ',LowerCase(IntToHex(fIRQPin,2)),' ',LowerCase(IntToHex(fIRQLine,2)));
  for BARIndex:=0 to TPCI.PCI_FUNC_BARS-1 do begin
   fBARMemoryDevices[BARIndex]:=nil;
@@ -22553,6 +22585,24 @@ begin
 {$endif}
   end;
  end;
+{$ifdef NewPCI}
+ // Allocate MSI-X BAR (BAR 4 or 5) for devices with IRQ pin when AIA is active
+ if fBus.fMachine.fAIA and (fIRQPin<>0) then begin
+  for BARIndex:=4 to TPCI.PCI_FUNC_BARS-1 do begin
+   if not assigned(fBARMemoryDevices[BARIndex]) then begin
+    BARRegion.fSize:=TPCI.PCI_MSIX_BAR_SIZE*4; // 516 bytes
+    BARRegion.fAddress:=GetBARAddress(BARRegion.fSize);
+    BARRegion.fIsIO:=false;
+    fMSIXDevice:=TPCIMemoryDevice.Create(fBus.fMachine,aDevice,self,BARRegion.fAddress,BARRegion.fSize,MSIXBarLoad,MSIXBarStore);
+    fBARMemoryDevices[BARIndex]:=fMSIXDevice;
+    fBARIsIO[BARIndex]:=false;
+    fBus.fMachine.fBus.AddBusDevice(fMSIXDevice);
+    fMSIXBAR:=BARIndex;
+    break;
+   end;
+  end;
+ end;
+{$endif}
 end;
 
 destructor TPasRISCV.TPCIFunc.Destroy;
@@ -22577,6 +22627,8 @@ begin
   FreeAndNil(fBARMemoryDevices[BarIndex]);
  end;
  FreeAndNil(fExpansionROM);
+ // Note: fMSIXDevice is freed via fBARMemoryDevices loop above
+ fMSIXDevice:=nil;
  inherited Destroy;
 end;
 
@@ -22629,10 +22681,33 @@ end;
 procedure TPasRISCV.TPCIFunc.SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
 var IRQ:TPasRISCVUInt32;
     MSIAddress:TPasRISCVUInt64;
-    MSIData:TPasRISCVUInt32;
+    MSIData,MSIXControl,VecCtrl,Command:TPasRISCVUInt32;
     MSIControl:TPasRISCVUInt32;
 begin
- // Check MSI first (when AIA active)
+ // Priority chain: MSI-X → MSI → INTx
+ // 1) Try MSI-X first
+ MSIXControl:=TPasMPInterlocked.Read(fMSIXControl);
+ if (MSIXControl and TPCI.PCI_MSIX_ENABLED)<>0 then begin
+  // MSI-X is enabled
+  Command:=TPasMPInterlocked.Read(fCommand);
+  if ((Command and TPCI.PCI_CMD_BUS_MASTER)<>0) and (aMSIID<TPCI.PCI_MSIX_MAX_IRQS) then begin
+   VecCtrl:=TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+3]);
+   MSIData:=TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+2]);
+   MSIAddress:=TPasMPInterlocked.Read(fMSIXTable[aMSIID shl 2]) or
+               (TPasRISCVUInt64(TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+1])) shl 32);
+   if ((MSIXControl and TPCI.PCI_MSIX_MASKED)=0) and ((VecCtrl and 1)=0) then begin
+    // Not function-masked and not per-vector-masked: deliver MSI write
+    if MSIAddress<>0 then begin
+     fBus.fMachine.fBus.StoreEx(MSIAddress,MSIData,4);
+    end;
+   end else begin
+    // Masked: set pending bit in PBA
+    TPasMPInterlocked.BitwiseOr(fMSIXTable[TPCI.PCI_MSIX_TBL_SIZE+(aMSIID shr 5)],TPasRISCVUInt32(1) shl (aMSIID and $1f));
+   end;
+  end;
+  exit; // MSI-X enabled: handled (don't fall through)
+ end;
+ // 2) Try MSI (when AIA active)
  if fBus.fMachine.fAIA then begin
   MSIControl:=TPasMPInterlocked.Read(fMSIControl);
   if (MSIControl and $10000)<>0 then begin // MSI Enable bit (bit 16)
@@ -22660,7 +22735,7 @@ begin
    exit; // MSI handled (even if address was 0), don't fall through to INTx
   end;
  end;
- // Fallback to legacy INTx
+ // 3) Fallback to legacy INTx
  if (fIRQPin<>0) and ((TPasMPInterlocked.Read(fCommand) and TPCI.PCI_CMD_INTX_DISABLE)=0) then begin
   TPasMPInterlocked.BitwiseOr(fStatus,TPCI.PCI_STATUS_INTX);
   IRQ:=fBus.fIRQs[TPasRISCV.TPCIBusDevice.PCIFuncIRQPinID(self)];
@@ -22686,8 +22761,81 @@ begin
 end;
 
 procedure TPasRISCV.TPCIFunc.LowerIRQ(const aMSIID:TPasRISCVUInt32);
+var MSIXControl:TPasRISCVUInt32;
+    Reg,Bit:TPasRISCVUInt32;
 begin
+ // Try MSI-X lower first: clear PBA pending bit
+ MSIXControl:=TPasMPInterlocked.Read(fMSIXControl);
+ if (MSIXControl and TPCI.PCI_MSIX_ENABLED)<>0 then begin
+  if aMSIID<TPCI.PCI_MSIX_MAX_IRQS then begin
+   Reg:=TPCI.PCI_MSIX_TBL_SIZE+(aMSIID shr 5);
+   Bit:=TPasRISCVUInt32(1) shl (aMSIID and $1f);
+   if (TPasMPInterlocked.Read(fMSIXTable[Reg]) and Bit)<>0 then begin
+    TPasMPInterlocked.BitwiseAnd(fMSIXTable[Reg],not Bit);
+   end;
+  end;
+  exit;
+ end;
+ // Try MSI lower — MSI is edge-triggered, nothing to lower
+ if fBus.fMachine.fAIA then begin
+  if (TPasMPInterlocked.Read(fMSIControl) and $10000)<>0 then begin
+   exit; // MSI enabled: edge-triggered, no lower needed
+  end;
+ end;
+ // Fallback to INTx lower
  LowerIRQ;
+end;
+
+procedure TPasRISCV.TPCIFunc.UpdateMSIXMask;
+var Reg,Pending,Bit:TPasRISCVUInt32;
+begin
+ // Only process if MSI-X is enabled and NOT function-masked
+ if TPasMPInterlocked.Read(fMSIXControl)=TPCI.PCI_MSIX_ENABLED then begin
+  for Reg:=0 to TPCI.PCI_MSIX_PBA_SIZE-1 do begin
+   Pending:=TPasMPInterlocked.Read(fMSIXTable[TPCI.PCI_MSIX_TBL_SIZE+Reg]);
+   if Pending<>0 then begin
+    // Atomically consume pending bits
+    Pending:=TPasMPInterlocked.Exchange(fMSIXTable[TPCI.PCI_MSIX_TBL_SIZE+Reg],0);
+    for Bit:=0 to 31 do begin
+     if (Pending and (TPasRISCVUInt32(1) shl Bit))<>0 then begin
+      // Re-send each pending vector (may re-pend if still per-vector masked)
+      SendIRQ((Reg shl 5) or Bit,false);
+     end;
+    end;
+   end;
+  end;
+ end;
+end;
+
+function TPasRISCV.TPCIFunc.MSIXBarLoad(const aBusDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Reg:TPasRISCVUInt32;
+begin
+ Reg:=(aAddress-aBusDevice.fBase) shr 2;
+ if Reg<TPCI.PCI_MSIX_BAR_SIZE then begin
+  result:=TPasMPInterlocked.Read(fMSIXTable[Reg]);
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TPCIFunc.MSIXBarStore(const aBusDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Reg,Old:TPasRISCVUInt32;
+begin
+ Reg:=(aAddress-aBusDevice.fBase) shr 2;
+ if Reg<TPCI.PCI_MSIX_BAR_SIZE then begin
+  if (Reg<TPCI.PCI_MSIX_TBL_SIZE) and ((Reg and 3)=3) then begin
+   // Writing vector_control field (dword 3 of a table entry)
+   Old:=TPasMPInterlocked.Exchange(fMSIXTable[Reg],TPasRISCVUInt32(aValue));
+   if ((Old and 1)<>0) and ((TPasRISCVUInt32(aValue) and 1)=0) then begin
+    // Per-vector mask cleared: replay pending IRQs
+    UpdateMSIXMask;
+   end;
+  end else if Reg<TPCI.PCI_MSIX_TBL_SIZE then begin
+   // addr_lo, addr_hi, msg_data: normal write
+   TPasMPInterlocked.Write(fMSIXTable[Reg],TPasRISCVUInt32(aValue));
+  end;
+  // PBA region is read-only, writes to it are silently ignored
+ end;
 end;
 
 { TPasRISCV.TPCIIODevice }
@@ -23034,6 +23182,10 @@ begin
        case CapabilityID of
         20:begin // $d0: MSI Control
          result:=TPasMPInterlocked.Read(Func.fMSIControl);
+         // If MSI-X BAR is not allocated, hide MSI-X by clearing next_ptr in MSI cap
+         if Func.fMSIXBAR=0 then begin
+          result:=result and $ffff00ff; // clear next_ptr byte
+         end;
         end;
         21:begin // $d4: MSI Address Low
          result:=TPasMPInterlocked.Read(Func.fMSIAddressLow);
@@ -23054,11 +23206,31 @@ begin
          result:=0;
         end;
        end;
+      end else if (CapabilityID>=26) and (CapabilityID<=28) and (Func.fMSIXBAR<>0) then begin
+       // MSI-X capability registers (indices 26-28 = offsets $e8-$f0): return live state
+       case CapabilityID of
+        26:begin // $e8: MSI-X control (cap_id + table_size + enable/mask bits)
+         result:=TPCI.PCIExpressCapabilities[26] or TPasMPInterlocked.Read(Func.fMSIXControl);
+        end;
+        27:begin // $ec: Table Offset/BIR (low 3 bits = BAR index, rest = table byte offset 0)
+         result:=Func.fMSIXBAR; // table at offset 0 within the BAR
+        end;
+        28:begin // $f0: PBA Offset/BIR (low 3 bits = BAR index, rest = PBA byte offset)
+         result:=Func.fMSIXBAR or (TPCI.PCI_MSIX_TBL_SIZE shl 2); // PBA at byte offset = TBL_SIZE * 4
+        end;
+        else begin
+         result:=0;
+        end;
+       end;
       end else begin
        result:=TPCI.PCIExpressCapabilities[CapabilityID];
        // When AIA is off, hide MSI capability by terminating cap chain at PM (next_ptr=0)
        if (not fMachine.fAIA) and (CapabilityID=16) then begin
         result:=result and $ffff00ff; // clear next_ptr byte (bits 15:8) in PM cap header
+       end;
+       // When MSI-X BAR is not allocated, also hide MSI-X by clearing MSI next_ptr
+       if (CapabilityID=20) and (Func.fMSIXBAR=0) then begin
+        result:=result and $ffff00ff;
        end;
       end;
      end else begin
@@ -23182,14 +23354,14 @@ begin
    end;
    else begin
 {$ifdef NewPCI}
-    // Handle MSI capability register writes (offsets $d0-$e4) — only when AIA is active
+    // Handle MSI/MSI-X capability register writes — only when AIA is active
     if BusAddress<>0 then begin
      CapabilityID:=(Register-TPCI.PCI_CAP_LIST_OFF) shr 2;
      if fMachine.fAIA then begin
       case CapabilityID of
        20:begin // $d0: MSI Control — only MSI Enable (bit 16) and MME (bits 22:20) writable
         TPasMPInterlocked.Write(Func.fMSIControl,
-         (TPCI.PCIExpressCapabilities[20] and TPasRISCVUInt32(not $710000)) or (TPasRISCVUInt32(aValue) and $710000));
+                                (TPCI.PCIExpressCapabilities[20] and TPasRISCVUInt32(not $710000)) or (TPasRISCVUInt32(aValue) and $710000));
        end;
        21:begin // $d4: MSI Address Low (bits 31:2 writable, bits 1:0 reserved)
         TPasMPInterlocked.Write(Func.fMSIAddressLow,TPasRISCVUInt32(aValue) and $fffffffc);
@@ -23213,6 +23385,17 @@ begin
         end;
        end;
        // 25 ($e4): MSI Pending — read-only, writes ignored
+       26:begin // $e8: MSI-X Control — only Enable (bit 31) and Function Mask (bit 30) writable
+        if Func.fMSIXBAR<>0 then begin
+         Old:=TPasMPInterlocked.Exchange(Func.fMSIXControl,TPasRISCVUInt32(aValue) and TPCI.PCI_MSIX_VALID);
+         // When Function Mask transitions from 1->0 (unmasking), replay pending IRQs
+         if ((Old and TPCI.PCI_MSIX_MASKED)<>0) and ((TPasRISCVUInt32(aValue) and TPCI.PCI_MSIX_MASKED)=0) then begin
+          Func.UpdateMSIXMask;
+         end;
+        end;
+       end;
+       // 27 ($ec): Table Offset/BIR — read-only, writes ignored
+       // 28 ($f0): PBA Offset/BIR — read-only, writes ignored
       end;
      end; // fAIA
     end;
@@ -45067,7 +45250,11 @@ begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   if fState.VirtualMode and fMachine.fAIA then begin
    // V=1: STOPI access reflects VS-mode external interrupt state from VS AIA RegFile
-   IRQ:=UpdateAIAInternal(TPasRISCV.TAIARegFileMode.VirtualSupervisor,false,false);
+   if IsVGEINValid then begin
+    IRQ:=UpdateAIAInternal(TPasRISCV.TAIARegFileMode.VirtualSupervisor,false,false);
+   end else begin
+    IRQ:=0; // VGEIN=0 or invalid: no guest interrupt file selected
+   end;
    CSRValue:=IRQ or (IRQ shl 16);
   end else begin
    PendingValue:=InterruptsPending and TCSR.CSR_SEIP_MASK;
@@ -45114,7 +45301,11 @@ begin
   IsWrite:=(aOperation=TCSROperation.Swap) or (TRegister((aInstruction shr 15) and $1f)<>TRegister.Zero); // rs1 determines write/claim
   if fState.VirtualMode and fMachine.fAIA then begin
    // V=1: STOPEI access uses VS AIA RegFile (guest IMSIC file)
-   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
+   if IsVGEINValid then begin
+    IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
+   end else begin
+    IRQ:=0; // VGEIN=0 or invalid: no guest file selected
+   end;
   end else begin
    IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
   end;
@@ -45138,7 +45329,11 @@ begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   IsWrite:=(aOperation=TCSROperation.Swap) or (TRegister((aInstruction shr 15) and $1f)<>TRegister.Zero); // rs1 determines write/claim
   // HS-mode: VSTOPEI accesses the VS AIA RegFile (guest interrupt file selected by VGEIN)
-  IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
+  if IsVGEINValid then begin
+   IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
+  end else begin
+   IRQ:=0; // VGEIN=0 or invalid: no guest file selected
+  end;
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -45157,7 +45352,11 @@ begin
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   // HS-mode: VSTOPI reports VS-mode external interrupt state from VS AIA RegFile
-  IRQ:=UpdateAIAInternal(TPasRISCV.TAIARegFileMode.VirtualSupervisor,false,false);
+  if IsVGEINValid then begin
+   IRQ:=UpdateAIAInternal(TPasRISCV.TAIARegFileMode.VirtualSupervisor,false,false);
+  end else begin
+   IRQ:=0; // VGEIN=0 or invalid: no guest file selected
+  end;
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
@@ -45242,7 +45441,11 @@ begin
     if fState.VirtualMode then begin
      // V=1: sireg access uses VS context (siselect already swapped to VS value)
      Mode:=THART.TMode.Supervisor;
-     AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
+     if IsVGEINValid then begin
+      AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
+     end else begin
+      AIARegFileMode:=TPasRISCV.TAIARegFileMode.Supervisor; // VGEIN invalid: will fail gracefully as no VS file
+     end;
      ISelect:=fState.CSR.fData[TCSR.TAddress.SISELECT];
     end else begin
      Mode:=THART.TMode.Supervisor;
@@ -45258,7 +45461,13 @@ begin
     end;
     // HS-mode access to VS indirect CSR: uses VSISELECT and VS AIA RegFile
     Mode:=THART.TMode.Supervisor;
-    AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
+    if IsVGEINValid then begin
+     AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
+    end else begin
+     // VGEIN=0 or invalid: per spec, illegal instruction exception
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     exit;
+    end;
     ISelect:=fState.CSR.fData[TCSR.TAddress.VSISELECT];
    end;
    else begin
@@ -67009,6 +67218,18 @@ var Mask:TPasRISCVUInt64;
 begin
  Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
  result:=(TPasMPInterlocked.ExchangeBitwiseOr(fState.PendingIRQs,Mask) and Mask)=0;
+end;
+
+function TPasRISCV.THART.GetVGEIN:TPasRISCVUInt32;
+begin
+ result:=(fState.CSR.fData[TCSR.TAddress.HSTATUS] shr TCSR.TMask.THSTATUSBit.VGEIN) and $3f;
+end;
+
+function TPasRISCV.THART.IsVGEINValid:Boolean;
+var VGEIN:TPasRISCVUInt32;
+begin
+ VGEIN:=GetVGEIN;
+ result:=(VGEIN>=1) and (VGEIN<=TCSR.TMask.GEILEN);
 end;
 
 procedure TPasRISCV.THART.SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
