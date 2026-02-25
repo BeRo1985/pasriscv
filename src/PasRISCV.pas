@@ -61010,7 +61010,7 @@ begin
         end;
         $18:begin
          // Zknd/Zkne: aes64im / aes64ks1i
-         case (aInstruction shr 24) and 1 of
+         case (aInstruction shr 25) and 1 of
           0:begin
            // aes64im (Zknd) - rs2 field must be 0
            if ({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} and $1f)=0 then begin
