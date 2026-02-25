@@ -22762,13 +22762,17 @@ end;
 function TPasRISCV.TPCIFunc.GetIOBARAddress(const aBARSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var AlignSize:TPasRISCVUInt64;
 begin
+
  // Align to power of 2, minimum 4 bytes for I/O BARs
  AlignSize:=RoundUpToPowerOfTwo64(Max(aBARSize,4));
+
  // Align fIOAddr up to AlignSize boundary
  result:=fBus.fIOAddr+((AlignSize-(fBus.fIOAddr and (AlignSize-1))) and (AlignSize-1));
+
  // Advance I/O address pointer
  fBus.fIOAddr:=result+AlignSize;
  dec(fBus.fIOSize,fBus.fIOAddr-result);
+
 end;
 
 procedure TPasRISCV.TPCIFunc.SendIRQ(const aMSIID:TPasRISCVUInt32;const aRaiseIRQ:Boolean);
@@ -22777,57 +22781,68 @@ var IRQ:TPasRISCVUInt32;
     MSIData,MSIXControl,VecCtrl,Command:TPasRISCVUInt32;
     MSIControl:TPasRISCVUInt32;
 begin
+
  // Priority chain: MSI-X → MSI → INTx
- // 1) Try MSI-X first
- MSIXControl:=TPasMPInterlocked.Read(fMSIXControl);
- if (MSIXControl and TPCI.PCI_MSIX_ENABLED)<>0 then begin
-  // MSI-X is enabled
-  Command:=TPasMPInterlocked.Read(fCommand);
-  if ((Command and TPCI.PCI_CMD_BUS_MASTER)<>0) and (aMSIID<TPCI.PCI_MSIX_MAX_IRQS) then begin
-   VecCtrl:=TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+3]);
-   MSIData:=TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+2]);
-   MSIAddress:=TPasMPInterlocked.Read(fMSIXTable[aMSIID shl 2]) or
-               (TPasRISCVUInt64(TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+1])) shl 32);
-   if ((MSIXControl and TPCI.PCI_MSIX_MASKED)=0) and ((VecCtrl and 1)=0) then begin
-    // Not function-masked and not per-vector-masked: deliver MSI write
-    if MSIAddress<>0 then begin
-     fBus.fMachine.fBus.StoreEx(MSIAddress,MSIData,4);
-    end;
-   end else begin
-    // Masked: set pending bit in PBA
-    TPasMPInterlocked.BitwiseOr(fMSIXTable[TPCI.PCI_MSIX_TBL_SIZE+(aMSIID shr 5)],TPasRISCVUInt32(1) shl (aMSIID and $1f));
-   end;
-  end;
-  exit; // MSI-X enabled: handled (don't fall through)
- end;
- // 2) Try MSI (when AIA active)
+
  if fBus.fMachine.fAIA then begin
+  // 1) Try MSI-X first
+  MSIXControl:=TPasMPInterlocked.Read(fMSIXControl);
+  if (MSIXControl and TPCI.PCI_MSIX_ENABLED)<>0 then begin
+   // MSI-X is enabled
+   Command:=TPasMPInterlocked.Read(fCommand);
+   if ((Command and TPCI.PCI_CMD_BUS_MASTER)<>0) and (aMSIID<TPCI.PCI_MSIX_MAX_IRQS) then begin
+    VecCtrl:=TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+3]);
+    MSIData:=TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+2]);
+    MSIAddress:=TPasMPInterlocked.Read(fMSIXTable[aMSIID shl 2]) or
+                (TPasRISCVUInt64(TPasMPInterlocked.Read(fMSIXTable[(aMSIID shl 2)+1])) shl 32);
+    if ((MSIXControl and TPCI.PCI_MSIX_MASKED)=0) and ((VecCtrl and 1)=0) then begin
+     // Not function-masked and not per-vector-masked: deliver MSI write
+     if MSIAddress<>0 then begin
+      fBus.fMachine.fBus.StoreEx(MSIAddress,MSIData,4);
+     end;
+    end else begin
+     // Masked: set pending bit in PBA
+     TPasMPInterlocked.BitwiseOr(fMSIXTable[TPCI.PCI_MSIX_TBL_SIZE+(aMSIID shr 5)],TPasRISCVUInt32(1) shl (aMSIID and $1f));
+    end;
+   end;
+   exit; // MSI-X enabled: handled (don't fall through)
+  end;
+
+  // 2) Try MSI (when AIA active)
   MSIControl:=TPasMPInterlocked.Read(fMSIControl);
   if (MSIControl and $10000)<>0 then begin // MSI Enable bit (bit 16)
+
    // MSI is enabled — bus mastering required for actual delivery, otherwise silently drop
    if (TPasMPInterlocked.Read(fCommand) and TPCI.PCI_CMD_BUS_MASTER)=0 then begin
     exit; // MSI enabled but no bus mastering: drop the IRQ (don't fall through to INTx)
    end;
+
    // Check per-vector mask
    if (TPasMPInterlocked.Read(fMSIMask) and (TPasRISCVUInt32(1) shl (aMSIID and 31)))<>0 then begin
     // Masked: set pending bit
     TPasMPInterlocked.BitwiseOr(fMSIPending,TPasRISCVUInt32(1) shl (aMSIID and 31));
     exit;
    end;
+
    // Build MSI address
    MSIAddress:=TPasMPInterlocked.Read(fMSIAddressLow);
    if (MSIControl and $800000)<>0 then begin // 64-bit capable (bit 23)
     MSIAddress:=MSIAddress or (TPasRISCVUInt64(TPasMPInterlocked.Read(fMSIAddressHigh)) shl 32);
    end;
+
    // MSI data: for single-message mode (MME=0), data register directly
    MSIData:=TPasMPInterlocked.Read(fMSIData);
    if MSIAddress<>0 then begin
     // Write MSI: 32-bit LE write to address, data = identity
     fBus.fMachine.fBus.StoreEx(MSIAddress,MSIData,4);
    end;
+
    exit; // MSI handled (even if address was 0), don't fall through to INTx
+
   end;
+
  end;
+
  // 3) Fallback to legacy INTx
  if (fIRQPin<>0) and ((TPasMPInterlocked.Read(fCommand) and TPCI.PCI_CMD_INTX_DISABLE)=0) then begin
   TPasMPInterlocked.BitwiseOr(fStatus,TPCI.PCI_STATUS_INTX);
@@ -22838,6 +22853,7 @@ begin
    fBus.fMachine.fInterrupts.SendIRQ(IRQ);
   end;
  end;
+
 end;
 
 procedure TPasRISCV.TPCIFunc.RaiseIRQ(const aMSIID:TPasRISCVUInt32);
@@ -22857,33 +22873,39 @@ procedure TPasRISCV.TPCIFunc.LowerIRQ(const aMSIID:TPasRISCVUInt32);
 var MSIXControl:TPasRISCVUInt32;
     Reg,Bit:TPasRISCVUInt32;
 begin
- // Try MSI-X lower first: clear PBA pending bit
- MSIXControl:=TPasMPInterlocked.Read(fMSIXControl);
- if (MSIXControl and TPCI.PCI_MSIX_ENABLED)<>0 then begin
-  if aMSIID<TPCI.PCI_MSIX_MAX_IRQS then begin
-   Reg:=TPCI.PCI_MSIX_TBL_SIZE+(aMSIID shr 5);
-   Bit:=TPasRISCVUInt32(1) shl (aMSIID and $1f);
-   if (TPasMPInterlocked.Read(fMSIXTable[Reg]) and Bit)<>0 then begin
-    TPasMPInterlocked.BitwiseAnd(fMSIXTable[Reg],not Bit);
-   end;
-  end;
-  exit;
- end;
- // Try MSI lower — MSI is edge-triggered, nothing to lower
+
  if fBus.fMachine.fAIA then begin
+
+  // Try MSI-X lower first: clear PBA pending bit
+  MSIXControl:=TPasMPInterlocked.Read(fMSIXControl);
+  if (MSIXControl and TPCI.PCI_MSIX_ENABLED)<>0 then begin
+   if aMSIID<TPCI.PCI_MSIX_MAX_IRQS then begin
+    Reg:=TPCI.PCI_MSIX_TBL_SIZE+(aMSIID shr 5);
+    Bit:=TPasRISCVUInt32(1) shl (aMSIID and $1f);
+    if (TPasMPInterlocked.Read(fMSIXTable[Reg]) and Bit)<>0 then begin
+     TPasMPInterlocked.BitwiseAnd(fMSIXTable[Reg],not Bit);
+    end;
+   end;
+   exit;
+  end;
+
+  // Try MSI lower — MSI is edge-triggered, nothing to lower
   if (TPasMPInterlocked.Read(fMSIControl) and $10000)<>0 then begin
    exit; // MSI enabled: edge-triggered, no lower needed
   end;
+
  end;
+
  // Fallback to INTx lower
  LowerIRQ;
+
 end;
 
 procedure TPasRISCV.TPCIFunc.UpdateMSIXMask;
 var Reg,Pending,Bit:TPasRISCVUInt32;
 begin
  // Only process if MSI-X is enabled and NOT function-masked
- if TPasMPInterlocked.Read(fMSIXControl)=TPCI.PCI_MSIX_ENABLED then begin
+ if fBus.fMachine.fAIA and (TPasMPInterlocked.Read(fMSIXControl)=TPCI.PCI_MSIX_ENABLED) then begin
   for Reg:=0 to TPCI.PCI_MSIX_PBA_SIZE-1 do begin
    Pending:=TPasMPInterlocked.Read(fMSIXTable[TPCI.PCI_MSIX_TBL_SIZE+Reg]);
    if Pending<>0 then begin
@@ -23487,8 +23509,10 @@ begin
          end;
         end;
        end;
-       // 27 ($ec): Table Offset/BIR — read-only, writes ignored
-       // 28 ($f0): PBA Offset/BIR — read-only, writes ignored
+       else begin
+        // 27 ($ec): Table Offset/BIR — read-only, writes ignored
+        // 28 ($f0): PBA Offset/BIR — read-only, writes ignored
+       end;
       end;
      end; // fAIA
     end;
