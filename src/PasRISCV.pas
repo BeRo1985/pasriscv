@@ -44723,7 +44723,7 @@ begin
      end;
 
      // Compute VLMAX = (VLEN/SEW) * LMUL
-     VLMAX:=(VLEN div SEW)*LMUL8 shr 3;
+     VLMAX:=((VLEN div SEW)*LMUL8) shr 3;
 
      // Compute new vl from AVL
      if AVL<=VLMAX then begin
@@ -44777,7 +44777,7 @@ begin
        end;
       end;
       if (OldLMUL8>0) and (OldSEW>0) then begin
-       OldVLMAX:=(VLEN div OldSEW)*OldLMUL8 shr 3;
+       OldVLMAX:=((VLEN div OldSEW)*OldLMUL8) shr 3;
       end else begin
        OldVLMAX:=0;
       end;
@@ -45052,7 +45052,7 @@ begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
          SubIndex:=VectorGetElement(vs1,Index,SEW);
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
+         VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if SubIndex>=VLMAX then begin
           VectorSetElement(vd,Index,SEW,0);
          end else begin
@@ -45105,7 +45105,7 @@ begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
          SubIndex:=VectorGetElement(vs1,Index,16);
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
+         VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if SubIndex<VLMAX then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
          end else begin
@@ -51483,7 +51483,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
+         VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if SubIndex>=VLMAX then begin
           VectorSetElement(vd,Index,SEW,0);
          end else begin
@@ -51529,7 +51529,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
+         VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if (Index+SubIndex)<VLMAX then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+SubIndex,SEW));
          end else begin
@@ -52305,7 +52305,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
+         VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if SubIndex>=VLMAX then begin
           VectorSetElement(vd,Index,SEW,0);
          end else begin
@@ -52351,7 +52351,7 @@ begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
         end else begin
-         VLMAX:=(VLEN div SEW)*VectorGetLMUL shr 3;
+         VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if (Index+SubIndex)<VLMAX then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+SubIndex,SEW));
          end else begin
