@@ -56709,113 +56709,138 @@ begin
       result:=4;
       exit;
      end;
-     if not (SEW in [32,64]) then begin
-      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-      result:=4;
-      exit;
-     end;
-     for Index:=0 to (EVL div 4)-1 do begin
-      SubIndex:=Index*4;
-      if SEW=32 then begin
+     case SEW of
+      32:begin
        // SHA-256 message schedule
-       VecCryptoSHA256MsgSched(
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
-        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-      end else begin
-       // SHA-512 message schedule (SEW=64)
-       SegmentBuffer[0]:=VectorGetElement(vd,SubIndex+0,64);
-       SegmentBuffer[1]:=VectorGetElement(vd,SubIndex+1,64);
-       SegmentBuffer[2]:=VectorGetElement(vd,SubIndex+2,64);
-       SegmentBuffer[3]:=VectorGetElement(vd,SubIndex+3,64);
-       SegmentBuffer[4]:=VectorGetElement(vs2,SubIndex+0,64);
-       SegmentBuffer[5]:=VectorGetElement(vs2,SubIndex+1,64);
-       SegmentBuffer[6]:=VectorGetElement(vs2,SubIndex+2,64);
-       SegmentBuffer[7]:=VectorGetElement(vs2,SubIndex+3,64);
-       SourceValue:=VectorGetElement(vs1,SubIndex+0,64);
-       OperandValue:=VectorGetElement(vs1,SubIndex+2,64);
-       Address:=VectorGetElement(vs1,SubIndex+3,64);
-       Stride:=SHA512sig1(OperandValue)+SegmentBuffer[5]+SHA512sig0(SegmentBuffer[1])+SegmentBuffer[0];
-       SourceValue:=SHA512sig1(Address)+SegmentBuffer[6]+SHA512sig0(SegmentBuffer[2])+SegmentBuffer[1];
-       OperandValue:=SHA512sig1(Stride)+SegmentBuffer[7]+SHA512sig0(SegmentBuffer[3])+SegmentBuffer[2];
-       Address:=SHA512sig1(SourceValue)+VectorGetElement(vs1,SubIndex+0,64)+SHA512sig0(SegmentBuffer[4])+SegmentBuffer[3];
-       VectorSetElement(vd,SubIndex+0,64,Stride);
-       VectorSetElement(vd,SubIndex+1,64,SourceValue);
-       VectorSetElement(vd,SubIndex+2,64,OperandValue);
-       VectorSetElement(vd,SubIndex+3,64,Address);
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoSHA256MsgSched(
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      64:begin
+       // SHA-512 message schedule
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        SegmentBuffer[0]:=VectorGetElement(vd,SubIndex+0,64);
+        SegmentBuffer[1]:=VectorGetElement(vd,SubIndex+1,64);
+        SegmentBuffer[2]:=VectorGetElement(vd,SubIndex+2,64);
+        SegmentBuffer[3]:=VectorGetElement(vd,SubIndex+3,64);
+        SegmentBuffer[4]:=VectorGetElement(vs2,SubIndex+0,64);
+        SegmentBuffer[5]:=VectorGetElement(vs2,SubIndex+1,64);
+        SegmentBuffer[6]:=VectorGetElement(vs2,SubIndex+2,64);
+        SegmentBuffer[7]:=VectorGetElement(vs2,SubIndex+3,64);
+        SourceValue:=VectorGetElement(vs1,SubIndex+0,64);
+        OperandValue:=VectorGetElement(vs1,SubIndex+2,64);
+        Address:=VectorGetElement(vs1,SubIndex+3,64);
+        Stride:=SHA512sig1(OperandValue)+SegmentBuffer[5]+SHA512sig0(SegmentBuffer[1])+SegmentBuffer[0];
+        SourceValue:=SHA512sig1(Address)+SegmentBuffer[6]+SHA512sig0(SegmentBuffer[2])+SegmentBuffer[1];
+        OperandValue:=SHA512sig1(Stride)+SegmentBuffer[7]+SHA512sig0(SegmentBuffer[3])+SegmentBuffer[2];
+        Address:=SHA512sig1(SourceValue)+VectorGetElement(vs1,SubIndex+0,64)+SHA512sig0(SegmentBuffer[4])+SegmentBuffer[3];
+        VectorSetElement(vd,SubIndex+0,64,Stride);
+        VectorSetElement(vd,SubIndex+1,64,SourceValue);
+        VectorSetElement(vd,SubIndex+2,64,OperandValue);
+        VectorSetElement(vd,SubIndex+3,64,Address);
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      else begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
      end;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     fState.CSR.SetVSDirty;
-     result:=4;
-     exit;
     end;
 
     $2e:begin
      // vsha2ch.vv (Zvknha/b) - SHA-2 compression high half
-     if (not Unmasked) or (not (SEW in [32,64])) then begin
+     if not Unmasked then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
      end;
-     for Index:=0 to (EVL div 4)-1 do begin
-      SubIndex:=Index*4;
-      if SEW=32 then begin
-       VecCryptoSHA256Compress(
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
-        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-      end else begin
-       SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
-       SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
-       SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
-       SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
-       SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
-       SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
-       SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
-       SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
-       SourceValue:=VectorGetElement(vs1,SubIndex+2,64);
-       OperandValue:=VectorGetElement(vs1,SubIndex+3,64);
-       VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
-                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
-                               SourceValue,OperandValue,
-                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-       VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
-       VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
-       VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
-       VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+     case SEW of
+      32:begin
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoSHA256Compress(
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+3,32)),
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      64:begin
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
+        SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
+        SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
+        SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
+        SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
+        SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
+        SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
+        SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
+        SourceValue:=VectorGetElement(vs1,SubIndex+2,64);
+        OperandValue:=VectorGetElement(vs1,SubIndex+3,64);
+        VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
+                                SourceValue,OperandValue,
+                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+        VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
+        VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
+        VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
+        VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      else begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
      end;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     fState.CSR.SetVSDirty;
-     result:=4;
-     exit;
     end;
 
     $2f:begin
@@ -56825,55 +56850,65 @@ begin
       result:=4;
       exit;
      end;
-     if not (SEW in [32,64]) then begin
-      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-      result:=4;
-      exit;
-     end;
-     for Index:=0 to (EVL div 4)-1 do begin
-      SubIndex:=Index*4;
-      if SEW=32 then begin
-       VecCryptoSHA256Compress(
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
-        TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
-        TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
-        SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
-       VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
-       VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
-       VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
-       VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
-      end else begin
-       SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
-       SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
-       SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
-       SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
-       SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
-       SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
-       SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
-       SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
-       SourceValue:=VectorGetElement(vs1,SubIndex+0,64);
-       OperandValue:=VectorGetElement(vs1,SubIndex+1,64);
-       VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
-                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
-                               SourceValue,OperandValue,
-                               SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
-       VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
-       VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
-       VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
-       VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+     case SEW of
+      32:begin
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        VecCryptoSHA256Compress(
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+1,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+2,32)),
+         TPasRISCVUInt32(VectorGetElement(vd,SubIndex+3,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+0,32)),
+         TPasRISCVUInt32(VectorGetElement(vs1,SubIndex+1,32)),
+         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      64:begin
+       for Index:=0 to (EVL div 4)-1 do begin
+        SubIndex:=Index*4;
+        SegmentBuffer[0]:=VectorGetElement(vs2,SubIndex+0,64);
+        SegmentBuffer[1]:=VectorGetElement(vs2,SubIndex+1,64);
+        SegmentBuffer[2]:=VectorGetElement(vs2,SubIndex+2,64);
+        SegmentBuffer[3]:=VectorGetElement(vs2,SubIndex+3,64);
+        SegmentBuffer[4]:=VectorGetElement(vd,SubIndex+0,64);
+        SegmentBuffer[5]:=VectorGetElement(vd,SubIndex+1,64);
+        SegmentBuffer[6]:=VectorGetElement(vd,SubIndex+2,64);
+        SegmentBuffer[7]:=VectorGetElement(vd,SubIndex+3,64);
+        SourceValue:=VectorGetElement(vs1,SubIndex+0,64);
+        OperandValue:=VectorGetElement(vs1,SubIndex+1,64);
+        VecCryptoSHA512Compress(SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
+                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7],
+                                SourceValue,OperandValue,
+                                SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+        VectorSetElement(vd,SubIndex+0,64,SegmentBuffer[4]);
+        VectorSetElement(vd,SubIndex+1,64,SegmentBuffer[5]);
+        VectorSetElement(vd,SubIndex+2,64,SegmentBuffer[6]);
+        VectorSetElement(vd,SubIndex+3,64,SegmentBuffer[7]);
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+      else begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
       end;
      end;
-     fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
-     fState.CSR.SetVSDirty;
-     result:=4;
-     exit;
     end;
 
     else begin
