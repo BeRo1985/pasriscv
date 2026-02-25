@@ -43522,7 +43522,7 @@ begin
  if (LMUL8<=0) or (SEW=0) then begin
   result:=0;
  end else begin
-  result:=(VLEN div SEW)*TPasRISCVUInt32(LMUL8) shr 3;
+  result:=((VLEN div SEW)*TPasRISCVUInt32(LMUL8)) shr 3;
  end;
 end;
 
@@ -43532,7 +43532,7 @@ var ByteOffset:TPasRISCVUInt32;
 begin
  ByteOffset:=aIndex*(aSEW shr 3);
  RegIndex:=aVReg+(ByteOffset div VLENB);
- RegOffset:=ByteOffset mod VLENB;
+ RegOffset:=ByteOffset and (VLENB-1);
  if RegIndex>31 then begin
   result:=0;
   exit;
@@ -43562,7 +43562,7 @@ var ByteOffset:TPasRISCVUInt32;
 begin
  ByteOffset:=aIndex*(aSEW shr 3);
  RegIndex:=aVReg+(ByteOffset div VLENB);
- RegOffset:=ByteOffset mod VLENB;
+ RegOffset:=ByteOffset and (VLENB-1);
  if RegIndex>31 then begin
   exit;
  end;
