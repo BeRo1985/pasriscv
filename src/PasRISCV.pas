@@ -75668,6 +75668,10 @@ begin
   fNVMeDevice.Reset;
  end;
 
+ if assigned(fCMI8738Device) then begin
+  fCMI8738Device.Reset;
+ end;
+
  if assigned(fBochsVBEDevice) then begin
   fBochsVBEDevice.Reset;
  end;
