@@ -115,7 +115,6 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - Mouse
     - Sound
       - VirtIO Sound (default)
-      - FM801 (PCI sound card, with PCM and OPL3 YMF262 support, if SoundMode=FM801)
       - CMI8738 (C-Media PCI sound card, ring-buffer DMA with PCM and OPL3 support, if SoundMode=CMI8738)
     - GPU (2D only, no 3D/virgl support yet)
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
