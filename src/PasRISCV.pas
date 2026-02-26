@@ -282,6 +282,7 @@ unit PasRISCV;
 
 {-$define PasRISCVDebugVirtIO9P}
 {-$define PasRISCVDebugVirtIOFS}
+{-$define PasRISCVDebugCMI8738}
 
 {$if defined(fpc) and (defined(cpux86_64) or defined(cpuamd64))}
  {$optimization level3}
@@ -4201,6 +4202,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     CM_REG_MISC=$27;
                     // OPL3 PCI-mapped ports
                     CM_REG_FM_PCI=$50;
+                    // MPU-401 PCI-mapped ports
+                    CM_REG_MPU_PCI=$40;
                     // DMA Registers
                     CM_REG_CH0_FRAME1=$80;
                     CM_REG_CH0_FRAME2=$84;
@@ -4252,8 +4255,22 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     CM_XCHGDAC=TPasRISCVUInt32(1 shl 22);
                     CM_FM_EN=TPasRISCVUInt32(1 shl 19);
                     CM_N4SPK3D=TPasRISCVUInt32(1 shl 14);
+                    // MPU-401 UART protocol
+                    MPU401_RX_EMPTY=$80;   // Status: no data available
+                    MPU401_TX_FULL=$40;    // Status: transmit buffer full
+                    MPU401_RESET=$FF;      // Command: reset
+                    MPU401_ENTER_UART=$3F; // Command: enter UART mode
+                    MPU401_ACK=$FE;        // Response: acknowledge
+                    // Chip detection bits for CM_REG_INT_HLDCLR upper byte (CM_CHIP_MASK2)
+                    // CM_CHIP_039=$04000000 (bit 26) = CMI8738 version 39
+                    // CM_CHIP_039_6CH=$01000000 (bit 24) = 6-channel support
+                    // CM_CHIP_8768=$20000000 (bit 29) = CMI8768 — must NOT be set!
+                    CM_CHIP_VERSION=$04; // CM_CHIP_039 bit only → chip_version=39
                     // Sample rates by index
-                    CM_CHIP_VERSION=$39;
+                    CM_RATES:array[0..7] of TPasRISCVUInt32=
+                     (
+                      5512,11025,22050,44100,8000,16000,32000,48000
+                     );
               type TChannelDMA=record
                     BufferAddress:TPasRISCVUInt32;
                     BufferSize:TPasRISCVUInt32;   // in frames (as written: value+1)
@@ -4268,8 +4285,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     IntPending:Boolean;
                    end;
                    PChannelDMA=^TChannelDMA;
-              const CM_RATES:array[0..7] of TPasRISCVUInt32=
-                     (5512,11025,22050,44100,8000,16000,32000,48000);
              private
               fSoundIO:TSoundIO;
               // Core registers
@@ -4294,6 +4309,21 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               // OPL3
               fOPL3AddressLatch:array[0..1] of TPasRISCVUInt8;
               fOPL3:TPasRISCVOPL3Emu;
+              fOPL3TimerControl:TPasRISCVUInt8;      // Register $04 shadow
+              fOPL3Timer1Value:TPasRISCVUInt8;       // Register $02 (Timer 1 start value)
+              fOPL3Timer2Value:TPasRISCVUInt8;       // Register $03 (Timer 2 start value)
+              fOPL3Timer1Start:TPasRISCVUInt64;      // Host timestamp (microseconds) when Timer 1 was started
+              fOPL3Timer2Start:TPasRISCVUInt64;      // Host timestamp (microseconds) when Timer 2 was started
+              fOPL3Timer1Running:Boolean;
+              fOPL3Timer2Running:Boolean;
+              fOPL3Timer1Expired:Boolean;
+              fOPL3Timer2Expired:Boolean;
+              // MPU-401 UART
+              fMPUInUART:Boolean;
+              fMPURxBuffer:array[0..255] of TPasRISCVUInt8;
+              fMPURxHead:TPasRISCVUInt8;
+              fMPURxTail:TPasRISCVUInt8;
+              fMPURxCount:TPasRISCVUInt8;
               // PCM conversion
               fPlayScratchBuffer:TPasRISCVFloatDynamicArray;
               fPlayResampleBuffer:TPasRISCVFloatDynamicArray;
@@ -4313,6 +4343,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               // IO BAR callbacks
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              // Legacy I/O port callbacks (OPL3 at $388-$38B)
+              function OnIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              procedure RegisterIO;
              public
               constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
               destructor Destroy; override;
@@ -24593,12 +24627,25 @@ end;
 function TPasRISCV.TPCIIODevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var Port:TPasRISCVUInt16;
     Range:PIORange;
+    Index:TPasRISCVSizeInt;
+    SubBusDevice:TBusDevice;
 begin
  Port:=TPasRISCVUInt16(aAddress-fBase);
  Range:=FindRange(Port);
  if assigned(Range) and assigned(Range^.fOnLoad) then begin
   result:=Range^.fOnLoad(Port,aSize);
  end else begin
+  // Try PCI IO BAR sub-devices
+  for Index:=0 to fCountSubBusDevices-1 do begin
+   SubBusDevice:=fSubBusDevices[Index];
+   if (SubBusDevice.fBase<=aAddress) and ((aAddress-SubBusDevice.fBase)<SubBusDevice.fSize) then begin
+{$ifdef PasRISCVDebugPCIIO}
+    WriteLn('[PCIIODevice] Load: addr=$',HexStr(aAddress,16),' dispatching to SubBusDevice[',Index,'] base=$',HexStr(SubBusDevice.fBase,16),' size=$',HexStr(SubBusDevice.fSize,16));
+{$endif}
+    result:=SubBusDevice.Load(aAddress,aSize);
+    exit;
+   end;
+  end;
   // Unassigned I/O port reads return all-ones (like QEMU/x86 behavior)
   case aSize of
    1:begin
@@ -24625,6 +24672,12 @@ begin
  Range:=FindRange(Port);
  if assigned(Range) and assigned(Range^.fOnStore) then begin
   Range^.fOnStore(Port,aValue,aSize);
+ end else begin
+  // Try PCI IO BAR sub-devices
+{$ifdef PasRISCVDebugPCIIO}
+  WriteLn('[PCIIODevice] Store: addr=$',HexStr(aAddress,16),' value=$',HexStr(aValue,8),' size=',aSize,' trying SubBusDevices (',fCountSubBusDevices,')');
+{$endif}
+  inherited Store(aAddress,aValue,aSize);
  end;
  // Unassigned I/O port writes are silently ignored
 end;
@@ -28393,10 +28446,26 @@ begin
   fSoundIO.OnInputFillBuffer:=InputAudioFillBufferCallback;
  end;
 
+ RegisterIO;
+
+{$ifdef PasRISCVDebugCMI8738}
+ WriteLn('[CMI8738] Create: IO BAR size=$',HexStr(CMI8738_BAR_SIZE,4),' OPL3 assigned=',assigned(fOPL3));
+ if assigned(fFuncs[0]) and assigned(fFuncs[0].fBARMemoryDevices[0]) then begin
+  WriteLn('[CMI8738] IO BAR base=$',HexStr(fFuncs[0].fBARMemoryDevices[0].fBase,16),' size=$',HexStr(fFuncs[0].fBARMemoryDevices[0].fSize,16));
+ end else begin
+  WriteLn('[CMI8738] IO BAR NOT MAPPED');
+ end;
+{$endif}
+
 end;
 
 destructor TPasRISCV.TCMI8738Device.Destroy;
+var PCIIODevice:TPCIIODevice;
 begin
+ PCIIODevice:=fBus.fMachine.fPCIIODevice;
+ if assigned(PCIIODevice) then begin
+  PCIIODevice.UnregisterIORange($388);
+ end;
  FreeAndNil(fOPL3);
  FreeAndNil(fFuncs[0]);
  fPlayScratchBuffer:=nil;
@@ -28432,6 +28501,21 @@ begin
  fAuxVol:=0;
  fMiscReg:=0;
  FillChar(fOPL3AddressLatch,SizeOf(fOPL3AddressLatch),#0);
+ fOPL3TimerControl:=0;
+ fOPL3Timer1Value:=0;
+ fOPL3Timer2Value:=0;
+ fOPL3Timer1Start:=0;
+ fOPL3Timer2Start:=0;
+ fOPL3Timer1Running:=false;
+ fOPL3Timer2Running:=false;
+ fOPL3Timer1Expired:=false;
+ fOPL3Timer2Expired:=false;
+ // MPU-401
+ fMPUInUART:=false;
+ FillChar(fMPURxBuffer,SizeOf(fMPURxBuffer),#0);
+ fMPURxHead:=0;
+ fMPURxTail:=0;
+ fMPURxCount:=0;
  if not assigned(fOPL3) then begin
   fOPL3:=TPasRISCVOPL3Emu.Create;
  end;
@@ -28546,6 +28630,9 @@ var Offset:TPasRISCVUInt8;
     Remaining,FrameSize:TPasRISCVUInt32;
 begin
  Offset:=TPasRISCVUInt8(aAddress and $ff);
+{$ifdef PasRISCVDebugCMI8738}
+ WriteLn('[CMI8738] OnLoad: addr=$',HexStr(aAddress,16),' offset=$',HexStr(Offset,2),' size=',aSize);
+{$endif}
  result:=0;
  case Offset of
   CM_REG_FUNCTRL0:begin
@@ -28593,10 +28680,59 @@ begin
   CM_REG_MISC:begin
    result:=fMiscReg;
   end;
+  CM_REG_MPU_PCI:begin
+   // MPU-401 data port read
+   if fMPURxCount>0 then begin
+    result:=fMPURxBuffer[fMPURxHead];
+    fMPURxHead:=(fMPURxHead+1) and $ff;
+    dec(fMPURxCount);
+{$ifdef PasRISCVDebugCMI8738}
+    WriteLn('[CMI8738] MPU data read: $',HexStr(TPasRISCVUInt8(result),2),' remaining=',fMPURxCount);
+{$endif}
+   end else begin
+    result:=$ff; // No data
+   end;
+  end;
+  (CM_REG_MPU_PCI+1):begin
+   // MPU-401 status port read
+   // Bit 7: RX empty (1=no data), Bit 6: TX full (1=can't send)
+   result:=0;
+   if fMPURxCount=0 then begin
+    result:=result or MPU401_RX_EMPTY;
+   end;
+   // TX is never full (we always accept writes)
+{$ifdef PasRISCVDebugCMI8738}
+   WriteLn('[CMI8738] MPU status read: $',HexStr(TPasRISCVUInt8(result),2),' UART=',fMPUInUART,' RxCount=',fMPURxCount);
+{$endif}
+  end;
   CM_REG_FM_PCI..(CM_REG_FM_PCI+3):begin
-   // OPL3 status read
+   // OPL3 status read (port+0 and port+2 return status)
    if assigned(fOPL3) then begin
-    result:=$00; // No timer flags, always ready
+    // Check if running timers have expired
+    if fOPL3Timer1Running and (not fOPL3Timer1Expired) then begin
+     // Timer 1: (256 - value) * 80us
+     if (GetCurrentFrequencyTime(1000000)-fOPL3Timer1Start)>=(TPasRISCVUInt64(256-fOPL3Timer1Value)*80) then begin
+      fOPL3Timer1Expired:=true;
+      fOPL3Timer1Running:=false;
+     end;
+    end;
+    if fOPL3Timer2Running and (not fOPL3Timer2Expired) then begin
+     // Timer 2: (256 - value) * 320us
+     if (GetCurrentFrequencyTime(1000000)-fOPL3Timer2Start)>=(TPasRISCVUInt64(256-fOPL3Timer2Value)*320) then begin
+      fOPL3Timer2Expired:=true;
+      fOPL3Timer2Running:=false;
+     end;
+    end;
+    result:=0;
+    if fOPL3Timer1Expired and ((fOPL3TimerControl and $40)=0) then begin
+     result:=result or $c0; // Bit 7 (IRQ) + Bit 6 (Timer 1 overflow)
+    end;
+    if fOPL3Timer2Expired and ((fOPL3TimerControl and $20)=0) then begin
+     result:=result or $a0; // Bit 7 (IRQ) + Bit 5 (Timer 2 overflow)
+    end;
+{$ifdef PasRISCVDebugCMI8738}
+    WriteLn('[CMI8738] OPL3 PCI status read: result=$',HexStr(result,2),' T1Running=',fOPL3Timer1Running,' T1Expired=',fOPL3Timer1Expired,' T2Running=',fOPL3Timer2Running,' T2Expired=',fOPL3Timer2Expired,' TimerCtrl=$',HexStr(fOPL3TimerControl,2));
+{$endif}
    end;
   end;
   CM_REG_CH0_FRAME1:begin
@@ -28639,6 +28775,9 @@ begin
    result:=fExtMisc;
   end;
  end;
+{$ifdef PasRISCVDebugCMI8738}
+ WriteLn('[CMI8738] OnLoad: offset=$',HexStr(Offset,2),' => result=$',HexStr(result,8));
+{$endif}
 end;
 
 procedure TPasRISCV.TCMI8738Device.OnStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
@@ -28646,6 +28785,9 @@ var Offset:TPasRISCVUInt8;
     OldFuncCtrl0:TPasRISCVUInt32;
 begin
  Offset:=TPasRISCVUInt8(aAddress and $ff);
+{$ifdef PasRISCVDebugCMI8738}
+ WriteLn('[CMI8738] OnStore: addr=$',HexStr(aAddress,16),' offset=$',HexStr(Offset,2),' value=$',HexStr(aValue,8),' size=',aSize);
+{$endif}
  case Offset of
   CM_REG_FUNCTRL0:begin
    OldFuncCtrl0:=fFuncCtrl0;
@@ -28759,13 +28901,100 @@ begin
   CM_REG_MISC:begin
    fMiscReg:=TPasRISCVUInt8(aValue);
   end;
+  CM_REG_MPU_PCI:begin
+   // MPU-401 data port write (MIDI byte out)
+{$ifdef PasRISCVDebugCMI8738}
+   WriteLn('[CMI8738] MPU data write: $',HexStr(TPasRISCVUInt8(aValue),2),' UART=',fMPUInUART);
+{$endif}
+   // In UART mode, data bytes are MIDI output - silently accept
+  end;
+  (CM_REG_MPU_PCI+1):begin
+   // MPU-401 command port write
+{$ifdef PasRISCVDebugCMI8738}
+   WriteLn('[CMI8738] MPU command write: $',HexStr(TPasRISCVUInt8(aValue),2));
+{$endif}
+   case TPasRISCVUInt8(aValue) of
+    MPU401_RESET:begin
+     // Reset: respond with ACK
+     fMPUInUART:=false;
+     fMPURxHead:=0;
+     fMPURxTail:=0;
+     fMPURxCount:=0;
+     // Queue ACK byte
+     fMPURxBuffer[0]:=MPU401_ACK;
+     fMPURxTail:=1;
+     fMPURxCount:=1;
+{$ifdef PasRISCVDebugCMI8738}
+     WriteLn('[CMI8738] MPU RESET -> queued ACK');
+{$endif}
+    end;
+    MPU401_ENTER_UART:begin
+     // Enter UART mode: respond with ACK
+     fMPUInUART:=true;
+     fMPURxBuffer[fMPURxTail]:=MPU401_ACK;
+     fMPURxTail:=(fMPURxTail+1) and $ff;
+     if fMPURxCount<255 then begin
+      inc(fMPURxCount);
+     end;
+{$ifdef PasRISCVDebugCMI8738}
+     WriteLn('[CMI8738] MPU ENTER UART -> queued ACK');
+{$endif}
+    end;
+   end;
+  end;
   CM_REG_FM_PCI:begin
    // OPL3 bank 0 address write
    fOPL3AddressLatch[0]:=TPasRISCVUInt8(aValue);
+{$ifdef PasRISCVDebugCMI8738}
+   WriteLn('[CMI8738] OPL3 PCI addr latch[0] := $',HexStr(TPasRISCVUInt8(aValue),2));
+{$endif}
   end;
   (CM_REG_FM_PCI+1):begin
    // OPL3 bank 0 data write
+{$ifdef PasRISCVDebugCMI8738}
+   WriteLn('[CMI8738] OPL3 PCI data write: reg=$',HexStr(fOPL3AddressLatch[0],2),' val=$',HexStr(TPasRISCVUInt8(aValue),2));
+{$endif}
    if assigned(fOPL3) then begin
+    // Intercept timer-related registers
+    case fOPL3AddressLatch[0] of
+     $02:begin
+      // Timer 1 value
+      fOPL3Timer1Value:=TPasRISCVUInt8(aValue);
+     end;
+     $03:begin
+      // Timer 2 value
+      fOPL3Timer2Value:=TPasRISCVUInt8(aValue);
+     end;
+     $04:begin
+      // Timer control register
+      fOPL3TimerControl:=TPasRISCVUInt8(aValue);
+      if (fOPL3TimerControl and $80)<>0 then begin
+       // IRQ Reset
+       fOPL3Timer1Expired:=false;
+       fOPL3Timer2Expired:=false;
+      end;
+      if (fOPL3TimerControl and $01)<>0 then begin
+       // Start Timer 1
+       if not fOPL3Timer1Running then begin
+        fOPL3Timer1Running:=true;
+        fOPL3Timer1Expired:=false;
+        fOPL3Timer1Start:=GetCurrentFrequencyTime(1000000);
+       end;
+      end else begin
+       fOPL3Timer1Running:=false;
+      end;
+      if (fOPL3TimerControl and $02)<>0 then begin
+       // Start Timer 2
+       if not fOPL3Timer2Running then begin
+        fOPL3Timer2Running:=true;
+        fOPL3Timer2Expired:=false;
+        fOPL3Timer2Start:=GetCurrentFrequencyTime(1000000);
+       end;
+      end else begin
+       fOPL3Timer2Running:=false;
+      end;
+     end;
+    end;
     fOPL3.WriteRegister(TPasRISCVUInt16(fOPL3AddressLatch[0]),TPasRISCVUInt8(aValue));
    end;
   end;
@@ -28795,6 +29024,129 @@ begin
   end;
   CM_REG_EXT_MISC:begin
    fExtMisc:=TPasRISCVUInt32(aValue);
+  end;
+ end;
+end;
+
+
+procedure TPasRISCV.TCMI8738Device.RegisterIO;
+var PCIIODevice:TPCIIODevice;
+begin
+ PCIIODevice:=fBus.fMachine.fPCIIODevice;
+ if assigned(PCIIODevice) then begin
+  // Legacy OPL3 I/O ports $388-$38B (4 bytes: bank0 addr/data, bank1 addr/data)
+  PCIIODevice.RegisterIORange($388,4,OnIOLoad,OnIOStore);
+ end;
+end;
+
+function TPasRISCV.TCMI8738Device.OnIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Offset:TPasRISCVUInt16;
+begin
+ Offset:=aPort-$388;
+{$ifdef PasRISCVDebugCMI8738}
+ WriteLn('[CMI8738] OnIOLoad: port=$',HexStr(aPort,4),' offset=',Offset,' size=',aSize);
+{$endif}
+ result:=0;
+ case Offset of
+  0,2:begin
+   // OPL3 status read (bank 0 or bank 1)
+   if assigned(fOPL3) then begin
+    // Check if running timers have expired
+    if fOPL3Timer1Running and (not fOPL3Timer1Expired) then begin
+     if (GetCurrentFrequencyTime(1000000)-fOPL3Timer1Start)>=(TPasRISCVUInt64(256-fOPL3Timer1Value)*80) then begin
+      fOPL3Timer1Expired:=true;
+      fOPL3Timer1Running:=false;
+     end;
+    end;
+    if fOPL3Timer2Running and (not fOPL3Timer2Expired) then begin
+     if (GetCurrentFrequencyTime(1000000)-fOPL3Timer2Start)>=(TPasRISCVUInt64(256-fOPL3Timer2Value)*320) then begin
+      fOPL3Timer2Expired:=true;
+      fOPL3Timer2Running:=false;
+     end;
+    end;
+    result:=0;
+    if fOPL3Timer1Expired and ((fOPL3TimerControl and $40)=0) then begin
+     result:=result or $c0;
+    end;
+    if fOPL3Timer2Expired and ((fOPL3TimerControl and $20)=0) then begin
+     result:=result or $a0;
+    end;
+   end;
+  end;
+  1:begin
+   // Bank 0 data read (not commonly used, return 0)
+   result:=0;
+  end;
+  3:begin
+   // Bank 1 data read (not commonly used, return 0)
+   result:=0;
+  end;
+ end;
+{$ifdef PasRISCVDebugCMI8738}
+ WriteLn('[CMI8738] OnIOLoad: port=$',HexStr(aPort,4),' => result=$',HexStr(result,2));
+{$endif}
+end;
+
+procedure TPasRISCV.TCMI8738Device.OnIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt16;
+begin
+ Offset:=aPort-$388;
+{$ifdef PasRISCVDebugCMI8738}
+ WriteLn('[CMI8738] OnIOStore: port=$',HexStr(aPort,4),' offset=',Offset,' value=$',HexStr(aValue,2),' size=',aSize);
+{$endif}
+ case Offset of
+  0:begin
+   // Bank 0 address write
+   fOPL3AddressLatch[0]:=TPasRISCVUInt8(aValue);
+  end;
+  1:begin
+   // Bank 0 data write
+   if assigned(fOPL3) then begin
+    case fOPL3AddressLatch[0] of
+     $02:begin
+      fOPL3Timer1Value:=TPasRISCVUInt8(aValue);
+     end;
+     $03:begin
+      fOPL3Timer2Value:=TPasRISCVUInt8(aValue);
+     end;
+     $04:begin
+      fOPL3TimerControl:=TPasRISCVUInt8(aValue);
+      if (fOPL3TimerControl and $80)<>0 then begin
+       fOPL3Timer1Expired:=false;
+       fOPL3Timer2Expired:=false;
+      end;
+      if (fOPL3TimerControl and $01)<>0 then begin
+       if not fOPL3Timer1Running then begin
+        fOPL3Timer1Running:=true;
+        fOPL3Timer1Expired:=false;
+        fOPL3Timer1Start:=GetCurrentFrequencyTime(1000000);
+       end;
+      end else begin
+       fOPL3Timer1Running:=false;
+      end;
+      if (fOPL3TimerControl and $02)<>0 then begin
+       if not fOPL3Timer2Running then begin
+        fOPL3Timer2Running:=true;
+        fOPL3Timer2Expired:=false;
+        fOPL3Timer2Start:=GetCurrentFrequencyTime(1000000);
+       end;
+      end else begin
+       fOPL3Timer2Running:=false;
+      end;
+     end;
+    end;
+    fOPL3.WriteRegister(TPasRISCVUInt16(fOPL3AddressLatch[0]),TPasRISCVUInt8(aValue));
+   end;
+  end;
+  2:begin
+   // Bank 1 address write
+   fOPL3AddressLatch[1]:=TPasRISCVUInt8(aValue);
+  end;
+  3:begin
+   // Bank 1 data write
+   if assigned(fOPL3) then begin
+    fOPL3.WriteRegister(TPasRISCVUInt16($100) or TPasRISCVUInt16(fOPL3AddressLatch[1]),TPasRISCVUInt8(aValue));
+   end;
   end;
  end;
 end;
