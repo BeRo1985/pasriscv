@@ -4208,8 +4208,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               // Legacy I/O port callbacks (OPL3 at $388-$38B)
-              function OnIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
-              procedure OnIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function OnLegacyIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnLegacyIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               procedure RegisterIO;
              public
               constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
@@ -27940,11 +27940,11 @@ begin
  PCIIODevice:=fBus.fMachine.fPCIIODevice;
  if assigned(PCIIODevice) then begin
   // Legacy OPL3 I/O ports $388-$38B (4 bytes: bank0 addr/data, bank1 addr/data)
-  PCIIODevice.RegisterIORange($388,4,OnIOLoad,OnIOStore);
+  PCIIODevice.RegisterIORange($388,4,OnLegacyIOLoad,OnLegacyIOStore);
  end;
 end;
 
-function TPasRISCV.TCMI8738Device.OnIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+function TPasRISCV.TCMI8738Device.OnLegacyIOLoad(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var Offset:TPasRISCVUInt16;
 begin
  Offset:=aPort-$388;
@@ -27992,7 +27992,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.TCMI8738Device.OnIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+procedure TPasRISCV.TCMI8738Device.OnLegacyIOStore(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var Offset:TPasRISCVUInt16;
 begin
  Offset:=aPort-$388;
