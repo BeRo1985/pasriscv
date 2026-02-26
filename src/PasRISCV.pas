@@ -4100,7 +4100,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPlayPosition:TPasRISCVUInt32;
               fPlaySize:TPasRISCVUInt32;
               fPlayScratchBuffer:TPasRISCVFloatDynamicArray;
+              fPlayResampleBuffer:TPasRISCVFloatDynamicArray;
               fPlayResamplerPosition:TPasRISCVUInt64;
+              fPlayPreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
               fPlayDMACache:array[0..1] of TPasRISCVUInt8DynamicArray;
               fPlayDMACacheSize:array[0..1] of TPasRISCVUInt32;
               fPlayDMACacheReady:array[0..1] of Boolean;
@@ -4112,6 +4114,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCaptureScratchBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResampleBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResamplerPosition:TPasRISCVUInt64;
+              fCapturePreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
               fCaptureDMACache:array[0..1] of TPasRISCVUInt8DynamicArray;
               fCaptureDMACacheSize:array[0..1] of TPasRISCVUInt32;
               fCaptureDMACachePosition:array[0..1] of TPasRISCVUInt32;
@@ -27182,7 +27185,10 @@ begin
  fPlayPosition:=0;
  fPlaySize:=0;
  fPlayScratchBuffer:=nil;
+ fPlayResampleBuffer:=nil;
  fPlayResamplerPosition:=0;
+ fPlayPreviousFrameEndValues[0]:=0.0;
+ fPlayPreviousFrameEndValues[1]:=0.0;
  fPlayDMACache[0]:=nil;
  fPlayDMACache[1]:=nil;
  fPlayDMACacheSize[0]:=0;
@@ -27197,6 +27203,8 @@ begin
  fCaptureScratchBuffer:=nil;
  fCaptureResampleBuffer:=nil;
  fCaptureResamplerPosition:=0;
+ fCapturePreviousFrameEndValues[0]:=0.0;
+ fCapturePreviousFrameEndValues[1]:=0.0;
  fCaptureDMACache[0]:=nil;
  fCaptureDMACache[1]:=nil;
  fCaptureDMACacheSize[0]:=0;
@@ -27349,6 +27357,8 @@ begin
      fPlayPosition:=0;
      fPlaySize:=TPasRISCVUInt32(fPlayCount)+1; // count register = period_bytes - 1
      fPlayResamplerPosition:=0;
+     fPlayPreviousFrameEndValues[0]:=0.0;
+     fPlayPreviousFrameEndValues[1]:=0.0;
     end;
     fPlayActive:=true;
     fPlayCtrl:=fPlayCtrl and (not FM801_IMMED_STOP); // clear IMMED_STOP after handling
@@ -27625,12 +27635,14 @@ begin
    end;
    fPlayPosition:=0;
    fPlaySize:=TPasRISCVUInt32(fPlayCount)+1; // count register = period_bytes - 1
-   // Prefetch the OTHER buffer (the one we just finished will be refilled by guest)
+   // Invalidate cache of the buffer we just finished (guest will refill it via ISR),
+   // and re-prefetch the buffer we're about to play (guest should have prepared it).
    if fPlayBufferIndex=0 then begin
-    PrefetchPlayDMA(1);
+    fPlayDMACacheReady[1]:=false; // invalidate finished buffer
    end else begin
-    PrefetchPlayDMA(0);
+    fPlayDMACacheReady[0]:=false; // invalidate finished buffer
    end;
+   PrefetchPlayDMA(fPlayBufferIndex); // prefetch the buffer we're switching to
    // Check BUF_LAST flags - if set, stop after this buffer
    if fPlayBufferIndex=0 then begin
     if (fPlayCtrl and FM801_BUFFER1_LAST)<>0 then begin
@@ -27733,31 +27745,41 @@ begin
 
   inc(fPlayPosition,CopyBytes);
 
-  // Copy to output (no resampling if rates match)
+  // Mix to output (additive, to preserve OPL3 audio already in buffer)
   if SrcRate=DstRate then begin
-   CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+   ToDo:=SrcSamples*2; // stereo float sample count
+   CopyBytes:=ToDo*SizeOf(TPasRISCVFloat);
    if CopyBytes>Remain then begin
-    CopyBytes:=Remain;
+    ToDo:=Remain div SizeOf(TPasRISCVFloat);
+    CopyBytes:=ToDo*SizeOf(TPasRISCVFloat);
    end;
-   Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
+   for SampleIndex:=0 to ToDo-1 do begin
+    PPasRISCVFloatArray(Dest)^[SampleIndex]:=PPasRISCVFloatArray(Dest)^[SampleIndex]+fPlayScratchBuffer[SampleIndex];
+   end;
    inc(Dest,CopyBytes);
    dec(Remain,CopyBytes);
   end else begin
-   // Simple linear resampling
+   // Simple linear resampling into temp buffer, then mix additively
    DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
    ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
    if ToDo>DstSamples then begin
     ToDo:=DstSamples;
    end;
    if ToDo>0 then begin
+    if length(fPlayResampleBuffer)<(ToDo*2) then begin
+     SetLength(fPlayResampleBuffer,ToDo*4);
+    end;
     ResampleLinear(@fPlayScratchBuffer[0],
                    SrcSamples,
-                   PPasRISCVFloatArray(Dest),
+                   @fPlayResampleBuffer[0],
                    ToDo,
                    2,
-                   nil,
+                   @fPlayPreviousFrameEndValues[0],
                    fPlayResamplerPosition,
                    ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
+    for SampleIndex:=0 to (ToDo*2)-1 do begin
+     PPasRISCVFloatArray(Dest)^[SampleIndex]:=PPasRISCVFloatArray(Dest)^[SampleIndex]+fPlayResampleBuffer[SampleIndex];
+    end;
     CopyBytes:=ToDo*2*SizeOf(TPasRISCVFloat);
     inc(Dest,CopyBytes);
     dec(Remain,CopyBytes);
@@ -27897,7 +27919,7 @@ begin
                    @fCaptureResampleBuffer[0],
                    ToDo,
                    2,
-                   nil,
+                   @fCapturePreviousFrameEndValues[0],
                    fCaptureResamplerPosition,
                    ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
     SrcSamples:=ToDo;
