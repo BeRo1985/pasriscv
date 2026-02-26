@@ -116,6 +116,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - Sound
       - VirtIO Sound (default)
       - FM801 (PCI sound card, with PCM and OPL3 YMF262 support, if SoundMode=FM801)
+      - CMI8738 (C-Media PCI sound card, ring-buffer DMA with PCM and OPL3 support, if SoundMode=CMI8738)
     - GPU (2D only, no 3D/virgl support yet)
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
     - RTC (if RTCMode=VirtIO) — real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
@@ -139,6 +140,8 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - IVSHMEM (Inter-VM Shared Memory) device for host-guest shared memory communication with doorbell interrupts
     - Bochs VBE VGA adapter (if DisplayMode=BochsVBE)
     - Cirrus Logic GD 5446 VGA adapter (if DisplayMode=Cirrus)
+    - FM801 PCI audio (if SoundMode=FM801)
+    - CMI8738 PCI audio (if SoundMode=CMI8738)
   - I2C bus with two selectable controller modes:
     - OpenCores I2C (opencores,i2c-ocores) — classic register-based I2C controller
     - Synopsys DesignWare I2C (snps,designware-i2c) — default, compatible with Linux i2c-designware driver

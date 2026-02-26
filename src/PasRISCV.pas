@@ -4177,6 +4177,151 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               property SoundIO:TSoundIO read fSoundIO;
             end;
+            { TCMI8738Device }
+            TCMI8738Device=class(TPCIDevice)
+             public
+              const CMI8738_VENDOR_ID=TPasRISCVUInt16($13f6);
+                    CMI8738_DEVICE_ID=TPasRISCVUInt16($0111);
+                    CMI8738_BAR_SIZE=$100;
+                    // Core Control Registers
+                    CM_REG_FUNCTRL0=$00;
+                    CM_REG_FUNCTRL1=$04;
+                    CM_REG_CHFORMAT=$08;
+                    CM_REG_INT_HLDCLR=$0c;
+                    CM_REG_INT_STATUS=$10;
+                    CM_REG_LEGACY_CTRL=$14;
+                    CM_REG_MISC_CTRL=$18;
+                    // Mixer Registers
+                    CM_REG_DEV=$20;
+                    CM_REG_SB16_DATA=$22;
+                    CM_REG_SB16_ADDR=$23;
+                    CM_REG_MIXER1=$24;
+                    CM_REG_MIXER2=$25;
+                    CM_REG_AUX_VOL=$26;
+                    CM_REG_MISC=$27;
+                    // OPL3 PCI-mapped ports
+                    CM_REG_FM_PCI=$50;
+                    // DMA Registers
+                    CM_REG_CH0_FRAME1=$80;
+                    CM_REG_CH0_FRAME2=$84;
+                    CM_REG_CH1_FRAME1=$88;
+                    CM_REG_CH1_FRAME2=$8c;
+                    // Extended
+                    CM_REG_EXT_MISC=$90;
+                    // FUNCTRL0 bits
+                    CM_RST_CH1=TPasRISCVUInt32(1 shl 19);
+                    CM_RST_CH0=TPasRISCVUInt32(1 shl 18);
+                    CM_CHEN1=TPasRISCVUInt32(1 shl 17);
+                    CM_CHEN0=TPasRISCVUInt32(1 shl 16);
+                    CM_PAUSE1=TPasRISCVUInt32(1 shl 3);
+                    CM_PAUSE0=TPasRISCVUInt32(1 shl 2);
+                    CM_CHADC1=TPasRISCVUInt32(1 shl 1);
+                    CM_CHADC0=TPasRISCVUInt32(1 shl 0);
+                    // FUNCTRL1 bits
+                    CM_DSFC_SHIFT=13;
+                    CM_DSFC_MASK=TPasRISCVUInt32(7 shl 13);
+                    CM_ASFC_SHIFT=10;
+                    CM_ASFC_MASK=TPasRISCVUInt32(7 shl 10);
+                    CM_INTRM=TPasRISCVUInt32(1 shl 5);
+                    CM_BREQ=TPasRISCVUInt32(1 shl 4);
+                    CM_VOICE_EN=TPasRISCVUInt32(1 shl 3);
+                    CM_UART_EN=TPasRISCVUInt32(1 shl 2);
+                    CM_JYSTK_EN=TPasRISCVUInt32(1 shl 1);
+                    // CHFORMAT bits
+                    CM_CH1FMT_SHIFT=2;
+                    CM_CH1FMT_MASK=TPasRISCVUInt32(3 shl 2);
+                    CM_CH0FMT_SHIFT=0;
+                    CM_CH0FMT_MASK=TPasRISCVUInt32(3 shl 0);
+                    CM_CHxFMT_STEREO=1;
+                    CM_CHxFMT_16BIT=2;
+                    // INT_HLDCLR bits
+                    CM_TDMA_INT_EN=TPasRISCVUInt32(1 shl 18);
+                    CM_CH1_INT_EN=TPasRISCVUInt32(1 shl 17);
+                    CM_CH0_INT_EN=TPasRISCVUInt32(1 shl 16);
+                    // INT_STATUS bits (read-only)
+                    CM_INTR=TPasRISCVUInt32(1 shl 31);
+                    CM_UARTINT=TPasRISCVUInt32(1 shl 16);
+                    CM_CH1BUSY=TPasRISCVUInt32(1 shl 3);
+                    CM_CH0BUSY=TPasRISCVUInt32(1 shl 2);
+                    CM_CHINT1=TPasRISCVUInt32(1 shl 1);
+                    CM_CHINT0=TPasRISCVUInt32(1 shl 0);
+                    // MISC_CTRL bits
+                    CM_PWD=TPasRISCVUInt32(1 shl 31);
+                    CM_RESET=TPasRISCVUInt32(1 shl 30);
+                    CM_ENDBDAC=TPasRISCVUInt32(1 shl 23);
+                    CM_XCHGDAC=TPasRISCVUInt32(1 shl 22);
+                    CM_FM_EN=TPasRISCVUInt32(1 shl 19);
+                    CM_N4SPK3D=TPasRISCVUInt32(1 shl 14);
+                    // Sample rates by index
+                    CM_CHIP_VERSION=$39;
+              type TChannelDMA=record
+                    BufferAddress:TPasRISCVUInt32;
+                    BufferSize:TPasRISCVUInt32;   // in frames (as written: value+1)
+                    PeriodSize:TPasRISCVUInt32;   // in frames (as written: value+1)
+                    Position:TPasRISCVUInt32;      // current frame position in ring buffer
+                    Enabled:Boolean;
+                    Paused:Boolean;
+                    IsCapture:Boolean;
+                    RateIndex:TPasRISCVUInt32;
+                    Format:TPasRISCVUInt32;        // 2-bit format: bit1=16bit, bit0=stereo
+                    PeriodCounter:TPasRISCVUInt32;  // frames since last period IRQ
+                    IntPending:Boolean;
+                   end;
+                   PChannelDMA=^TChannelDMA;
+              const CM_RATES:array[0..7] of TPasRISCVUInt32=
+                     (5512,11025,22050,44100,8000,16000,32000,48000);
+             private
+              fSoundIO:TSoundIO;
+              // Core registers
+              fFuncCtrl0:TPasRISCVUInt32;
+              fFuncCtrl1:TPasRISCVUInt32;
+              fChFormat:TPasRISCVUInt32;
+              fIntHldClr:TPasRISCVUInt32;
+              fIntStatus:TPasRISCVUInt32;
+              fLegacyCtrl:TPasRISCVUInt32;
+              fMiscCtrl:TPasRISCVUInt32;
+              fExtMisc:TPasRISCVUInt32;
+              // DMA channels
+              fChannels:array[0..1] of TChannelDMA;
+              // SB16 Mixer
+              fSB16MixerAddr:TPasRISCVUInt8;
+              fSB16MixerRegs:array[0..255] of TPasRISCVUInt8;
+              // Native mixer
+              fMixer1:TPasRISCVUInt8;
+              fMixer2:TPasRISCVUInt8;
+              fAuxVol:TPasRISCVUInt8;
+              fMiscReg:TPasRISCVUInt8;
+              // OPL3
+              fOPL3AddressLatch:array[0..1] of TPasRISCVUInt8;
+              fOPL3:TPasRISCVOPL3Emu;
+              // PCM conversion
+              fPlayScratchBuffer:TPasRISCVFloatDynamicArray;
+              fPlayResampleBuffer:TPasRISCVFloatDynamicArray;
+              fPlayResamplerPosition:TPasRISCVUInt64;
+              fPlayPreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
+              fCaptureScratchBuffer:TPasRISCVFloatDynamicArray;
+              fCaptureResampleBuffer:TPasRISCVFloatDynamicArray;
+              fCaptureResamplerPosition:TPasRISCVUInt64;
+              fCapturePreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
+              // Helper
+              function GetChannelFrameSize(const aChannel:PChannelDMA):TPasRISCVUInt32;
+              function GetPlaybackChannel:PChannelDMA;
+              function GetCaptureChannel:PChannelDMA;
+              function GetChannelRate(const aChannelIndex:TPasRISCVUInt32):TPasRISCVUInt32;
+              procedure UpdateChannelState;
+              procedure CheckAndFireIRQ;
+              // IO BAR callbacks
+              function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+             public
+              constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              procedure OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+              procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+             public
+              property SoundIO:TSoundIO read fSoundIO;
+            end;
             { TVirtIODevice }
             TVirtIODevice=class(TBusDevice)
              public
@@ -8210,7 +8355,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TSoundMode=
              (
               VirtIO,
-              FM801
+              FM801,
+              CMI8738
              );
             { TConfiguration }
             TConfiguration=class
@@ -8628,6 +8774,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fPS2MouseDevice:TPS2MouseDevice;
 
        fFM801Device:TFM801Device;
+
+       fCMI8738Device:TCMI8738Device;
 
        fVirtIOInputKeyboardDevice:TVirtIOInputKeyboardDevice;
 
@@ -28201,6 +28349,936 @@ begin
   inc(fCapturePosition,SrcSamples*SampleFrameSize);
   if fCapturePosition>fCaptureDMACachePosition[fCaptureBufferIndex] then begin
    fCaptureDMACachePosition[fCaptureBufferIndex]:=fCapturePosition;
+  end;
+
+ end;
+
+end;
+
+{ TPasRISCV.TCMI8738Device }
+
+constructor TPasRISCV.TCMI8738Device.Create(const aBus:TPasRISCV.TPCIBusDevice;const aSoundIO:TSoundIO);
+var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
+    BARRegion:TPasRISCV.PPCIBARRegion;
+begin
+ inherited Create(aBus);
+
+ fSoundIO:=aSoundIO;
+
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
+ FuncDesc.fVendorID:=CMI8738_VENDOR_ID;
+ FuncDesc.fDeviceID:=CMI8738_DEVICE_ID;
+ FuncDesc.fClassCode:=$0401; // Multimedia Controller, Audio Device
+ FuncDesc.fProgIF:=$00;
+ FuncDesc.fRevisionID:=$10;
+ FuncDesc.fIRQPin:=TPCI.PCI_IRQ_PIN_INTA;
+
+ BARRegion:=@FuncDesc.fBARRegions[0];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=CMI8738_BAR_SIZE;
+ BARRegion^.fIsIO:=true;
+ BARRegion^.fOnLoad:=OnLoad;
+ BARRegion^.fOnStore:=OnStore;
+
+ fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
+
+ Reset;
+
+ if assigned(fSoundIO) then begin
+  fSoundIO.OnOutputFillBuffer:=OutputAudioFillBufferCallback;
+  fSoundIO.OnInputFillBuffer:=InputAudioFillBufferCallback;
+ end;
+
+end;
+
+destructor TPasRISCV.TCMI8738Device.Destroy;
+begin
+ FreeAndNil(fOPL3);
+ FreeAndNil(fFuncs[0]);
+ fPlayScratchBuffer:=nil;
+ fPlayResampleBuffer:=nil;
+ fCaptureScratchBuffer:=nil;
+ fCaptureResampleBuffer:=nil;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TCMI8738Device.Reset;
+begin
+ inherited Reset;
+ fFuncCtrl0:=0;
+ fFuncCtrl1:=0;
+ fChFormat:=0;
+ fIntHldClr:=0;
+ fIntStatus:=0;
+ fLegacyCtrl:=0;
+ fMiscCtrl:=0;
+ fExtMisc:=0;
+ FillChar(fChannels,SizeOf(fChannels),#0);
+ fSB16MixerAddr:=0;
+ FillChar(fSB16MixerRegs,SizeOf(fSB16MixerRegs),#0);
+ // SB16 mixer defaults
+ fSB16MixerRegs[$30]:=$c0;
+ fSB16MixerRegs[$31]:=$c0;
+ fSB16MixerRegs[$32]:=$c0;
+ fSB16MixerRegs[$33]:=$c0;
+ fSB16MixerRegs[$34]:=$c0;
+ fSB16MixerRegs[$35]:=$c0;
+ fMixer1:=0;
+ fMixer2:=0;
+ fAuxVol:=0;
+ fMiscReg:=0;
+ FillChar(fOPL3AddressLatch,SizeOf(fOPL3AddressLatch),#0);
+ if not assigned(fOPL3) then begin
+  fOPL3:=TPasRISCVOPL3Emu.Create;
+ end;
+ if assigned(fSoundIO) then begin
+  fOPL3.DoReset(fSoundIO.fSampleRate);
+ end else begin
+  fOPL3.DoReset(48000);
+ end;
+ fPlayScratchBuffer:=nil;
+ fPlayResampleBuffer:=nil;
+ fPlayResamplerPosition:=0;
+ fPlayPreviousFrameEndValues[0]:=0.0;
+ fPlayPreviousFrameEndValues[1]:=0.0;
+ fCaptureScratchBuffer:=nil;
+ fCaptureResampleBuffer:=nil;
+ fCaptureResamplerPosition:=0;
+ fCapturePreviousFrameEndValues[0]:=0.0;
+ fCapturePreviousFrameEndValues[1]:=0.0;
+end;
+
+function TPasRISCV.TCMI8738Device.GetChannelFrameSize(const aChannel:PChannelDMA):TPasRISCVUInt32;
+begin
+ result:=1;
+ if (aChannel^.Format and CM_CHxFMT_STEREO)<>0 then begin
+  result:=result*2;
+ end;
+ if (aChannel^.Format and CM_CHxFMT_16BIT)<>0 then begin
+  result:=result*2;
+ end;
+end;
+
+function TPasRISCV.TCMI8738Device.GetPlaybackChannel:PChannelDMA;
+begin
+ // Channel assignment follows CHADC bits: if CHADCx=0 => playback
+ // Default: both CHADC bits clear => ch0=playback, ch1=playback
+ // With XCHGDAC: ch1 is front output (default for Linux snd-cmipci)
+ if (fMiscCtrl and CM_XCHGDAC)<>0 then begin
+  result:=@fChannels[1];
+ end else begin
+  result:=@fChannels[0];
+ end;
+end;
+
+function TPasRISCV.TCMI8738Device.GetCaptureChannel:PChannelDMA;
+begin
+ if (fMiscCtrl and CM_XCHGDAC)<>0 then begin
+  result:=@fChannels[0];
+ end else begin
+  result:=@fChannels[1];
+ end;
+end;
+
+function TPasRISCV.TCMI8738Device.GetChannelRate(const aChannelIndex:TPasRISCVUInt32):TPasRISCVUInt32;
+var RateIndex:TPasRISCVUInt32;
+begin
+ if aChannelIndex=0 then begin
+  RateIndex:=(fFuncCtrl1 and CM_ASFC_MASK) shr CM_ASFC_SHIFT;
+ end else begin
+  RateIndex:=(fFuncCtrl1 and CM_DSFC_MASK) shr CM_DSFC_SHIFT;
+ end;
+ if RateIndex>7 then begin
+  RateIndex:=7;
+ end;
+ result:=CM_RATES[RateIndex];
+end;
+
+procedure TPasRISCV.TCMI8738Device.UpdateChannelState;
+begin
+ // Channel 0
+ fChannels[0].Enabled:=(fFuncCtrl0 and CM_CHEN0)<>0;
+ fChannels[0].Paused:=(fFuncCtrl0 and CM_PAUSE0)<>0;
+ fChannels[0].IsCapture:=(fFuncCtrl0 and CM_CHADC0)<>0;
+ fChannels[0].Format:=(fChFormat and CM_CH0FMT_MASK) shr CM_CH0FMT_SHIFT;
+ // Channel 1
+ fChannels[1].Enabled:=(fFuncCtrl0 and CM_CHEN1)<>0;
+ fChannels[1].Paused:=(fFuncCtrl0 and CM_PAUSE1)<>0;
+ fChannels[1].IsCapture:=(fFuncCtrl0 and CM_CHADC1)<>0;
+ fChannels[1].Format:=(fChFormat and CM_CH1FMT_MASK) shr CM_CH1FMT_SHIFT;
+end;
+
+procedure TPasRISCV.TCMI8738Device.CheckAndFireIRQ;
+var Status:TPasRISCVUInt32;
+begin
+ Status:=0;
+ if fChannels[0].IntPending and ((fIntHldClr and CM_CH0_INT_EN)<>0) then begin
+  Status:=Status or CM_CHINT0;
+ end;
+ if fChannels[1].IntPending and ((fIntHldClr and CM_CH1_INT_EN)<>0) then begin
+  Status:=Status or CM_CHINT1;
+ end;
+ if Status<>0 then begin
+  Status:=Status or CM_INTR;
+ end;
+ // Add busy flags
+ if fChannels[0].Enabled and (not fChannels[0].Paused) then begin
+  Status:=Status or CM_CH0BUSY;
+ end;
+ if fChannels[1].Enabled and (not fChannels[1].Paused) then begin
+  Status:=Status or CM_CH1BUSY;
+ end;
+ fIntStatus:=Status;
+ if (Status and CM_INTR)<>0 then begin
+  RaiseIRQ(0,0);
+ end else begin
+  LowerIRQ(0);
+ end;
+end;
+
+function TPasRISCV.TCMI8738Device.OnLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Offset:TPasRISCVUInt8;
+    Ch:PChannelDMA;
+    Remaining,FrameSize:TPasRISCVUInt32;
+begin
+ Offset:=TPasRISCVUInt8(aAddress and $ff);
+ result:=0;
+ case Offset of
+  CM_REG_FUNCTRL0:begin
+   result:=fFuncCtrl0;
+  end;
+  CM_REG_FUNCTRL1:begin
+   result:=fFuncCtrl1;
+  end;
+  CM_REG_CHFORMAT:begin
+   // Embed chip version in upper bits for detection
+   result:=fChFormat or (TPasRISCVUInt32(CM_CHIP_VERSION) shl 24);
+  end;
+  CM_REG_INT_HLDCLR:begin
+   // Upper byte contains chip version for detection
+   result:=fIntHldClr or (TPasRISCVUInt32(CM_CHIP_VERSION) shl 24);
+  end;
+  CM_REG_INT_STATUS:begin
+   result:=fIntStatus;
+  end;
+  CM_REG_LEGACY_CTRL:begin
+   result:=fLegacyCtrl;
+  end;
+  CM_REG_MISC_CTRL:begin
+   result:=fMiscCtrl;
+  end;
+  CM_REG_DEV:begin
+   // Return chip version
+   result:=CM_CHIP_VERSION;
+  end;
+  CM_REG_SB16_DATA:begin
+   result:=fSB16MixerRegs[fSB16MixerAddr];
+  end;
+  CM_REG_SB16_ADDR:begin
+   result:=fSB16MixerAddr;
+  end;
+  CM_REG_MIXER1:begin
+   result:=fMixer1;
+  end;
+  CM_REG_MIXER2:begin
+   result:=fMixer2;
+  end;
+  CM_REG_AUX_VOL:begin
+   result:=fAuxVol;
+  end;
+  CM_REG_MISC:begin
+   result:=fMiscReg;
+  end;
+  CM_REG_FM_PCI..(CM_REG_FM_PCI+3):begin
+   // OPL3 status read
+   if assigned(fOPL3) then begin
+    result:=$00; // No timer flags, always ready
+   end;
+  end;
+  CM_REG_CH0_FRAME1:begin
+   result:=fChannels[0].BufferAddress;
+  end;
+  CM_REG_CH0_FRAME2:begin
+   // Lower 16 bits: remaining frame count (HW pointer readback)
+   // Upper 16 bits: period size - 1
+   Ch:=@fChannels[0];
+   FrameSize:=GetChannelFrameSize(Ch);
+   if Ch^.Enabled and (Ch^.BufferSize>0) and (FrameSize>0) then begin
+    Remaining:=(Ch^.BufferSize-(Ch^.Position div FrameSize));
+    if Remaining>0 then begin
+     dec(Remaining);
+    end;
+    result:=TPasRISCVUInt32(TPasRISCVUInt16(Remaining)) or
+            (TPasRISCVUInt32(TPasRISCVUInt16(Ch^.PeriodSize-1)) shl 16);
+   end else begin
+    result:=0;
+   end;
+  end;
+  CM_REG_CH1_FRAME1:begin
+   result:=fChannels[1].BufferAddress;
+  end;
+  CM_REG_CH1_FRAME2:begin
+   Ch:=@fChannels[1];
+   FrameSize:=GetChannelFrameSize(Ch);
+   if Ch^.Enabled and (Ch^.BufferSize>0) and (FrameSize>0) then begin
+    Remaining:=(Ch^.BufferSize-(Ch^.Position div FrameSize));
+    if Remaining>0 then begin
+     dec(Remaining);
+    end;
+    result:=TPasRISCVUInt32(TPasRISCVUInt16(Remaining)) or
+            (TPasRISCVUInt32(TPasRISCVUInt16(Ch^.PeriodSize-1)) shl 16);
+   end else begin
+    result:=0;
+   end;
+  end;
+  CM_REG_EXT_MISC:begin
+   result:=fExtMisc;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TCMI8738Device.OnStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt8;
+    OldFuncCtrl0:TPasRISCVUInt32;
+begin
+ Offset:=TPasRISCVUInt8(aAddress and $ff);
+ case Offset of
+  CM_REG_FUNCTRL0:begin
+   OldFuncCtrl0:=fFuncCtrl0;
+   fFuncCtrl0:=TPasRISCVUInt32(aValue);
+   // Handle channel reset
+   if (fFuncCtrl0 and CM_RST_CH0)<>0 then begin
+    fChannels[0].Position:=0;
+    fChannels[0].PeriodCounter:=0;
+    fChannels[0].IntPending:=false;
+    fFuncCtrl0:=fFuncCtrl0 and (not CM_RST_CH0);
+   end;
+   if (fFuncCtrl0 and CM_RST_CH1)<>0 then begin
+    fChannels[1].Position:=0;
+    fChannels[1].PeriodCounter:=0;
+    fChannels[1].IntPending:=false;
+    fFuncCtrl0:=fFuncCtrl0 and (not CM_RST_CH1);
+   end;
+   // If channel just enabled, reset position
+   if ((fFuncCtrl0 and CM_CHEN0)<>0) and ((OldFuncCtrl0 and CM_CHEN0)=0) then begin
+    fChannels[0].Position:=0;
+    fChannels[0].PeriodCounter:=0;
+    if not fChannels[0].IsCapture then begin
+     fPlayResamplerPosition:=0;
+     fPlayPreviousFrameEndValues[0]:=0.0;
+     fPlayPreviousFrameEndValues[1]:=0.0;
+    end else begin
+     fCaptureResamplerPosition:=0;
+     fCapturePreviousFrameEndValues[0]:=0.0;
+     fCapturePreviousFrameEndValues[1]:=0.0;
+    end;
+   end;
+   if ((fFuncCtrl0 and CM_CHEN1)<>0) and ((OldFuncCtrl0 and CM_CHEN1)=0) then begin
+    fChannels[1].Position:=0;
+    fChannels[1].PeriodCounter:=0;
+    if not fChannels[1].IsCapture then begin
+     fPlayResamplerPosition:=0;
+     fPlayPreviousFrameEndValues[0]:=0.0;
+     fPlayPreviousFrameEndValues[1]:=0.0;
+    end else begin
+     fCaptureResamplerPosition:=0;
+     fCapturePreviousFrameEndValues[0]:=0.0;
+     fCapturePreviousFrameEndValues[1]:=0.0;
+    end;
+   end;
+   UpdateChannelState;
+   CheckAndFireIRQ;
+  end;
+  CM_REG_FUNCTRL1:begin
+   fFuncCtrl1:=TPasRISCVUInt32(aValue);
+  end;
+  CM_REG_CHFORMAT:begin
+   fChFormat:=(fChFormat and (not $ff)) or TPasRISCVUInt32(aValue and $ff);
+   // Also accept full 32-bit writes (high rate bits, etc)
+   if aSize>=4 then begin
+    fChFormat:=TPasRISCVUInt32(aValue);
+   end;
+   UpdateChannelState;
+  end;
+  CM_REG_INT_HLDCLR:begin
+   // The toggle mechanism: clearing an INT_EN bit acknowledges the interrupt for that channel
+   if ((fIntHldClr and CM_CH0_INT_EN)<>0) and ((TPasRISCVUInt32(aValue) and CM_CH0_INT_EN)=0) then begin
+    fChannels[0].IntPending:=false;
+   end;
+   if ((fIntHldClr and CM_CH1_INT_EN)<>0) and ((TPasRISCVUInt32(aValue) and CM_CH1_INT_EN)=0) then begin
+    fChannels[1].IntPending:=false;
+   end;
+   fIntHldClr:=TPasRISCVUInt32(aValue);
+   CheckAndFireIRQ;
+  end;
+  CM_REG_LEGACY_CTRL:begin
+   fLegacyCtrl:=TPasRISCVUInt32(aValue);
+  end;
+  CM_REG_MISC_CTRL:begin
+   fMiscCtrl:=TPasRISCVUInt32(aValue);
+   // Handle software reset
+   if (fMiscCtrl and CM_RESET)<>0 then begin
+    // Don't do a full Reset here - just clear the flag
+    // A real reset would lose all config the driver just set up
+    fMiscCtrl:=fMiscCtrl and (not CM_RESET);
+   end;
+  end;
+  CM_REG_DEV:begin
+   // Write ignored (read-only version register)
+  end;
+  CM_REG_SB16_DATA:begin
+   fSB16MixerRegs[fSB16MixerAddr]:=TPasRISCVUInt8(aValue);
+   if fSB16MixerAddr=0 then begin
+    // Mixer reset
+    FillChar(fSB16MixerRegs,SizeOf(fSB16MixerRegs),#0);
+    // Set sane defaults
+    fSB16MixerRegs[$30]:=$c0; // Master L
+    fSB16MixerRegs[$31]:=$c0; // Master R
+    fSB16MixerRegs[$32]:=$c0; // PCM L
+    fSB16MixerRegs[$33]:=$c0; // PCM R
+    fSB16MixerRegs[$34]:=$c0; // Synth L
+    fSB16MixerRegs[$35]:=$c0; // Synth R
+   end;
+  end;
+  CM_REG_SB16_ADDR:begin
+   fSB16MixerAddr:=TPasRISCVUInt8(aValue);
+  end;
+  CM_REG_MIXER1:begin
+   fMixer1:=TPasRISCVUInt8(aValue);
+  end;
+  CM_REG_MIXER2:begin
+   fMixer2:=TPasRISCVUInt8(aValue);
+  end;
+  CM_REG_AUX_VOL:begin
+   fAuxVol:=TPasRISCVUInt8(aValue);
+  end;
+  CM_REG_MISC:begin
+   fMiscReg:=TPasRISCVUInt8(aValue);
+  end;
+  CM_REG_FM_PCI:begin
+   // OPL3 bank 0 address write
+   fOPL3AddressLatch[0]:=TPasRISCVUInt8(aValue);
+  end;
+  (CM_REG_FM_PCI+1):begin
+   // OPL3 bank 0 data write
+   if assigned(fOPL3) then begin
+    fOPL3.WriteRegister(TPasRISCVUInt16(fOPL3AddressLatch[0]),TPasRISCVUInt8(aValue));
+   end;
+  end;
+  (CM_REG_FM_PCI+2):begin
+   // OPL3 bank 1 address write
+   fOPL3AddressLatch[1]:=TPasRISCVUInt8(aValue);
+  end;
+  (CM_REG_FM_PCI+3):begin
+   // OPL3 bank 1 data write
+   if assigned(fOPL3) then begin
+    fOPL3.WriteRegister(TPasRISCVUInt16($100) or TPasRISCVUInt16(fOPL3AddressLatch[1]),TPasRISCVUInt8(aValue));
+   end;
+  end;
+  CM_REG_CH0_FRAME1:begin
+   fChannels[0].BufferAddress:=TPasRISCVUInt32(aValue);
+  end;
+  CM_REG_CH0_FRAME2:begin
+   fChannels[0].BufferSize:=TPasRISCVUInt32(TPasRISCVUInt16(aValue and $ffff))+1;
+   fChannels[0].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16((aValue shr 16) and $ffff))+1;
+  end;
+  CM_REG_CH1_FRAME1:begin
+   fChannels[1].BufferAddress:=TPasRISCVUInt32(aValue);
+  end;
+  CM_REG_CH1_FRAME2:begin
+   fChannels[1].BufferSize:=TPasRISCVUInt32(TPasRISCVUInt16(aValue and $ffff))+1;
+   fChannels[1].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16((aValue shr 16) and $ffff))+1;
+  end;
+  CM_REG_EXT_MISC:begin
+   fExtMisc:=TPasRISCVUInt32(aValue);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TCMI8738Device.OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+const OneOver128=1.0/128.0;
+      OneOver32768=1.0/32768.0;
+var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
+    Dest:PPasRISCVUInt8;
+    SrcPtr:Pointer;
+    Is16Bit,IsStereo:Boolean;
+    SrcRate,DstRate:TPasRISCVUInt64;
+    FrameSize:TPasRISCVUInt32;
+    FloatSample:TPasRISCVFloat;
+    SampleIndex,Channels:TPasRISCVSizeInt;
+    Sample16:TPasRISCVInt16;
+    Sample8:TPasRISCVUInt8;
+    p:PPasRISCVUInt8;
+    OPL3Buf:array[0..1] of TPasRISCVInt16;
+    OPL3Index:TPasRISCVSizeInt;
+    OPL3FloatDest:PPasRISCVFloatArray;
+    Ch:PChannelDMA;
+    ChIndex:TPasRISCVUInt32;
+    BytePos,BytesAvail,DMABufBytes:TPasRISCVUInt32;
+begin
+
+ // Clear
+ Remain:=aCount*2*SizeOf(TPasRISCVFloat);
+ FillChar(aBuffer^,Remain,#0);
+
+ // Find the active playback channel
+ Ch:=nil;
+ ChIndex:=0;
+ if (fMiscCtrl and CM_XCHGDAC)<>0 then begin
+  // XCHGDAC: ch1 is front
+  if fChannels[1].Enabled and (not fChannels[1].IsCapture) then begin
+   Ch:=@fChannels[1];
+   ChIndex:=1;
+  end;
+ end else begin
+  if fChannels[0].Enabled and (not fChannels[0].IsCapture) then begin
+   Ch:=@fChannels[0];
+   ChIndex:=0;
+  end;
+ end;
+
+ if (not assigned(Ch)) or Ch^.Paused then begin
+  // No active playback - just OPL3
+  if assigned(fOPL3) then begin
+   OPL3FloatDest:=PPasRISCVFloatArray(aBuffer);
+   for OPL3Index:=0 to aCount-1 do begin
+    fOPL3.GenerateResampledStereo(@OPL3Buf[0]);
+    OPL3FloatDest^[OPL3Index*2]:=OPL3Buf[0]*OneOver32768;
+    OPL3FloatDest^[(OPL3Index*2)+1]:=OPL3Buf[1]*OneOver32768;
+   end;
+  end;
+  exit;
+ end;
+
+ IsStereo:=(Ch^.Format and CM_CHxFMT_STEREO)<>0;
+ Is16Bit:=(Ch^.Format and CM_CHxFMT_16BIT)<>0;
+ FrameSize:=GetChannelFrameSize(Ch);
+ if FrameSize=0 then begin
+  exit;
+ end;
+
+ SrcRate:=GetChannelRate(ChIndex);
+ DstRate:=fSoundIO.fSampleRate;
+
+ if IsStereo then begin
+  Channels:=2;
+ end else begin
+  Channels:=1;
+ end;
+
+ DMABufBytes:=Ch^.BufferSize*FrameSize;
+
+ Dest:=aBuffer;
+
+ while Remain>0 do begin
+
+  if DMABufBytes=0 then begin
+   break;
+  end;
+
+  // How many bytes left from current position to end of ring buffer?
+  BytePos:=Ch^.Position;
+  if BytePos>=DMABufBytes then begin
+   BytePos:=0;
+   Ch^.Position:=0;
+  end;
+  BytesAvail:=DMABufBytes-BytePos;
+  if BytesAvail=0 then begin
+   BytePos:=0;
+   Ch^.Position:=0;
+   BytesAvail:=DMABufBytes;
+  end;
+
+  // Limit to what we need
+  SrcSamples:=BytesAvail div FrameSize;
+  if SrcSamples<=0 then begin
+   break;
+  end;
+
+  DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+  if DstSamples<=0 then begin
+   break;
+  end;
+
+  if SrcRate=DstRate then begin
+   if SrcSamples>DstSamples then begin
+    SrcSamples:=DstSamples;
+   end;
+  end else begin
+   ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+   if SrcSamples>ToDo then begin
+    SrcSamples:=ToDo;
+   end;
+  end;
+
+  CopyBytes:=SrcSamples*FrameSize;
+
+  // Read from guest physical memory
+  SrcPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(Ch^.BufferAddress)+BytePos,CopyBytes,false,nil);
+  if not assigned(SrcPtr) then begin
+   inc(Ch^.Position,CopyBytes);
+   if Ch^.Position>=DMABufBytes then begin
+    if (DMABufBytes and (DMABufBytes-1))=0 then begin
+     Ch^.Position:=Ch^.Position and (DMABufBytes-1);
+    end else begin
+     while Ch^.Position>=DMABufBytes do begin
+      dec(Ch^.Position,DMABufBytes);
+     end;
+    end;
+   end;
+   break;
+  end;
+
+  // Convert to stereo float
+  if length(fPlayScratchBuffer)<(SrcSamples*2) then begin
+   SetLength(fPlayScratchBuffer,SrcSamples*4);
+  end;
+
+  p:=SrcPtr;
+  for SampleIndex:=0 to SrcSamples-1 do begin
+   if Is16Bit then begin
+    Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+    inc(p,2);
+    FloatSample:=Sample16*OneOver32768;
+    fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+    if IsStereo then begin
+     Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+     inc(p,2);
+     FloatSample:=Sample16*OneOver32768;
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+    end else begin
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+    end;
+   end else begin
+    Sample8:=p^;
+    inc(p);
+    FloatSample:=(Sample8-128)*OneOver128;
+    fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+    if IsStereo then begin
+     Sample8:=p^;
+     inc(p);
+     FloatSample:=(Sample8-128)*OneOver128;
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+    end else begin
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+    end;
+   end;
+  end;
+
+  // Advance ring buffer position and check period boundary
+  inc(Ch^.Position,CopyBytes);
+  inc(Ch^.PeriodCounter,SrcSamples);
+  
+  // Check period elapsed
+  if Ch^.PeriodCounter>=Ch^.PeriodSize then begin
+   if (Ch^.PeriodSize and (Ch^.PeriodSize-1))=0 then begin
+    // Power-of-two period size - just mask
+    Ch^.PeriodCounter:=Ch^.PeriodCounter and (Ch^.PeriodSize-1);
+   end else begin
+    while Ch^.PeriodCounter>=Ch^.PeriodSize do begin
+     dec(Ch^.PeriodCounter,Ch^.PeriodSize);
+    end;
+   end;
+   Ch^.IntPending:=true;
+   CheckAndFireIRQ;
+  end;
+
+  // Wrap ring buffer
+  if Ch^.Position>=DMABufBytes then begin
+   if (DMABufBytes and (DMABufBytes-1))=0 then begin
+    // Power-of-two buffer size - just mask
+    Ch^.Position:=Ch^.Position and (DMABufBytes-1);
+   end else begin
+    // Non-power-of-two buffer size - wrap manually
+    while Ch^.Position>=DMABufBytes do begin
+     dec(Ch^.Position,DMABufBytes);
+    end;
+   end;
+  end;
+
+  // Copy to output
+  if SrcRate=DstRate then begin
+   CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+   if CopyBytes>Remain then begin
+    CopyBytes:=Remain;
+   end;
+   Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
+   inc(Dest,CopyBytes);
+   dec(Remain,CopyBytes);
+  end else begin
+   DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+   ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
+   if ToDo>DstSamples then begin
+    ToDo:=DstSamples;
+   end;
+   if ToDo>0 then begin
+    if length(fPlayResampleBuffer)<(ToDo*2) then begin
+     SetLength(fPlayResampleBuffer,ToDo*4);
+    end;
+    ResampleLinear(@fPlayScratchBuffer[0],
+                   SrcSamples,
+                   @fPlayResampleBuffer[0],
+                   ToDo,
+                   2,
+                   @fPlayPreviousFrameEndValues[0],
+                   fPlayResamplerPosition,
+                   ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
+    CopyBytes:=ToDo*2*SizeOf(TPasRISCVFloat);
+    Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
+   end;
+  end;
+
+ end;
+
+ // Mix OPL3 on top
+ if assigned(fOPL3) then begin
+  OPL3FloatDest:=PPasRISCVFloatArray(aBuffer);
+  for OPL3Index:=0 to aCount-1 do begin
+   fOPL3.GenerateResampledStereo(@OPL3Buf[0]);
+   OPL3FloatDest^[OPL3Index*2]:=OPL3FloatDest^[OPL3Index*2]+(OPL3Buf[0]*OneOver32768);
+   OPL3FloatDest^[(OPL3Index*2)+1]:=OPL3FloatDest^[(OPL3Index*2)+1]+(OPL3Buf[1]*OneOver32768);
+  end;
+ end;
+
+end;
+
+procedure TPasRISCV.TCMI8738Device.InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
+    Src:PPasRISCVUInt8;
+    DstPtr:Pointer;
+    Is16Bit,IsStereo:Boolean;
+    SrcRate,DstRate:TPasRISCVUInt64;
+    FrameSize:TPasRISCVUInt32;
+    FloatSample:TPasRISCVFloat;
+    SampleIndex,Channels:TPasRISCVSizeInt;
+    Sample16:TPasRISCVInt16;
+    p:PPasRISCVUInt8;
+    Ch:PChannelDMA;
+    ChIndex:TPasRISCVUInt32;
+    DMABufBytes:TPasRISCVUInt32;
+    FloatSrc:PPasRISCVFloatArray;
+    SampleFrameSize:TPasRISCVUInt32;
+begin
+
+ // Input: aCount stereo float frames from host
+ Remain:=aCount*2*SizeOf(TPasRISCVFloat);
+
+ // Find the active capture channel
+ Ch:=nil;
+ ChIndex:=0;
+ if (fMiscCtrl and CM_XCHGDAC)<>0 then begin
+  // XCHGDAC: ch0 is capture
+  if fChannels[0].Enabled and fChannels[0].IsCapture then begin
+   Ch:=@fChannels[0];
+   ChIndex:=0;
+  end;
+ end else begin
+  if fChannels[1].Enabled and fChannels[1].IsCapture then begin
+   Ch:=@fChannels[1];
+   ChIndex:=1;
+  end;
+ end;
+
+ if (not assigned(Ch)) or Ch^.Paused then begin
+  exit;
+ end;
+
+ IsStereo:=(Ch^.Format and CM_CHxFMT_STEREO)<>0;
+ Is16Bit:=(Ch^.Format and CM_CHxFMT_16BIT)<>0;
+ FrameSize:=GetChannelFrameSize(Ch);
+ if FrameSize=0 then begin
+  exit;
+ end;
+
+ SampleFrameSize:=FrameSize;
+
+ if IsStereo then begin
+  Channels:=2;
+ end else begin
+  Channels:=1;
+ end;
+
+ DstRate:=GetChannelRate(ChIndex); // guest rate
+ SrcRate:=fSoundIO.fSampleRate;    // host rate
+
+ DMABufBytes:=Ch^.BufferSize*FrameSize;
+ if DMABufBytes=0 then begin
+  exit;
+ end;
+
+ Src:=aBuffer;
+
+ while Remain>0 do begin
+
+  // How many host float frames are available?
+  SrcSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+  if SrcSamples<=0 then begin
+   break;
+  end;
+
+  // How many guest frames fit from current position to end of ring buffer?
+  DstSamples:=(DMABufBytes-Ch^.Position) div SampleFrameSize;
+  if DstSamples<=0 then begin
+   // Wrap position
+   Ch^.Position:=0;
+   DstSamples:=DMABufBytes div SampleFrameSize;
+   if DstSamples<=0 then begin
+    break;
+   end;
+  end;
+
+  // Determine how many source frames to consume
+  if SrcRate=DstRate then begin
+   if SrcSamples>DstSamples then begin
+    SrcSamples:=DstSamples;
+   end;
+  end else begin
+   ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+   if SrcSamples>ToDo then begin
+    SrcSamples:=ToDo;
+   end;
+  end;
+
+  // Copy host float data into scratch buffer
+  if length(fCaptureScratchBuffer)<(SrcSamples*2) then begin
+   SetLength(fCaptureScratchBuffer,SrcSamples*4);
+  end;
+
+  CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+  Move(Src^,fCaptureScratchBuffer[0],CopyBytes);
+  inc(Src,CopyBytes);
+  dec(Remain,CopyBytes);
+
+  // Resample from host rate to guest rate if needed
+  if SrcRate<>DstRate then begin
+   ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
+   if ToDo>DstSamples then begin
+    ToDo:=DstSamples;
+   end;
+   if ToDo>0 then begin
+    if length(fCaptureResampleBuffer)<(ToDo*2) then begin
+     SetLength(fCaptureResampleBuffer,ToDo*4);
+    end;
+    ResampleLinear(@fCaptureScratchBuffer[0],
+                   SrcSamples,
+                   @fCaptureResampleBuffer[0],
+                   ToDo,
+                   2,
+                   @fCapturePreviousFrameEndValues[0],
+                   fCaptureResamplerPosition,
+                   ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
+    SrcSamples:=ToDo;
+   end else begin
+    continue;
+   end;
+  end;
+
+  // Select source: resampled data or original scratch buffer
+  if SrcRate<>DstRate then begin
+   FloatSrc:=@fCaptureResampleBuffer[0];
+  end else begin
+   FloatSrc:=@fCaptureScratchBuffer[0];
+  end;
+
+  // Clamp to what fits
+  CopyBytes:=SrcSamples*SampleFrameSize;
+  ToDo:=DMABufBytes-Ch^.Position;
+  if CopyBytes>ToDo then begin
+   CopyBytes:=ToDo;
+   SrcSamples:=CopyBytes div SampleFrameSize;
+  end;
+
+  // Get guest memory pointer for DMA write
+  DstPtr:=GetGlobalDirectMemoryAccessPointer(TPasRISCVUInt64(Ch^.BufferAddress)+Ch^.Position,CopyBytes,true,nil);
+  if not assigned(DstPtr) then begin
+   inc(Ch^.Position,CopyBytes);
+   if Ch^.Position>=DMABufBytes then begin
+    if (DMABufBytes and (DMABufBytes-1))=0 then begin
+     Ch^.Position:=Ch^.Position and (DMABufBytes-1);
+    end else begin
+     while Ch^.Position>=DMABufBytes do begin
+      dec(Ch^.Position,DMABufBytes);
+     end;
+    end;
+   end;
+   break;
+  end;
+
+  p:=DstPtr;
+
+  // Convert stereo float to guest format and write to DMA ring buffer
+  for SampleIndex:=0 to SrcSamples-1 do begin
+   // Left channel (or mono)
+   FloatSample:=FloatSrc^[SampleIndex*2];
+   if FloatSample>1.0 then begin
+    FloatSample:=1.0;
+   end else if FloatSample<-1.0 then begin
+    FloatSample:=-1.0;
+   end;
+   if Is16Bit then begin
+    Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+    p^:=TPasRISCVUInt8(Sample16 and $ff);
+    inc(p);
+    p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+    inc(p);
+   end else begin
+    p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+    inc(p);
+   end;
+   // Right channel (if stereo)
+   if IsStereo then begin
+    FloatSample:=FloatSrc^[(SampleIndex*2)+1];
+    if FloatSample>1.0 then begin
+     FloatSample:=1.0;
+    end else if FloatSample<-1.0 then begin
+     FloatSample:=-1.0;
+    end;
+    if Is16Bit then begin
+     Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+     p^:=TPasRISCVUInt8(Sample16 and $ff);
+     inc(p);
+     p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+     inc(p);
+    end else begin
+     p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+     inc(p);
+    end;
+   end;
+  end;
+
+  // Advance ring buffer position and check period boundary
+  inc(Ch^.Position,SrcSamples*SampleFrameSize);
+  inc(Ch^.PeriodCounter,SrcSamples);
+
+  // Check period elapsed
+  if Ch^.PeriodCounter>=Ch^.PeriodSize then begin
+   if (Ch^.PeriodSize and (Ch^.PeriodSize-1))=0 then begin
+    // Power-of-two period size - just mask
+    Ch^.PeriodCounter:=Ch^.PeriodCounter and (Ch^.PeriodSize-1);
+   end else begin
+    while Ch^.PeriodCounter>=Ch^.PeriodSize do begin
+     dec(Ch^.PeriodCounter,Ch^.PeriodSize);
+    end;
+   end;
+   Ch^.IntPending:=true;
+   CheckAndFireIRQ;
+  end;
+
+  // Wrap ring buffer
+  if Ch^.Position>=DMABufBytes then begin
+   if (DMABufBytes and (DMABufBytes-1))=0 then begin
+    Ch^.Position:=Ch^.Position and (DMABufBytes-1);
+   end else begin
+    while Ch^.Position>=DMABufBytes do begin
+     dec(Ch^.Position,DMABufBytes);
+    end;
+   end;
   end;
 
  end;
@@ -73203,11 +74281,19 @@ begin
   TSoundMode.VirtIO:begin
    fVirtIOSoundDevice:=TVirtIOSoundDevice.Create(self,fSoundIO);
    fFM801Device:=nil;
+   fCMI8738Device:=nil;
   end;
   TSoundMode.FM801:begin
    fVirtIOSoundDevice:=nil;
    // FM801 is created later after fPCIBusDevice
    fFM801Device:=nil;
+   fCMI8738Device:=nil;
+  end;
+  TSoundMode.CMI8738:begin
+   fVirtIOSoundDevice:=nil;
+   fFM801Device:=nil;
+   // CMI8738 is created later after fPCIBusDevice
+   fCMI8738Device:=nil;
   end;
  end;
 
@@ -73339,6 +74425,11 @@ begin
  if fConfiguration.fSoundMode=TSoundMode.FM801 then begin
   fFM801Device:=TFM801Device.Create(fPCIBusDevice,fSoundIO);
   fPCIBusDevice.AddBusDevice(fFM801Device);
+ end;
+
+ if fConfiguration.fSoundMode=TSoundMode.CMI8738 then begin
+  fCMI8738Device:=TCMI8738Device.Create(fPCIBusDevice,fSoundIO);
+  fPCIBusDevice.AddBusDevice(fCMI8738Device);
  end;
 
  fHARTs:=nil;
