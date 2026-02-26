@@ -31285,6 +31285,8 @@ begin
    fLock.Acquire;
    try
 
+    result:=true;
+
     if length(fRecvBuffer)<aReadSize then begin
      SetLength(fRecvBuffer,aReadSize);
     end;
