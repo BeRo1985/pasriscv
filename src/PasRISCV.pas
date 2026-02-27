@@ -283,6 +283,7 @@ unit PasRISCV;
 {-$define PasRISCVDebugVirtIO9P}
 {-$define PasRISCVDebugVirtIOFS}
 {-$define PasRISCVDebugCMI8738}
+{-$define PasRISCVDebugHDA}
 
 {$if defined(fpc) and (defined(cpux86_64) or defined(cpuamd64))}
  {$optimization level3}
@@ -4356,6 +4357,341 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               property SoundIO:TSoundIO read fSoundIO;
             end;
+            { THDADevice }
+            THDADevice=class(TPCIDevice)
+             public
+              const HDA_VENDOR_ID=TPasRISCVUInt16($8086);
+                    HDA_DEVICE_ID=TPasRISCVUInt16($2668);
+                    HDA_BAR_SIZE=$4000;
+                    // Global registers
+                    HDA_REG_GCAP=$00;
+                    HDA_REG_VMIN=$02;
+                    HDA_REG_VMAJ=$03;
+                    HDA_REG_OUTPAY=$04;
+                    HDA_REG_INPAY=$06;
+                    HDA_REG_GCTL=$08;
+                    HDA_REG_WAKEEN=$0c;
+                    HDA_REG_STATESTS=$0e;
+                    HDA_REG_GSTS=$10;
+                    HDA_REG_INTCTL=$20;
+                    HDA_REG_INTSTS=$24;
+                    HDA_REG_WALLCLK=$30;
+                    // CORB registers
+                    HDA_REG_CORBLBASE=$40;
+                    HDA_REG_CORBUBASE=$44;
+                    HDA_REG_CORBWP=$48;
+                    HDA_REG_CORBRP=$4a;
+                    HDA_REG_CORBCTL=$4c;
+                    HDA_REG_CORBSTS=$4d;
+                    HDA_REG_CORBSIZE=$4e;
+                    // RIRB registers
+                    HDA_REG_RIRBLBASE=$50;
+                    HDA_REG_RIRBUBASE=$54;
+                    HDA_REG_RIRBWP=$58;
+                    HDA_REG_RINTCNT=$5a;
+                    HDA_REG_RIRBCTL=$5c;
+                    HDA_REG_RIRBSTS=$5d;
+                    HDA_REG_RIRBSIZE=$5e;
+                    // Immediate command
+                    HDA_REG_ICW=$60;
+                    HDA_REG_IRR=$64;
+                    HDA_REG_ICS=$68;
+                    // DMA position buffer
+                    HDA_REG_DPLBASE=$70;
+                    HDA_REG_DPUBASE=$74;
+                    // Stream descriptor offsets (relative to stream base)
+                    HDA_SD_CTL=$00;
+                    HDA_SD_STS=$03;
+                    HDA_SD_LPIB=$04;
+                    HDA_SD_CBL=$08;
+                    HDA_SD_LVI=$0c;
+                    HDA_SD_FIFOW=$0e;
+                    HDA_SD_FIFOS=$10;
+                    HDA_SD_FMT=$12;
+                    HDA_SD_BDLPL=$18;
+                    HDA_SD_BDLPU=$1c;
+                    HDA_SD_SIZE=$20;
+                    // Stream descriptor bases
+                    HDA_SD0_BASE=$80;   // ISD0
+                    HDA_SD1_BASE=$a0;   // ISD1
+                    HDA_SD2_BASE=$c0;   // ISD2
+                    HDA_SD3_BASE=$e0;   // ISD3
+                    HDA_SD4_BASE=$100;  // OSD0
+                    HDA_SD5_BASE=$120;  // OSD1
+                    HDA_SD6_BASE=$140;  // OSD2
+                    HDA_SD7_BASE=$160;  // OSD3
+                    // GCAP value: 4 output streams, 4 input streams, no 64-bit
+                    HDA_GCAP_VALUE=$4401;
+                    // GCTL bits
+                    HDA_GCTL_RESET=TPasRISCVUInt32(1 shl 0);
+                    HDA_GCTL_FCNTRL=TPasRISCVUInt32(1 shl 1);
+                    HDA_GCTL_UNSOL=TPasRISCVUInt32(1 shl 8);
+                    // INTCTL bits
+                    HDA_INTCTL_SIE_MASK=$ff;
+                    HDA_INTCTL_CIE=TPasRISCVUInt32(1 shl 30);
+                    HDA_INTCTL_GIE=TPasRISCVUInt32(1 shl 31);
+                    // SD_CTL bits
+                    HDA_SDCTL_SRST=TPasRISCVUInt32(1 shl 0);
+                    HDA_SDCTL_RUN=TPasRISCVUInt32(1 shl 1);
+                    HDA_SDCTL_IOCE=TPasRISCVUInt32(1 shl 2);
+                    HDA_SDCTL_FEIE=TPasRISCVUInt32(1 shl 3);
+                    HDA_SDCTL_DEIE=TPasRISCVUInt32(1 shl 4);
+                    HDA_SDCTL_STRIPE_MASK=TPasRISCVUInt32(3 shl 16);
+                    HDA_SDCTL_TP=TPasRISCVUInt32(1 shl 18);
+                    HDA_SDCTL_DIR=TPasRISCVUInt32(1 shl 19);
+                    HDA_SDCTL_STRM_MASK=TPasRISCVUInt32($f shl 20);
+                    HDA_SDCTL_STRM_SHIFT=20;
+                    // SD_STS bits
+                    HDA_SDSTS_BCIS=TPasRISCVUInt8(1 shl 2);
+                    HDA_SDSTS_FIFOE=TPasRISCVUInt8(1 shl 3);
+                    HDA_SDSTS_DESE=TPasRISCVUInt8(1 shl 4);
+                    HDA_SDSTS_FIFORDY=TPasRISCVUInt8(1 shl 5);
+                    // CORBCTL bits
+                    HDA_CORBCTL_CMEIE=TPasRISCVUInt8(1 shl 0);
+                    HDA_CORBCTL_RUN=TPasRISCVUInt8(1 shl 1);
+                    // RIRBCTL bits
+                    HDA_RIRBCTL_RINTCTL=TPasRISCVUInt8(1 shl 0);
+                    HDA_RIRBCTL_RUN=TPasRISCVUInt8(1 shl 1);
+                    HDA_RIRBCTL_ROVERRUN=TPasRISCVUInt8(1 shl 2);
+                    // RIRBSTS bits
+                    HDA_RIRBSTS_RINTFL=TPasRISCVUInt8(1 shl 0);
+                    HDA_RIRBSTS_RIRBOIS=TPasRISCVUInt8(1 shl 2);
+                    // ICS bits
+                    HDA_ICS_BUSY=TPasRISCVUInt16(1 shl 0);
+                    HDA_ICS_VALID=TPasRISCVUInt16(1 shl 1);
+                    // CORB/RIRB size
+                    HDA_MAX_CORB_ENTRIES=256;
+                    HDA_MAX_RIRB_ENTRIES=256;
+                    // Number of streams
+                    HDA_NUM_INPUT_STREAMS=4;
+                    HDA_NUM_OUTPUT_STREAMS=4;
+                    HDA_NUM_STREAMS=8; // 4 input + 4 output
+                    // FIFO size
+                    HDA_FIFO_SIZE=$100;
+                    // Codec verb/parameter IDs
+                    HDA_VERB_GET_PARAMETER=$f00;
+                    HDA_VERB_GET_CONN_SELECT=$f01;
+                    HDA_VERB_GET_CONN_LIST=$f02;
+                    HDA_VERB_GET_CONV_FMT=$a;
+                    HDA_VERB_SET_CONV_FMT=$2;
+                    HDA_VERB_GET_AMP_GAIN_MUTE=$b;
+                    HDA_VERB_SET_AMP_GAIN_MUTE=$3;
+                    HDA_VERB_GET_CONV_STREAM_CHAN=$f06;
+                    HDA_VERB_SET_CONV_STREAM_CHAN=$706;
+                    HDA_VERB_GET_PIN_WIDGET_CTRL=$f07;
+                    HDA_VERB_SET_PIN_WIDGET_CTRL=$707;
+                    HDA_VERB_GET_UNSOLICITED_RESP=$f08;
+                    HDA_VERB_SET_UNSOLICITED_RESP=$708;
+                    HDA_VERB_GET_PIN_SENSE=$f09;
+                    HDA_VERB_SET_PIN_SENSE=$709;
+                    HDA_VERB_GET_EAPD_BTL=$f0c;
+                    HDA_VERB_SET_EAPD_BTL=$70c;
+                    HDA_VERB_GET_DIGITAL_CONV1=$f0d;
+                    HDA_VERB_SET_DIGITAL_CONV1=$70d;
+                    HDA_VERB_GET_POWER_STATE=$f05;
+                    HDA_VERB_SET_POWER_STATE=$705;
+                    HDA_VERB_GET_CONFIG_DEFAULT=$f1c;
+                    HDA_VERB_SET_CONFIG_DEFAULT1=$71c;
+                    HDA_VERB_SET_CONFIG_DEFAULT2=$71d;
+                    HDA_VERB_SET_CONFIG_DEFAULT3=$71e;
+                    HDA_VERB_SET_CONFIG_DEFAULT4=$71f;
+                    HDA_VERB_GET_SUBSYSTEM_ID=$f20;
+                    HDA_VERB_GET_CONV_CHAN_COUNT=$f2d;
+                    HDA_VERB_SET_CONV_CHAN_COUNT=$72d;
+                    HDA_VERB_GET_VOLUME_KNOB=$f0f;
+                    HDA_VERB_SET_VOLUME_KNOB=$70f;
+                    HDA_VERB_GET_BEEP=$f0a;
+                    HDA_VERB_SET_BEEP=$70a;
+                    HDA_VERB_GET_SDI_SELECT=$f04;
+                    HDA_VERB_SET_SDI_SELECT=$704;
+                    HDA_VERB_FUNCTION_RESET=$7ff;
+                    // Codec parameter IDs (for GET_PARAMETER verb)
+                    HDA_PARAM_VENDOR_ID=$00;
+                    HDA_PARAM_SUBSYSTEM_ID=$01;
+                    HDA_PARAM_REVISION_ID=$02;
+                    HDA_PARAM_NODE_COUNT=$04;
+                    HDA_PARAM_FUNC_GROUP_TYPE=$05;
+                    HDA_PARAM_AUDIO_FG_CAP=$08;
+                    HDA_PARAM_AUDIO_WIDGET_CAP=$09;
+                    HDA_PARAM_PCM_SIZE_RATE=$0a;
+                    HDA_PARAM_STREAM_FORMATS=$0b;
+                    HDA_PARAM_PIN_CAPS=$0c;
+                    HDA_PARAM_AMP_IN_CAP=$0d;
+                    HDA_PARAM_CONN_LIST_LEN=$0e;
+                    HDA_PARAM_POWER_STATES=$0f;
+                    HDA_PARAM_PROCESSING_CAP=$10;
+                    HDA_PARAM_GPIO_CAP=$11;
+                    HDA_PARAM_AMP_OUT_CAP=$12;
+                    HDA_PARAM_VOLUME_KNOB_CAP=$13;
+                    // Widget types
+                    HDA_WIDGET_AUD_OUT=0;
+                    HDA_WIDGET_AUD_IN=1;
+                    HDA_WIDGET_AUD_MIX=2;
+                    HDA_WIDGET_AUD_SEL=3;
+                    HDA_WIDGET_PIN=4;
+                    HDA_WIDGET_POWER=5;
+                    HDA_WIDGET_VOL_KNB=6;
+                    HDA_WIDGET_BEEP=7;
+                    // Audio Widget Capabilities bits
+                    HDA_WCAP_STEREO=TPasRISCVUInt32(1 shl 0);
+                    HDA_WCAP_IN_AMP=TPasRISCVUInt32(1 shl 1);
+                    HDA_WCAP_OUT_AMP=TPasRISCVUInt32(1 shl 2);
+                    HDA_WCAP_AMP_OVR=TPasRISCVUInt32(1 shl 3);
+                    HDA_WCAP_FORMAT_OVR=TPasRISCVUInt32(1 shl 4);
+                    HDA_WCAP_CONN_LIST=TPasRISCVUInt32(1 shl 8);
+                    // Pin capabilities bits
+                    HDA_PINCAP_IMP_SENSE=TPasRISCVUInt32(1 shl 0);
+                    HDA_PINCAP_TRIG_REQD=TPasRISCVUInt32(1 shl 1);
+                    HDA_PINCAP_PRES_DETECT=TPasRISCVUInt32(1 shl 2);
+                    HDA_PINCAP_HP_DRV=TPasRISCVUInt32(1 shl 3);
+                    HDA_PINCAP_OUTPUT=TPasRISCVUInt32(1 shl 4);
+                    HDA_PINCAP_INPUT=TPasRISCVUInt32(1 shl 5);
+                    // Pin widget control bits
+                    HDA_PINCTL_IN_EN=TPasRISCVUInt8(1 shl 5);
+                    HDA_PINCTL_OUT_EN=TPasRISCVUInt8(1 shl 6);
+                    HDA_PINCTL_HP_EN=TPasRISCVUInt8(1 shl 7);
+                    // Config default bits
+                    HDA_CFG_PORT_COMPLEX=TPasRISCVUInt32(0 shl 30);
+                    HDA_CFG_PORT_NONE=TPasRISCVUInt32(1 shl 30);
+                    HDA_CFG_PORT_FIXED=TPasRISCVUInt32(2 shl 30);
+                    HDA_CFG_DEV_LINE_OUT=TPasRISCVUInt32(0 shl 20);
+                    HDA_CFG_DEV_SPEAKER=TPasRISCVUInt32(1 shl 20);
+                    HDA_CFG_DEV_HP_OUT=TPasRISCVUInt32(2 shl 20);
+                    HDA_CFG_DEV_LINE_IN=TPasRISCVUInt32(8 shl 20);
+                    HDA_CFG_DEV_MIC_IN=TPasRISCVUInt32(10 shl 20);
+                    HDA_CFG_CONN_UNKNOWN=TPasRISCVUInt32(0 shl 16);
+                    HDA_CFG_COLOR_GREEN=TPasRISCVUInt32(4 shl 12);
+                    HDA_CFG_COLOR_RED=TPasRISCVUInt32(5 shl 12);
+                    HDA_CFG_COLOR_ORANGE=TPasRISCVUInt32(6 shl 12);
+                    // Amplifier capabilities
+                    HDA_AMP_MUTE_CAP=TPasRISCVUInt32(1 shl 31);
+                    HDA_AMP_STEPSIZE=TPasRISCVUInt32(3 shl 16);
+                    HDA_AMP_NUMSTEPS=TPasRISCVUInt32($4a shl 8);
+                    HDA_AMP_OFFSET=TPasRISCVUInt32($4a shl 0);
+                    // Supported PCM size/rate
+                    HDA_PCM_SIZE_RATE=TPasRISCVUInt32(($1f shl 16) or $7ff); // B8-B32, 8.0-192.0kHz
+                    // Supported stream formats
+                    HDA_STREAM_FMT_PCM=TPasRISCVUInt32(1 shl 0);
+                    // Function group type
+                    HDA_FG_TYPE_AUDIO=$01;
+                    // Codec node IDs (duplex layout: root, func, dac, line-out, adc, line-in)
+                    HDA_NID_ROOT=0;
+                    HDA_NID_AFG=1;     // Audio Function Group
+                    HDA_NID_DAC=2;     // Digital-to-Analog Converter (output)
+                    HDA_NID_OUT_PIN=3; // Output Pin (Line Out)
+                    HDA_NID_ADC=4;     // Analog-to-Digital Converter (input)
+                    HDA_NID_IN_PIN=5;  // Input Pin (Line In)
+                    // Codec identity
+                    HDA_CODEC_VENDOR_ID=$8086;
+                    HDA_CODEC_DEVICE_ID=$2668;
+              type THDAStream=record
+                    CTL:TPasRISCVUInt32;
+                    STS:TPasRISCVUInt8;
+                    LPIB:TPasRISCVUInt32;
+                    CBL:TPasRISCVUInt32;
+                    LVI:TPasRISCVUInt16;
+                    FMT:TPasRISCVUInt16;
+                    BDLPL:TPasRISCVUInt32;
+                    BDLPU:TPasRISCVUInt32;
+                    // Runtime state
+                    StreamTag:TPasRISCVUInt8;
+                    Channel:TPasRISCVUInt8;
+                    Running:Boolean;
+                    BDLEntryIndex:TPasRISCVUInt32;
+                    BDLBytePos:TPasRISCVUInt32;
+                   end;
+                   PHDAStream=^THDAStream;
+             private
+              fSoundIO:TSoundIO;
+              // Global registers
+              fGCTL:TPasRISCVUInt32;
+              fWakeEn:TPasRISCVUInt16;
+              fStateSts:TPasRISCVUInt16;
+              fINTCTL:TPasRISCVUInt32;
+              fINTSTS:TPasRISCVUInt32;
+              fWallClkStart:TPasRISCVUInt64;
+              // CORB
+              fCORBLBase:TPasRISCVUInt32;
+              fCORBUBase:TPasRISCVUInt32;
+              fCORBWP:TPasRISCVUInt16;
+              fCORBRP:TPasRISCVUInt16;
+              fCORBCTL:TPasRISCVUInt8;
+              fCORBSTS:TPasRISCVUInt8;
+              fCORBSize:TPasRISCVUInt8;
+              // RIRB
+              fRIRBLBase:TPasRISCVUInt32;
+              fRIRBUBase:TPasRISCVUInt32;
+              fRIRBWP:TPasRISCVUInt16;
+              fRINTCNT:TPasRISCVUInt16;
+              fRIRBCTL:TPasRISCVUInt8;
+              fRIRBSTS:TPasRISCVUInt8;
+              fRIRBSize:TPasRISCVUInt8;
+              fRIRBCount:TPasRISCVUInt32;
+              // Immediate command
+              fICW:TPasRISCVUInt32;
+              fIRR:TPasRISCVUInt32;
+              fICS:TPasRISCVUInt16;
+              // DMA position buffer
+              fDPLBase:TPasRISCVUInt32;
+              fDPUBase:TPasRISCVUInt32;
+              // Streams
+              fStreams:array[0..HDA_NUM_STREAMS-1] of THDAStream;
+              // Codec state
+              fCodecPowerState:TPasRISCVUInt32;
+              fCodecOutputStreamTag:TPasRISCVUInt8;
+              fCodecOutputChannel:TPasRISCVUInt8;
+              fCodecOutputFmt:TPasRISCVUInt16;
+              fCodecInputStreamTag:TPasRISCVUInt8;
+              fCodecInputChannel:TPasRISCVUInt8;
+              fCodecInputFmt:TPasRISCVUInt16;
+              fCodecOutputPinCtl:TPasRISCVUInt8;
+              fCodecInputPinCtl:TPasRISCVUInt8;
+              fCodecOutputAmpLeftGain:TPasRISCVUInt8;
+              fCodecOutputAmpRightGain:TPasRISCVUInt8;
+              fCodecOutputAmpLeftMute:Boolean;
+              fCodecOutputAmpRightMute:Boolean;
+              fCodecInputAmpLeftGain:TPasRISCVUInt8;
+              fCodecInputAmpRightGain:TPasRISCVUInt8;
+              fCodecInputAmpLeftMute:Boolean;
+              fCodecInputAmpRightMute:Boolean;
+              fCodecEAPD:TPasRISCVUInt8;
+              fCodecDigitalConv:TPasRISCVUInt8;
+              // PCM conversion buffers
+              fPlayScratchBuffer:TPasRISCVFloatDynamicArray;
+              fPlayResampleBuffer:TPasRISCVFloatDynamicArray;
+              fPlayResamplerPosition:TPasRISCVUInt64;
+              fPlayPreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
+              fCaptureScratchBuffer:TPasRISCVFloatDynamicArray;
+              fCaptureResampleBuffer:TPasRISCVFloatDynamicArray;
+              fCaptureResamplerPosition:TPasRISCVUInt64;
+              fCapturePreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
+              // MMIO BAR callbacks
+              function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              // Internal
+              function GetCORBEntryCount:TPasRISCVUInt32;
+              function GetRIRBEntryCount:TPasRISCVUInt32;
+              procedure WriteRIRB(const aResponse:TPasRISCVUInt32;const aResponseEx:TPasRISCVUInt32);
+              procedure RunCORB;
+              procedure ProcessCodecVerb(const aVerb:TPasRISCVUInt32);
+              function CodecGetParameter(const aNID:TPasRISCVUInt8;const aPayload:TPasRISCVUInt16):TPasRISCVUInt32;
+              function CodecStreamCmd(const aNID:TPasRISCVUInt8;const aVerb:TPasRISCVUInt16;const aPayload:TPasRISCVUInt16):TPasRISCVUInt32;
+              procedure UpdateIRQ;
+              procedure UpdateINTSTS;
+              function GetStreamForIndex(const aIndex:TPasRISCVUInt32):PHDAStream;
+              procedure StreamSetCtl(const aStreamIndex:TPasRISCVUInt32;const aOldCtl:TPasRISCVUInt32);
+              function FindOutputStreamForCodec:PHDAStream;
+              function FindInputStreamForCodec:PHDAStream;
+              procedure ParseStreamFormat(const aFmt:TPasRISCVUInt16;out aSampleRate:TPasRISCVUInt32;out aBits,aChannels:TPasRISCVUInt32);
+             public
+              constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
+              destructor Destroy; override;
+              procedure Reset; override;
+              procedure OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+              procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+             public
+              property SoundIO:TSoundIO read fSoundIO;
+            end;
             { TVirtIODevice }
             TVirtIODevice=class(TBusDevice)
              public
@@ -8390,7 +8726,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              (
               VirtIO,
               FM801,
-              CMI8738
+              CMI8738,
+              HDA
              );
             { TConfiguration }
             TConfiguration=class
@@ -8810,6 +9147,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fFM801Device:TFM801Device;
 
        fCMI8738Device:TCMI8738Device;
+
+       fHDADevice:THDADevice;
 
        fVirtIOInputKeyboardDevice:TVirtIOInputKeyboardDevice;
 
@@ -29634,6 +29973,1679 @@ begin
     end;
    end;
   end;
+
+ end;
+
+end;
+
+{ TPasRISCV.THDADevice }
+
+constructor TPasRISCV.THDADevice.Create(const aBus:TPasRISCV.TPCIBusDevice;const aSoundIO:TSoundIO);
+var FuncDesc:TPasRISCV.TPCIFuncDescriptor;
+    BARRegion:TPasRISCV.PPCIBARRegion;
+begin
+ inherited Create(aBus);
+
+ fSoundIO:=aSoundIO;
+
+ FillChar(FuncDesc,SizeOf(TPCIFuncDescriptor),#0);
+ FuncDesc.fVendorID:=HDA_VENDOR_ID;
+ FuncDesc.fDeviceID:=HDA_DEVICE_ID;
+ FuncDesc.fClassCode:=$0403; // Multimedia Audio Controller
+ FuncDesc.fProgIF:=$00;
+ FuncDesc.fRevisionID:=$01;
+ FuncDesc.fIRQPin:=TPCI.PCI_IRQ_PIN_INTA;
+
+ BARRegion:=@FuncDesc.fBARRegions[0];
+{$ifdef NewPCI}
+ BARRegion^.fAddress:=0;
+{$else}
+ BARRegion^.fAddress:=TPCI.PCI_BAR_ADDR_64;
+{$endif}
+ BARRegion^.fSize:=HDA_BAR_SIZE;
+ BARRegion^.fIsIO:=false; // MMIO
+ BARRegion^.fOnLoad:=OnLoad;
+ BARRegion^.fOnStore:=OnStore;
+
+ fFuncs[0]:=TPasRISCV.TPCIFunc.Create(aBus,self,FuncDesc);
+
+ Reset;
+
+ if assigned(fSoundIO) then begin
+  fSoundIO.OnOutputFillBuffer:=OutputAudioFillBufferCallback;
+  fSoundIO.OnInputFillBuffer:=InputAudioFillBufferCallback;
+ end;
+
+{$ifdef PasRISCVDebugHDA}
+ WriteLn('[HDA] Create: MMIO BAR size=$',HexStr(HDA_BAR_SIZE,4));
+{$endif}
+
+end;
+
+destructor TPasRISCV.THDADevice.Destroy;
+begin
+ FreeAndNil(fFuncs[0]);
+ fPlayScratchBuffer:=nil;
+ fPlayResampleBuffer:=nil;
+ fCaptureScratchBuffer:=nil;
+ fCaptureResampleBuffer:=nil;
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.THDADevice.Reset;
+var Index:TPasRISCVUInt32;
+begin
+ inherited Reset;
+ fGCTL:=0;
+ fWakeEn:=0;
+ fStateSts:=0;
+ fINTCTL:=0;
+ fINTSTS:=0;
+ fWallClkStart:=GetCurrentFrequencyTime(24000000);
+ fCORBLBase:=0;
+ fCORBUBase:=0;
+ fCORBWP:=0;
+ fCORBRP:=0;
+ fCORBCTL:=0;
+ fCORBSTS:=0;
+ fCORBSize:=2; // default 256 entries
+ fRIRBLBase:=0;
+ fRIRBUBase:=0;
+ fRIRBWP:=0;
+ fRINTCNT:=0;
+ fRIRBCTL:=0;
+ fRIRBSTS:=0;
+ fRIRBSize:=2; // default 256 entries
+ fRIRBCount:=0;
+ fICW:=0;
+ fIRR:=0;
+ fICS:=0;
+ fDPLBase:=0;
+ fDPUBase:=0;
+ for Index:=0 to HDA_NUM_STREAMS-1 do begin
+  FillChar(fStreams[Index],SizeOf(THDAStream),#0);
+ end;
+ fCodecPowerState:=0;
+ fCodecOutputStreamTag:=0;
+ fCodecOutputChannel:=0;
+ fCodecOutputFmt:=0;
+ fCodecInputStreamTag:=0;
+ fCodecInputChannel:=0;
+ fCodecInputFmt:=0;
+ fCodecOutputPinCtl:=HDA_PINCTL_OUT_EN;
+ fCodecInputPinCtl:=HDA_PINCTL_IN_EN;
+ fCodecOutputAmpLeftGain:=$4a;
+ fCodecOutputAmpRightGain:=$4a;
+ fCodecOutputAmpLeftMute:=false;
+ fCodecOutputAmpRightMute:=false;
+ fCodecInputAmpLeftGain:=$4a;
+ fCodecInputAmpRightGain:=$4a;
+ fCodecInputAmpLeftMute:=false;
+ fCodecInputAmpRightMute:=false;
+ fCodecEAPD:=0;
+ fCodecDigitalConv:=0;
+ fPlayScratchBuffer:=nil;
+ fPlayResampleBuffer:=nil;
+ fPlayResamplerPosition:=0;
+ fPlayPreviousFrameEndValues[0]:=0.0;
+ fPlayPreviousFrameEndValues[1]:=0.0;
+ fCaptureScratchBuffer:=nil;
+ fCaptureResampleBuffer:=nil;
+ fCaptureResamplerPosition:=0;
+ fCapturePreviousFrameEndValues[0]:=0.0;
+ fCapturePreviousFrameEndValues[1]:=0.0;
+end;
+
+function TPasRISCV.THDADevice.GetCORBEntryCount:TPasRISCVUInt32;
+begin
+ case fCORBSize and 3 of
+  0:result:=2;
+  1:result:=16;
+  2:result:=256;
+  else result:=256;
+ end;
+end;
+
+function TPasRISCV.THDADevice.GetRIRBEntryCount:TPasRISCVUInt32;
+begin
+ case fRIRBSize and 3 of
+  0:result:=2;
+  1:result:=16;
+  2:result:=256;
+  else result:=256;
+ end;
+end;
+
+procedure TPasRISCV.THDADevice.WriteRIRB(const aResponse:TPasRISCVUInt32;const aResponseEx:TPasRISCVUInt32);
+var Addr:TPasRISCVUInt64;
+    RIRBEntries:TPasRISCVUInt32;
+    p:PPasRISCVUInt8Array;
+begin
+ if (fRIRBCTL and HDA_RIRBCTL_RUN)=0 then begin
+{$ifdef PasRISCVDebugHDA}
+  WriteLn('[HDA] WriteRIRB: RIRB DMA disabled, dropping response');
+{$endif}
+  exit;
+ end;
+ RIRBEntries:=GetRIRBEntryCount;
+ fRIRBWP:=(fRIRBWP+1) mod RIRBEntries;
+ Addr:=(TPasRISCVUInt64(fRIRBUBase) shl 32) or fRIRBLBase;
+ p:=GetGlobalDirectMemoryAccessPointer(Addr+(TPasRISCVUInt64(fRIRBWP)*8),8,true,nil);
+ if assigned(p) then begin
+  p^[0]:=TPasRISCVUInt8(aResponse and $ff);
+  p^[1]:=TPasRISCVUInt8((aResponse shr 8) and $ff);
+  p^[2]:=TPasRISCVUInt8((aResponse shr 16) and $ff);
+  p^[3]:=TPasRISCVUInt8((aResponse shr 24) and $ff);
+  p^[4]:=TPasRISCVUInt8(aResponseEx and $ff);
+  p^[5]:=TPasRISCVUInt8((aResponseEx shr 8) and $ff);
+  p^[6]:=TPasRISCVUInt8((aResponseEx shr 16) and $ff);
+  p^[7]:=TPasRISCVUInt8((aResponseEx shr 24) and $ff);
+ end;
+ inc(fRIRBCount);
+{$ifdef PasRISCVDebugHDA}
+ WriteLn('[HDA] WriteRIRB: wp=',fRIRBWP,' resp=$',HexStr(aResponse,8),' ex=$',HexStr(aResponseEx,8));
+{$endif}
+ if fRIRBCount=fRINTCNT then begin
+  if (fRIRBCTL and HDA_RIRBCTL_RINTCTL)<>0 then begin
+   fRIRBSTS:=fRIRBSTS or HDA_RIRBSTS_RINTFL;
+   UpdateIRQ;
+  end;
+ end else if (fCORBRP and $ff)=fCORBWP then begin
+  // CORB empty, signal completion
+  if (fRIRBCTL and HDA_RIRBCTL_RINTCTL)<>0 then begin
+   fRIRBSTS:=fRIRBSTS or HDA_RIRBSTS_RINTFL;
+   UpdateIRQ;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THDADevice.UpdateINTSTS;
+var STS:TPasRISCVUInt32;
+    Index:TPasRISCVUInt32;
+begin
+ STS:=0;
+ // Check RIRB status
+ if (fRIRBSTS and HDA_RIRBSTS_RINTFL)<>0 then begin
+  STS:=STS or TPasRISCVUInt32(1 shl 30);
+ end;
+ if (fRIRBSTS and HDA_RIRBSTS_RIRBOIS)<>0 then begin
+  STS:=STS or TPasRISCVUInt32(1 shl 30);
+ end;
+ // Check STATESTS
+ if (fStateSts and fWakeEn)<>0 then begin
+  STS:=STS or TPasRISCVUInt32(1 shl 30);
+ end;
+ // Check streams
+ for Index:=0 to HDA_NUM_STREAMS-1 do begin
+  if (fStreams[Index].STS and (HDA_SDSTS_BCIS or HDA_SDSTS_FIFOE or HDA_SDSTS_DESE))<>0 then begin
+   STS:=STS or TPasRISCVUInt32(1 shl Index);
+  end;
+ end;
+ // Global interrupt
+ if (STS and fINTCTL)<>0 then begin
+  STS:=STS or TPasRISCVUInt32(1 shl 31);
+ end;
+ fINTSTS:=STS;
+end;
+
+procedure TPasRISCV.THDADevice.UpdateIRQ;
+var Level:Boolean;
+begin
+ UpdateINTSTS;
+ Level:=((fINTSTS and TPasRISCVUInt32(1 shl 31))<>0) and
+        ((fINTCTL and HDA_INTCTL_GIE)<>0);
+{$ifdef PasRISCVDebugHDA}
+ WriteLn('[HDA] UpdateIRQ: level=',Level,' INTSTS=$',HexStr(fINTSTS,8),' INTCTL=$',HexStr(fINTCTL,8));
+{$endif}
+ if Level then begin
+  SendIRQ(0,0);
+ end else begin
+  LowerIRQ(0);
+ end;
+end;
+
+function TPasRISCV.THDADevice.GetStreamForIndex(const aIndex:TPasRISCVUInt32):PHDAStream;
+begin
+ if aIndex<HDA_NUM_STREAMS then begin
+  result:=@fStreams[aIndex];
+ end else begin
+  result:=nil;
+ end;
+end;
+
+procedure TPasRISCV.THDADevice.StreamSetCtl(const aStreamIndex:TPasRISCVUInt32;const aOldCtl:TPasRISCVUInt32);
+var Stream:PHDAStream;
+    StreamTag:TPasRISCVUInt8;
+begin
+ Stream:=GetStreamForIndex(aStreamIndex);
+ if not assigned(Stream) then begin
+  exit;
+ end;
+ // Stream reset
+ if (Stream^.CTL and HDA_SDCTL_SRST)<>0 then begin
+{$ifdef PasRISCVDebugHDA}
+  WriteLn('[HDA] Stream #',aStreamIndex,': reset');
+{$endif}
+  Stream^.CTL:=TPasRISCVUInt32(HDA_SDSTS_FIFORDY) shl 24;
+  Stream^.CTL:=Stream^.CTL or HDA_SDCTL_SRST;
+  Stream^.STS:=HDA_SDSTS_FIFORDY;
+  Stream^.LPIB:=0;
+  Stream^.BDLEntryIndex:=0;
+  Stream^.BDLBytePos:=0;
+  Stream^.Running:=false;
+  exit;
+ end;
+ // Run bit changed
+ if (Stream^.CTL and HDA_SDCTL_RUN)<>(aOldCtl and HDA_SDCTL_RUN) then begin
+  StreamTag:=(Stream^.CTL shr HDA_SDCTL_STRM_SHIFT) and $f;
+  if (Stream^.CTL and HDA_SDCTL_RUN)<>0 then begin
+   // Start
+{$ifdef PasRISCVDebugHDA}
+   WriteLn('[HDA] Stream #',aStreamIndex,': start tag=',StreamTag,' CBL=',Stream^.CBL);
+{$endif}
+   Stream^.Running:=true;
+   Stream^.StreamTag:=StreamTag;
+   Stream^.LPIB:=0;
+   Stream^.BDLEntryIndex:=0;
+   Stream^.BDLBytePos:=0;
+   Stream^.STS:=HDA_SDSTS_FIFORDY;
+  end else begin
+   // Stop
+{$ifdef PasRISCVDebugHDA}
+   WriteLn('[HDA] Stream #',aStreamIndex,': stop tag=',StreamTag);
+{$endif}
+   Stream^.Running:=false;
+  end;
+ end;
+ UpdateIRQ;
+end;
+
+function TPasRISCV.THDADevice.FindOutputStreamForCodec:PHDAStream;
+var Index:TPasRISCVUInt32;
+begin
+ result:=nil;
+ if fCodecOutputStreamTag=0 then begin
+  exit;
+ end;
+ // Output streams are indices 4..7
+ for Index:=HDA_NUM_INPUT_STREAMS to HDA_NUM_STREAMS-1 do begin
+  if fStreams[Index].Running and
+     (fStreams[Index].StreamTag=fCodecOutputStreamTag) then begin
+   result:=@fStreams[Index];
+   exit;
+  end;
+ end;
+end;
+
+function TPasRISCV.THDADevice.FindInputStreamForCodec:PHDAStream;
+var Index:TPasRISCVUInt32;
+begin
+ result:=nil;
+ if fCodecInputStreamTag=0 then begin
+  exit;
+ end;
+ // Input streams are indices 0..3
+ for Index:=0 to HDA_NUM_INPUT_STREAMS-1 do begin
+  if fStreams[Index].Running and
+     (fStreams[Index].StreamTag=fCodecInputStreamTag) then begin
+   result:=@fStreams[Index];
+   exit;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THDADevice.ParseStreamFormat(const aFmt:TPasRISCVUInt16;out aSampleRate:TPasRISCVUInt32;out aBits,aChannels:TPasRISCVUInt32);
+var BaseRate,Mult,Divisor:TPasRISCVUInt32;
+begin
+ // Channels: bits 3:0 + 1
+ aChannels:=(aFmt and $f)+1;
+ // Bits per sample: bits 6:4
+ case (aFmt shr 4) and 7 of
+  0:aBits:=8;
+  1:aBits:=16;
+  2:aBits:=20;
+  3:aBits:=24;
+  4:aBits:=32;
+  else aBits:=16;
+ end;
+ // Base rate: bit 14
+ if (aFmt and (1 shl 14))<>0 then begin
+  BaseRate:=44100;
+ end else begin
+  BaseRate:=48000;
+ end;
+ // Multiplier: bits 13:11
+ case (aFmt shr 11) and 7 of
+  0:Mult:=1;
+  1:Mult:=2;
+  2:Mult:=3;
+  3:Mult:=4;
+  else Mult:=1;
+ end;
+ // Divisor: bits 10:8
+ case (aFmt shr 8) and 7 of
+  0:Divisor:=1;
+  1:Divisor:=2;
+  2:Divisor:=3;
+  3:Divisor:=4;
+  4:Divisor:=5;
+  5:Divisor:=6;
+  6:Divisor:=7;
+  7:Divisor:=8;
+  else Divisor:=1;
+ end;
+ aSampleRate:=(BaseRate*Mult) div Divisor;
+end;
+
+function TPasRISCV.THDADevice.CodecGetParameter(const aNID:TPasRISCVUInt8;const aPayload:TPasRISCVUInt16):TPasRISCVUInt32;
+begin
+ result:=0;
+ case aNID of
+  HDA_NID_ROOT:begin
+   case aPayload of
+    HDA_PARAM_VENDOR_ID:begin
+     result:=(TPasRISCVUInt32(HDA_CODEC_VENDOR_ID) shl 16) or HDA_CODEC_DEVICE_ID;
+    end;
+    HDA_PARAM_REVISION_ID:begin
+     result:=$00100101;
+    end;
+    HDA_PARAM_SUBSYSTEM_ID:begin
+     result:=(TPasRISCVUInt32(HDA_CODEC_VENDOR_ID) shl 16) or HDA_CODEC_DEVICE_ID;
+    end;
+    HDA_PARAM_NODE_COUNT:begin
+     result:=$00010001; // 1 sub-node starting at NID 1
+    end;
+   end;
+  end;
+  HDA_NID_AFG:begin
+   case aPayload of
+    HDA_PARAM_NODE_COUNT:begin
+     result:=$00020004; // 4 sub-nodes starting at NID 2
+    end;
+    HDA_PARAM_FUNC_GROUP_TYPE:begin
+     result:=HDA_FG_TYPE_AUDIO;
+    end;
+    HDA_PARAM_AUDIO_FG_CAP:begin
+     result:=$00000808; // in/out delay
+    end;
+    HDA_PARAM_PCM_SIZE_RATE:begin
+     result:=HDA_PCM_SIZE_RATE;
+    end;
+    HDA_PARAM_STREAM_FORMATS:begin
+     result:=HDA_STREAM_FMT_PCM;
+    end;
+    HDA_PARAM_AMP_IN_CAP:begin
+     result:=0;
+    end;
+    HDA_PARAM_AMP_OUT_CAP:begin
+     result:=0;
+    end;
+    HDA_PARAM_GPIO_CAP:begin
+     result:=0;
+    end;
+    HDA_PARAM_POWER_STATES:begin
+     result:=0;
+    end;
+    HDA_PARAM_SUBSYSTEM_ID:begin
+     result:=(TPasRISCVUInt32(HDA_CODEC_VENDOR_ID) shl 16) or HDA_CODEC_DEVICE_ID;
+    end;
+   end;
+  end;
+  HDA_NID_DAC:begin
+   case aPayload of
+    HDA_PARAM_AUDIO_WIDGET_CAP:begin
+     result:=(TPasRISCVUInt32(HDA_WIDGET_AUD_OUT) shl 20) or
+             HDA_WCAP_FORMAT_OVR or
+             HDA_WCAP_AMP_OVR or
+             HDA_WCAP_OUT_AMP or
+             HDA_WCAP_STEREO;
+    end;
+    HDA_PARAM_PCM_SIZE_RATE:begin
+     result:=HDA_PCM_SIZE_RATE;
+    end;
+    HDA_PARAM_STREAM_FORMATS:begin
+     result:=HDA_STREAM_FMT_PCM;
+    end;
+    HDA_PARAM_AMP_IN_CAP:begin
+     result:=0;
+    end;
+    HDA_PARAM_AMP_OUT_CAP:begin
+     result:=HDA_AMP_MUTE_CAP or HDA_AMP_STEPSIZE or HDA_AMP_NUMSTEPS or HDA_AMP_OFFSET;
+    end;
+   end;
+  end;
+  HDA_NID_OUT_PIN:begin
+   case aPayload of
+    HDA_PARAM_AUDIO_WIDGET_CAP:begin
+     result:=(TPasRISCVUInt32(HDA_WIDGET_PIN) shl 20) or
+             HDA_WCAP_CONN_LIST or
+             HDA_WCAP_STEREO;
+    end;
+    HDA_PARAM_PIN_CAPS:begin
+     result:=HDA_PINCAP_OUTPUT or HDA_PINCAP_PRES_DETECT;
+    end;
+    HDA_PARAM_CONN_LIST_LEN:begin
+     result:=1;
+    end;
+    HDA_PARAM_AMP_IN_CAP:begin
+     result:=0;
+    end;
+    HDA_PARAM_AMP_OUT_CAP:begin
+     result:=0;
+    end;
+   end;
+  end;
+  HDA_NID_ADC:begin
+   case aPayload of
+    HDA_PARAM_AUDIO_WIDGET_CAP:begin
+     result:=(TPasRISCVUInt32(HDA_WIDGET_AUD_IN) shl 20) or
+             HDA_WCAP_CONN_LIST or
+             HDA_WCAP_FORMAT_OVR or
+             HDA_WCAP_AMP_OVR or
+             HDA_WCAP_IN_AMP or
+             HDA_WCAP_STEREO;
+    end;
+    HDA_PARAM_PCM_SIZE_RATE:begin
+     result:=HDA_PCM_SIZE_RATE;
+    end;
+    HDA_PARAM_STREAM_FORMATS:begin
+     result:=HDA_STREAM_FMT_PCM;
+    end;
+    HDA_PARAM_CONN_LIST_LEN:begin
+     result:=1;
+    end;
+    HDA_PARAM_AMP_IN_CAP:begin
+     result:=HDA_AMP_MUTE_CAP or HDA_AMP_STEPSIZE or HDA_AMP_NUMSTEPS or HDA_AMP_OFFSET;
+    end;
+    HDA_PARAM_AMP_OUT_CAP:begin
+     result:=0;
+    end;
+   end;
+  end;
+  HDA_NID_IN_PIN:begin
+   case aPayload of
+    HDA_PARAM_AUDIO_WIDGET_CAP:begin
+     result:=(TPasRISCVUInt32(HDA_WIDGET_PIN) shl 20) or
+             HDA_WCAP_STEREO;
+    end;
+    HDA_PARAM_PIN_CAPS:begin
+     result:=HDA_PINCAP_INPUT or HDA_PINCAP_PRES_DETECT;
+    end;
+    HDA_PARAM_AMP_IN_CAP:begin
+     result:=0;
+    end;
+    HDA_PARAM_AMP_OUT_CAP:begin
+     result:=0;
+    end;
+   end;
+  end;
+ end;
+end;
+
+function TPasRISCV.THDADevice.CodecStreamCmd(const aNID:TPasRISCVUInt8;const aVerb:TPasRISCVUInt16;const aPayload:TPasRISCVUInt16):TPasRISCVUInt32;
+var Mute,Gain:TPasRISCVUInt8;
+begin
+ result:=0;
+ case aVerb of
+  HDA_VERB_GET_CONV_FMT:begin
+   case aNID of
+    HDA_NID_DAC:result:=fCodecOutputFmt;
+    HDA_NID_ADC:result:=fCodecInputFmt;
+   end;
+  end;
+  HDA_VERB_SET_CONV_FMT:begin
+   case aNID of
+    HDA_NID_DAC:fCodecOutputFmt:=TPasRISCVUInt16(aPayload);
+    HDA_NID_ADC:fCodecInputFmt:=TPasRISCVUInt16(aPayload);
+   end;
+  end;
+  HDA_VERB_GET_AMP_GAIN_MUTE:begin
+   case aNID of
+    HDA_NID_DAC:begin
+     if (aPayload and $2000)<>0 then begin // left
+      result:=fCodecOutputAmpLeftGain;
+      if fCodecOutputAmpLeftMute then begin
+       result:=result or $80;
+      end;
+     end else begin // right
+      result:=fCodecOutputAmpRightGain;
+      if fCodecOutputAmpRightMute then begin
+       result:=result or $80;
+      end;
+     end;
+    end;
+    HDA_NID_ADC:begin
+     if (aPayload and $2000)<>0 then begin // left
+      result:=fCodecInputAmpLeftGain;
+      if fCodecInputAmpLeftMute then begin
+       result:=result or $80;
+      end;
+     end else begin // right
+      result:=fCodecInputAmpRightGain;
+      if fCodecInputAmpRightMute then begin
+       result:=result or $80;
+      end;
+     end;
+    end;
+   end;
+  end;
+  HDA_VERB_SET_AMP_GAIN_MUTE:begin
+   Mute:=0;
+   Gain:=0;
+   if (aPayload and $80)<>0 then begin
+    Mute:=1;
+   end;
+   Gain:=TPasRISCVUInt8(aPayload and $7f);
+   case aNID of
+    HDA_NID_DAC:begin
+     if (aPayload and $2000)<>0 then begin // left
+      fCodecOutputAmpLeftGain:=Gain;
+      fCodecOutputAmpLeftMute:=Mute<>0;
+     end;
+     if (aPayload and $1000)<>0 then begin // right
+      fCodecOutputAmpRightGain:=Gain;
+      fCodecOutputAmpRightMute:=Mute<>0;
+     end;
+    end;
+    HDA_NID_ADC:begin
+     if (aPayload and $2000)<>0 then begin // left
+      fCodecInputAmpLeftGain:=Gain;
+      fCodecInputAmpLeftMute:=Mute<>0;
+     end;
+     if (aPayload and $1000)<>0 then begin // right
+      fCodecInputAmpRightGain:=Gain;
+      fCodecInputAmpRightMute:=Mute<>0;
+     end;
+    end;
+   end;
+  end;
+  HDA_VERB_GET_CONV_STREAM_CHAN:begin
+   case aNID of
+    HDA_NID_DAC:result:=(TPasRISCVUInt32(fCodecOutputStreamTag) shl 4) or fCodecOutputChannel;
+    HDA_NID_ADC:result:=(TPasRISCVUInt32(fCodecInputStreamTag) shl 4) or fCodecInputChannel;
+   end;
+  end;
+  HDA_VERB_SET_CONV_STREAM_CHAN:begin
+   case aNID of
+    HDA_NID_DAC:begin
+     fCodecOutputChannel:=TPasRISCVUInt8(aPayload and $0f);
+     fCodecOutputStreamTag:=TPasRISCVUInt8((aPayload shr 4) and $0f);
+{$ifdef PasRISCVDebugHDA}
+     WriteLn('[HDA] Codec: DAC stream=',fCodecOutputStreamTag,' chan=',fCodecOutputChannel);
+{$endif}
+    end;
+    HDA_NID_ADC:begin
+     fCodecInputChannel:=TPasRISCVUInt8(aPayload and $0f);
+     fCodecInputStreamTag:=TPasRISCVUInt8((aPayload shr 4) and $0f);
+{$ifdef PasRISCVDebugHDA}
+     WriteLn('[HDA] Codec: ADC stream=',fCodecInputStreamTag,' chan=',fCodecInputChannel);
+{$endif}
+    end;
+   end;
+  end;
+  HDA_VERB_GET_PIN_WIDGET_CTRL:begin
+   case aNID of
+    HDA_NID_OUT_PIN:result:=fCodecOutputPinCtl;
+    HDA_NID_IN_PIN:result:=fCodecInputPinCtl;
+   end;
+  end;
+  HDA_VERB_SET_PIN_WIDGET_CTRL:begin
+   case aNID of
+    HDA_NID_OUT_PIN:fCodecOutputPinCtl:=TPasRISCVUInt8(aPayload);
+    HDA_NID_IN_PIN:fCodecInputPinCtl:=TPasRISCVUInt8(aPayload);
+   end;
+  end;
+  else begin
+   // Unhandled verb for stream nodes - ignore
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THDADevice.ProcessCodecVerb(const aVerb:TPasRISCVUInt32);
+var CAD,NID:TPasRISCVUInt8;
+    Verb:TPasRISCVUInt16;
+    Payload:TPasRISCVUInt16;
+    Response:TPasRISCVUInt32;
+begin
+ if aVerb=0 then begin
+  exit;
+ end;
+ CAD:=(aVerb shr 28) and $0f;
+ NID:=(aVerb shr 20) and $7f;
+ Response:=0;
+ // Decode verb format: 12-bit vs 4-bit
+ if (aVerb and $70000)=$70000 then begin
+  // 12-bit verb ID
+  Verb:=(aVerb shr 8) and $fff;
+  Payload:=aVerb and $ff;
+ end else begin
+  // 4-bit verb ID
+  Verb:=(aVerb shr 16) and $f;
+  Payload:=aVerb and $ffff;
+ end;
+{$ifdef PasRISCVDebugHDA}
+ WriteLn('[HDA] CodecVerb: cad=',CAD,' nid=',NID,' verb=$',HexStr(Verb,4),' payload=$',HexStr(Payload,4));
+{$endif}
+ case Verb of
+  HDA_VERB_GET_PARAMETER:begin
+   Response:=CodecGetParameter(NID,Payload);
+  end;
+  HDA_VERB_GET_SUBSYSTEM_ID:begin
+   Response:=(TPasRISCVUInt32(HDA_CODEC_VENDOR_ID) shl 16) or HDA_CODEC_DEVICE_ID;
+  end;
+  HDA_VERB_SET_POWER_STATE:begin
+   fCodecPowerState:=Payload;
+  end;
+  HDA_VERB_GET_POWER_STATE:begin
+   Response:=fCodecPowerState or (fCodecPowerState shl 4);
+  end;
+  HDA_VERB_GET_PIN_WIDGET_CTRL:begin
+   case NID of
+    HDA_NID_OUT_PIN:Response:=fCodecOutputPinCtl;
+    HDA_NID_IN_PIN:Response:=fCodecInputPinCtl;
+    else Response:=0;
+   end;
+  end;
+  HDA_VERB_SET_PIN_WIDGET_CTRL:begin
+   case NID of
+    HDA_NID_OUT_PIN:fCodecOutputPinCtl:=TPasRISCVUInt8(Payload);
+    HDA_NID_IN_PIN:fCodecInputPinCtl:=TPasRISCVUInt8(Payload);
+   end;
+  end;
+  HDA_VERB_GET_PIN_SENSE:begin
+   // Always report plugged in
+   Response:=TPasRISCVUInt32(1 shl 31);
+  end;
+  HDA_VERB_GET_CONN_LIST:begin
+   case NID of
+    HDA_NID_OUT_PIN:Response:=HDA_NID_DAC;
+    HDA_NID_ADC:Response:=HDA_NID_IN_PIN;
+    else Response:=0;
+   end;
+  end;
+  HDA_VERB_GET_CONN_SELECT:begin
+   Response:=0;
+  end;
+  HDA_VERB_GET_CONFIG_DEFAULT:begin
+   case NID of
+    HDA_NID_OUT_PIN:begin
+     Response:=HDA_CFG_PORT_COMPLEX or HDA_CFG_DEV_LINE_OUT or HDA_CFG_CONN_UNKNOWN or HDA_CFG_COLOR_GREEN or $10;
+    end;
+    HDA_NID_IN_PIN:begin
+     Response:=HDA_CFG_PORT_COMPLEX or HDA_CFG_DEV_LINE_IN or HDA_CFG_CONN_UNKNOWN or HDA_CFG_COLOR_RED or $20;
+    end;
+    else begin
+     Response:=0;
+    end;
+   end;
+  end;
+  HDA_VERB_GET_EAPD_BTL:begin
+   Response:=fCodecEAPD;
+  end;
+  HDA_VERB_SET_EAPD_BTL:begin
+   fCodecEAPD:=TPasRISCVUInt8(Payload);
+  end;
+  HDA_VERB_GET_DIGITAL_CONV1:begin
+   Response:=fCodecDigitalConv;
+  end;
+  HDA_VERB_SET_DIGITAL_CONV1:begin
+   fCodecDigitalConv:=TPasRISCVUInt8(Payload);
+  end;
+  HDA_VERB_GET_SDI_SELECT:begin
+   Response:=0;
+  end;
+  HDA_VERB_SET_SDI_SELECT:begin
+   // Ignored
+  end;
+  HDA_VERB_GET_CONV_CHAN_COUNT:begin
+   Response:=0; // stereo (0 = 1 channel pair)
+  end;
+  HDA_VERB_SET_CONV_CHAN_COUNT:begin
+   // Ignored
+  end;
+  HDA_VERB_SET_CONFIG_DEFAULT1,
+  HDA_VERB_SET_CONFIG_DEFAULT2,
+  HDA_VERB_SET_CONFIG_DEFAULT3,
+  HDA_VERB_SET_CONFIG_DEFAULT4:begin
+   // Accept but ignore config default writes
+  end;
+  HDA_VERB_GET_UNSOLICITED_RESP:begin
+   Response:=0;
+  end;
+  HDA_VERB_SET_UNSOLICITED_RESP:begin
+   // Ignored
+  end;
+  HDA_VERB_GET_VOLUME_KNOB:begin
+   Response:=0;
+  end;
+  HDA_VERB_SET_VOLUME_KNOB:begin
+   // Ignored
+  end;
+  HDA_VERB_GET_BEEP:begin
+   Response:=0;
+  end;
+  HDA_VERB_SET_BEEP:begin
+   // Ignored
+  end;
+  HDA_VERB_FUNCTION_RESET:begin
+   // Codec function reset - just reset power state
+   fCodecPowerState:=0;
+  end;
+  else begin
+   // Stream-specific verbs (GET/SET_CONV_FMT, AMP_GAIN_MUTE, CONV_STREAM_CHAN etc.)
+   Response:=CodecStreamCmd(NID,Verb,Payload);
+  end;
+ end;
+ WriteRIRB(Response,CAD);
+end;
+
+procedure TPasRISCV.THDADevice.RunCORB;
+var Addr:TPasRISCVUInt64;
+    RP:TPasRISCVUInt16;
+    Verb:TPasRISCVUInt32;
+    p:PPasRISCVUInt8Array;
+begin
+ // Handle immediate command mode
+ if (fICS and HDA_ICS_BUSY)<>0 then begin
+{$ifdef PasRISCVDebugHDA}
+  WriteLn('[HDA] RunCORB: immediate verb=$',HexStr(fICW,8));
+{$endif}
+  ProcessCodecVerb(fICW);
+  fIRR:=0; // Response already in RIRB
+  fICS:=(fICS and (not HDA_ICS_BUSY)) or HDA_ICS_VALID;
+  exit;
+ end;
+ // Process CORB ring buffer
+ while true do begin
+  if (fCORBCTL and HDA_CORBCTL_RUN)=0 then begin
+   exit;
+  end;
+  if (fCORBRP and $ff)=fCORBWP then begin
+   exit;
+  end;
+  if fRIRBCount=fRINTCNT then begin
+   exit;
+  end;
+  RP:=(fCORBRP+1) and $ff;
+  Addr:=(TPasRISCVUInt64(fCORBUBase) shl 32) or fCORBLBase;
+  p:=GetGlobalDirectMemoryAccessPointer(Addr+(TPasRISCVUInt64(RP)*4),4,false,nil);
+  if assigned(p) then begin
+   Verb:=TPasRISCVUInt32(p^[0]) or
+         (TPasRISCVUInt32(p^[1]) shl 8) or
+         (TPasRISCVUInt32(p^[2]) shl 16) or
+         (TPasRISCVUInt32(p^[3]) shl 24);
+  end else begin
+   Verb:=0;
+  end;
+  fCORBRP:=RP;
+{$ifdef PasRISCVDebugHDA}
+  WriteLn('[HDA] RunCORB: rp=',RP,' verb=$',HexStr(Verb,8));
+{$endif}
+  ProcessCodecVerb(Verb);
+ end;
+end;
+
+function TPasRISCV.THDADevice.OnLoad(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Offset:TPasRISCVUInt32;
+    StreamIndex:TPasRISCVUInt32;
+    StreamOffset:TPasRISCVUInt32;
+    Stream:PHDAStream;
+begin
+ Offset:=TPasRISCVUInt32(aAddress and $3fff);
+ result:=0;
+{$ifdef PasRISCVDebugHDA}
+ WriteLn('[HDA] OnLoad: offset=$',HexStr(Offset,4),' size=',aSize);
+{$endif}
+ // Check if this is a stream descriptor register
+ if (Offset>=$80) and (Offset<($80+(HDA_NUM_STREAMS*HDA_SD_SIZE))) then begin
+  StreamIndex:=(Offset-$80) div HDA_SD_SIZE;
+  StreamOffset:=(Offset-$80) mod HDA_SD_SIZE;
+  Stream:=GetStreamForIndex(StreamIndex);
+  if assigned(Stream) then begin
+   case StreamOffset of
+    HDA_SD_CTL:begin
+     if aSize>=4 then begin
+      result:=Stream^.CTL;
+     end else begin
+      result:=Stream^.CTL and $ffff;
+     end;
+    end;
+    HDA_SD_CTL+2:begin
+     result:=(Stream^.CTL shr 16) and $ffff;
+    end;
+    HDA_SD_STS:begin
+     result:=Stream^.STS;
+    end;
+    HDA_SD_LPIB:begin
+     result:=Stream^.LPIB;
+    end;
+    HDA_SD_CBL:begin
+     result:=Stream^.CBL;
+    end;
+    HDA_SD_LVI:begin
+     result:=Stream^.LVI;
+    end;
+    HDA_SD_FIFOW:begin
+     result:=1; // one FIFO size
+    end;
+    HDA_SD_FIFOS:begin
+     result:=HDA_FIFO_SIZE;
+    end;
+    HDA_SD_FMT:begin
+     result:=Stream^.FMT;
+    end;
+    HDA_SD_BDLPL:begin
+     result:=Stream^.BDLPL;
+    end;
+    HDA_SD_BDLPU:begin
+     result:=Stream^.BDLPU;
+    end;
+   end;
+  end;
+  exit;
+ end;
+ case Offset of
+  HDA_REG_GCAP:begin
+   result:=HDA_GCAP_VALUE;
+  end;
+  HDA_REG_VMIN:begin
+   result:=0; // minor version 0
+  end;
+  HDA_REG_VMAJ:begin
+   result:=1; // major version 1
+  end;
+  HDA_REG_OUTPAY:begin
+   result:=$3c;
+  end;
+  HDA_REG_INPAY:begin
+   result:=$1d;
+  end;
+  HDA_REG_GCTL:begin
+   result:=fGCTL;
+  end;
+  HDA_REG_WAKEEN:begin
+   result:=fWakeEn;
+  end;
+  HDA_REG_STATESTS:begin
+   result:=fStateSts;
+  end;
+  HDA_REG_GSTS:begin
+   result:=0;
+  end;
+  HDA_REG_INTCTL:begin
+   result:=fINTCTL;
+  end;
+  HDA_REG_INTSTS:begin
+   UpdateINTSTS;
+   result:=fINTSTS;
+  end;
+  HDA_REG_WALLCLK:begin
+   result:=TPasRISCVUInt32(GetCurrentFrequencyTime(24000000)-fWallClkStart);
+  end;
+  HDA_REG_CORBLBASE:begin
+   result:=fCORBLBase;
+  end;
+  HDA_REG_CORBUBASE:begin
+   result:=fCORBUBase;
+  end;
+  HDA_REG_CORBWP:begin
+   result:=fCORBWP;
+  end;
+  HDA_REG_CORBRP:begin
+   result:=fCORBRP and $ff;
+  end;
+  HDA_REG_CORBCTL:begin
+   result:=fCORBCTL;
+  end;
+  HDA_REG_CORBSTS:begin
+   result:=fCORBSTS;
+  end;
+  HDA_REG_CORBSIZE:begin
+   // Bits 7:4 = supported sizes (2+16+256 = $70), bits 1:0 = current size
+   result:=$70 or (fCORBSize and 3);
+  end;
+  HDA_REG_RIRBLBASE:begin
+   result:=fRIRBLBase;
+  end;
+  HDA_REG_RIRBUBASE:begin
+   result:=fRIRBUBase;
+  end;
+  HDA_REG_RIRBWP:begin
+   result:=fRIRBWP and $ff;
+  end;
+  HDA_REG_RINTCNT:begin
+   result:=fRINTCNT;
+  end;
+  HDA_REG_RIRBCTL:begin
+   result:=fRIRBCTL;
+  end;
+  HDA_REG_RIRBSTS:begin
+   result:=fRIRBSTS;
+  end;
+  HDA_REG_RIRBSIZE:begin
+   // Bits 7:4 = supported sizes (2+16+256 = $70), bits 1:0 = current size
+   result:=$70 or (fRIRBSize and 3);
+  end;
+  HDA_REG_ICW:begin
+   result:=fICW;
+  end;
+  HDA_REG_IRR:begin
+   result:=fIRR;
+  end;
+  HDA_REG_ICS:begin
+   result:=fICS;
+  end;
+  HDA_REG_DPLBASE:begin
+   result:=fDPLBase;
+  end;
+  HDA_REG_DPUBASE:begin
+   result:=fDPUBase;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THDADevice.OnStore(const aPCIMemoryDevice:TPasRISCV.TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt32;
+    StreamIndex:TPasRISCVUInt32;
+    StreamOffset:TPasRISCVUInt32;
+    Stream:PHDAStream;
+    OldCtl:TPasRISCVUInt32;
+    Val16:TPasRISCVUInt16;
+    Val8:TPasRISCVUInt8;
+begin
+ Offset:=TPasRISCVUInt32(aAddress and $3fff);
+{$ifdef PasRISCVDebugHDA}
+ WriteLn('[HDA] OnStore: offset=$',HexStr(Offset,4),' value=$',HexStr(aValue,8),' size=',aSize);
+{$endif}
+ // Check if this is a stream descriptor register
+ if (Offset>=$80) and (Offset<($80+(HDA_NUM_STREAMS*HDA_SD_SIZE))) then begin
+  StreamIndex:=(Offset-$80) div HDA_SD_SIZE;
+  StreamOffset:=(Offset-$80) mod HDA_SD_SIZE;
+  Stream:=GetStreamForIndex(StreamIndex);
+  if assigned(Stream) then begin
+   case StreamOffset of
+    HDA_SD_CTL:begin
+     OldCtl:=Stream^.CTL;
+     if aSize>=4 then begin
+      Stream^.CTL:=TPasRISCVUInt32(aValue);
+     end else begin
+      Stream^.CTL:=(Stream^.CTL and $ffff0000) or TPasRISCVUInt32(aValue and $ffff);
+     end;
+     StreamSetCtl(StreamIndex,OldCtl);
+    end;
+    HDA_SD_CTL+2:begin
+     OldCtl:=Stream^.CTL;
+     Stream^.CTL:=(Stream^.CTL and $0000ffff) or (TPasRISCVUInt32(aValue and $ffff) shl 16);
+     StreamSetCtl(StreamIndex,OldCtl);
+    end;
+    HDA_SD_STS:begin
+     // Write-1-to-clear bits
+     Val8:=TPasRISCVUInt8(aValue);
+     if (Val8 and HDA_SDSTS_BCIS)<>0 then begin
+      Stream^.STS:=Stream^.STS and (not HDA_SDSTS_BCIS);
+     end;
+     if (Val8 and HDA_SDSTS_FIFOE)<>0 then begin
+      Stream^.STS:=Stream^.STS and (not HDA_SDSTS_FIFOE);
+     end;
+     if (Val8 and HDA_SDSTS_DESE)<>0 then begin
+      Stream^.STS:=Stream^.STS and (not HDA_SDSTS_DESE);
+     end;
+     UpdateIRQ;
+    end;
+    HDA_SD_LPIB:begin
+     // Read-only for software, ignore writes
+    end;
+    HDA_SD_CBL:begin
+     Stream^.CBL:=TPasRISCVUInt32(aValue);
+    end;
+    HDA_SD_LVI:begin
+     Stream^.LVI:=TPasRISCVUInt16(aValue);
+    end;
+    HDA_SD_FMT:begin
+     Stream^.FMT:=TPasRISCVUInt16(aValue);
+    end;
+    HDA_SD_BDLPL:begin
+     Stream^.BDLPL:=TPasRISCVUInt32(aValue) and $ffffff80;
+    end;
+    HDA_SD_BDLPU:begin
+     Stream^.BDLPU:=TPasRISCVUInt32(aValue);
+    end;
+   end;
+  end;
+  exit;
+ end;
+ case Offset of
+  HDA_REG_GCTL:begin
+   fGCTL:=TPasRISCVUInt32(aValue);
+   if (fGCTL and HDA_GCTL_RESET)=0 then begin
+    // Controller entering reset
+{$ifdef PasRISCVDebugHDA}
+    WriteLn('[HDA] Controller reset');
+{$endif}
+   end else begin
+    // Coming out of reset - codec detected
+    fStateSts:=fStateSts or 1; // SDIN0 state change
+    fGCTL:=fGCTL or HDA_GCTL_RESET;
+   end;
+  end;
+  HDA_REG_WAKEEN:begin
+   fWakeEn:=TPasRISCVUInt16(aValue) and $7fff;
+   UpdateIRQ;
+  end;
+  HDA_REG_STATESTS:begin
+   // Write-1-to-clear
+   fStateSts:=fStateSts and (not (TPasRISCVUInt16(aValue) and $7fff));
+   UpdateIRQ;
+  end;
+  HDA_REG_INTCTL:begin
+   fINTCTL:=TPasRISCVUInt32(aValue);
+   UpdateIRQ;
+  end;
+  HDA_REG_CORBLBASE:begin
+   fCORBLBase:=TPasRISCVUInt32(aValue) and $ffffff80;
+  end;
+  HDA_REG_CORBUBASE:begin
+   fCORBUBase:=TPasRISCVUInt32(aValue);
+  end;
+  HDA_REG_CORBWP:begin
+   fCORBWP:=TPasRISCVUInt16(aValue) and $ff;
+   RunCORB;
+  end;
+  HDA_REG_CORBRP:begin
+   Val16:=TPasRISCVUInt16(aValue);
+   if (Val16 and $8000)<>0 then begin
+    fCORBRP:=0;
+   end else begin
+    fCORBRP:=Val16 and $ff;
+   end;
+  end;
+  HDA_REG_CORBCTL:begin
+   fCORBCTL:=TPasRISCVUInt8(aValue);
+   RunCORB;
+  end;
+  HDA_REG_CORBSTS:begin
+   // Write-1-to-clear
+   fCORBSTS:=fCORBSTS and (not TPasRISCVUInt8(aValue));
+  end;
+  HDA_REG_CORBSIZE:begin
+   fCORBSize:=TPasRISCVUInt8(aValue) and 3;
+  end;
+  HDA_REG_RIRBLBASE:begin
+   fRIRBLBase:=TPasRISCVUInt32(aValue) and $ffffff80;
+  end;
+  HDA_REG_RIRBUBASE:begin
+   fRIRBUBase:=TPasRISCVUInt32(aValue);
+  end;
+  HDA_REG_RIRBWP:begin
+   Val16:=TPasRISCVUInt16(aValue);
+   if (Val16 and $8000)<>0 then begin
+    fRIRBWP:=0;
+   end else begin
+    fRIRBWP:=Val16 and $ff;
+   end;
+  end;
+  HDA_REG_RINTCNT:begin
+   fRINTCNT:=TPasRISCVUInt16(aValue);
+  end;
+  HDA_REG_RIRBCTL:begin
+   fRIRBCTL:=TPasRISCVUInt8(aValue);
+  end;
+  HDA_REG_RIRBSTS:begin
+   // Write-1-to-clear
+   Val8:=TPasRISCVUInt8(aValue);
+   if (Val8 and HDA_RIRBSTS_RINTFL)<>0 then begin
+    fRIRBSTS:=fRIRBSTS and (not HDA_RIRBSTS_RINTFL);
+   end;
+   if (Val8 and HDA_RIRBSTS_RIRBOIS)<>0 then begin
+    fRIRBSTS:=fRIRBSTS and (not HDA_RIRBSTS_RIRBOIS);
+   end;
+   UpdateIRQ;
+   if (Val8 and HDA_RIRBSTS_RINTFL)<>0 then begin
+    // IRQ cleared -> reset count and run CORB again
+    fRIRBCount:=0;
+    RunCORB;
+   end;
+  end;
+  HDA_REG_RIRBSIZE:begin
+   fRIRBSize:=TPasRISCVUInt8(aValue) and 3;
+  end;
+  HDA_REG_ICW:begin
+   fICW:=TPasRISCVUInt32(aValue);
+  end;
+  HDA_REG_ICS:begin
+   fICS:=TPasRISCVUInt16(aValue);
+   if (fICS and HDA_ICS_BUSY)<>0 then begin
+    RunCORB;
+   end;
+  end;
+  HDA_REG_DPLBASE:begin
+   fDPLBase:=TPasRISCVUInt32(aValue);
+  end;
+  HDA_REG_DPUBASE:begin
+   fDPUBase:=TPasRISCVUInt32(aValue);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THDADevice.OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+const OneOver128=1.0/128.0;
+      OneOver32768=1.0/32768.0;
+var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
+    Dest:PPasRISCVUInt8Array;
+    SrcPtr:Pointer;
+    Is16Bit,IsStereo:Boolean;
+    SrcRate,DstRate:TPasRISCVUInt64;
+    Bits,Channels,SampleRate:TPasRISCVUInt32;
+    FrameSize:TPasRISCVUInt32;
+    FloatSample:TPasRISCVFloat;
+    SampleIndex:TPasRISCVSizeInt;
+    Sample16:TPasRISCVInt16;
+    Sample32:TPasRISCVInt32;
+    Sample8:TPasRISCVUInt8;
+    p:PPasRISCVUInt8;
+    Stream:PHDAStream;
+    BDLAddr:TPasRISCVUInt64;
+    BDLEntry:array[0..15] of TPasRISCVUInt8;
+    BDLPtr:PPasRISCVUInt8;
+    EntryAddr:TPasRISCVUInt64;
+    EntryLen,EntryFlags:TPasRISCVUInt32;
+    BytesAvail:TPasRISCVUInt32;
+    DPAddr:TPasRISCVUInt64;
+    DPPtr:PPasRISCVUInt8Array;
+begin
+ // Clear output buffer
+ Remain:=aCount*2*SizeOf(TPasRISCVFloat);
+ FillChar(aBuffer^,Remain,#0);
+
+ // Find the active output stream linked to the codec DAC
+ Stream:=FindOutputStreamForCodec;
+ if (not assigned(Stream)) or (not Stream^.Running) then begin
+  exit;
+ end;
+
+ if Stream^.CBL=0 then begin
+  exit;
+ end;
+
+ // Parse format from the codec (set by SET_CONV_FMT on DAC node)
+ ParseStreamFormat(fCodecOutputFmt,SampleRate,Bits,Channels);
+ if SampleRate=0 then begin
+  SampleRate:=48000;
+ end;
+ if Bits=0 then begin
+  Bits:=16;
+ end;
+ if Channels=0 then begin
+  Channels:=2;
+ end;
+
+ Is16Bit:=Bits=16;
+ IsStereo:=Channels>=2;
+ FrameSize:=(Bits div 8)*Channels;
+ if FrameSize=0 then begin
+  exit;
+ end;
+
+ SrcRate:=SampleRate;
+ DstRate:=fSoundIO.fSampleRate;
+
+ BDLAddr:=(TPasRISCVUInt64(Stream^.BDLPU) shl 32) or Stream^.BDLPL;
+
+ Dest:=aBuffer;
+
+ while Remain>0 do begin
+
+  // Read current BDL entry
+  BDLPtr:=GetGlobalDirectMemoryAccessPointer(BDLAddr+(TPasRISCVUInt64(Stream^.BDLEntryIndex)*16),16,false,nil);
+  if not assigned(BDLPtr) then begin
+   break;
+  end;
+  Move(BDLPtr^,BDLEntry[0],16);
+  EntryAddr:=TPasRISCVUInt64(BDLEntry[0]) or
+             (TPasRISCVUInt64(BDLEntry[1]) shl 8) or
+             (TPasRISCVUInt64(BDLEntry[2]) shl 16) or
+             (TPasRISCVUInt64(BDLEntry[3]) shl 24) or
+             (TPasRISCVUInt64(BDLEntry[4]) shl 32) or
+             (TPasRISCVUInt64(BDLEntry[5]) shl 40) or
+             (TPasRISCVUInt64(BDLEntry[6]) shl 48) or
+             (TPasRISCVUInt64(BDLEntry[7]) shl 56);
+  EntryLen:=TPasRISCVUInt32(BDLEntry[8]) or
+            (TPasRISCVUInt32(BDLEntry[9]) shl 8) or
+            (TPasRISCVUInt32(BDLEntry[10]) shl 16) or
+            (TPasRISCVUInt32(BDLEntry[11]) shl 24);
+  EntryFlags:=TPasRISCVUInt32(BDLEntry[12]) or
+              (TPasRISCVUInt32(BDLEntry[13]) shl 8) or
+              (TPasRISCVUInt32(BDLEntry[14]) shl 16) or
+              (TPasRISCVUInt32(BDLEntry[15]) shl 24);
+
+  if EntryLen=0 then begin
+   break;
+  end;
+
+  // How many bytes available in this BDL entry?
+  BytesAvail:=EntryLen-Stream^.BDLBytePos;
+  if BytesAvail=0 then begin
+   // Advance to next BDL entry
+   if (EntryFlags and 1)<>0 then begin
+    // IOC - interrupt on completion
+    Stream^.STS:=Stream^.STS or HDA_SDSTS_BCIS;
+    UpdateIRQ;
+   end;
+   Stream^.BDLBytePos:=0;
+   inc(Stream^.BDLEntryIndex);
+   if Stream^.BDLEntryIndex>Stream^.LVI then begin
+    Stream^.BDLEntryIndex:=0;
+    Stream^.LPIB:=0;
+   end;
+   continue;
+  end;
+
+  SrcSamples:=BytesAvail div FrameSize;
+  if SrcSamples<=0 then begin
+   break;
+  end;
+
+  DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+  if DstSamples<=0 then begin
+   break;
+  end;
+
+  if SrcRate=DstRate then begin
+   if SrcSamples>DstSamples then begin
+    SrcSamples:=DstSamples;
+   end;
+  end else begin
+   ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+   if SrcSamples>ToDo then begin
+    SrcSamples:=ToDo;
+   end;
+  end;
+
+  CopyBytes:=SrcSamples*FrameSize;
+
+  // Read PCM data from guest memory
+  SrcPtr:=GetGlobalDirectMemoryAccessPointer(EntryAddr+Stream^.BDLBytePos,CopyBytes,false,nil);
+  if not assigned(SrcPtr) then begin
+   inc(Stream^.BDLBytePos,CopyBytes);
+   inc(Stream^.LPIB,CopyBytes);
+   break;
+  end;
+
+  // Convert to stereo float
+  if length(fPlayScratchBuffer)<(SrcSamples*2) then begin
+   SetLength(fPlayScratchBuffer,SrcSamples*4);
+  end;
+
+  p:=SrcPtr;
+  for SampleIndex:=0 to SrcSamples-1 do begin
+   case Bits of
+    16:begin
+     Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+     inc(p,2);
+     FloatSample:=Sample16*OneOver32768;
+     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+     if IsStereo then begin
+      Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+      inc(p,2);
+      FloatSample:=Sample16*OneOver32768;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+     end else begin
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+     end;
+    end;
+    32:begin
+     Sample32:=TPasRISCVInt32(PPasRISCVUInt8Array(p)^[0] or
+               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 8) or
+               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 16) or
+               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[3]) shl 24));
+     inc(p,4);
+     FloatSample:=Sample32/2147483648.0;
+     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+     if IsStereo then begin
+      Sample32:=TPasRISCVInt32(PPasRISCVUInt8Array(p)^[0] or
+                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 8) or
+                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 16) or
+                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[3]) shl 24));
+      inc(p,4);
+      FloatSample:=Sample32/2147483648.0;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+     end else begin
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+     end;
+    end;
+    24:begin
+     Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 8) or
+               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 16) or
+               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 24));
+     inc(p,3);
+     FloatSample:=Sample32/2147483648.0;
+     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+     if IsStereo then begin
+      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 8) or
+                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 16) or
+                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 24));
+      inc(p,3);
+      FloatSample:=Sample32/2147483648.0;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+     end else begin
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+     end;
+    end;
+    else begin
+     // 8-bit
+     Sample8:=p^;
+     inc(p);
+     FloatSample:=(Sample8-128)*OneOver128;
+     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+     if IsStereo then begin
+      Sample8:=p^;
+      inc(p);
+      FloatSample:=(Sample8-128)*OneOver128;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+     end else begin
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+     end;
+    end;
+   end;
+  end;
+
+  // Advance BDL position
+  inc(Stream^.BDLBytePos,CopyBytes);
+  inc(Stream^.LPIB,CopyBytes);
+
+  // Update DMA position buffer if enabled
+  if (fDPLBase and 1)<>0 then begin
+   DPAddr:=(TPasRISCVUInt64(fDPUBase) shl 32) or (fDPLBase and (not TPasRISCVUInt32(1)));
+   // Stream index * 8 bytes offset
+   if Stream=FindOutputStreamForCodec then begin
+    DPPtr:=GetGlobalDirectMemoryAccessPointer(DPAddr+(TPasRISCVUInt64((TPasRISCVPtrUInt(Pointer(Stream))-TPasRISCVPtrUInt(Pointer(@fStreams[0]))) div SizeOf(THDAStream))*8),4,true,nil);
+    if assigned(DPPtr) then begin
+     DPPtr^[0]:=TPasRISCVUInt8(Stream^.LPIB and $ff);
+     DPPtr^[1]:=TPasRISCVUInt8((Stream^.LPIB shr 8) and $ff);
+     DPPtr^[2]:=TPasRISCVUInt8((Stream^.LPIB shr 16) and $ff);
+     DPPtr^[3]:=TPasRISCVUInt8((Stream^.LPIB shr 24) and $ff);
+    end;
+   end;
+  end;
+
+  // Check if we crossed BDL entry boundary
+  if Stream^.BDLBytePos>=EntryLen then begin
+   if (EntryFlags and 1)<>0 then begin
+    Stream^.STS:=Stream^.STS or HDA_SDSTS_BCIS;
+    UpdateIRQ;
+   end;
+   Stream^.BDLBytePos:=0;
+   inc(Stream^.BDLEntryIndex);
+   if Stream^.BDLEntryIndex>Stream^.LVI then begin
+    Stream^.BDLEntryIndex:=0;
+    Stream^.LPIB:=0;
+   end;
+  end;
+
+  // Wrap LPIB at CBL
+  if (Stream^.CBL>0) and (Stream^.LPIB>=Stream^.CBL) then begin
+   Stream^.LPIB:=0;
+  end;
+
+  // Resample and copy to output
+  if SrcRate=DstRate then begin
+   CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+   if CopyBytes>Remain then begin
+    CopyBytes:=Remain;
+   end;
+   Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
+   inc(Dest,CopyBytes);
+   dec(Remain,CopyBytes);
+  end else begin
+   DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+   ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
+   if ToDo>DstSamples then begin
+    ToDo:=DstSamples;
+   end;
+   if ToDo>0 then begin
+    if length(fPlayResampleBuffer)<(ToDo*2) then begin
+     SetLength(fPlayResampleBuffer,ToDo*4);
+    end;
+    ResampleLinear(@fPlayScratchBuffer[0],
+                   SrcSamples,
+                   @fPlayResampleBuffer[0],
+                   ToDo,
+                   2,
+                   @fPlayPreviousFrameEndValues[0],
+                   fPlayResamplerPosition,
+                   ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
+    CopyBytes:=ToDo*2*SizeOf(TPasRISCVFloat);
+    Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
+   end;
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.THDADevice.InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
+const OneOver32768=1.0/32768.0;
+var Remain,ToDo,SrcSamples,DstSamples:TPasRISCVSizeInt;
+    FloatSrc:PPasRISCVFloatArray;
+    SrcRate,DstRate:TPasRISCVUInt64;
+    Bits,Channels,SampleRate:TPasRISCVUInt32;
+    FrameSize:TPasRISCVUInt32;
+    FloatSample:TPasRISCVFloat;
+    SampleIndex:TPasRISCVSizeInt;
+    Sample16:TPasRISCVInt16;
+    p:PPasRISCVUInt8;
+    DstPtr:Pointer;
+    Stream:PHDAStream;
+    BDLAddr:TPasRISCVUInt64;
+    BDLEntry:array[0..15] of TPasRISCVUInt8;
+    BDLPtr:PPasRISCVUInt8;
+    EntryAddr:TPasRISCVUInt64;
+    EntryLen,EntryFlags:TPasRISCVUInt32;
+    BytesAvail:TPasRISCVUInt32;
+    CopyBytes:TPasRISCVSizeInt;
+    Is16Bit,IsStereo:Boolean;
+    SampleFrameSize:TPasRISCVUInt32;
+begin
+ // Find the active input stream linked to the codec ADC
+ Stream:=FindInputStreamForCodec;
+ if (not assigned(Stream)) or (not Stream^.Running) then begin
+  exit;
+ end;
+
+ if Stream^.CBL=0 then begin
+  exit;
+ end;
+
+ ParseStreamFormat(fCodecInputFmt,SampleRate,Bits,Channels);
+ if SampleRate=0 then begin
+  SampleRate:=48000;
+ end;
+ if Bits=0 then begin
+  Bits:=16;
+ end;
+ if Channels=0 then begin
+  Channels:=2;
+ end;
+
+ Is16Bit:=Bits=16;
+ IsStereo:=Channels>=2;
+ SampleFrameSize:=(Bits div 8)*Channels;
+ if SampleFrameSize=0 then begin
+  exit;
+ end;
+
+ SrcRate:=fSoundIO.fSampleRate;
+ DstRate:=SampleRate;
+
+ BDLAddr:=(TPasRISCVUInt64(Stream^.BDLPU) shl 32) or Stream^.BDLPL;
+
+ FloatSrc:=PPasRISCVFloatArray(aBuffer);
+ Remain:=aCount;
+
+ while Remain>0 do begin
+
+  // Read current BDL entry
+  BDLPtr:=GetGlobalDirectMemoryAccessPointer(BDLAddr+(TPasRISCVUInt64(Stream^.BDLEntryIndex)*16),16,false,nil);
+  if not assigned(BDLPtr) then begin
+   break;
+  end;
+  Move(BDLPtr^,BDLEntry[0],16);
+  EntryAddr:=TPasRISCVUInt64(BDLEntry[0]) or
+             (TPasRISCVUInt64(BDLEntry[1]) shl 8) or
+             (TPasRISCVUInt64(BDLEntry[2]) shl 16) or
+             (TPasRISCVUInt64(BDLEntry[3]) shl 24) or
+             (TPasRISCVUInt64(BDLEntry[4]) shl 32) or
+             (TPasRISCVUInt64(BDLEntry[5]) shl 40) or
+             (TPasRISCVUInt64(BDLEntry[6]) shl 48) or
+             (TPasRISCVUInt64(BDLEntry[7]) shl 56);
+  EntryLen:=TPasRISCVUInt32(BDLEntry[8]) or
+            (TPasRISCVUInt32(BDLEntry[9]) shl 8) or
+            (TPasRISCVUInt32(BDLEntry[10]) shl 16) or
+            (TPasRISCVUInt32(BDLEntry[11]) shl 24);
+  EntryFlags:=TPasRISCVUInt32(BDLEntry[12]) or
+              (TPasRISCVUInt32(BDLEntry[13]) shl 8) or
+              (TPasRISCVUInt32(BDLEntry[14]) shl 16) or
+              (TPasRISCVUInt32(BDLEntry[15]) shl 24);
+
+  if EntryLen=0 then begin
+   break;
+  end;
+
+  BytesAvail:=EntryLen-Stream^.BDLBytePos;
+  if BytesAvail=0 then begin
+   if (EntryFlags and 1)<>0 then begin
+    Stream^.STS:=Stream^.STS or HDA_SDSTS_BCIS;
+    UpdateIRQ;
+   end;
+   Stream^.BDLBytePos:=0;
+   inc(Stream^.BDLEntryIndex);
+   if Stream^.BDLEntryIndex>Stream^.LVI then begin
+    Stream^.BDLEntryIndex:=0;
+    Stream^.LPIB:=0;
+   end;
+   continue;
+  end;
+
+  DstSamples:=BytesAvail div SampleFrameSize;
+  if DstSamples<=0 then begin
+   break;
+  end;
+
+  SrcSamples:=Remain;
+  if SrcSamples<=0 then begin
+   break;
+  end;
+
+  if SrcRate=DstRate then begin
+   if DstSamples>SrcSamples then begin
+    DstSamples:=SrcSamples;
+   end;
+   SrcSamples:=DstSamples;
+  end else begin
+   ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+   if SrcSamples>ToDo then begin
+    SrcSamples:=ToDo;
+   end;
+   DstSamples:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
+   if DstSamples<=0 then begin
+    DstSamples:=1;
+   end;
+  end;
+
+  // Get guest memory for writing
+  CopyBytes:=DstSamples*SampleFrameSize;
+  DstPtr:=GetGlobalDirectMemoryAccessPointer(EntryAddr+Stream^.BDLBytePos,CopyBytes,true,nil);
+  if not assigned(DstPtr) then begin
+   inc(Stream^.BDLBytePos,CopyBytes);
+   inc(Stream^.LPIB,CopyBytes);
+   break;
+  end;
+
+  // If resampling needed, resample first
+  if SrcRate<>DstRate then begin
+   if length(fCaptureScratchBuffer)<(DstSamples*2) then begin
+    SetLength(fCaptureScratchBuffer,DstSamples*4);
+   end;
+   if length(fCaptureResampleBuffer)<(SrcSamples*2) then begin
+    SetLength(fCaptureResampleBuffer,SrcSamples*4);
+   end;
+   // Copy source samples into resample buffer
+   Move(FloatSrc^[0],fCaptureResampleBuffer[0],SrcSamples*2*SizeOf(TPasRISCVFloat));
+   ResampleLinear(@fCaptureResampleBuffer[0],
+                  SrcSamples,
+                  @fCaptureScratchBuffer[0],
+                  DstSamples,
+                  2,
+                  @fCapturePreviousFrameEndValues[0],
+                  fCaptureResamplerPosition,
+                  ConvertScale(TPasRISCVUInt64($100000000),SrcRate,DstRate));
+   FloatSrc:=@fCaptureScratchBuffer[0];
+  end;
+
+  p:=DstPtr;
+  for SampleIndex:=0 to DstSamples-1 do begin
+   FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+   if FloatSample>1.0 then begin
+    FloatSample:=1.0;
+   end else if FloatSample<-1.0 then begin
+    FloatSample:=-1.0;
+   end;
+   if Is16Bit then begin
+    Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+    p^:=TPasRISCVUInt8(Sample16 and $ff);
+    inc(p);
+    p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+    inc(p);
+   end else begin
+    p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+    inc(p);
+   end;
+   if IsStereo then begin
+    FloatSample:=PPasRISCVFloatArray(FloatSrc)^[(SampleIndex*2)+1];
+    if FloatSample>1.0 then begin
+     FloatSample:=1.0;
+    end else if FloatSample<-1.0 then begin
+     FloatSample:=-1.0;
+    end;
+    if Is16Bit then begin
+     Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+     p^:=TPasRISCVUInt8(Sample16 and $ff);
+     inc(p);
+     p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+     inc(p);
+    end else begin
+     p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+     inc(p);
+    end;
+   end;
+  end;
+
+  // Advance positions
+  inc(Stream^.BDLBytePos,CopyBytes);
+  inc(Stream^.LPIB,CopyBytes);
+
+  if Stream^.BDLBytePos>=EntryLen then begin
+   if (EntryFlags and 1)<>0 then begin
+    Stream^.STS:=Stream^.STS or HDA_SDSTS_BCIS;
+    UpdateIRQ;
+   end;
+   Stream^.BDLBytePos:=0;
+   inc(Stream^.BDLEntryIndex);
+   if Stream^.BDLEntryIndex>Stream^.LVI then begin
+    Stream^.BDLEntryIndex:=0;
+    Stream^.LPIB:=0;
+   end;
+  end;
+
+  if (Stream^.CBL>0) and (Stream^.LPIB>=Stream^.CBL) then begin
+   Stream^.LPIB:=0;
+  end;
+
+  // Advance source float pointer
+  FloatSrc:=PPasRISCVFloatArray(@PPasRISCVFloatArray(aBuffer)^[((aCount-Remain)+SrcSamples)*2]);
+  dec(Remain,SrcSamples);
 
  end;
 
@@ -74636,21 +76648,31 @@ begin
    fVirtIOSoundDevice:=TVirtIOSoundDevice.Create(self,fSoundIO);
    fFM801Device:=nil;
    fCMI8738Device:=nil;
+   fHDADevice:=nil;
   end;
   TSoundMode.FM801:begin
    fVirtIOSoundDevice:=nil;
    fFM801Device:=nil; // FM801 is created later after fPCIBusDevice
    fCMI8738Device:=nil;
+   fHDADevice:=nil;
   end;
   TSoundMode.CMI8738:begin
    fVirtIOSoundDevice:=nil;
    fFM801Device:=nil;
    fCMI8738Device:=nil; // CMI8738 is created later after fPCIBusDevice
+   fHDADevice:=nil;
+  end;
+  TSoundMode.HDA:begin
+   fVirtIOSoundDevice:=nil;
+   fFM801Device:=nil;
+   fCMI8738Device:=nil;
+   fHDADevice:=nil; // HDA is created later after fPCIBusDevice
   end;
   else begin
    fVirtIOSoundDevice:=nil;
    fFM801Device:=nil;
    fCMI8738Device:=nil;
+   fHDADevice:=nil;
   end;
  end;
 
@@ -74789,6 +76811,11 @@ begin
   fPCIBusDevice.AddBusDevice(fCMI8738Device);
  end;
 
+ if fConfiguration.fSoundMode=TSoundMode.HDA then begin
+  fHDADevice:=THDADevice.Create(fPCIBusDevice,fSoundIO);
+  fPCIBusDevice.AddBusDevice(fHDADevice);
+ end;
+
  fHARTs:=nil;
  SetLength(fHARTs,fCountHARTs);
  for Index:=0 to length(fHARTs)-1 do begin
@@ -74879,6 +76906,11 @@ begin
  if assigned(fCMI8738Device) then begin
   fPCIBusDevice.RemoveBusDevice(fCMI8738Device);
   FreeAndNil(fCMI8738Device);
+ end;
+
+ if assigned(fHDADevice) then begin
+  fPCIBusDevice.RemoveBusDevice(fHDADevice);
+  FreeAndNil(fHDADevice);
  end;
 
  fPCIBusDevice.RemoveBusDevice(fIVSHMEMDevice);
@@ -76017,6 +78049,7 @@ begin
 
      // FM801 is a PCI device - discovered via PCI enumeration, no FDT node needed
      // CMI8738 is a PCI device - discovered via PCI enumeration, no FDT node needed
+     // HDA is a PCI device - discovered via PCI enumeration, no FDT node needed
 
      VirtIO9PNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIO9PBase);
      try
