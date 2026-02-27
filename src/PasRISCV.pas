@@ -31134,7 +31134,7 @@ const OneOver128=1.0/128.0;
 var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
     Dest:PPasRISCVUInt8;
     SrcPtr:Pointer;
-    Is16Bit,IsStereo:Boolean;
+    IsStereo:Boolean;
     SrcRate,DstRate:TPasRISCVUInt64;
     Bits,Channels,SampleRate:TPasRISCVUInt32;
     FrameSize:TPasRISCVUInt32;
@@ -31180,7 +31180,6 @@ begin
   Channels:=2;
  end;
 
- Is16Bit:=Bits=16;
  IsStereo:=Channels>=2;
  FrameSize:=(Bits div 8)*Channels;
  if FrameSize=0 then begin
@@ -31278,8 +31277,6 @@ begin
   end;
 
   p:=SrcPtr;
-  if Is16Bit then begin
-  end;
   case Bits of
    8:begin
     if IsStereo then begin
@@ -31480,7 +31477,9 @@ var Remain,ToDo,SrcSamples,DstSamples:TPasRISCVSizeInt;
     FrameSize:TPasRISCVUInt32;
     FloatSample:TPasRISCVFloat;
     SampleIndex:TPasRISCVSizeInt;
+    Sample8:TPasRISCVUInt8;
     Sample16:TPasRISCVInt16;
+    Sample32:TPasRISCVInt32;
     p:PPasRISCVUInt8;
     DstPtr:Pointer;
     Stream:PHDAStream;
@@ -31491,7 +31490,7 @@ var Remain,ToDo,SrcSamples,DstSamples:TPasRISCVSizeInt;
     EntryLen,EntryFlags:TPasRISCVUInt32;
     BytesAvail:TPasRISCVUInt32;
     CopyBytes:TPasRISCVSizeInt;
-    Is16Bit,IsStereo:Boolean;
+    IsStereo:Boolean;
     SampleFrameSize:TPasRISCVUInt32;
 begin
  // Find the active input stream linked to the codec ADC
@@ -31515,7 +31514,6 @@ begin
   Channels:=2;
  end;
 
- Is16Bit:=Bits=16;
  IsStereo:=Channels>=2;
  SampleFrameSize:=(Bits div 8)*Channels;
  if SampleFrameSize=0 then begin
@@ -31631,40 +31629,186 @@ begin
   end;
 
   p:=DstPtr;
-  for SampleIndex:=0 to DstSamples-1 do begin
-   FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
-   if FloatSample>1.0 then begin
-    FloatSample:=1.0;
-   end else if FloatSample<-1.0 then begin
-    FloatSample:=-1.0;
-   end;
-   if Is16Bit then begin
-    Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
-    p^:=TPasRISCVUInt8(Sample16 and $ff);
-    inc(p);
-    p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
-    inc(p);
-   end else begin
-    p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
-    inc(p);
-   end;
-   if IsStereo then begin
-    FloatSample:=PPasRISCVFloatArray(FloatSrc)^[(SampleIndex*2)+1];
-    if FloatSample>1.0 then begin
-     FloatSample:=1.0;
-    end else if FloatSample<-1.0 then begin
-     FloatSample:=-1.0;
-    end;
-    if Is16Bit then begin
-     Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
-     p^:=TPasRISCVUInt8(Sample16 and $ff);
-     inc(p);
-     p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
-     inc(p);
+  case Bits of
+   8:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+      inc(p);
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[(SampleIndex*2)+1];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+      inc(p);
+     end;
     end else begin
-     p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
-     inc(p);
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      p^:=TPasRISCVUInt8(Trunc((FloatSample*128.0)+128.0));
+      inc(p);
+     end;
     end;
+   end;
+   16:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+      p^:=TPasRISCVUInt8(Sample16 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+      inc(p);
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[(SampleIndex*2)+1];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+      p^:=TPasRISCVUInt8(Sample16 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+      inc(p);
+     end;
+    end else begin
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample16:=TPasRISCVInt16(Trunc(FloatSample*32767.0));
+      p^:=TPasRISCVUInt8(Sample16 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample16 shr 8) and $ff);
+      inc(p);
+     end;
+    end;
+   end;
+   24:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample32:=TPasRISCVInt32(Trunc(FloatSample*8388607.0));
+      p^:=TPasRISCVUInt8(Sample32 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 8) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 16) and $ff);
+      inc(p);
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[(SampleIndex*2)+1];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample32:=TPasRISCVInt32(Trunc(FloatSample*8388607.0));
+      p^:=TPasRISCVUInt8(Sample32 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 8) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 16) and $ff);
+      inc(p);
+     end;
+    end else begin
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample32:=TPasRISCVInt32(Trunc(FloatSample*8388607.0));
+      p^:=TPasRISCVUInt8(Sample32 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 8) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 16) and $ff);
+      inc(p);
+     end;
+    end;
+   end;
+   32:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample32:=TPasRISCVInt32(Trunc(FloatSample*2147483647.0));
+      p^:=TPasRISCVUInt8(Sample32 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 8) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 16) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 24) and $ff);
+      inc(p);
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[(SampleIndex*2)+1];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample32:=TPasRISCVInt32(Trunc(FloatSample*2147483647.0));
+      p^:=TPasRISCVUInt8(Sample32 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 8) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 16) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 24) and $ff);
+      inc(p);
+     end;
+    end else begin
+     for SampleIndex:=0 to DstSamples-1 do begin
+      FloatSample:=PPasRISCVFloatArray(FloatSrc)^[SampleIndex*2];
+      if FloatSample>1.0 then begin
+       FloatSample:=1.0;
+      end else if FloatSample<-1.0 then begin
+       FloatSample:=-1.0;
+      end;
+      Sample32:=TPasRISCVInt32(Trunc(FloatSample*2147483647.0));
+      p^:=TPasRISCVUInt8(Sample32 and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 8) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 16) and $ff);
+      inc(p);
+      p^:=TPasRISCVUInt8((Sample32 shr 24) and $ff);
+      inc(p);
+     end;
+    end;
+   end;
+   else begin
+    // Silence for unsupported bit depths
    end;
   end;
 
