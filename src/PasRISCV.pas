@@ -31130,8 +31130,9 @@ end;
 procedure TPasRISCV.THDADevice.OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
 const OneOver128=1.0/128.0;
       OneOver32768=1.0/32768.0;
+      OneOver2147483648=1.0/2147483648.0;
 var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
-    Dest:PPasRISCVUInt8Array;
+    Dest:PPasRISCVUInt8;
     SrcPtr:Pointer;
     Is16Bit,IsStereo:Boolean;
     SrcRate,DstRate:TPasRISCVUInt64;
@@ -31277,74 +31278,117 @@ begin
   end;
 
   p:=SrcPtr;
-  for SampleIndex:=0 to SrcSamples-1 do begin
-   case Bits of
-    16:begin
-     Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
-     inc(p,2);
-     FloatSample:=Sample16*OneOver32768;
-     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
-     if IsStereo then begin
-      Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
-      inc(p,2);
-      FloatSample:=Sample16*OneOver32768;
-      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
-     end else begin
-      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
-     end;
-    end;
-    32:begin
-     Sample32:=TPasRISCVInt32(PPasRISCVUInt8Array(p)^[0] or
-               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 8) or
-               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 16) or
-               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[3]) shl 24));
-     inc(p,4);
-     FloatSample:=Sample32/2147483648.0;
-     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
-     if IsStereo then begin
-      Sample32:=TPasRISCVInt32(PPasRISCVUInt8Array(p)^[0] or
-                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 8) or
-                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 16) or
-                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[3]) shl 24));
-      inc(p,4);
-      FloatSample:=Sample32/2147483648.0;
-      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
-     end else begin
-      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
-     end;
-    end;
-    24:begin
-     Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 8) or
-               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 16) or
-               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 24));
-     inc(p,3);
-     FloatSample:=Sample32/2147483648.0;
-     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
-     if IsStereo then begin
-      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 8) or
-                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 16) or
-                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 24));
-      inc(p,3);
-      FloatSample:=Sample32/2147483648.0;
-      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
-     end else begin
-      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
-     end;
-    end;
-    else begin
-     // 8-bit
-     Sample8:=p^;
-     inc(p);
-     FloatSample:=(Sample8-128)*OneOver128;
-     fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
-     if IsStereo then begin
+  if Is16Bit then begin
+  end;
+  case Bits of
+   8:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample8:=p^;
+      inc(p);
+      FloatSample:=(Sample8-128)*OneOver128;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
       Sample8:=p^;
       inc(p);
       FloatSample:=(Sample8-128)*OneOver128;
       fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
-     end else begin
+     end;
+    end else begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample8:=p^;
+      inc(p);
+      FloatSample:=(Sample8-128)*OneOver128;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
       fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
      end;
+    end;
+   end;
+   16:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+      inc(p,2);
+      FloatSample:=Sample16*OneOver32768;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+      Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+      inc(p,2);
+      FloatSample:=Sample16*OneOver32768;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+     end;
+    end else begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample16:=TPasRISCVInt16(PPasRISCVUInt8Array(p)^[0] or (TPasRISCVUInt16(PPasRISCVUInt8Array(p)^[1]) shl 8));
+      inc(p,2);
+      FloatSample:=Sample16*OneOver32768;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+     end;
+    end;
+   end;
+   24:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 8) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 16) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 24));
+      inc(p,3);
+      FloatSample:=Sample32*OneOver2147483648;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 8) or
+                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 16) or
+                (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 24));
+      inc(p,3);
+      FloatSample:=Sample32*OneOver2147483648;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+     end;
+    end else begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 8) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 16) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 24));
+      inc(p,3);
+      FloatSample:=Sample32*OneOver2147483648;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+     end;
+    end;
+   end;
+   32:begin
+    if IsStereo then begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 0) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 8) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 16) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[3]) shl 24));
+      inc(p,4);
+      FloatSample:=Sample32*OneOver2147483648;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 0) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 8) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 16) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[3]) shl 24));
+      inc(p,4);
+      FloatSample:=Sample32/2147483648.0;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=FloatSample;
+     end;
+    end else begin
+     for SampleIndex:=0 to SrcSamples-1 do begin
+      Sample32:=TPasRISCVInt32((TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[0]) shl 0) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[1]) shl 8) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[2]) shl 16) or
+                               (TPasRISCVUInt32(PPasRISCVUInt8Array(p)^[3]) shl 24));
+      inc(p,4);
+      FloatSample:=Sample32*OneOver2147483648;
+      fPlayScratchBuffer[SampleIndex*2]:=FloatSample;
+      fPlayScratchBuffer[(SampleIndex*2)+1]:=fPlayScratchBuffer[SampleIndex*2];
+     end;
+    end;
+   end;
+   else begin
+    // Silence for unsupported bit depths
+    for SampleIndex:=0 to SrcSamples-1 do begin
+     fPlayScratchBuffer[SampleIndex*2]:=0.0;
+     fPlayScratchBuffer[(SampleIndex*2)+1]:=0.0;
     end;
    end;
   end;
@@ -31357,7 +31401,7 @@ begin
   if (fDPLBase and 1)<>0 then begin
    DPAddr:=(TPasRISCVUInt64(fDPUBase) shl 32) or (fDPLBase and (not TPasRISCVUInt32(1)));
    // Stream index * 8 bytes offset
-   if Stream=FindOutputStreamForCodec then begin
+   {if Stream=FindOutputStreamForCodec then}begin
     DPPtr:=GetGlobalDirectMemoryAccessPointer(DPAddr+(TPasRISCVUInt64((TPasRISCVPtrUInt(Pointer(Stream))-TPasRISCVPtrUInt(Pointer(@fStreams[0]))) div SizeOf(THDAStream))*8),4,true,nil);
     if assigned(DPPtr) then begin
      DPPtr^[0]:=TPasRISCVUInt8(Stream^.LPIB and $ff);
@@ -31426,7 +31470,9 @@ begin
 end;
 
 procedure TPasRISCV.THDADevice.InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
-const OneOver32768=1.0/32768.0;
+const OneOver128=1.0/128.0;
+      OneOver32768=1.0/32768.0;
+      OneOver2147483648=1.0/2147483648.0;
 var Remain,ToDo,SrcSamples,DstSamples:TPasRISCVSizeInt;
     FloatSrc:PPasRISCVFloatArray;
     SrcRate,DstRate:TPasRISCVUInt64;
