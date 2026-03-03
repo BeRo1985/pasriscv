@@ -10406,6 +10406,51 @@ const fmCreateTemporary=4;
       CPUFeatures_X86_LZCNT_Mask=1 shl 5;
       CPUFeatures_X86_BMI1_Mask=1 shl 6;
 
+      PasRISCVOPL3EmuExpROM:array[0..255] of TPasRISCVUInt16=
+       (
+        $7fa,$7f5,$7ef,$7ea,$7e4,$7df,$7da,$7d4,$7cf,$7c9,$7c4,$7bf,$7b9,$7b4,$7ae,$7a9,
+        $7a4,$79f,$799,$794,$78f,$78a,$784,$77f,$77a,$775,$770,$76a,$765,$760,$75b,$756,
+        $751,$74c,$747,$742,$73d,$738,$733,$72e,$729,$724,$71f,$71a,$715,$710,$70b,$706,
+        $702,$6fd,$6f8,$6f3,$6ee,$6e9,$6e5,$6e0,$6db,$6d6,$6d2,$6cd,$6c8,$6c4,$6bf,$6ba,
+        $6b5,$6b1,$6ac,$6a8,$6a3,$69e,$69a,$695,$691,$68c,$688,$683,$67f,$67a,$676,$671,
+        $66d,$668,$664,$65f,$65b,$657,$652,$64e,$649,$645,$641,$63c,$638,$634,$630,$62b,
+        $627,$623,$61e,$61a,$616,$612,$60e,$609,$605,$601,$5fd,$5f9,$5f5,$5f0,$5ec,$5e8,
+        $5e4,$5e0,$5dc,$5d8,$5d4,$5d0,$5cc,$5c8,$5c4,$5c0,$5bc,$5b8,$5b4,$5b0,$5ac,$5a8,
+        $5a4,$5a0,$59c,$599,$595,$591,$58d,$589,$585,$581,$57e,$57a,$576,$572,$56f,$56b,
+        $567,$563,$560,$55c,$558,$554,$551,$54d,$549,$546,$542,$53e,$53b,$537,$534,$530,
+        $52c,$529,$525,$522,$51e,$51b,$517,$514,$510,$50c,$509,$506,$502,$4ff,$4fb,$4f8,
+        $4f4,$4f1,$4ed,$4ea,$4e7,$4e3,$4e0,$4dc,$4d9,$4d6,$4d2,$4cf,$4cc,$4c8,$4c5,$4c2,
+        $4be,$4bb,$4b8,$4b5,$4b1,$4ae,$4ab,$4a8,$4a4,$4a1,$49e,$49b,$498,$494,$491,$48e,
+        $48b,$488,$485,$482,$47e,$47b,$478,$475,$472,$46f,$46c,$469,$466,$463,$460,$45d,
+        $45a,$457,$454,$451,$44e,$44b,$448,$445,$442,$43f,$43c,$439,$436,$433,$430,$42d,
+        $42a,$428,$425,$422,$41f,$41c,$419,$416,$414,$411,$40e,$40b,$408,$406,$403,$400
+       );
+
+      PasRISCVOPL3EmuLogSinROM:array[0..255] of TPasRISCVUInt16=
+       (
+        $859,$6c3,$607,$58b,$52e,$4e4,$4a6,$471,$443,$41a,$3f5,$3d3,$3b5,$398,$37e,$365,
+        $34e,$339,$324,$311,$2ff,$2ed,$2dc,$2cd,$2bd,$2af,$2a0,$293,$286,$279,$26d,$261,
+        $256,$24b,$240,$236,$22c,$222,$218,$20f,$206,$1fd,$1f5,$1ec,$1e4,$1dc,$1d4,$1cd,
+        $1c5,$1be,$1b7,$1b0,$1a9,$1a2,$19b,$195,$18f,$188,$182,$17c,$177,$171,$16b,$166,
+        $160,$15b,$155,$150,$14b,$146,$141,$13c,$137,$133,$12e,$129,$125,$121,$11c,$118,
+        $114,$10f,$10b,$107,$103,$0ff,$0fb,$0f8,$0f4,$0f0,$0ec,$0e9,$0e5,$0e2,$0de,$0db,
+        $0d7,$0d4,$0d1,$0cd,$0ca,$0c7,$0c4,$0c1,$0be,$0bb,$0b8,$0b5,$0b2,$0af,$0ac,$0a9,
+        $0a7,$0a4,$0a1,$09f,$09c,$099,$097,$094,$092,$08f,$08d,$08a,$088,$086,$083,$081,
+        $07f,$07d,$07a,$078,$076,$074,$072,$070,$06e,$06c,$06a,$068,$066,$064,$062,$060,
+        $05e,$05c,$05b,$059,$057,$055,$053,$052,$050,$04e,$04d,$04b,$04a,$048,$046,$045,
+        $043,$042,$040,$03f,$03e,$03c,$03b,$039,$038,$037,$035,$034,$033,$031,$030,$02f,
+        $02e,$02d,$02b,$02a,$029,$028,$027,$026,$025,$024,$023,$022,$021,$020,$01f,$01e,
+        $01d,$01c,$01b,$01a,$019,$018,$017,$017,$016,$015,$014,$014,$013,$012,$011,$011,
+        $010,$00f,$00f,$00e,$00d,$00d,$00c,$00c,$00b,$00a,$00a,$009,$009,$008,$008,$007,
+        $007,$007,$006,$006,$005,$005,$005,$004,$004,$004,$003,$003,$003,$002,$002,$002,
+        $002,$001,$001,$001,$001,$001,$001,$001,$000,$000,$000,$000,$000,$000,$000,$000
+       );
+       
+      PasRISCVOPL3EmuKSLRom:array[0..15] of TPasRISCVUInt8=
+       (
+        0,32,40,45,48,51,53,55,56,58,59,60,61,62,63,64
+       );
+
 var CPUFeatures:TPasRISCVCPUFeatures=0;
 
     FloatToHalfFloatBaseTable:array[0..511] of TPasRISCVUInt16;
@@ -20958,54 +21003,16 @@ begin
 end;
 
 function TPasRISCVOPL3Emu.CalcExp(const aLevel:TPasRISCVUInt32):TPasRISCVInt16;
-const ExpROM:array[0..255] of TPasRISCVUInt16=
-       (
-        $7fa,$7f5,$7ef,$7ea,$7e4,$7df,$7da,$7d4,$7cf,$7c9,$7c4,$7bf,$7b9,$7b4,$7ae,$7a9,
-        $7a4,$79f,$799,$794,$78f,$78a,$784,$77f,$77a,$775,$770,$76a,$765,$760,$75b,$756,
-        $751,$74c,$747,$742,$73d,$738,$733,$72e,$729,$724,$71f,$71a,$715,$710,$70b,$706,
-        $702,$6fd,$6f8,$6f3,$6ee,$6e9,$6e5,$6e0,$6db,$6d6,$6d2,$6cd,$6c8,$6c4,$6bf,$6ba,
-        $6b5,$6b1,$6ac,$6a8,$6a3,$69e,$69a,$695,$691,$68c,$688,$683,$67f,$67a,$676,$671,
-        $66d,$668,$664,$65f,$65b,$657,$652,$64e,$649,$645,$641,$63c,$638,$634,$630,$62b,
-        $627,$623,$61e,$61a,$616,$612,$60e,$609,$605,$601,$5fd,$5f9,$5f5,$5f0,$5ec,$5e8,
-        $5e4,$5e0,$5dc,$5d8,$5d4,$5d0,$5cc,$5c8,$5c4,$5c0,$5bc,$5b8,$5b4,$5b0,$5ac,$5a8,
-        $5a4,$5a0,$59c,$599,$595,$591,$58d,$589,$585,$581,$57e,$57a,$576,$572,$56f,$56b,
-        $567,$563,$560,$55c,$558,$554,$551,$54d,$549,$546,$542,$53e,$53b,$537,$534,$530,
-        $52c,$529,$525,$522,$51e,$51b,$517,$514,$510,$50c,$509,$506,$502,$4ff,$4fb,$4f8,
-        $4f4,$4f1,$4ed,$4ea,$4e7,$4e3,$4e0,$4dc,$4d9,$4d6,$4d2,$4cf,$4cc,$4c8,$4c5,$4c2,
-        $4be,$4bb,$4b8,$4b5,$4b1,$4ae,$4ab,$4a8,$4a4,$4a1,$49e,$49b,$498,$494,$491,$48e,
-        $48b,$488,$485,$482,$47e,$47b,$478,$475,$472,$46f,$46c,$469,$466,$463,$460,$45d,
-        $45a,$457,$454,$451,$44e,$44b,$448,$445,$442,$43f,$43c,$439,$436,$433,$430,$42d,
-        $42a,$428,$425,$422,$41f,$41c,$419,$416,$414,$411,$40e,$40b,$408,$406,$403,$400
-       );
 var Level:TPasRISCVUInt32;
 begin
  Level:=aLevel;
  if Level>$1fff then begin
   Level:=$1fff;
  end;
- result:=TPasRISCVInt16((ExpROM[Level and $ff] shl 1) shr (Level shr 8));
+ result:=TPasRISCVInt16((result:=TPasRISCVInt16((PasRISCVOPL3EmuExpROM[Level and $ff] shl 1) shr (Level shr 8));
 end;
 
 function TPasRISCVOPL3Emu.CalcWaveform(const aWaveform:TPasRISCVUInt8;const aPhase:TPasRISCVUInt16;const aEnvelope:TPasRISCVUInt16):TPasRISCVInt16;
-const LogSinROM:array[0..255] of TPasRISCVUInt16=
-       (
-        $859,$6c3,$607,$58b,$52e,$4e4,$4a6,$471,$443,$41a,$3f5,$3d3,$3b5,$398,$37e,$365,
-        $34e,$339,$324,$311,$2ff,$2ed,$2dc,$2cd,$2bd,$2af,$2a0,$293,$286,$279,$26d,$261,
-        $256,$24b,$240,$236,$22c,$222,$218,$20f,$206,$1fd,$1f5,$1ec,$1e4,$1dc,$1d4,$1cd,
-        $1c5,$1be,$1b7,$1b0,$1a9,$1a2,$19b,$195,$18f,$188,$182,$17c,$177,$171,$16b,$166,
-        $160,$15b,$155,$150,$14b,$146,$141,$13c,$137,$133,$12e,$129,$125,$121,$11c,$118,
-        $114,$10f,$10b,$107,$103,$0ff,$0fb,$0f8,$0f4,$0f0,$0ec,$0e9,$0e5,$0e2,$0de,$0db,
-        $0d7,$0d4,$0d1,$0cd,$0ca,$0c7,$0c4,$0c1,$0be,$0bb,$0b8,$0b5,$0b2,$0af,$0ac,$0a9,
-        $0a7,$0a4,$0a1,$09f,$09c,$099,$097,$094,$092,$08f,$08d,$08a,$088,$086,$083,$081,
-        $07f,$07d,$07a,$078,$076,$074,$072,$070,$06e,$06c,$06a,$068,$066,$064,$062,$060,
-        $05e,$05c,$05b,$059,$057,$055,$053,$052,$050,$04e,$04d,$04b,$04a,$048,$046,$045,
-        $043,$042,$040,$03f,$03e,$03c,$03b,$039,$038,$037,$035,$034,$033,$031,$030,$02f,
-        $02e,$02d,$02b,$02a,$029,$028,$027,$026,$025,$024,$023,$022,$021,$020,$01f,$01e,
-        $01d,$01c,$01b,$01a,$019,$018,$017,$017,$016,$015,$014,$014,$013,$012,$011,$011,
-        $010,$00f,$00f,$00e,$00d,$00d,$00c,$00c,$00b,$00a,$00a,$009,$009,$008,$008,$007,
-        $007,$007,$006,$006,$005,$005,$005,$004,$004,$004,$003,$003,$003,$002,$002,$002,
-        $002,$001,$001,$001,$001,$001,$001,$001,$000,$000,$000,$000,$000,$000,$000,$000
-       );
 var Phase:TPasRISCVUInt16;
     LogSinValue:TPasRISCVUInt16;
     Negate:TPasRISCVUInt16;
@@ -21022,9 +21029,9 @@ begin
     Negate:=0;
    end;
    if (Phase and $100)<>0 then begin
-    LogSinValue:=LogSinROM[(Phase and $ff) xor $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[(Phase and $ff) xor $ff];
    end else begin
-    LogSinValue:=LogSinROM[Phase and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[Phase and $ff];
    end;
    result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3)) xor TPasRISCVInt16(Negate);
   end;
@@ -21033,18 +21040,18 @@ begin
    if (Phase and $200)<>0 then begin
     LogSinValue:=$1000;
    end else if (Phase and $100)<>0 then begin
-    LogSinValue:=LogSinROM[(Phase and $ff) xor $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[(Phase and $ff) xor $ff];
    end else begin
-    LogSinValue:=LogSinROM[Phase and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[Phase and $ff];
    end;
    result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
   end;
 
   2:begin // Absolute sine (rectified)
    if (Phase and $100)<>0 then begin
-    LogSinValue:=LogSinROM[(Phase and $ff) xor $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[(Phase and $ff) xor $ff];
    end else begin
-    LogSinValue:=LogSinROM[Phase and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[Phase and $ff];
    end;
    result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
   end;
@@ -21053,7 +21060,7 @@ begin
    if (Phase and $100)<>0 then begin
     LogSinValue:=$1000;
    end else begin
-    LogSinValue:=LogSinROM[Phase and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[Phase and $ff];
    end;
    result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
   end;
@@ -21067,9 +21074,9 @@ begin
    if (Phase and $200)<>0 then begin
     LogSinValue:=$1000;
    end else if (Phase and $80)<>0 then begin
-    LogSinValue:=LogSinROM[((Phase xor $ff) shl 1) and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[((Phase xor $ff) shl 1) and $ff];
    end else begin
-    LogSinValue:=LogSinROM[(Phase shl 1) and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[(Phase shl 1) and $ff];
    end;
    result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3)) xor TPasRISCVInt16(Negate);
   end;
@@ -21078,9 +21085,9 @@ begin
    if (Phase and $200)<>0 then begin
     LogSinValue:=$1000;
    end else if (Phase and $80)<>0 then begin
-    LogSinValue:=LogSinROM[((Phase xor $ff) shl 1) and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[((Phase xor $ff) shl 1) and $ff];
    end else begin
-    LogSinValue:=LogSinROM[(Phase shl 1) and $ff];
+    LogSinValue:=PasRISCVOPL3EmuLogSinROM[(Phase shl 1) and $ff];
    end;
    result:=CalcExp(TPasRISCVUInt32(LogSinValue)+(TPasRISCVUInt32(aEnvelope) shl 3));
   end;
@@ -21114,15 +21121,11 @@ begin
 end;
 
 procedure TPasRISCVOPL3Emu.UpdateKSL(const aSlot:POPL3Slot);
-const KSLRom:array[0..15] of TPasRISCVUInt8=
-       (
-        0,32,40,45,48,51,53,55,56,58,59,60,61,62,63,64
-       );
 var Channel:POPL3Channel;
     KSLValue:TPasRISCVInt16;
 begin
  Channel:=@fChannels[aSlot^.fChannelIndex];
- KSLValue:=TPasRISCVInt16(KSLRom[Channel^.fFrequencyNumber shr 6] shl 2)-TPasRISCVInt16(($08-Channel^.fBlock) shl 5);
+ KSLValue:=TPasRISCVInt16(PasRISCVOPL3EmuKSLRom[Channel^.fFrequencyNumber shr 6] shl 2)-TPasRISCVInt16(($08-Channel^.fBlock) shl 5);
  if KSLValue<0 then begin
   KSLValue:=0;
  end;
