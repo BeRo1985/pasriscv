@@ -175,6 +175,15 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
 - Initrd support
 - Command line support for the guest OS
 - Simple test suite with various test cases for different parts of the emulator
+- Tracing JIT compiler
+  - Integrated into the interpreter, traces hot paths and compiles native code on-the-fly
+  - Block linking, inline TLB lookups, and AUIPC/JALR optimization
+  - x86-64 backend (fully functional)
+  - AArch64 backend (stub, not yet implemented)
+  - RISC-V 64 backend (stub, not yet implemented)
+  - Integer and floating-point JIT support (FPU JIT optional, separately toggleable) including FMA instructions 
+  - Automatic cache management with block invalidation on page changes
+  - No vector instruction support in the JIT yet, but it is planned for a future update, but only when it is doable to implement it with good performance and better performance than the interpreter.
 - Cross-platform (Windows, Linux, macOS)
 - Written in Object Pascal (Free Pascal / Lazarus)
 

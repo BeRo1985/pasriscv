@@ -127,7 +127,7 @@ begin
  Configuration:=TPasRISCV.TConfiguration.Create;
  try
 
-  Configuration.CountHARTs:=4;
+  Configuration.CountHARTs:=1;
 
   Configuration.MemorySize:=TPasRISCVUInt64(2048) shl 20; // 2GB
 
