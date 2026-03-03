@@ -8348,7 +8348,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fDirtyPageBitmapMask:TPasRISCVUInt32;
                      fRAMHostToPhysOffset:TPasRISCVPtrUInt;
                      // Trace state
+                     fMachine:TPasRISCV;
                      fHART:THART;
+                     fHARTMask:TPasRISCVUInt32;
                      fEnabled:Boolean;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      fFPUEnabled:Boolean;
@@ -46984,7 +46986,9 @@ constructor TPasRISCV.THART.TJustInTimeCompiler.Create(const aHART:THART);
 var DirtyBitmapSize:TPasRISCVUInt32;
 begin
  inherited Create;
+ fMachine:=aHART.fMachine;
  fHART:=aHART;
+ fHARTMask:=fHART.fHARTMask;
  fEnabled:=false;
  fCompiling:=false;
  fBlockEnds:=false;
@@ -47594,6 +47598,7 @@ var VirtualPC:TPasRISCVUInt64;
     CodePtr:TPasRISCVPtrUInt;
 {$ifdef PasRISCVJITBlockChaining}
     ChainIndex:TPasRISCVUInt32;
+    LastCycles:TPasRISCVUInt64;
 {$endif}
 {   SavedPC:TPasRISCVUInt64;
     SavedRegs:array[TRegister] of TPasRISCVUInt64;
@@ -47626,6 +47631,9 @@ begin
 {$ifndef PasRISCVJITFastCycle}
 // dec(fHART.fState.Cycle);
 {$endif}
+{$ifdef PasRISCVJITBlockChaining}
+   LastCycles:=fHART.fState.Cycle;
+{$endif}
    BlockCallback(@fHART.fState);
    inc(fStatTLBHits);
 {$ifdef PasRISCVJITDebug}
@@ -47647,13 +47655,16 @@ begin
    // Complements PasRISCVJITNativeLinker by covering cases where native block linking falls short,
    // such as cross-page branches or blocks that were invalidated and recompiled independently.
    for ChainIndex:=1 to 10 do begin
-    VirtualPC:=fHART.fState.PC;
-    JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
-    if JITTLBEntry^.VirtualPC=VirtualPC then begin
-     JITTLBEntry^.Block(@fHART.fState);
-    end else begin
-     break;
+    if ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
+       (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
+     VirtualPC:=fHART.fState.PC;
+     JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
+     if JITTLBEntry^.VirtualPC=VirtualPC then begin
+      JITTLBEntry^.Block(@fHART.fState);
+      continue;
+     end;
     end;
+    break;
    end;
 {$endif}
    result:=true;
