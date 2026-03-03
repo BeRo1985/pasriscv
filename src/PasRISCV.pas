@@ -47655,16 +47655,15 @@ begin
    // Complements PasRISCVJITNativeLinker by covering cases where native block linking falls short,
    // such as cross-page branches or blocks that were invalidated and recompiled independently.
    for ChainIndex:=1 to 10 do begin
-    if ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
+    VirtualPC:=fHART.fState.PC;
+    JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
+    if (JITTLBEntry^.VirtualPC=VirtualPC) and
+       ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
        (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
-     VirtualPC:=fHART.fState.PC;
-     JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
-     if JITTLBEntry^.VirtualPC=VirtualPC then begin
       JITTLBEntry^.Block(@fHART.fState);
-      continue;
-     end;
+    end else begin
+     break;
     end;
-    break;
    end;
 {$endif}
    result:=true;
