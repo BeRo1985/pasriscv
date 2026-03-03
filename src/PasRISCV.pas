@@ -8285,7 +8285,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           TIntrinsicMethod=procedure(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64) of object;
                           TJITTLBEntry=record
                            VirtualPC:TPasRISCVUInt64;
-                           Block:TBlockCallback;
+                           case TPasRISCVUInt8 of
+                            0:(
+                             Block:TBlockCallback;
+                            );
+                            1:(
+                             BlockPointer:Pointer; // needed for Delphi, which have problems with @ with method pointers 
+                            );
                           end;
                           PJITTLBEntry=^TJITTLBEntry;
                           TJITTLBEntries=array[0..JIT_TLB_SIZE-1] of TJITTLBEntry;
@@ -47447,7 +47453,7 @@ end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.JITTLBEntryCodePtrOffset:TPasRISCVInt32;
 begin
- result:=TPasRISCVInt32(TPasRISCVPtrUInt(@Pointer(PJITTLBEntry(nil)^.Block)));
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PJITTLBEntry(nil)^.BlockPointer));
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.JITBlockCodePtrOffset:TPasRISCVInt32;
