@@ -8447,8 +8447,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitJmpRel32(const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure PatchJmpRel32(const aJmpOffset:TPasRISCVUInt32); virtual; abstract;
 {$ifdef PasRISCVJITFlexibleBranch}
-                     function EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TBranchLabel):TBranchLabel; virtual; abstract;
-                     function EmitBranchTarget(const aHandle:TBranchLabel):TBranchLabel; virtual; abstract;
+                     function EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitBranchTarget(const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
                      procedure LinkBlock; virtual; abstract;
@@ -8458,7 +8458,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                      procedure EmitDataTLBLookup(const aHostAddrReg:TPasRISCVUInt8;const aGuestBaseReg:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); virtual; abstract;
-                     function PatchBranchLabel(const aLabel:TBranchLabel):TPasRISCVUInt32; virtual; abstract;
+                     function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; virtual; abstract;
                      function VMPtrReg:TPasRISCVUInt8; virtual; abstract;
                      function DefaultHostRegMask:TPasRISCVUInt32; virtual; abstract;
                      function ABIReclaimHostRegMask:TPasRISCVUInt32; virtual; abstract;
@@ -8523,19 +8523,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeSH(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeSB(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
 {$ifdef PasRISCVJITFlexibleBranch}
-                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; virtual; abstract;
-                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; virtual; abstract;
-                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; virtual; abstract;
-                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; virtual; abstract;
-                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; virtual; abstract;
-                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; virtual; abstract;
+                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
 {$else}
-                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; virtual; abstract;
-                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; virtual; abstract;
-                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; virtual; abstract;
-                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; virtual; abstract;
-                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; virtual; abstract;
-                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; virtual; abstract;
+                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
+                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      procedure EmitNativeFAddS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
@@ -8918,12 +8918,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); override;
                      procedure EmitRET; override;
                      procedure PatchJmpRel32(const aJmpOffset:TPasRISCVUInt32); override;
-                     function PatchBranchLabel(const aLabel:TBranchLabel):TPasRISCVUInt32; override;
+                     function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; override;
 {$ifdef PasRISCVJITFlexibleBranch}
-                     function EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TBranchLabel):TBranchLabel; override;
-                     function EmitBranchTarget(const aHandle:TBranchLabel):TBranchLabel; override;
-                     function EmitBranch(const aCondition:TPasRISCVUInt8;const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
-                     function EmitBranchImm(const aCondition:TPasRISCVUInt8;const aHostSrc1:TPasRISCVUInt8;const aImm:TPasRISCVInt32;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+                     function EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitBranchTarget(const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitBranch(const aCondition:TPasRISCVUInt8;const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
+                     function EmitBranchImm(const aCondition:TPasRISCVUInt8;const aHostSrc1:TPasRISCVUInt8;const aImm:TPasRISCVInt32;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 {$endif}
                       // Base overrides
                      procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
@@ -9023,19 +9023,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeSH(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
                      procedure EmitNativeSB(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
 {$ifdef PasRISCVJITFlexibleBranch}
-                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; override;
-                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; override;
-                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; override;
-                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; override;
-                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; override;
-                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel; override;
+                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
 {$else}
-                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; override;
-                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; override;
-                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; override;
-                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; override;
-                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; override;
-                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel; override;
+                     function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // EmitNativeFxx overrides
@@ -48545,7 +48545,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEQ(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
-    TakenLabel:TBranchLabel;
+    TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
@@ -48565,7 +48565,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBNE(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
-    TakenLabel:TBranchLabel;
+    TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
@@ -48585,7 +48585,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLT(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
-    TakenLabel:TBranchLabel;
+    TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
@@ -48605,7 +48605,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGE(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
-    TakenLabel:TBranchLabel;
+    TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
@@ -48625,7 +48625,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLTU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
-    TakenLabel:TBranchLabel;
+    TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
@@ -48645,7 +48645,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGEU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
-    TakenLabel:TBranchLabel;
+    TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
@@ -50746,7 +50746,7 @@ begin
  fTemporaryCode[aJmpOffset+3]:=TPasRISCVUInt8((TPasRISCVUInt32(Target) shr 24) and $ff);
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.PatchBranchLabel(const aLabel:TBranchLabel):TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32;
 var RelOffset:TPasRISCVInt32;
 begin
  RelOffset:=TPasRISCVInt32(fTemporaryCodeSize)-TPasRISCVInt32(aLabel);
@@ -50755,7 +50755,7 @@ begin
 end;
 
 {$ifdef PasRISCVJITFlexibleBranch}
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TBranchLabel):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 {$ifdef PasRISCVJITShortBranch}
 var Offset:TPasRISCVInt32;
 {$endif}
@@ -50787,7 +50787,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchTarget(const aHandle:TBranchLabel):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchTarget(const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 {$ifdef PasRISCVJITShortBranch}
 var Offset:TPasRISCVInt32;
 {$endif}
@@ -50813,7 +50813,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranch(const aCondition:TPasRISCVUInt8;const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranch(const aCondition:TPasRISCVUInt8;const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  if aTarget then begin
   // Patch the far branch rel32 offset
@@ -50828,7 +50828,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchImm(const aCondition:TPasRISCVUInt8;const aHostSrc1:TPasRISCVUInt8;const aImm:TPasRISCVInt32;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchImm(const aCondition:TPasRISCVUInt8;const aHostSrc1:TPasRISCVUInt8;const aImm:TPasRISCVInt32;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  if aTarget then begin
   PatchBranchLabel(aHandle);
@@ -51117,7 +51117,7 @@ const TLB_RELMEM_OFFSET=24; // offset of RelativeMemory in TDirectAccessTLBEntry
       TLB_MASK=255;          // DIRECT_ACCESS_TLB_MASK
 var HostVirtualAddress,HostVPN,HostIndex:TPasRISCVUInt8;
     HostBase:TPasRISCVUInt8;
-    TakenLabel:TBranchLabel;
+    TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  HostVirtualAddress:=ClaimHostReg;
  HostVPN:=ClaimHostReg;
@@ -51650,72 +51650,72 @@ begin
 end;
 
 {$ifdef PasRISCVJITFlexibleBranch}
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  result:=EmitBranch(CC_E,aHostSrc1,aHostSrc2,aHandle,aTarget);
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  result:=EmitBranch(CC_NE,aHostSrc1,aHostSrc2,aHandle,aTarget);
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  result:=EmitBranch(CC_L,aHostSrc1,aHostSrc2,aHandle,aTarget);
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  result:=EmitBranch(CC_GE,aHostSrc1,aHostSrc2,aHandle,aTarget);
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  result:=EmitBranch(CC_B,aHostSrc1,aHostSrc2,aHandle,aTarget);
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TBranchLabel;const aTarget:Boolean):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  result:=EmitBranch(CC_AE,aHostSrc1,aHostSrc2,aHandle,aTarget);
 end;
 {$else}
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  EmitJccRel32(CC_E,0);
  result:=fTemporaryCodeSize;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  EmitJccRel32(CC_NE,0);
  result:=fTemporaryCodeSize;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  EmitJccRel32(CC_L,0);
  result:=fTemporaryCodeSize;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  EmitJccRel32(CC_GE,0);
  result:=fTemporaryCodeSize;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  EmitJccRel32(CC_B,0);
  result:=fTemporaryCodeSize;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TBranchLabel;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  EmitJccRel32(CC_AE,0);
