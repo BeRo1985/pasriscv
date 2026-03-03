@@ -21009,7 +21009,7 @@ begin
  if Level>$1fff then begin
   Level:=$1fff;
  end;
- result:=TPasRISCVInt16((result:=TPasRISCVInt16((PasRISCVOPL3EmuExpROM[Level and $ff] shl 1) shr (Level shr 8));
+ result:=TPasRISCVInt16((PasRISCVOPL3EmuExpROM[Level and $ff] shl 1) shr (Level shr 8));
 end;
 
 function TPasRISCVOPL3Emu.CalcWaveform(const aWaveform:TPasRISCVUInt8;const aPhase:TPasRISCVUInt16;const aEnvelope:TPasRISCVUInt16):TPasRISCVInt16;
