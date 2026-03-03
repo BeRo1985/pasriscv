@@ -19828,9 +19828,7 @@ end;
 function TPasRISCVFUSEFileSystemPOSIX.ReadDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TPasRISCVFUSEFileSystem.TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32;
 var Dir:PDIR;
     DE:PDirEnt;
-    Index,EntryCapacity:TPasRISCVInt32;
-    DirOffset:TOff;
-    Err:cint;
+    Index,Skip,EntryCapacity:TPasRISCVInt32;
 begin
  Dir:={%H-}PDIR(PtrUInt(aHandle));
  aCount:=0;
@@ -19839,28 +19837,31 @@ begin
 {$ifdef PasRISCVDebugVirtIOFS}
  writeln('FUSEFileSystemPOSIX.ReadDir: handle=',aHandle,' offset=',aOffset,' dir=',{%H-}PtrUInt(Dir));
 {$endif}
- if aOffset=0 then begin
-  RewindDir(Dir);
- end else begin
-  SeekDir(Dir,aOffset);
+ // TellDir/SeekDir is broken on many Linux filesystems (returns LONG_MAX for all
+ // entries), so we use simple index-based offsets instead: rewind to start and skip.
+ SeekDir(Dir,0);
+ Skip:=TPasRISCVInt32(aOffset);
+ while Skip>0 do begin
+  DE:=fpReadDir(Dir^);
+  if not assigned(DE) then begin
+{$ifdef PasRISCVDebugVirtIOFS}
+   writeln('FUSEFileSystemPOSIX.ReadDir: skip phase exhausted after skipping ',TPasRISCVInt32(aOffset)-Skip,' of ',aOffset,' entries');
+{$endif}
+   aCount:=0;
+   result:=FUSE_OK;
+   exit;
+  end;
+  dec(Skip);
  end;
- fpSetErrno(0); 
  Index:=0;
  repeat
   DE:=fpReadDir(Dir^);
   if not assigned(DE) then begin
-   Err:=fpGetErrno;
 {$ifdef PasRISCVDebugVirtIOFS}
-   writeln('FUSEFileSystemPOSIX.ReadDir: fpReadDir returned nil after ',Index,' entries, errno=',Err);
+   writeln('FUSEFileSystemPOSIX.ReadDir: fpReadDir returned nil after ',Index,' entries, errno=',fpGetErrno);
 {$endif}
-   if (Index=0) and (Err<>0) then begin
-    aCount:=0;
-    result:=POSIXErrorToFUSEError(Err);
-    exit;
-   end;
    break;
   end;
-  DirOffset:=TellDir(Dir);
   if Index>=EntryCapacity then begin
    if EntryCapacity=0 then begin
     EntryCapacity:=64;
@@ -19870,7 +19871,7 @@ begin
    SetLength(aEntries,EntryCapacity);
   end;
   aEntries[Index].Ino:=DE^.d_fileno;
-  aEntries[Index].Off:=DirOffset;
+  aEntries[Index].Off:=aOffset+TPasRISCVUInt64(Index)+1;
   aEntries[Index].Name:=DE^.d_name;
   aEntries[Index].NameLen:=Length(aEntries[Index].Name);
 {$ifdef PasRISCVDebugVirtIOFS}
@@ -37633,9 +37634,9 @@ begin
      end;
 {$ifdef PasRISCVDebugVirtIOFS}
      if aPlus then begin
-      writeln('VirtIOFS: READDIRPLUS sending ',BufOfs,' bytes for ',DirEntryCount,' entries');
+      writeln('VirtIOFS: READDIRPLUS sending ',BufOfs,' bytes for ',Index,' of ',DirEntryCount,' entries');
      end else begin
-      writeln('VirtIOFS: READDIR sending ',BufOfs,' bytes for ',DirEntryCount,' entries');
+      writeln('VirtIOFS: READDIR sending ',BufOfs,' bytes for ',Index,' of ',DirEntryCount,' entries');
      end;
 {$endif}
      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Buf,BufOfs);
