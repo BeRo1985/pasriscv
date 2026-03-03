@@ -8817,6 +8817,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            X86_CMP=TPasRISCVUInt8($39);
                            X86_TEST=TPasRISCVUInt8($85);
                            X86_MOV_R_M=TPasRISCVUInt8($89);
+                           X86_MOV_M_R=TPasRISCVUInt8($8b);
+                           X86_LEA=TPasRISCVUInt8($8d);
+                           X86_ADD_M_R=TPasRISCVUInt8($03);
                            X86_MOVSXD=TPasRISCVUInt8($63);
                            X86_XCHG=TPasRISCVUInt8($87);
                            X86_2_REGS=TPasRISCVUInt8($c0);
@@ -50467,7 +50470,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitLEA(const aDst:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // lea dst, [base+offset] — 8D /r
- EmitMemOp($8d,aDst,aBase,aOffset,true);
+ EmitMemOp(X86_LEA,aDst,aBase,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitLEASIB(const aDst:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aIndex:TPasRISCVUInt8;const aIs64:Boolean);
@@ -50870,13 +50873,13 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
  // mov reg, [base+offset]
- EmitMemOp($8b,aHostReg,aBaseReg,aOffset,aIs64);
+ EmitMemOp(X86_MOV_M_R,aHostReg,aBaseReg,aOffset,aIs64);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
  // mov [base+offset], reg
- EmitMemOp($89,aHostReg,aBaseReg,aOffset,aIs64);
+ EmitMemOp(X86_MOV_R_M,aHostReg,aBaseReg,aOffset,aIs64);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8);
@@ -50913,7 +50916,7 @@ begin
  end else begin
   // Value too large for immediate — load into temp register and add
   EmitMOVRegImm64(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt64(aValue));
-  EmitMemOp($01,TPasRISCVUInt8(ord(TX64Register.rRAX)),aBaseReg,aOffset,aIs64);
+  EmitMemOp(X86_ADD,TPasRISCVUInt8(ord(TX64Register.rRAX)),aBaseReg,aOffset,aIs64);
  end;
 end;
 
@@ -50942,7 +50945,7 @@ begin
  // mov qword [vm+CycleOffset], rdx — store new cycle value
  EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrReg,GuestCycleOffset,true);
  // xor eax, edx — detect changed bits (old ^ new)
- Emit2RegOp($31,ScratchReg,TPasRISCVUInt8(ord(TX64Register.rRDX)),false);
+ Emit2RegOp(X86_XOR,ScratchReg,TPasRISCVUInt8(ord(TX64Register.rRDX)),false);
  // shr eax, 16 — isolate bits 16+ (sets ZF if no 16-bit boundary crossed)
  EmitShiftRegImm(SHIFT_SHR,ScratchReg,16,false);
  // jnz .exit — any bit 16+ changed means ~65536 cycles elapsed
@@ -51089,10 +51092,10 @@ begin
  EmitShiftRegImm(SHIFT_SHL,aTempReg2,TLB_ENTRY_SHIFT,true);
  // aTempReg2 += [VMPtrReg + GuestJITTLBPtrOffset] — entry pointer
  // x86: ADD r64, [base+disp] = opcode $03 with memory operand
- EmitMemOp($03,aTempReg2,VMPtrReg,GuestJITTLBPtrOffset,true);
+ EmitMemOp(X86_ADD_M_R,aTempReg2,VMPtrReg,GuestJITTLBPtrOffset,true);
  // Compare tag: CMP [aTempReg2 + TagOffset], aTempReg1
  // x86: CMP r/m64, r64 = opcode $39
- EmitMemOp($39,aTempReg1,aTempReg2,TagOffset,true);
+ EmitMemOp(X86_CMP,aTempReg1,aTempReg2,TagOffset,true);
  // JNE slow_path (TLB miss — VPN mismatch)
  EmitJccRel32(CC_NE,0);
  aSlowPathFixup:=fTemporaryCodeSize-4;
@@ -51158,7 +51161,7 @@ begin
  // idx <<= TLB_ENTRY_SHIFT (byte offset into TLB array, 32-bit shift suffices)
  EmitShiftRegImm(SHIFT_SHL,HostIndex,TLB_ENTRY_SHIFT,false);
  // idx += [VMPtrReg + GuestJITTLBPtrOffset] (add TLB base pointer)
- EmitMemOp($03,HostIndex,VMPtrReg,GuestJITTLBPtrOffset,true);
+ EmitMemOp(X86_ADD_M_R,HostIndex,VMPtrReg,GuestJITTLBPtrOffset,true);
  // aHostAddrReg = [idx + aTLBFieldOffset] (load tag from TLB entry)
  EmitNativeLoad(aHostAddrReg,HostIndex,aTLBFieldOffset,true);
  if aAlignment>1 then begin
@@ -51243,10 +51246,10 @@ begin
  EmitImmOp(ALU_AND,HashReg,TPasRISCVInt32(JIT_TLB_MASK shl JIT_TLB_ENTRY_SHIFT),false);
 
  // add rax, [vm+TLBPtrOffset]
- EmitMemOp($03,HashReg,VMPtrReg,GuestJITBlockTLBPtrOffset,true);
+ EmitMemOp(X86_ADD_M_R,HashReg,VMPtrReg,GuestJITBlockTLBPtrOffset,true);
 
  // cmp [rax], rdx
- EmitMemOp($39,PCReg,HashReg,0,true);
+ EmitMemOp(X86_CMP,PCReg,HashReg,0,true);
 
  // jne .miss
  EmitJccRel32(CC_NE,0);
@@ -51570,13 +51573,13 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLD(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOV r64, [addr+off] — opcode 8B with REX.W
- EmitMemOp($8b,aHostDest,aHostAddr,aOffset,true);
+ EmitMemOp(X86_MOV_M_R,aHostDest,aHostAddr,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLW(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOVSXD r64, [addr+off] — opcode 63 with REX.W (sign-extend 32→64)
- EmitMemOp($63,aHostDest,aHostAddr,aOffset,true);
+ EmitMemOp(X86_MOVSXD,aHostDest,aHostAddr,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLH(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
@@ -51600,7 +51603,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLWU(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOV r32, [addr+off] — opcode 8B without REX.W (zero-extends to 64)
- EmitMemOp($8b,aHostDest,aHostAddr,aOffset,false);
+ EmitMemOp(X86_MOV_M_R,aHostDest,aHostAddr,aOffset,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLHU(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
@@ -51628,20 +51631,20 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSD(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOV [addr+off], r64 — opcode 89 with REX.W
- EmitMemOp($89,aHostSrc,aHostAddr,aOffset,true);
+ EmitMemOp(X86_MOV_R_M,aHostSrc,aHostAddr,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSW(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOV [addr+off], r32 — opcode 89 without REX.W
- EmitMemOp($89,aHostSrc,aHostAddr,aOffset,false);
+ EmitMemOp(X86_MOV_R_M,aHostSrc,aHostAddr,aOffset,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOV [addr+off], r16 — 66 prefix + opcode 89 without REX.W
  EmitByte($66);
- EmitMemOp($89,aHostSrc,aHostAddr,aOffset,false);
+ EmitMemOp(X86_MOV_R_M,aHostSrc,aHostAddr,aOffset,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSB(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
