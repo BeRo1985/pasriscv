@@ -20266,7 +20266,7 @@ begin
   aStat.Mode:=S_IFREG or S_IRUSR or S_IWUSR or S_IRGRP or S_IROTH;
  end;
  if (aInfo.dwFileAttributes and FILE_ATTRIBUTE_READONLY)<>0 then begin
-  aStat.Mode:=aStat.Mode and (not (S_IWUSR or S_IWGRP or S_IWOTH));
+  aStat.Mode:=aStat.Mode and not (S_IWUSR or S_IWGRP or S_IWOTH);
  end;
 end;
 
@@ -21438,7 +21438,7 @@ end;
 
 procedure TPasRISCVOPL3Emu.SlotKeyOff(const aSlot:POPL3Slot;const aKeyType:TPasRISCVUInt8);
 begin
- aSlot^.fKey:=aSlot^.fKey and (not aKeyType);
+ aSlot^.fKey:=aSlot^.fKey and not aKeyType;
 end;
 
 procedure TPasRISCVOPL3Emu.SetupChannelAlgorithm(const aChannel:POPL3Channel);
@@ -26516,8 +26516,8 @@ begin
        24:begin // $e0: MSI Mask (all bits writable)
         Old:=TPasMPInterlocked.Exchange(Func.fMSIMask,TPasRISCVUInt32(aValue));
         // When mask bits are cleared, check if pending IRQs should fire
-        if (Old and (not TPasRISCVUInt32(aValue)))<>0 then begin
-         IRQ:=TPasMPInterlocked.Read(Func.fMSIPending) and (not TPasRISCVUInt32(aValue));
+        if (Old and not TPasRISCVUInt32(aValue))<>0 then begin
+         IRQ:=TPasMPInterlocked.Read(Func.fMSIPending) and not TPasRISCVUInt32(aValue);
          if IRQ<>0 then begin
           // Clear pending bit and fire MSI for each newly-unmasked pending interrupt
           TPasMPInterlocked.BitwiseAnd(Func.fMSIPending,TPasRISCVUInt32(aValue));
@@ -27143,7 +27143,7 @@ begin
    exit;
   end else if PRP^.Size<=(Len+NVME_PAGE_SIZE) then begin
    // PRP2 encodes second page address
-   Page:=PRP^.PRP2 and (not NVME_PAGE_MASK);
+   Page:=PRP^.PRP2 and not NVME_PAGE_MASK;
    if Page=(PRP^.PRP1+Len) then begin
     // Contiguous two-page region
     result:=PRP^.Size;
@@ -27157,14 +27157,14 @@ begin
  end;
 
  // Process PRP list entries until we reach end of transfer
- PRP2Addr:=PRP^.PRP2 and (not TPasRISCVUInt64(7));
+ PRP2Addr:=PRP^.PRP2 and not TPasRISCVUInt64(7);
  DMA:=nil;
 
  while PRPAvail(aCommand)>Len do begin
 
   if not assigned(DMA) then begin
    // Obtain DMA mapping of the PRP list
-   DMA:=GetGlobalDirectMemoryAccessPointer(PRP2Addr and (not NVME_PAGE_MASK),NVME_PAGE_SIZE,true,nil);
+   DMA:=GetGlobalDirectMemoryAccessPointer(PRP2Addr and not NVME_PAGE_MASK,NVME_PAGE_SIZE,true,nil);
    if not assigned(DMA) then begin
     // PRP list DMA error
     break;
@@ -27173,7 +27173,7 @@ begin
 
   if (((PRP2Addr+8) and NVME_PAGE_MASK)=0) and (PRPAvail(aCommand)>(Len+NVME_PAGE_SIZE)) then begin
    // Last entry in PRP list page => pointer to next PRP list page
-   PRP2Addr:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(DMA)+NVME_PAGE_SIZE-8))^ and (not NVME_PAGE_MASK);
+   PRP2Addr:=PPasRISCVUInt64(TPasRISCVPtrUInt(TPasRISCVPtrUInt(DMA)+NVME_PAGE_SIZE-8))^ and not NVME_PAGE_MASK;
    DMA:=nil;
   end else begin
    // Regular PRP list entry
@@ -29076,7 +29076,7 @@ begin
   FM801_AC97_CMD:begin
    // Return valid + not busy
    result:=fAC97Cmd or FM801_AC97_VALID;
-   result:=result and (not FM801_AC97_BUSY);
+   result:=result and not FM801_AC97_BUSY;
   end;
   FM801_AC97_DATA:begin
    result:=fAC97Data;
@@ -29146,12 +29146,12 @@ begin
      fPlayPreviousFrameEndValues[1]:=0.0;
     end;
     fPlayActive:=true;
-    fPlayCtrl:=fPlayCtrl and (not FM801_IMMED_STOP); // clear IMMED_STOP after handling
+    fPlayCtrl:=fPlayCtrl and not FM801_IMMED_STOP; // clear IMMED_STOP after handling
     PrefetchPlayDMA(0);
     PrefetchPlayDMA(1);
    end else if (fPlayCtrl and FM801_IMMED_STOP)<>0 then begin
     fPlayActive:=false;
-    fPlayCtrl:=fPlayCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
+    fPlayCtrl:=fPlayCtrl and not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP);
    end else begin
     fPlayActive:=false;
    end;
@@ -29185,7 +29185,7 @@ begin
      fCaptureResamplerPosition:=0;
     end;
     fCaptureActive:=true;
-    fCaptureCtrl:=fCaptureCtrl and (not FM801_IMMED_STOP);
+    fCaptureCtrl:=fCaptureCtrl and not FM801_IMMED_STOP;
     // Initialize capture DMA write caches
     fCaptureDMACachePosition[0]:=0;
     fCaptureDMACachePosition[1]:=0;
@@ -29200,7 +29200,7 @@ begin
    end else if (fCaptureCtrl and FM801_IMMED_STOP)<>0 then begin
     FlushCaptureDMA(fCaptureBufferIndex);
     fCaptureActive:=false;
-    fCaptureCtrl:=fCaptureCtrl and (not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP));
+    fCaptureCtrl:=fCaptureCtrl and not (FM801_START or FM801_PAUSE or FM801_IMMED_STOP);
    end else begin
     FlushCaptureDMA(fCaptureBufferIndex);
     fCaptureActive:=false;
@@ -29264,7 +29264,7 @@ begin
   end;
   FM801_IRQ_STATUS:begin
    // Writing to IRQ_STATUS acknowledges (clears) bits
-   fIRQStatus:=fIRQStatus and (not TPasRISCVUInt16(aValue));
+   fIRQStatus:=fIRQStatus and not TPasRISCVUInt16(aValue);
    // Level-triggered PCI IRQ: lower the IRQ line when no unmasked IRQ sources remain pending
    if not IRQPending then begin
     LowerIRQ(0);
@@ -30007,10 +30007,10 @@ begin
   Status:=Status or CM_INTR;
  end;
  // Add busy flags
- if fChannels[0].Enabled and (not fChannels[0].Paused) then begin
+ if fChannels[0].Enabled and not fChannels[0].Paused then begin
   Status:=Status or CM_CH0BUSY;
  end;
- if fChannels[1].Enabled and (not fChannels[1].Paused) then begin
+ if fChannels[1].Enabled and not fChannels[1].Paused then begin
   Status:=Status or CM_CH1BUSY;
  end;
  fIntStatus:=Status;
@@ -30106,14 +30106,14 @@ begin
    // OPL3 status read (port+0 and port+2 return status)
    if assigned(fOPL3) then begin
     // Check if running timers have expired
-    if fOPL3Timer1Running and (not fOPL3Timer1Expired) then begin
+    if fOPL3Timer1Running and not fOPL3Timer1Expired then begin
      // Timer 1: (256 - value) * 80us
      if (GetCurrentFrequencyTime(1000000)-fOPL3Timer1Start)>=(TPasRISCVUInt64(256-fOPL3Timer1Value)*80) then begin
       fOPL3Timer1Expired:=true;
       fOPL3Timer1Running:=false;
      end;
     end;
-    if fOPL3Timer2Running and (not fOPL3Timer2Expired) then begin
+    if fOPL3Timer2Running and not fOPL3Timer2Expired then begin
      // Timer 2: (256 - value) * 320us
      if (GetCurrentFrequencyTime(1000000)-fOPL3Timer2Start)>=(TPasRISCVUInt64(256-fOPL3Timer2Value)*320) then begin
       fOPL3Timer2Expired:=true;
@@ -30194,13 +30194,13 @@ begin
     fChannels[0].Position:=0;
     fChannels[0].PeriodCounter:=0;
     fChannels[0].IntPending:=false;
-    fFuncCtrl0:=fFuncCtrl0 and (not CM_RST_CH0);
+    fFuncCtrl0:=fFuncCtrl0 and not CM_RST_CH0;
    end;
    if (fFuncCtrl0 and CM_RST_CH1)<>0 then begin
     fChannels[1].Position:=0;
     fChannels[1].PeriodCounter:=0;
     fChannels[1].IntPending:=false;
-    fFuncCtrl0:=fFuncCtrl0 and (not CM_RST_CH1);
+    fFuncCtrl0:=fFuncCtrl0 and not CM_RST_CH1;
    end;
    // If channel just enabled, reset position
    if ((fFuncCtrl0 and CM_CHEN0)<>0) and ((OldFuncCtrl0 and CM_CHEN0)=0) then begin
@@ -30236,7 +30236,7 @@ begin
    fFuncCtrl1:=TPasRISCVUInt32(aValue);
   end;
   CM_REG_CHFORMAT:begin
-   fChFormat:=(fChFormat and (not $ff)) or TPasRISCVUInt32(aValue and $ff);
+   fChFormat:=(fChFormat and not $ff) or TPasRISCVUInt32(aValue and $ff);
    // Also accept full 32-bit writes (high rate bits, etc)
    if aSize>=4 then begin
     fChFormat:=TPasRISCVUInt32(aValue);
@@ -30263,7 +30263,7 @@ begin
    if (fMiscCtrl and CM_RESET)<>0 then begin
     // Don't do a full Reset here - just clear the flag
     // A real reset would lose all config the driver just set up
-    fMiscCtrl:=fMiscCtrl and (not CM_RESET);
+    fMiscCtrl:=fMiscCtrl and not CM_RESET;
    end;
   end;
   CM_REG_DEV:begin
@@ -30449,13 +30449,13 @@ begin
    // OPL3 status read (bank 0 or bank 1)
    if assigned(fOPL3) then begin
     // Check if running timers have expired
-    if fOPL3Timer1Running and (not fOPL3Timer1Expired) then begin
+    if fOPL3Timer1Running and not fOPL3Timer1Expired then begin
      if (GetCurrentFrequencyTime(1000000)-fOPL3Timer1Start)>=(TPasRISCVUInt64(256-fOPL3Timer1Value)*80) then begin
       fOPL3Timer1Expired:=true;
       fOPL3Timer1Running:=false;
      end;
     end;
-    if fOPL3Timer2Running and (not fOPL3Timer2Expired) then begin
+    if fOPL3Timer2Running and not fOPL3Timer2Expired then begin
      if (GetCurrentFrequencyTime(1000000)-fOPL3Timer2Start)>=(TPasRISCVUInt64(256-fOPL3Timer2Value)*320) then begin
       fOPL3Timer2Expired:=true;
       fOPL3Timer2Running:=false;
@@ -30579,12 +30579,12 @@ begin
  ChIndex:=0;
  if (fMiscCtrl and CM_XCHGDAC)<>0 then begin
   // XCHGDAC: ch1 is front
-  if fChannels[1].Enabled and (not fChannels[1].IsCapture) then begin
+  if fChannels[1].Enabled and not fChannels[1].IsCapture then begin
    Ch:=@fChannels[1];
    ChIndex:=1;
   end;
  end else begin
-  if fChannels[0].Enabled and (not fChannels[0].IsCapture) then begin
+  if fChannels[0].Enabled and not fChannels[0].IsCapture then begin
    Ch:=@fChannels[0];
    ChIndex:=0;
   end;
@@ -31808,7 +31808,7 @@ begin
 {$endif}
   ProcessCodecVerb(fICW);
   fIRR:=0; // Response already in RIRB
-  fICS:=(fICS and (not HDA_ICS_BUSY)) or HDA_ICS_VALID;
+  fICS:=(fICS and not HDA_ICS_BUSY) or HDA_ICS_VALID;
   exit;
  end;
  // Process CORB ring buffer
@@ -32038,13 +32038,13 @@ begin
      // Write-1-to-clear bits
      Val8:=TPasRISCVUInt8(aValue);
      if (Val8 and HDA_SDSTS_BCIS)<>0 then begin
-      Stream^.STS:=Stream^.STS and (not HDA_SDSTS_BCIS);
+      Stream^.STS:=Stream^.STS and not HDA_SDSTS_BCIS;
      end;
      if (Val8 and HDA_SDSTS_FIFOE)<>0 then begin
-      Stream^.STS:=Stream^.STS and (not HDA_SDSTS_FIFOE);
+      Stream^.STS:=Stream^.STS and not HDA_SDSTS_FIFOE;
      end;
      if (Val8 and HDA_SDSTS_DESE)<>0 then begin
-      Stream^.STS:=Stream^.STS and (not HDA_SDSTS_DESE);
+      Stream^.STS:=Stream^.STS and not HDA_SDSTS_DESE;
      end;
      UpdateIRQ;
     end;
@@ -32090,7 +32090,7 @@ begin
   end;
   HDA_REG_STATESTS:begin
    // Write-1-to-clear
-   fStateSts:=fStateSts and (not (TPasRISCVUInt16(aValue) and $7fff));
+   fStateSts:=fStateSts and not (TPasRISCVUInt16(aValue) and $7fff);
    UpdateIRQ;
   end;
   HDA_REG_INTCTL:begin
@@ -32121,7 +32121,7 @@ begin
   end;
   HDA_REG_CORBSTS:begin
    // Write-1-to-clear
-   fCORBSTS:=fCORBSTS and (not TPasRISCVUInt8(aValue));
+   fCORBSTS:=fCORBSTS and not TPasRISCVUInt8(aValue);
   end;
   HDA_REG_CORBSIZE:begin
    fCORBSize:=TPasRISCVUInt8(aValue) and 3;
@@ -32150,10 +32150,10 @@ begin
    // Write-1-to-clear
    Val8:=TPasRISCVUInt8(aValue);
    if (Val8 and HDA_RIRBSTS_RINTFL)<>0 then begin
-    fRIRBSTS:=fRIRBSTS and (not HDA_RIRBSTS_RINTFL);
+    fRIRBSTS:=fRIRBSTS and not HDA_RIRBSTS_RINTFL;
    end;
    if (Val8 and HDA_RIRBSTS_RIRBOIS)<>0 then begin
-    fRIRBSTS:=fRIRBSTS and (not HDA_RIRBSTS_RIRBOIS);
+    fRIRBSTS:=fRIRBSTS and not HDA_RIRBSTS_RIRBOIS;
    end;
    UpdateIRQ;
    if (Val8 and HDA_RIRBSTS_RINTFL)<>0 then begin
@@ -32452,7 +32452,7 @@ begin
 
   // Update DMA position buffer if enabled
   if (fDPLBase and 1)<>0 then begin
-   DPAddr:=(TPasRISCVUInt64(fDPUBase) shl 32) or (fDPLBase and (not TPasRISCVUInt32(1)));
+   DPAddr:=(TPasRISCVUInt64(fDPUBase) shl 32) or (fDPLBase and not TPasRISCVUInt32(1));
    // Stream index * 8 bytes offset
    {if Stream=FindOutputStreamForCodec then}begin
     DPPtr:=GetGlobalDirectMemoryAccessPointer(DPAddr+(TPasRISCVUInt64((TPasRISCVPtrUInt(Pointer(Stream))-TPasRISCVPtrUInt(Pointer(@fStreams[0]))) div SizeOf(THDAStream))*8),4,true,nil);
@@ -43499,7 +43499,7 @@ begin
    // Read-only, ignore
   end;
   REG_IRQ_ACK:begin
-   fIRQStatus:=fIRQStatus and (not TPasRISCVUInt32(aValue));
+   fIRQStatus:=fIRQStatus and not TPasRISCVUInt32(aValue);
    if fIRQStatus=0 then begin
     fMachine.fInterrupts.LowerIRQ(fIRQ);
    end;
@@ -49690,7 +49690,7 @@ begin
    Mask:=Mask shr 1;
    inc(BitIndex);
   end;
-  fHostRegMask:=fHostRegMask and (not (TPasRISCVUInt32(1) shl BitIndex));
+  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl BitIndex);
   result:=TPasRISCVUInt8(BitIndex);
   exit;
  end;
@@ -49702,7 +49702,7 @@ begin
    Mask:=Mask shr 1;
    inc(BitIndex);
   end;
-  fABIReclaimMask:=fABIReclaimMask and (not (TPasRISCVUInt32(1) shl BitIndex));
+  fABIReclaimMask:=fABIReclaimMask and not (TPasRISCVUInt32(1) shl BitIndex);
   EmitNativePush(TPasRISCVUInt8(BitIndex));
   fABIReclaimOrder[fABIReclaimCount]:=TPasRISCVUInt8(BitIndex);
   inc(fABIReclaimCount);
@@ -49723,7 +49723,7 @@ begin
  if LRUReg<>TRegister.x0 then begin
   result:=fIntRegInfos[LRUReg].HostReg;
   FreeIntGuestReg(LRUReg);
-  fHostRegMask:=fHostRegMask and (not (TPasRISCVUInt32(1) shl result));
+  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl result);
  end else begin
   // Should not happen — we always have at least some mapped regs
   result:=REG_ILL;
@@ -49739,7 +49739,7 @@ begin
   fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
   if (aFlags and REG_DST)<>0 then begin
    fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
-   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and (not REG_AUIPC);
+   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
   end;
   result:=fIntRegInfos[aGuestReg].HostReg;
   exit;
@@ -49762,7 +49762,7 @@ begin
  end;
  if (aFlags and REG_DST)<>0 then begin
   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
-  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and (not REG_AUIPC);
+  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
  end;
  result:=HostReg;
 end;
@@ -49813,7 +49813,7 @@ begin
    Mask:=Mask shr 1;
    inc(BitIndex);
   end;
-  fFPURegMask:=fFPURegMask and (not (TPasRISCVUInt32(1) shl BitIndex));
+  fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl BitIndex);
   result:=TPasRISCVUInt8(BitIndex);
   exit;
  end;
@@ -49891,7 +49891,7 @@ begin
   if (fFPURegInfos[FPUReg].HostReg<>REG_ILL) and
      ((fFPURegInfos[FPUReg].Flags and REG_DIRTY)<>0) then begin
    EmitFPUStore(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
-   fFPURegInfos[FPUReg].Flags:=fFPURegInfos[FPUReg].Flags and (not REG_DIRTY);
+   fFPURegInfos[FPUReg].Flags:=fFPURegInfos[FPUReg].Flags and not REG_DIRTY;
   end;
  end;
 end;
@@ -54413,7 +54413,7 @@ begin
         end;
 
         if PageTableEntry<>PageTableEntryAccessDirty then begin
-         if (not ADUE) and (not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags)) then begin
+         if (not ADUE) and not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
           if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
            RaisePageFault(aVirtualAddress,aAccessType);
           end;
@@ -56923,7 +56923,7 @@ begin
        end;
        TCSROperation.ClearBits:begin
         if aRHS<>0 then begin
-         WriteIPrioCSR(Reg,CSRValue and (not aRHS),Mode=THART.TMode.Machine);
+         WriteIPrioCSR(Reg,CSRValue and not aRHS,Mode=THART.TMode.Machine);
         end;
        end;
       end;
@@ -57797,7 +57797,7 @@ begin
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
          // masked off: undisturbed (do nothing)
         end else begin
          for SubIndex:=0 to NumFields do begin
@@ -57905,7 +57905,7 @@ begin
         end;
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
          // masked off
         end else begin
          Stride:=0;
@@ -57974,7 +57974,7 @@ begin
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
-      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+      end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
        // masked off
       end else begin
        for SubIndex:=0 to NumFields do begin
@@ -58032,7 +58032,7 @@ begin
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
-      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+      end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
        // masked off
       end else begin
        SourceValue:=VectorGetElement(vs2,Index,EEW);
@@ -58144,7 +58144,7 @@ begin
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
          // prestart: skip
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
          // masked off
         end else begin
          for SubIndex:=0 to NumFields do begin
@@ -58255,7 +58255,7 @@ begin
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
-      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+      end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
        // masked off
       end else begin
        for SubIndex:=0 to NumFields do begin
@@ -58311,7 +58311,7 @@ begin
      for Index:=0 to EVL-1 do begin
       if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
        // prestart: skip
-      end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+      end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
        // masked off
       end else begin
        SourceValue:=VectorGetElement(vs2,Index,EEW);
@@ -58397,7 +58397,7 @@ begin
      vlmul:=VTypeValue and 7;
 
      // Check reserved bits (bits XLEN-2:8 must be zero for valid vtype)
-     if (VTypeValue and (not TPasRISCVUInt64($ff)))<>0 then begin
+     if (VTypeValue and not TPasRISCVUInt64($ff))<>0 then begin
       // Invalid: set vill
       fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
       fState.CSR.fData[TCSR.TAddress.VL]:=0;
@@ -58584,13 +58584,13 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-        ((not (funct6 in [$30,$31])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
-        ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6 in [$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((not (funct6 in [$30,$31])) and not VectorCheckRegAlign(vs1,LMUL8)) or
+        ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and not VectorCheckRegAlign(vd,LMUL8)) or
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
+        ((funct6 in [$2c,$2d,$2e,$2f]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vadc/vsbc, vmerge/vmv, reductions)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31]))) or
+        ((not Unmasked) and (vd=0) and not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) or
         // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
         ((funct6 in [$32,$33,$36,$37]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
         // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
@@ -58620,7 +58620,7 @@ begin
        // vadd.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW));
         end;
@@ -58635,9 +58635,9 @@ begin
        // vandn.vv (Zvbb)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
-         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and (not VectorGetElement(vs1,Index,SEW)));
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and not VectorGetElement(vs1,Index,SEW));
         end;
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -58650,7 +58650,7 @@ begin
        // vsub.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW));
         end;
@@ -58665,7 +58665,7 @@ begin
        // vminu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -58686,7 +58686,7 @@ begin
        // vmin.vv (signed)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -58707,7 +58707,7 @@ begin
        // vmaxu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -58728,7 +58728,7 @@ begin
        // vmax.vv (signed)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -58749,7 +58749,7 @@ begin
        // vand.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and VectorGetElement(vs1,Index,SEW));
         end;
@@ -58764,7 +58764,7 @@ begin
        // vor.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or VectorGetElement(vs1,Index,SEW));
         end;
@@ -58779,7 +58779,7 @@ begin
        // vxor.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor VectorGetElement(vs1,Index,SEW));
         end;
@@ -58807,7 +58807,7 @@ begin
        end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SubIndex:=VectorGetElement(vs1,Index,SEW);
          VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
@@ -58860,7 +58860,7 @@ begin
        end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SubIndex:=VectorGetElement(vs1,Index,16);
          VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
@@ -58922,13 +58922,13 @@ begin
           if Address>=(TPasRISCVUInt64(1) shl SEW) then begin
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end;
          end else begin
           if (Address<SourceValue) or ((Stride<>0) and (Address<=SourceValue)) then begin
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end;
          end;
         end;
@@ -58982,7 +58982,7 @@ begin
          if (SourceValue<(OperandValue+Stride)) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -58996,7 +58996,7 @@ begin
        // vror.vv (Zvbb): rotate right
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
@@ -59013,7 +59013,7 @@ begin
        // vrol.vv (Zvbb): rotate left
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
@@ -59063,13 +59063,13 @@ begin
        // vmseq.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)=VectorGetElement(vs1,Index,SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -59083,13 +59083,13 @@ begin
        // vmsne.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)<>VectorGetElement(vs1,Index,SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -59103,13 +59103,13 @@ begin
        // vmsltu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)<VectorGetElement(vs1,Index,SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -59123,13 +59123,13 @@ begin
        // vmslt.vv (signed)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<SignExtend(VectorGetElement(vs1,Index,SEW),SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -59143,13 +59143,13 @@ begin
        // vmsleu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)<=VectorGetElement(vs1,Index,SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -59163,13 +59163,13 @@ begin
        // vmsle.vv (signed)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<=SignExtend(VectorGetElement(vs1,Index,SEW),SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -59183,7 +59183,7 @@ begin
        // vsaddu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59218,7 +59218,7 @@ begin
        // vsadd.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59244,7 +59244,7 @@ begin
        // vssubu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59267,7 +59267,7 @@ begin
        // vssub.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59293,7 +59293,7 @@ begin
        // vsll.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl (VectorGetElement(vs1,Index,SEW) and (SEW-1)));
         end;
@@ -59310,7 +59310,7 @@ begin
         $08:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59334,7 +59334,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59357,7 +59357,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59381,7 +59381,7 @@ begin
          // SEW=64: need 128-bit product
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -59437,7 +59437,7 @@ begin
        // vsrl.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr (VectorGetElement(vs1,Index,SEW) and (SEW-1)));
         end;
@@ -59452,7 +59452,7 @@ begin
        // vsra.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
@@ -59469,7 +59469,7 @@ begin
        // vssrl.vv: scaling shift right logical with rounding (unsigned)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
@@ -59486,7 +59486,7 @@ begin
        // vssra.vv: scaling shift right arithmetic with rounding (signed)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and (SEW-1);
@@ -59503,7 +59503,7 @@ begin
        // vnsrl.wv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW*2);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
@@ -59520,7 +59520,7 @@ begin
        // vnsra.wv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW*2);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
@@ -59537,7 +59537,7 @@ begin
        // vnclipu.wv: narrowing clip unsigned with rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW*2);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
@@ -59576,7 +59576,7 @@ begin
        // vnclip.wv: narrowing clip signed with rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW*2);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
@@ -59602,7 +59602,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW*2);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=Address+VectorGetElement(vs2,Index,SEW);
         end;
@@ -59619,7 +59619,7 @@ begin
        Address:=TPasRISCVUInt64(SignExtend(VectorGetElement(vs1,0,SEW*2),SEW*2));
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+TPasRISCVInt64(Address));
         end;
@@ -59635,7 +59635,7 @@ begin
        // vwsll.vv (Zvbb): widening shift left logical
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW) and ((SEW*2)-1);
@@ -59677,14 +59677,14 @@ begin
      fState.CSR.SetVSDirty;
      feclearexcept(FE_ALL_EXCEPT);
      LMUL8:=VectorGetLMUL;
-     if ((funct6<>$10) and (not VectorCheckRegAlign(vs2,LMUL8))) or
-        ((not (funct6 in [$01,$03,$05,$07,$10,$31,$33])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
-        ((not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+     if ((funct6<>$10) and not VectorCheckRegAlign(vs2,LMUL8)) or
+        ((not (funct6 in [$01,$03,$05,$07,$10,$31,$33])) and not VectorCheckRegAlign(vs1,LMUL8)) or
+        ((not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) and not VectorCheckRegAlign(vd,LMUL8)) or
+        ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
+        ((funct6 in [$34,$36]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except reductions, vfmv, and FP compares)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33]))) or
+        ((not Unmasked) and (vd=0) and not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) or
         // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
         ((funct6 in [$30,$32,$38,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
         // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
@@ -59714,7 +59714,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -59730,7 +59730,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -59746,7 +59746,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
@@ -59774,7 +59774,7 @@ begin
          FloatResult:=VectorGetFloat16(vs1,0);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatResult+FloatA;
@@ -59790,7 +59790,7 @@ begin
          FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatResult+FloatA;
@@ -59806,7 +59806,7 @@ begin
          DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=DoubleResult+DoubleA;
@@ -59832,7 +59832,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -59848,7 +59848,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -59864,7 +59864,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
@@ -59892,7 +59892,7 @@ begin
          FloatResult:=VectorGetFloat16(vs1,0);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatResult+FloatA;
@@ -59908,7 +59908,7 @@ begin
          FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatResult+FloatA;
@@ -59924,7 +59924,7 @@ begin
          DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=DoubleResult+DoubleA;
@@ -59950,7 +59950,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            OperandValue:=TPasRISCVUInt16(VectorGetElement(vs1,Index,16));
@@ -59987,7 +59987,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -60026,7 +60026,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
@@ -60077,7 +60077,7 @@ begin
          FloatResult:=VectorGetFloat16(vs1,0);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if IsNaN(FloatA) and IsNaN(FloatResult) then begin
@@ -60106,7 +60106,7 @@ begin
          FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if IsNaN(FloatA) and IsNaN(FloatResult) then begin
@@ -60135,7 +60135,7 @@ begin
          DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if IsNaN(DoubleA) and IsNaN(DoubleResult) then begin
@@ -60174,7 +60174,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            OperandValue:=TPasRISCVUInt16(VectorGetElement(vs1,Index,16));
@@ -60212,7 +60212,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -60251,7 +60251,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
@@ -60302,7 +60302,7 @@ begin
          FloatResult:=VectorGetFloat16(vs1,0);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if IsNaN(FloatA) and IsNaN(FloatResult) then begin
@@ -60331,7 +60331,7 @@ begin
          FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if IsNaN(FloatA) and IsNaN(FloatResult) then begin
@@ -60360,7 +60360,7 @@ begin
          DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if IsNaN(DoubleA) and IsNaN(DoubleResult) then begin
@@ -60399,7 +60399,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            OperandValue:=TPasRISCVUInt16(VectorGetElement(vs1,Index,16));
@@ -60414,7 +60414,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
            OperandValue:=TPasRISCVUInt32(VectorGetElement(vs1,Index,32));
@@ -60429,7 +60429,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,64);
            OperandValue:=VectorGetElement(vs1,Index,64);
@@ -60455,7 +60455,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            OperandValue:=TPasRISCVUInt16(VectorGetElement(vs1,Index,16));
@@ -60470,7 +60470,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
            OperandValue:=TPasRISCVUInt32(VectorGetElement(vs1,Index,32));
@@ -60485,7 +60485,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,64);
            OperandValue:=VectorGetElement(vs1,Index,64);
@@ -60511,7 +60511,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            OperandValue:=TPasRISCVUInt16(VectorGetElement(vs1,Index,16));
@@ -60526,7 +60526,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
            OperandValue:=TPasRISCVUInt32(VectorGetElement(vs1,Index,32));
@@ -60541,7 +60541,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,64);
            OperandValue:=VectorGetElement(vs1,Index,64);
@@ -60608,7 +60608,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
@@ -60645,7 +60645,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
@@ -60682,7 +60682,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
@@ -60730,7 +60730,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
@@ -60763,7 +60763,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
@@ -60796,7 +60796,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
@@ -60840,7 +60840,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
              VectorSetFloat16(vd,Index,TPasRISCVFloat(TPasRISCVUInt16(SourceValue)));
@@ -60854,7 +60854,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
              VectorSetFloat32(vd,Index,TPasRISCVFloat(TPasRISCVUInt32(SourceValue)));
@@ -60868,7 +60868,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=VectorGetElement(vs2,Index,64);
              VectorSetFloat64(vd,Index,TPasRISCVDouble(SourceValue));
@@ -60893,7 +60893,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
              VectorSetFloat16(vd,Index,TPasRISCVFloat(TPasRISCVInt16(SourceValue)));
@@ -60907,7 +60907,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
              VectorSetFloat32(vd,Index,TPasRISCVFloat(TPasRISCVInt32(SourceValue)));
@@ -60921,7 +60921,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=VectorGetElement(vs2,Index,64);
              VectorSetFloat64(vd,Index,TPasRISCVDouble(TPasRISCVInt64(SourceValue)));
@@ -60946,7 +60946,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
@@ -60964,7 +60964,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
@@ -60982,7 +60982,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
@@ -61011,7 +61011,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVInt16(Trunc(FloatA)))));
@@ -61025,7 +61025,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
@@ -61039,7 +61039,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(DoubleA)));
@@ -61063,7 +61063,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             FloatA:=VectorGetFloat32(vs2,Index);
             if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
@@ -61108,7 +61108,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             FloatA:=VectorGetFloat32(vs2,Index);
             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
@@ -61149,7 +61149,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
             VectorSetFloat64(vd,Index,TPasRISCVDouble(TPasRISCVUInt32(SourceValue)));
@@ -61171,7 +61171,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
             VectorSetFloat64(vd,Index,TPasRISCVDouble(TPasRISCVInt32(SourceValue)));
@@ -61194,7 +61194,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
              FloatResult:=TPasRISCVFloat(TPasRISCVHalfFloat(pointer(@SourceValue)^));
@@ -61209,7 +61209,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              VectorSetFloat64(vd,Index,FloatA);
@@ -61233,7 +61233,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             FloatA:=VectorGetFloat32(vs2,Index);
             if (not IsNaN(FloatA)) and (FloatA<0.0) then begin
@@ -61259,7 +61259,7 @@ begin
          if SEW=16 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             FloatResult:=VectorGetBFloat16(vs2,Index);
             VectorSetFloat32(vd,Index,FloatResult);
@@ -61281,7 +61281,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             FloatA:=VectorGetFloat32(vs2,Index);
             VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloatA)));
@@ -61303,7 +61303,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             DoubleA:=VectorGetFloat64(vs2,Index);
             if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
@@ -61348,7 +61348,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             DoubleA:=VectorGetFloat64(vs2,Index);
             case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
@@ -61389,7 +61389,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             SourceValue:=VectorGetElement(vs2,Index,64);
             VectorSetFloat32(vd,Index,TPasRISCVFloat(SourceValue));
@@ -61411,7 +61411,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             SourceValue:=VectorGetElement(vs2,Index,64);
             VectorSetFloat32(vd,Index,TPasRISCVFloat(TPasRISCVInt64(SourceValue)));
@@ -61434,7 +61434,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              TPasRISCVHalfFloat(pointer(@OperandValue)^):=TPasRISCVHalfFloat.FromFloat(FloatA);
@@ -61449,7 +61449,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              VectorSetFloat32(vd,Index,DoubleA);
@@ -61474,7 +61474,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              TPasRISCVHalfFloat(pointer(@OperandValue)^):=TPasRISCVHalfFloat.FromFloat(FloatA);
@@ -61493,7 +61493,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              FloatResult:=DoubleA;
@@ -61522,7 +61522,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             DoubleA:=VectorGetFloat64(vs2,Index);
             if (not IsNaN(DoubleA)) and (DoubleA<0.0) then begin
@@ -61548,7 +61548,7 @@ begin
          if SEW=32 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             DoubleA:=VectorGetFloat64(vs2,Index);
             VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(DoubleA))));
@@ -61570,7 +61570,7 @@ begin
          if SEW=16 then begin
           for Index:=0 to EVL-1 do begin
            if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-           end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+           end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
            end else begin
             FloatA:=VectorGetFloat32(vs2,Index);
             VectorSetBFloat16(vd,Index,FloatA);
@@ -61604,7 +61604,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              FloatResult:=Sqrt(FloatA);
@@ -61619,7 +61619,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              FloatResult:=Sqrt(FloatA);
@@ -61634,7 +61634,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              DoubleResult:=Sqrt(DoubleA);
@@ -61659,7 +61659,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
              if (SourceValue and $8000)<>0 then begin
@@ -61700,7 +61700,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
              // Handle special cases
@@ -61744,7 +61744,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              OperandValue:=VectorGetElement(vs2,Index,64);
              if (OperandValue and $8000000000000000)<>0 then begin
@@ -61791,7 +61791,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
              if (SourceValue and $7c00)=$7c00 then begin
@@ -61827,7 +61827,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
              if (SourceValue and $7f800000)=$7f800000 then begin
@@ -61859,7 +61859,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              OperandValue:=VectorGetElement(vs2,Index,64);
              if (OperandValue and $7ff0000000000000)=$7ff0000000000000 then begin
@@ -61898,7 +61898,7 @@ begin
           $10:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
              OperandValue:=0;
@@ -61948,7 +61948,7 @@ begin
           $20:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
              OperandValue:=0;
@@ -61998,7 +61998,7 @@ begin
           $40:begin
            for Index:=0 to EVL-1 do begin
             if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-            end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+            end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
             end else begin
              SourceValue:=VectorGetElement(vs2,Index,64);
              OperandValue:=0;
@@ -62064,15 +62064,15 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
            if FloatA=FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62084,15 +62084,15 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
            if FloatA=FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62104,15 +62104,15 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
            if DoubleA=DoubleB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62135,15 +62135,15 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
            if FloatA<=FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62155,15 +62155,15 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
            if FloatA<=FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62175,15 +62175,15 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
            if DoubleA<=DoubleB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62206,15 +62206,15 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
            if FloatA<FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62226,15 +62226,15 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
            if FloatA<FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62246,15 +62246,15 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
            if DoubleA<DoubleB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62277,15 +62277,15 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
            if FloatA<>FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62297,15 +62297,15 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
            if FloatA<>FloatB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62317,15 +62317,15 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
            if DoubleA<>DoubleB then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -62348,7 +62348,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -62364,7 +62364,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -62380,7 +62380,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
@@ -62407,7 +62407,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -62423,7 +62423,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -62439,7 +62439,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=VectorGetFloat64(vs1,Index);
@@ -62466,7 +62466,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vd,Index);
@@ -62483,7 +62483,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vd,Index);
@@ -62500,7 +62500,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vd,Index);
@@ -62528,7 +62528,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vd,Index);
@@ -62545,7 +62545,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vd,Index);
@@ -62562,7 +62562,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vd,Index);
@@ -62590,7 +62590,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vd,Index);
@@ -62607,7 +62607,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vd,Index);
@@ -62624,7 +62624,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vd,Index);
@@ -62652,7 +62652,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vd,Index);
@@ -62669,7 +62669,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vd,Index);
@@ -62686,7 +62686,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vd,Index);
@@ -62714,7 +62714,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -62731,7 +62731,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -62748,7 +62748,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vs2,Index);
@@ -62776,7 +62776,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -62793,7 +62793,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -62810,7 +62810,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vs2,Index);
@@ -62838,7 +62838,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -62855,7 +62855,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -62872,7 +62872,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vs2,Index);
@@ -62900,7 +62900,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -62917,7 +62917,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -62934,7 +62934,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs1,Index);
            DoubleB:=VectorGetFloat64(vs2,Index);
@@ -62962,7 +62962,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -62978,7 +62978,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -63008,7 +63008,7 @@ begin
          FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatResult+FloatA;
@@ -63024,7 +63024,7 @@ begin
          DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            DoubleResult:=DoubleResult+FloatA;
@@ -63050,7 +63050,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -63066,7 +63066,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -63096,7 +63096,7 @@ begin
          FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatResult+FloatA;
@@ -63112,7 +63112,7 @@ begin
          DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            DoubleResult:=DoubleResult+FloatA;
@@ -63138,7 +63138,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -63154,7 +63154,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -63182,7 +63182,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -63198,7 +63198,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -63226,7 +63226,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatB:=VectorGetFloat16(vs1,Index);
@@ -63242,7 +63242,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatB:=VectorGetFloat32(vs1,Index);
@@ -63270,7 +63270,7 @@ begin
        if SEW=16 then begin
         for Index:=0 to EVL-1 do begin
          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
          end else begin
           FloatA:=VectorGetBFloat16(vs1,Index);
           FloatB:=VectorGetBFloat16(vs2,Index);
@@ -63296,7 +63296,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -63313,7 +63313,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -63341,7 +63341,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -63358,7 +63358,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -63386,7 +63386,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -63403,7 +63403,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -63431,7 +63431,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs1,Index);
            FloatB:=VectorGetFloat16(vs2,Index);
@@ -63448,7 +63448,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs1,Index);
            FloatB:=VectorGetFloat32(vs2,Index);
@@ -63495,20 +63495,20 @@ begin
      SEW:=VectorGetSEW;
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      LMUL8:=VectorGetLMUL;
-     if (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f]) and (not Unmasked) then begin
+     if (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f]) and not Unmasked then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
      end;
      if (not (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) then begin
       if (not VectorCheckRegAlign(vs2,LMUL8)) or
-         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17,$28,$29,$2a,$2b])) and (not VectorCheckRegAlign(vs1,LMUL8))) or
-         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-         ((funct6 in [$34,$35,$36,$37]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17,$28,$29,$2a,$2b])) and not VectorCheckRegAlign(vs1,LMUL8)) or
+         ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and not VectorCheckRegAlign(vd,LMUL8)) or
+         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
+         ((funct6 in [$34,$35,$36,$37]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
          ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (SEW>=64)) or
          // vd must not overlap v0 when masked (except reductions, mask-producing/vmv ops)
-         ((not Unmasked) and (vd=0) and (not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17]))) or
+         ((not Unmasked) and (vd=0) and not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17])) or
          // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
          ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
          // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
@@ -63537,7 +63537,7 @@ begin
        // vaaddu.vv: averaging add unsigned, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63583,7 +63583,7 @@ begin
        // vaadd.vv: averaging add signed, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63657,7 +63657,7 @@ begin
        // vasubu.vv: averaging subtract unsigned, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63703,7 +63703,7 @@ begin
        // vasub.vv: averaging subtract signed, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63780,7 +63780,7 @@ begin
        end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,CLMul64(VectorGetElement(vs2,Index,SEW),VectorGetElement(vs1,Index,SEW)));
         end;
@@ -63800,7 +63800,7 @@ begin
        end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,CLMulH64(VectorGetElement(vs2,Index,SEW),VectorGetElement(vs1,Index,SEW)));
         end;
@@ -63815,7 +63815,7 @@ begin
        // vdivu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63850,7 +63850,7 @@ begin
        // vdiv.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63887,7 +63887,7 @@ begin
        // vremu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63909,7 +63909,7 @@ begin
        // vrem.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63933,7 +63933,7 @@ begin
        // vmulhu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -63964,7 +63964,7 @@ begin
        // vmul.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)*VectorGetElement(vs1,Index,SEW));
         end;
@@ -63979,7 +63979,7 @@ begin
        // vmulhsu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -64010,7 +64010,7 @@ begin
        // vmulh.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -64048,7 +64048,7 @@ begin
        // vmadd.vv: vd[i] = (vs1[i] * vd[i]) + vs2[i]
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vd,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -64073,7 +64073,7 @@ begin
        // vnmsub.vv: vd[i] = -(vs1[i] * vd[i]) + vs2[i]
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vd,Index,SEW);
          OperandValue:=VectorGetElement(vs1,Index,SEW);
@@ -64098,7 +64098,7 @@ begin
        // vmacc.vv: vd[i] = (vs1[i] * vs2[i]) + vd[i]
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs1,Index,SEW);
          OperandValue:=VectorGetElement(vs2,Index,SEW);
@@ -64123,7 +64123,7 @@ begin
        // vnmsac.vv: vd[i] = -(vs1[i] * vs2[i]) + vd[i]
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs1,Index,SEW);
          OperandValue:=VectorGetElement(vs2,Index,SEW);
@@ -64141,7 +64141,7 @@ begin
        // vwaddu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)+VectorGetElement(vs1,Index,SEW));
         end;
@@ -64156,7 +64156,7 @@ begin
        // vwadd.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
@@ -64171,7 +64171,7 @@ begin
        // vwsubu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)-VectorGetElement(vs1,Index,SEW));
         end;
@@ -64186,7 +64186,7 @@ begin
        // vwsub.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
@@ -64201,7 +64201,7 @@ begin
        // vwaddu.wv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)+VectorGetElement(vs1,Index,SEW));
         end;
@@ -64216,7 +64216,7 @@ begin
        // vwadd.wv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
@@ -64231,7 +64231,7 @@ begin
        // vwsubu.wv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)-VectorGetElement(vs1,Index,SEW));
         end;
@@ -64246,7 +64246,7 @@ begin
        // vwsub.wv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))-SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
@@ -64261,7 +64261,7 @@ begin
        // vwmulu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)*VectorGetElement(vs1,Index,SEW));
         end;
@@ -64276,7 +64276,7 @@ begin
        // vwmulsu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs1,Index,SEW))));
         end;
@@ -64291,7 +64291,7 @@ begin
        // vwmul.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*SignExtend(VectorGetElement(vs1,Index,SEW),SEW)));
         end;
@@ -64306,7 +64306,7 @@ begin
        // vwmaccu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vd,Index,SEW*2)+(VectorGetElement(vs1,Index,SEW)*VectorGetElement(vs2,Index,SEW)));
         end;
@@ -64321,7 +64321,7 @@ begin
        // vwmacc.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
         end;
@@ -64336,7 +64336,7 @@ begin
        // vwmaccsu.vv
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs1,Index,SEW))));
         end;
@@ -64352,7 +64352,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=Address + VectorGetElement(vs2,Index,SEW);
         end;
@@ -64371,7 +64371,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=Address and VectorGetElement(vs2,Index,SEW);
         end;
@@ -64390,7 +64390,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=Address or VectorGetElement(vs2,Index,SEW);
         end;
@@ -64409,7 +64409,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=Address xor VectorGetElement(vs2,Index,SEW);
         end;
@@ -64428,7 +64428,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SourceValue<Address then begin
@@ -64450,7 +64450,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SignExtend(SourceValue,SEW)<SignExtend(Address,SEW) then begin
@@ -64472,7 +64472,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SourceValue>Address then begin
@@ -64494,7 +64494,7 @@ begin
        Address:=VectorGetElement(vs1,0,SEW);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SignExtend(SourceValue,SEW)>SignExtend(Address,SEW) then begin
@@ -64537,7 +64537,7 @@ begin
          Address:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
             inc(Address);
@@ -64560,7 +64560,7 @@ begin
          Address:=TPasRISCVUInt64(TPasRISCVInt64(-1));
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
             Address:=Index;
@@ -64591,7 +64591,7 @@ begin
          // vzext.vf8
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW shr 3));
           end;
@@ -64602,7 +64602,7 @@ begin
          // vsext.vf8
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW shr 3),SEW shr 3)));
           end;
@@ -64613,7 +64613,7 @@ begin
          // vzext.vf4
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW shr 2));
           end;
@@ -64624,7 +64624,7 @@ begin
          // vsext.vf4
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW shr 2),SEW shr 2)));
           end;
@@ -64635,7 +64635,7 @@ begin
          // vzext.vf2
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW shr 1));
           end;
@@ -64646,7 +64646,7 @@ begin
          // vsext.vf2
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW shr 1),SEW shr 1)));
           end;
@@ -64657,7 +64657,7 @@ begin
          // vbrev8.v (Zvbb): reverse bits in each byte
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
@@ -64677,7 +64677,7 @@ begin
          // vrev8.v (Zvbb): reverse byte order
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
@@ -64693,7 +64693,7 @@ begin
          // vbrev.v (Zvbb): reverse all bits in element
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
@@ -64711,7 +64711,7 @@ begin
          // vclz.v (Zvbb): count leading zeros
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
@@ -64730,7 +64730,7 @@ begin
          // vctz.v (Zvbb): count trailing zeros
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
@@ -64749,7 +64749,7 @@ begin
          // vcpop.v (Zvbb): count set bits (population count)
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            Address:=0;
@@ -64788,18 +64788,18 @@ begin
          SubIndex:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            if SubIndex=0 then begin
             if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
              SubIndex:=1;
-             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
             end else begin
              fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
             end;
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -64816,14 +64816,14 @@ begin
          SubIndex:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            if (SubIndex=0) and ((fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0) then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
             SubIndex:=1;
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -64840,8 +64840,8 @@ begin
          SubIndex:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            if SubIndex=0 then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -64849,7 +64849,7 @@ begin
              SubIndex:=1;
             end;
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -64866,7 +64866,7 @@ begin
          Address:=0;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,Address);
            if (fState.VectorRegisters[TVectorRegister(vs2 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
@@ -64886,7 +64886,7 @@ begin
          end;
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            VectorSetElement(vd,Index,SEW,Index);
           end;
@@ -64952,10 +64952,10 @@ begin
          end else begin
           OperandValue:=0;
          end;
-         if (SourceValue and (not OperandValue))<>0 then begin
+         if (SourceValue and not OperandValue)<>0 then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -64975,7 +64975,7 @@ begin
             ((fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -64995,7 +64995,7 @@ begin
             ((fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65015,7 +65015,7 @@ begin
             ((fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65035,7 +65035,7 @@ begin
             ((fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))=0) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65055,7 +65055,7 @@ begin
                  ((fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0)) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65075,7 +65075,7 @@ begin
                  ((fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0)) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65095,7 +65095,7 @@ begin
                  ((fState.VectorRegisters[TVectorRegister(vs1 and 31)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0)) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65134,13 +65134,13 @@ begin
       Stride:=Stride and ((TPasRISCVUInt64(1) shl SEW)-1);
      end;
      LMUL8:=VectorGetLMUL;
-     if ((not (funct6 in [$27])) and (not VectorCheckRegAlign(vs2,LMUL8))) or
-        ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f,$27])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6 in [$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+     if ((not (funct6 in [$27])) and not VectorCheckRegAlign(vs2,LMUL8)) or
+        ((not (funct6 in [$11,$18,$19,$1c,$1d,$1e,$1f,$27])) and not VectorCheckRegAlign(vd,LMUL8)) or
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
+        ((funct6 in [$2c,$2d,$2e,$2f]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vmerge/vmv)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$11,$17,$18,$19,$1c,$1d,$1e,$1f]))) or
+        ((not Unmasked) and (vd=0) and not (funct6 in [$11,$17,$18,$19,$1c,$1d,$1e,$1f])) or
         // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
         ((funct6 in [$2c,$2d,$2e,$2f]) and ((vd=vs2) or ((LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -65152,7 +65152,7 @@ begin
        // vadd.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride);
         end;
@@ -65167,7 +65167,7 @@ begin
        // vrsub.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,Stride-VectorGetElement(vs2,Index,SEW));
         end;
@@ -65182,7 +65182,7 @@ begin
        // vand.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and Stride);
         end;
@@ -65197,7 +65197,7 @@ begin
        // vor.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or Stride);
         end;
@@ -65212,7 +65212,7 @@ begin
        // vxor.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor Stride);
         end;
@@ -65239,7 +65239,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and $1f;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if SubIndex>=VLMAX then begin
@@ -65267,7 +65267,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and $1f;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          if Index>=SubIndex then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-SubIndex,SEW));
@@ -65285,7 +65285,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and $1f;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if (Index+SubIndex)<VLMAX then begin
@@ -65345,13 +65345,13 @@ begin
           if Address>=(TPasRISCVUInt64(1) shl SEW) then begin
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end;
          end else begin
           if Address<SourceValue then begin
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end;
          end;
         end;
@@ -65366,7 +65366,7 @@ begin
        // vror.vi (Zvbb): rotate right by 6-bit immediate (bit5 from funct6 bit0)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=(((aInstruction shr 15) and $1f) or ((funct6 and 1) shl 5)) and (SEW-1);
@@ -65416,13 +65416,13 @@ begin
        // vmseq.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)=SignExtend(Stride,5) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65436,13 +65436,13 @@ begin
        // vmsne.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<>SignExtend(Stride,5) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65456,13 +65456,13 @@ begin
        // vmsleu.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)<=TPasRISCVUInt64(Stride) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65476,13 +65476,13 @@ begin
        // vmsle.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<=SignExtend(Stride,5) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65496,13 +65496,13 @@ begin
        // vmsgtu.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)>TPasRISCVUInt64(Stride) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65516,13 +65516,13 @@ begin
        // vmsgt.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)>SignExtend(Stride,5) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -65536,7 +65536,7 @@ begin
        // vsaddu.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          Address:=SourceValue+Stride;
@@ -65570,7 +65570,7 @@ begin
        // vsadd.vi
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          Address:=SourceValue+Stride;
@@ -65627,7 +65627,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl SubIndex);
         end;
@@ -65643,7 +65643,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr SubIndex);
         end;
@@ -65659,7 +65659,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW),SubIndex)));
         end;
@@ -65675,7 +65675,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorRoundoffShift(VectorGetElement(vs2,Index,SEW),SubIndex));
         end;
@@ -65691,7 +65691,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(VectorRoundoffShiftSigned(TPasRISCVInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)),SubIndex)));
         end;
@@ -65707,7 +65707,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW*2) shr SubIndex);
         end;
@@ -65723,7 +65723,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),SubIndex)));
         end;
@@ -65739,7 +65739,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=VectorRoundoffShift(VectorGetElement(vs2,Index,SEW*2),SubIndex);
          case SEW of
@@ -65777,7 +65777,7 @@ begin
        SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=TPasRISCVUInt64(VectorRoundoffShiftSigned(TPasRISCVInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2)),SubIndex));
          if SignExtend(Address,SEW*2)>SignExtend((TPasRISCVUInt64(1) shl (SEW-1))-1,SEW) then begin
@@ -65800,7 +65800,7 @@ begin
        // vwsll.vi (Zvbb): widening shift left logical by immediate
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=TPasRISCVUInt64(Stride) and ((SEW*2)-1);
@@ -65845,12 +65845,12 @@ begin
      end;
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-        ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6 in [$32,$33,$34,$35,$36,$37]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$2c,$2d,$2e,$2f]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) and not VectorCheckRegAlign(vd,LMUL8)) or
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
+        ((funct6 in [$2c,$2d,$2e,$2f]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vadc/vsbc, vmerge/vmv, reductions)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31]))) or
+        ((not Unmasked) and (vd=0) and not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) or
         // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
         ((funct6 in [$32,$33,$36,$37]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
         // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
@@ -65864,7 +65864,7 @@ begin
        // vadd.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)+Stride);
         end;
@@ -65879,9 +65879,9 @@ begin
        // vandn.vx (Zvbb)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
-         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and (not Stride));
+         VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and not Stride);
         end;
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -65894,7 +65894,7 @@ begin
        // vsub.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)-Stride);
         end;
@@ -65909,7 +65909,7 @@ begin
        // vrsub.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,Stride-VectorGetElement(vs2,Index,SEW));
         end;
@@ -65924,7 +65924,7 @@ begin
        // vminu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SourceValue<Stride then begin
@@ -65944,7 +65944,7 @@ begin
        // vmin.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SignExtend(SourceValue,SEW)<SignExtend(Stride,SEW) then begin
@@ -65964,7 +65964,7 @@ begin
        // vmaxu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SourceValue>Stride then begin
@@ -65984,7 +65984,7 @@ begin
        // vmax.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SignExtend(SourceValue,SEW)>SignExtend(Stride,SEW) then begin
@@ -66004,7 +66004,7 @@ begin
        // vand.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) and Stride);
         end;
@@ -66019,7 +66019,7 @@ begin
        // vor.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) or Stride);
         end;
@@ -66034,7 +66034,7 @@ begin
        // vxor.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) xor Stride);
         end;
@@ -66061,7 +66061,7 @@ begin
        SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if SubIndex>=VLMAX then begin
@@ -66089,7 +66089,7 @@ begin
        SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          if Index>=SubIndex then begin
           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-SubIndex,SEW));
@@ -66107,7 +66107,7 @@ begin
        SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VLMAX:=((VLEN div SEW)*VectorGetLMUL) shr 3;
          if (Index+SubIndex)<VLMAX then begin
@@ -66167,13 +66167,13 @@ begin
           if Address>=(TPasRISCVUInt64(1) shl SEW) then begin
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end;
          end else begin
           if Address<SourceValue then begin
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end;
          end;
         end;
@@ -66226,7 +66226,7 @@ begin
          if (SourceValue<(Stride+OperandValue)) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66240,7 +66240,7 @@ begin
        // vror.vx (Zvbb): rotate right by scalar
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=Stride and (SEW-1);
@@ -66257,7 +66257,7 @@ begin
        // vrol.vx (Zvbb): rotate left by scalar
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=Stride and (SEW-1);
@@ -66307,13 +66307,13 @@ begin
        // vmseq.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)=Stride then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66327,13 +66327,13 @@ begin
        // vmsne.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)<>Stride then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66347,13 +66347,13 @@ begin
        // vmsltu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)<Stride then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66367,13 +66367,13 @@ begin
        // vmslt.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<SignExtend(Stride,SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66387,13 +66387,13 @@ begin
        // vmsleu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)<=Stride then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66407,13 +66407,13 @@ begin
        // vmsle.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)<=SignExtend(Stride,SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66427,13 +66427,13 @@ begin
        // vmsgtu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if VectorGetElement(vs2,Index,SEW)>Stride then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66447,13 +66447,13 @@ begin
        // vmsgt.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+         fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
         end else begin
          if SignExtend(VectorGetElement(vs2,Index,SEW),SEW)>SignExtend(Stride,SEW) then begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
-          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
          end;
         end;
        end;
@@ -66467,7 +66467,7 @@ begin
        // vsaddu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          Address:=SourceValue+Stride;
@@ -66501,7 +66501,7 @@ begin
        // vsadd.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          Address:=SourceValue+Stride;
@@ -66526,7 +66526,7 @@ begin
        // vssubu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SourceValue<Stride then begin
@@ -66548,7 +66548,7 @@ begin
        // vssub.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          Address:=SourceValue-Stride;
@@ -66573,7 +66573,7 @@ begin
        // vsll.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shl (Stride and (SEW-1)));
         end;
@@ -66590,7 +66590,7 @@ begin
         $08:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=Stride;
@@ -66614,7 +66614,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=Stride;
@@ -66637,7 +66637,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=Stride;
@@ -66661,7 +66661,7 @@ begin
          // SEW=64: need 128-bit product
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,SEW);
            OperandValue:=Stride;
@@ -66716,7 +66716,7 @@ begin
        // vsrl.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW) shr (Stride and (SEW-1)));
         end;
@@ -66731,7 +66731,7 @@ begin
        // vsra.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW),Stride and (SEW-1))));
         end;
@@ -66746,7 +66746,7 @@ begin
        // vssrl.vx: scaling shift right logical with rounding (unsigned)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorRoundoffShift(VectorGetElement(vs2,Index,SEW),Stride and (SEW-1)));
         end;
@@ -66761,7 +66761,7 @@ begin
        // vssra.vx: scaling shift right arithmetic with rounding (signed)
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(VectorRoundoffShiftSigned(TPasRISCVInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)),Stride and (SEW-1))));
         end;
@@ -66776,7 +66776,7 @@ begin
        // vnsrl.wx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW*2) shr (Stride and ((SEW*2)-1)));
         end;
@@ -66791,7 +66791,7 @@ begin
        // vnsra.wx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,TPasRISCVUInt64(SarInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2),Stride and ((SEW*2)-1))));
         end;
@@ -66806,7 +66806,7 @@ begin
        // vnclipu.wx: narrowing clip unsigned with rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=VectorRoundoffShift(VectorGetElement(vs2,Index,SEW*2),Stride and ((SEW*2)-1));
          case SEW of
@@ -66843,7 +66843,7 @@ begin
        // vnclip.wx: narrowing clip signed with rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          Address:=TPasRISCVUInt64(VectorRoundoffShiftSigned(TPasRISCVInt64(SignExtend(VectorGetElement(vs2,Index,SEW*2),SEW*2)),Stride and ((SEW*2)-1)));
          if SignExtend(Address,SEW*2)>SignExtend((TPasRISCVUInt64(1) shl (SEW-1))-1,SEW) then begin
@@ -66866,7 +66866,7 @@ begin
        // vwsll.vx (Zvbb): widening shift left logical by scalar
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          OperandValue:=Stride and ((SEW*2)-1);
@@ -66923,14 +66923,14 @@ begin
      feclearexcept(FE_ALL_EXCEPT);
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-        ((not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$34,$36]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) and not VectorCheckRegAlign(vd,LMUL8)) or
+        ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
+        ((funct6 in [$34,$36]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
         // vfslide1up.vf: vd must not overlap vs2
         ((funct6=$0e) and (vd=vs2)) or
         // vd must not overlap v0 when masked (except vfmv, FP compares, reductions)
-        ((not Unmasked) and (vd=0) and (not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f]))) or
+        ((not Unmasked) and (vd=0) and not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) or
         // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
         ((funct6 in [$30,$32,$38,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -66944,7 +66944,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatA+ScalarFloat;
@@ -66959,7 +66959,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatA+ScalarFloat;
@@ -66974,7 +66974,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=DoubleA+ScalarDouble;
@@ -67000,7 +67000,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatA-ScalarFloat;
@@ -67015,7 +67015,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatA-ScalarFloat;
@@ -67030,7 +67030,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=DoubleA-ScalarDouble;
@@ -67056,7 +67056,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,16);
            FloatA:=VectorGetFloat16(vs2,Index);
@@ -67093,7 +67093,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            // Check for signaling NaN
@@ -67129,7 +67129,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            // Check for signaling NaN
@@ -67176,7 +67176,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,16);
            FloatA:=VectorGetFloat16(vs2,Index);
@@ -67213,7 +67213,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            // Check for signaling NaN
@@ -67249,7 +67249,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            // Check for signaling NaN
@@ -67296,7 +67296,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=ScalarFloat-FloatA;
@@ -67311,7 +67311,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=ScalarFloat-FloatA;
@@ -67326,7 +67326,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=ScalarDouble-DoubleA;
@@ -67352,7 +67352,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            VectorSetElement(vd,Index,16,TPasRISCVUInt64((SourceValue and $7fff) or (TPasRISCVUInt16(ScalarFP and $ffff) and $8000)));
@@ -67366,7 +67366,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
            VectorSetElement(vd,Index,32,TPasRISCVUInt64((SourceValue and $7fffffff) or (TPasRISCVUInt32(ScalarFP) and $80000000)));
@@ -67380,7 +67380,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,64);
            VectorSetElement(vd,Index,64,(SourceValue and $7fffffffffffffff) or (ScalarFP and $8000000000000000));
@@ -67405,7 +67405,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            VectorSetElement(vd,Index,16,TPasRISCVUInt64((SourceValue and $7fff) or ((not TPasRISCVUInt16(ScalarFP and $ffff)) and $8000)));
@@ -67419,7 +67419,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
            VectorSetElement(vd,Index,32,TPasRISCVUInt64((SourceValue and $7fffffff) or ((not TPasRISCVUInt32(ScalarFP)) and $80000000)));
@@ -67433,7 +67433,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,64);
            VectorSetElement(vd,Index,64,(SourceValue and $7fffffffffffffff) or ((not ScalarFP) and $8000000000000000));
@@ -67458,7 +67458,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
            VectorSetElement(vd,Index,16,TPasRISCVUInt64((SourceValue and $7fff) or ((SourceValue xor TPasRISCVUInt16(ScalarFP and $ffff)) and $8000)));
@@ -67472,7 +67472,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
            VectorSetElement(vd,Index,32,TPasRISCVUInt64((SourceValue and $7fffffff) or ((SourceValue xor TPasRISCVUInt32(ScalarFP)) and $80000000)));
@@ -67486,7 +67486,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            SourceValue:=VectorGetElement(vs2,Index,64);
            VectorSetElement(vd,Index,64,(SourceValue and $7fffffffffffffff) or ((SourceValue xor ScalarFP) and $8000000000000000));
@@ -67511,7 +67511,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if Index=0 then begin
             VectorSetElement(vd,0,16,ScalarFP and $ffff);
@@ -67528,7 +67528,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if Index=0 then begin
             VectorSetElement(vd,0,32,TPasRISCVUInt64(TPasRISCVUInt32(ScalarFP)));
@@ -67545,7 +67545,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if Index=0 then begin
             VectorSetElement(vd,0,64,ScalarFP);
@@ -67573,7 +67573,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if Index=(EVL-1) then begin
             VectorSetElement(vd,Index,16,ScalarFP and $ffff);
@@ -67590,7 +67590,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if Index=(EVL-1) then begin
             VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(ScalarFP)));
@@ -67607,7 +67607,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            if Index=(EVL-1) then begin
             VectorSetElement(vd,Index,64,ScalarFP);
@@ -67786,14 +67786,14 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if FloatA=ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67805,14 +67805,14 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if FloatA=ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67824,14 +67824,14 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if DoubleA=ScalarDouble then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67854,14 +67854,14 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if FloatA<=ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67873,14 +67873,14 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if FloatA<=ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67892,14 +67892,14 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if DoubleA<=ScalarDouble then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67922,14 +67922,14 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if FloatA<ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67941,14 +67941,14 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if FloatA<ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67960,14 +67960,14 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if DoubleA<ScalarDouble then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -67990,14 +67990,14 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if FloatA<>ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68009,14 +68009,14 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if FloatA<>ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68028,14 +68028,14 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if DoubleA<>ScalarDouble then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68058,14 +68058,14 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if FloatA>ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68077,14 +68077,14 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if FloatA>ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68096,14 +68096,14 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if DoubleA>ScalarDouble then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68126,14 +68126,14 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            if FloatA>=ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68145,14 +68145,14 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            if FloatA>=ScalarFloat then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68164,14 +68164,14 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
-           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
+           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            if DoubleA>=ScalarDouble then begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
-            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and (not (TPasRISCVUInt8(1) shl (Index and 7)));
+            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end;
          end;
@@ -68194,7 +68194,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatA/ScalarFloat;
@@ -68209,7 +68209,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatA/ScalarFloat;
@@ -68224,7 +68224,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=DoubleA/ScalarDouble;
@@ -68250,7 +68250,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=ScalarFloat/FloatA;
@@ -68265,7 +68265,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=ScalarFloat/FloatA;
@@ -68280,7 +68280,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=ScalarDouble/DoubleA;
@@ -68306,7 +68306,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatA*ScalarFloat;
@@ -68321,7 +68321,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatA*ScalarFloat;
@@ -68336,7 +68336,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleResult:=DoubleA*ScalarDouble;
@@ -68362,7 +68362,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vd,Index);
            FloatC:=VectorGetFloat16(vs2,Index);
@@ -68378,7 +68378,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vd,Index);
            FloatC:=VectorGetFloat32(vs2,Index);
@@ -68394,7 +68394,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vd,Index);
            DoubleC:=VectorGetFloat64(vs2,Index);
@@ -68421,7 +68421,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vd,Index);
            FloatC:=VectorGetFloat16(vs2,Index);
@@ -68437,7 +68437,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vd,Index);
            FloatC:=VectorGetFloat32(vs2,Index);
@@ -68453,7 +68453,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vd,Index);
            DoubleC:=VectorGetFloat64(vs2,Index);
@@ -68480,7 +68480,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vd,Index);
            FloatC:=VectorGetFloat16(vs2,Index);
@@ -68496,7 +68496,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vd,Index);
            FloatC:=VectorGetFloat32(vs2,Index);
@@ -68512,7 +68512,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vd,Index);
            DoubleC:=VectorGetFloat64(vs2,Index);
@@ -68539,7 +68539,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vd,Index);
            FloatC:=VectorGetFloat16(vs2,Index);
@@ -68555,7 +68555,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vd,Index);
            FloatC:=VectorGetFloat32(vs2,Index);
@@ -68571,7 +68571,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vd,Index);
            DoubleC:=VectorGetFloat64(vs2,Index);
@@ -68598,7 +68598,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat16(vd,Index);
@@ -68614,7 +68614,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -68630,7 +68630,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -68657,7 +68657,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat16(vd,Index);
@@ -68673,7 +68673,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -68689,7 +68689,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -68716,7 +68716,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat16(vd,Index);
@@ -68732,7 +68732,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -68748,7 +68748,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -68775,7 +68775,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat16(vd,Index);
@@ -68791,7 +68791,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -68807,7 +68807,7 @@ begin
         $40:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleB:=VectorGetFloat64(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -68834,7 +68834,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatA+ScalarFloat;
@@ -68849,7 +68849,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            DoubleA:=FloatA;
@@ -68877,7 +68877,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatA-ScalarFloat;
@@ -68892,7 +68892,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            DoubleA:=FloatA;
@@ -68920,7 +68920,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatA+ScalarFloat;
@@ -68935,7 +68935,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=ScalarFloat;
@@ -68962,7 +68962,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            FloatResult:=FloatA-ScalarFloat;
@@ -68977,7 +68977,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            DoubleA:=VectorGetFloat64(vs2,Index);
            DoubleB:=ScalarFloat;
@@ -69004,7 +69004,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatResult:=FloatA*ScalarFloat;
@@ -69019,7 +69019,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat32(vs2,Index);
            DoubleA:=FloatA;
@@ -69046,7 +69046,7 @@ begin
        if SEW=16 then begin
         for Index:=0 to EVL-1 do begin
          if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-         end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+         end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
          end else begin
           // Scalar BF16 from lower 16 bits of FP register, widened to FP32
           SourceValue:=TPasRISCVUInt32(TPasRISCVUInt16(ScalarFP and $ffff)) shl 16;
@@ -69074,7 +69074,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -69090,7 +69090,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -69117,7 +69117,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -69133,7 +69133,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -69160,7 +69160,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -69176,7 +69176,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -69203,7 +69203,7 @@ begin
         $10:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatA:=VectorGetFloat16(vs2,Index);
            FloatC:=VectorGetFloat32(vd,Index);
@@ -69219,7 +69219,7 @@ begin
         $20:begin
          for Index:=0 to EVL-1 do begin
           if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-          end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+          end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
           end else begin
            FloatB:=VectorGetFloat32(vs2,Index);
            DoubleC:=VectorGetFloat64(vd,Index);
@@ -69270,9 +69270,9 @@ begin
      end;
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-        ((funct6<>$10) and (not VectorCheckRegAlign(vd,LMUL8))) or
-        ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
-        ((funct6 in [$34,$35,$36,$37]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
+        ((funct6<>$10) and not VectorCheckRegAlign(vd,LMUL8)) or
+        ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
+        ((funct6 in [$34,$35,$36,$37]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
         // vslide1up.vx: vd must not overlap vs2
         ((funct6=$0e) and (vd=vs2)) or
@@ -69289,7 +69289,7 @@ begin
        // vaaddu.vx: averaging add unsigned, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          Address:=SourceValue+Stride;
@@ -69331,7 +69331,7 @@ begin
        // vaadd.vx: averaging add signed, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SEW<64 then begin
@@ -69399,7 +69399,7 @@ begin
        // vasubu.vx: averaging subtract unsigned, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          Address:=SourceValue-Stride;
@@ -69441,7 +69441,7 @@ begin
        // vasub.vx: averaging subtract signed, rounding per vxrm
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if SEW<64 then begin
@@ -69514,7 +69514,7 @@ begin
        end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,CLMul64(VectorGetElement(vs2,Index,SEW),Stride));
         end;
@@ -69534,7 +69534,7 @@ begin
        end;
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,CLMulH64(VectorGetElement(vs2,Index,SEW),Stride));
         end;
@@ -69549,7 +69549,7 @@ begin
        // vslide1up.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          if Index=0 then begin
           VectorSetElement(vd,Index,SEW,Stride);
@@ -69568,7 +69568,7 @@ begin
        // vslide1down.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          if Index=(EVL-1) then begin
           VectorSetElement(vd,Index,SEW,Stride);
@@ -69603,7 +69603,7 @@ begin
        // vdivu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if Stride=0 then begin
@@ -69637,7 +69637,7 @@ begin
        // vdiv.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if Stride=0 then begin
@@ -69673,7 +69673,7 @@ begin
        // vremu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if Stride=0 then begin
@@ -69694,7 +69694,7 @@ begin
        // vrem.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          if Stride=0 then begin
@@ -69717,7 +69717,7 @@ begin
        // vmulhu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          case SEW of
@@ -69747,7 +69747,7 @@ begin
        // vmul.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW)*Stride);
         end;
@@ -69762,7 +69762,7 @@ begin
        // vmulhsu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          case SEW of
@@ -69792,7 +69792,7 @@ begin
        // vmulh.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          SourceValue:=VectorGetElement(vs2,Index,SEW);
          case SEW of
@@ -69822,7 +69822,7 @@ begin
        // vwaddu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)+Stride);
         end;
@@ -69837,7 +69837,7 @@ begin
        // vwadd.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)+SignExtend(Stride,SEW)));
         end;
@@ -69852,7 +69852,7 @@ begin
        // vwsubu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)-Stride);
         end;
@@ -69867,7 +69867,7 @@ begin
        // vwsub.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)-SignExtend(Stride,SEW)));
         end;
@@ -69882,7 +69882,7 @@ begin
        // vwaddu.wx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)+Stride);
         end;
@@ -69897,7 +69897,7 @@ begin
        // vwadd.wx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))+SignExtend(Stride,SEW)));
         end;
@@ -69912,7 +69912,7 @@ begin
        // vwsubu.wx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW*2)-Stride);
         end;
@@ -69927,7 +69927,7 @@ begin
        // vwsub.wx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vs2,Index,SEW*2))-SignExtend(Stride,SEW)));
         end;
@@ -69942,7 +69942,7 @@ begin
        // vwmulu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vs2,Index,SEW)*Stride);
         end;
@@ -69957,7 +69957,7 @@ begin
        // vwmulsu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(Stride)));
         end;
@@ -69972,7 +69972,7 @@ begin
        // vwmul.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*SignExtend(Stride,SEW)));
         end;
@@ -69987,7 +69987,7 @@ begin
        // vwmaccu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,VectorGetElement(vd,Index,SEW*2)+(Stride*VectorGetElement(vs2,Index,SEW)));
         end;
@@ -70002,7 +70002,7 @@ begin
        // vwmacc.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(Stride,SEW)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
         end;
@@ -70017,7 +70017,7 @@ begin
        // vwmaccus.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+TPasRISCVInt64(Stride)*SignExtend(VectorGetElement(vs2,Index,SEW),SEW)));
         end;
@@ -70032,7 +70032,7 @@ begin
        // vwmaccsu.vx
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
-        end else if (not Unmasked) and (not VectorGetMaskBit(Index)) then begin
+        end else if (not Unmasked) and not VectorGetMaskBit(Index) then begin
         end else begin
          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(Stride)));
         end;
@@ -78394,9 +78394,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
             if TPasRISCVInt8(Temporary)<=TPasRISCVInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78413,9 +78417,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
             if TPasRISCVInt8(Temporary)>=TPasRISCVInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78432,9 +78440,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
             if TPasRISCVUInt8(Temporary)<=TPasRISCVUInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78451,9 +78463,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt8(Ptr)^));
             if TPasRISCVUInt8(Temporary)>=TPasRISCVUInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(Temporary),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt8(Ptr)^,TPasMPUInt8(fState.Registers[rs2]),TPasMPUInt8(Temporary))=TPasMPUInt8(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78484,7 +78500,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(TPasRISCVUInt8(Immediate)+TPasRISCVUInt8(fState.Registers[rs2]))) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(TPasRISCVUInt8(Immediate)+TPasRISCVUInt8(fState.Registers[rs2]))) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
            end;
@@ -78499,7 +78515,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
            end;
@@ -78514,7 +78530,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) xor TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) xor TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
            end;
@@ -78530,7 +78546,7 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
             if TPasRISCVUInt8(Immediate)=TPasRISCVUInt8(fState.Registers[rd]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
               break;
              end;
             end else begin
@@ -78553,7 +78569,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) or TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) or TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
            end;
@@ -78568,7 +78584,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) and TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(Immediate) and TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(Immediate)));
            end;
@@ -78584,9 +78600,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
             if TPasRISCVInt8(Immediate)<=TPasRISCVInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78604,9 +78624,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
             if TPasRISCVInt8(Immediate)>=TPasRISCVInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78624,9 +78648,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
             if TPasRISCVUInt8(Immediate)<=TPasRISCVUInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78644,9 +78672,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt8(Temporary shr Offset));
             if TPasRISCVUInt8(Immediate)>=TPasRISCVUInt8(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78760,9 +78792,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
             if TPasRISCVInt16(Temporary)<=TPasRISCVInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78779,9 +78815,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
             if TPasRISCVInt16(Temporary)>=TPasRISCVInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78798,9 +78838,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
             if TPasRISCVUInt16(Temporary)<=TPasRISCVUInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78817,9 +78861,13 @@ begin
            repeat
             Temporary:=TPasRISCVUInt64(TPasMPInterlocked.Read(PPasMPUInt16(Ptr)^));
             if TPasRISCVUInt16(Temporary)>=TPasRISCVUInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(Temporary),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt16(Ptr)^,TPasMPUInt16(fState.Registers[rs2]),TPasMPUInt16(Temporary))=TPasMPUInt16(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78850,7 +78898,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVUInt16(Immediate)+TPasRISCVUInt16(fState.Registers[rs2]))) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVUInt16(Immediate)+TPasRISCVUInt16(fState.Registers[rs2]))) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
            end;
@@ -78865,7 +78913,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
            end;
@@ -78880,7 +78928,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) xor TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) xor TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
            end;
@@ -78896,7 +78944,7 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
             if TPasRISCVUInt16(Immediate)=TPasRISCVUInt16(fState.Registers[rd]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
               break;
              end;
             end else begin
@@ -78919,7 +78967,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) or TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) or TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
            end;
@@ -78934,7 +78982,7 @@ begin
            repeat
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
-           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) and TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
+           until TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(Immediate) and TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(Immediate)));
            end;
@@ -78950,9 +78998,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
             if TPasRISCVInt16(Immediate)<=TPasRISCVInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78970,9 +79022,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
             if TPasRISCVInt16(Immediate)>=TPasRISCVInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -78990,9 +79046,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
             if TPasRISCVUInt16(Immediate)<=TPasRISCVUInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -79010,9 +79070,13 @@ begin
             Temporary:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
             Immediate:=TPasRISCVInt64(TPasRISCVUInt16(Temporary shr Offset));
             if TPasRISCVUInt16(Immediate)>=TPasRISCVUInt16(fState.Registers[rs2]) then begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(Temporary),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end else begin
-             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and (not (TPasRISCVUInt64($ffff) shl Offset))) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then break;
+             if TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32((Temporary and not (TPasRISCVUInt64($ffff) shl Offset)) or (TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])) shl Offset)),TPasMPUInt32(Temporary))=TPasMPUInt32(Temporary) then begin
+              break;
+             end;
             end;
            until false;
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
