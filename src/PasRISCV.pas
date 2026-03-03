@@ -1,4 +1,4 @@
-(******************************************************************************
+﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
  *                        Version 2026-03-03-07-46-0000                       *
@@ -19830,6 +19830,7 @@ var Dir:PDIR;
     DE:PDirEnt;
     Index,EntryCapacity:TPasRISCVInt32;
     DirOffset:TOff;
+    Err:cint;
 begin
  Dir:={%H-}PDIR(PtrUInt(aHandle));
  aCount:=0;
@@ -19838,14 +19839,25 @@ begin
 {$ifdef PasRISCVDebugVirtIOFS}
  writeln('FUSEFileSystemPOSIX.ReadDir: handle=',aHandle,' offset=',aOffset,' dir=',{%H-}PtrUInt(Dir));
 {$endif}
- SeekDir(Dir,aOffset);
+ if aOffset=0 then begin
+  RewindDir(Dir);
+ end else begin
+  SeekDir(Dir,aOffset);
+ end;
+ fpSetErrno(0); 
  Index:=0;
  repeat
   DE:=fpReadDir(Dir^);
   if not assigned(DE) then begin
+   Err:=fpGetErrno;
 {$ifdef PasRISCVDebugVirtIOFS}
-   writeln('FUSEFileSystemPOSIX.ReadDir: fpReadDir returned nil after ',Index,' entries, errno=',fpGetErrno);
+   writeln('FUSEFileSystemPOSIX.ReadDir: fpReadDir returned nil after ',Index,' entries, errno=',Err);
 {$endif}
+   if (Index=0) and (Err<>0) then begin
+    aCount:=0;
+    result:=POSIXErrorToFUSEError(Err);
+    exit;
+   end;
    break;
   end;
   DirOffset:=TellDir(Dir);
@@ -37568,6 +37580,23 @@ begin
         DirentPlusEntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
         DirentPlusEntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
         FillAttr(DirentPlusEntryOut.Attr,DirentPlusFileStat,DirentPlusChildNodeID);
+       end else if DirentPlusChildFound then begin
+        // Stat failed - decrement lookup count since kernel won't know about this node
+        // (NodeID=0 means kernel won't send FORGET)
+        fLock.Acquire;
+        try
+         DirentPlusChildNode:=FindNode(DirentPlusChildNodeID);
+         if assigned(DirentPlusChildNode) then begin
+          if DirentPlusChildNode.fLookupCount>0 then begin
+           dec(DirentPlusChildNode.fLookupCount);
+          end;
+          if DirentPlusChildNode.fLookupCount=0 then begin
+           RemoveNode(DirentPlusChildNodeID);
+          end;
+         end;
+        finally
+         fLock.Release;
+        end;
        end;
        Move(DirentPlusEntryOut,PPasRISCVUInt8Array(Buf)^[BufOfs],SizeOf(TFUSEEntryOut));
        inc(BufOfs,SizeOf(TFUSEEntryOut));
