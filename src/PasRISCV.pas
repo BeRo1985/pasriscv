@@ -47846,7 +47846,7 @@ begin
    aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
    inc(fPCOffset,aTargetOffset-aFallthroughOffset);
    inc(fInstructionCount);
-   fBlockEnds:=true;//fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
+   fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
   end;
   result:=false;
  end;
@@ -71745,15 +71745,23 @@ begin
                            ((aInstruction shl 3) and $20) or
                            ((aInstruction shr 7) and $18) or
                            ((aInstruction shr 2) and $06),9);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-     if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
-      result:=2;
-      exit;
-     end;
-{$ifend}
      if fState.Registers[rs1]=0 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+      if assigned(fJustInTimeCompiler) and
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
+       result:=2;
+       exit;
+      end;
+{$ifend}
       inc(fState.PC,TPasRISCVUInt64(Immediate)-2);
+     end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+      if assigned(fJustInTimeCompiler) and
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
+       result:=2;
+       exit;
+      end;
+{$ifend}
      end;
      result:=2;
      exit;
@@ -71766,15 +71774,23 @@ begin
                            ((aInstruction shl 3) and $20) or
                            ((aInstruction shr 7) and $18) or
                            ((aInstruction shr 2) and $06),9);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-     if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
-      result:=2;
-      exit;
-     end;
-{$ifend}
      if fState.Registers[rs1]<>0 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+      if assigned(fJustInTimeCompiler) and
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
+       result:=2;
+       exit;
+      end;
+{$ifend}
       inc(fState.PC,TPasRISCVUInt64(Immediate)-2);
+     end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+      if assigned(fJustInTimeCompiler) and
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
+       result:=2;
+       exit;
+      end;
+{$ifend}
      end;
      result:=2;
      exit;
@@ -74125,15 +74141,23 @@ begin
                   ((aInstruction and $80) shl 4) or
                   ((aInstruction shr 20) and $7e0) or
                   ((aInstruction shr 7) and $1e);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-       if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-        result:=4;
-        exit;
-       end;
-{$ifend}
        if fState.Registers[rs1]=fState.Registers[rs2] then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
         inc(fState.PC,Immediate-4);
+       end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
        end;
        result:=4;
        exit;
@@ -74144,15 +74168,23 @@ begin
                   ((aInstruction and $80) shl 4) or
                   ((aInstruction shr 20) and $7e0) or
                   ((aInstruction shr 7) and $1e);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-       if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-        result:=4;
-        exit;
-       end;
-{$ifend}
        if fState.Registers[rs1]<>fState.Registers[rs2] then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
         inc(fState.PC,Immediate-4);
+       end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
        end;
        result:=4;
        exit;
@@ -74163,15 +74195,23 @@ begin
                   ((aInstruction and $80) shl 4) or
                   ((aInstruction shr 20) and $7e0) or
                   ((aInstruction shr 7) and $1e);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-       if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-        result:=4;
-        exit;
-       end;
-{$ifend}
        if TPasRISCVInt64(fState.Registers[rs1])<TPasRISCVInt64(fState.Registers[rs2]) then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
         inc(fState.PC,Immediate-4);
+       end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
        end;
        result:=4;
        exit;
@@ -74182,15 +74222,23 @@ begin
                   ((aInstruction and $80) shl 4) or
                   ((aInstruction shr 20) and $7e0) or
                   ((aInstruction shr 7) and $1e);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-       if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-        result:=4;
-        exit;
-       end;
-{$ifend}
        if TPasRISCVInt64(fState.Registers[rs1])>=TPasRISCVInt64(fState.Registers[rs2]) then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
         inc(fState.PC,Immediate-4);
+       end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
        end;
        result:=4;
        exit;
@@ -74201,15 +74249,23 @@ begin
                   ((aInstruction and $80) shl 4) or
                   ((aInstruction shr 20) and $7e0) or
                   ((aInstruction shr 7) and $1e);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-       if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-        result:=4;
-        exit;
-       end;
-{$ifend}
        if fState.Registers[rs1]<fState.Registers[rs2] then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
         inc(fState.PC,Immediate-4);
+       end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
        end;
        result:=4;
        exit;
@@ -74220,15 +74276,23 @@ begin
                   ((aInstruction and $80) shl 4) or
                   ((aInstruction shr 20) and $7e0) or
                   ((aInstruction shr 7) and $1e);
-{$if defined(PasRISCVJustInTimeCompiler) and true}
-       if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-        result:=4;
-        exit;
-       end;
-{$ifend}
        if fState.Registers[rs1]>=fState.Registers[rs2] then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
         inc(fState.PC,Immediate-4);
+       end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+         result:=4;
+         exit;
+        end;
+{$ifend}
        end;
        result:=4;
        exit;
