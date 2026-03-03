@@ -51092,19 +51092,19 @@ begin
  EmitMemOp($03,HostIndex,VMPtrReg,GuestJITTLBPtrOffset,true);
  // aHostAddrReg = [idx + aTLBFieldOffset] (load tag from TLB entry)
  EmitNativeLoad(aHostAddrReg,HostIndex,aTLBFieldOffset,true);
-{if aAlignment>1 then begin
-  // XOR tag with vpn → mismatch bits in aHostAddrReg
+ if aAlignment>1 then begin
+  // TLB miss check: aHostAddrReg = tag ^ vpn
   Emit2RegOp(X86_XOR,aHostAddrReg,HostVPN,true);
-  // Check alignment: vpn_temp = hvaddr & (alignment-1)
-  EmitImmOp(ALU_AND,HostVPN,TPasRISCVInt32(aAlignment-1),true);
-  // OR alignment bits into mismatch → any bit set = miss
+  // Page crossing check: HostVPN = ((hvaddr + size - 1) ^ hvaddr) >> 12
+  EmitNativeAddi(HostVPN,HostVirtualAddress,aAlignment-1);
+  Emit2RegOp(X86_XOR,HostVPN,HostVirtualAddress,true);
+  EmitShiftRegImm(SHIFT_SHR,HostVPN,PAGE_SHIFT,true);
+  // Combine: any bit set = TLB miss or page crossing
   Emit2RegOp(X86_OR,HostVPN,aHostAddrReg,true);
  end else begin
-  // No alignment check: just XOR tag with vpn
+  // Byte access: no page crossing possible, just check TLB
   Emit2RegOp(X86_XOR,HostVPN,aHostAddrReg,true);
- end;}
- // No alignment check needed on x86-64 (native unaligned access support)
- Emit2RegOp(X86_XOR,HostVPN,aHostAddrReg,true);
+ end;
  // BEQ (vpn==0 means match): TEST + JE
  EmitTEST(HostVPN,HostVPN,true);
 {$ifdef PasRISCVJITFlexibleBranch}
