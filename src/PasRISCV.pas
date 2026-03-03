@@ -8803,6 +8803,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            ALU_SUB=TPasRISCVUInt8(5);
                            ALU_XOR=TPasRISCVUInt8(6);
                            ALU_CMP=TPasRISCVUInt8(7);
+                           // Accumulator immediate encodings: op EAX/RAX, imm32
+                           X86_ACC_ADD=TPasRISCVUInt8($05);
+                           X86_ACC_OR=TPasRISCVUInt8($0d);
+                           X86_ACC_ADC=TPasRISCVUInt8($15);
+                           X86_ACC_SBB=TPasRISCVUInt8($1d);
+                           X86_ACC_AND=TPasRISCVUInt8($25);
+                           X86_ACC_SUB=TPasRISCVUInt8($2d);
+                           X86_ACC_XOR=TPasRISCVUInt8($35);
+                           X86_ACC_CMP=TPasRISCVUInt8($3d);
                            // Shift sub-opcodes ($c1/$d3)
                            SHIFT_ROL=TPasRISCVUInt8(0);
                            SHIFT_ROR=TPasRISCVUInt8(1);
@@ -8866,6 +8875,37 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            X86_BGE=X86_JGE;
                            X86_BLTU=X86_JB;
                            X86_BGEU=X86_JNB;
+                           X86_IMM_OP_8=TPasRISCVUInt8($83);
+                           X86_MOV_R8_M=TPasRISCVUInt8($88);
+                           X86_NOP=TPasRISCVUInt8($90);
+                           X86_TEST_RAX_IMM=TPasRISCVUInt8($a9);
+                           X86_UNARY_OP=TPasRISCVUInt8($f7);
+                           X86_SHIFT_CL=TPasRISCVUInt8($d3);
+                           X86_SHIFT_1=TPasRISCVUInt8($d1);
+                           X86_SHIFT_IMM=TPasRISCVUInt8($c1);
+                           X86_CDQ_CQO=TPasRISCVUInt8($99);
+                           X86_RET=TPasRISCVUInt8($c3);
+                           X86_INT3=TPasRISCVUInt8($cc);
+                           X86_JMP_REL32=TPasRISCVUInt8($e9);
+                           X86_JMP_REL8=TPasRISCVUInt8($eb);
+                           X86_INDIRECT=TPasRISCVUInt8($ff);
+                           X86_MOV_RM_IMM32=TPasRISCVUInt8($c7);
+                           X86_PREFIX_66=TPasRISCVUInt8($66);
+                           X86_PREFIX_F2=TPasRISCVUInt8($f2);
+                           X86_PREFIX_F3=TPasRISCVUInt8($f3);
+                           X86_VEX3=TPasRISCVUInt8($c4);
+                           X86_SSE_UCOMISS=TPasRISCVUInt8($2e);
+                           X86_SSE_CVTTSI=TPasRISCVUInt8($2c);
+                           X86_SSE_CVTSI=TPasRISCVUInt8($2a);
+                           X86_SSE_MOVD_TO_XMM=TPasRISCVUInt8($6e);
+                           X86_SSE_MOVD_FROM_XMM=TPasRISCVUInt8($7e);
+                           X86_SSE_PSLLQ=TPasRISCVUInt8($73);
+                           X86_JP_REL32=TPasRISCVUInt8($8a);
+                           X86_BT_GROUP=TPasRISCVUInt8($ba);
+                           X86_VEX_VFMADD231=TPasRISCVUInt8($b9);
+                           X86_VEX_VFMSUB231=TPasRISCVUInt8($bb);
+                           X86_VEX_VFNMADD231=TPasRISCVUInt8($bd);
+                           X86_VEX_VFNMSUB231=TPasRISCVUInt8($bf);
                            X86_FAR_BRANCH=TPasRISCVUInt8($0f);
                            X86_FAR_BRANCH_MASK=TPasRISCVUInt8($10);
                            X64_REX_W=TPasRISCVUInt8($48);
@@ -50103,7 +50143,7 @@ begin
   EmitREX(aIs64,0,0,aDst);
  end;
  if (aImm>=Low(TPasRISCVInt8)) and (aImm<=High(TPasRISCVInt8)) then begin
-  EmitByte($83); // sign-extended imm8
+  EmitByte(X86_IMM_OP_8); // sign-extended imm8
   EmitModRM(3,aSubOp,aDst);
   EmitByte(TPasRISCVUInt8(aImm));
  end else begin
@@ -50111,28 +50151,32 @@ begin
    // Accumulator encoding: op EAX/RAX, imm32 (only for RAX, not R8!)
    case aSubOp of
     ALU_ADD:begin
-     EmitByte($05);
+     EmitByte(X86_ACC_ADD);
     end;
     ALU_OR:begin
-     EmitByte($0d);
+     EmitByte(X86_ACC_OR);
     end;
     ALU_ADC:begin
-     EmitByte($15);
+     EmitByte(X86_ACC_ADC);
     end;
     ALU_SBB:begin
-     EmitByte($1d);
+     EmitByte(X86_ACC_SBB);
     end;
     ALU_AND:begin
-     EmitByte($25);
+     EmitByte(X86_ACC_AND);
     end;
     ALU_SUB:begin
-     EmitByte($2d);
+     EmitByte(X86_ACC_SUB);
     end;
     ALU_XOR:begin
-     EmitByte($35);
+     EmitByte(X86_ACC_XOR);
     end;
     ALU_CMP:begin
-     EmitByte($3d);
+     EmitByte(X86_ACC_CMP);
+    end;
+    else begin
+     // Fallback: (aSubOp shl 3) or $05
+     EmitByte((aSubOp shl 3) or $05);
     end;
    end;
   end else begin
@@ -50176,7 +50220,7 @@ begin
   EmitREX(aIs64,0,0,aBase);
  end;
  if (aImm>=Low(TPasRISCVInt8)) and (aImm<=High(TPasRISCVInt8)) then begin
-  EmitByte($83);
+  EmitByte(X86_IMM_OP_8);
   EmitMemOperand(aSubOp,aBase,aOffset);
   EmitByte(TPasRISCVUInt8(aImm));
  end else begin
@@ -50200,7 +50244,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMemOpSize(const aOpcode:T
 begin
  // Memory operation with size prefix
  if aSize=2 then begin
-  EmitByte($66); // Operand size prefix for 16-bit
+  EmitByte(X86_PREFIX_66); // Operand size prefix for 16-bit
  end;
  EmitMemOp(aOpcode,aReg,aBase,aOffset,aIs64);
 end;
@@ -50219,9 +50263,9 @@ begin
  end else begin
   // mov reg32, imm32 — B8+rd (no REX.W = zero-extend)
   if aDst>=8 then begin
-   EmitByte($41); // REX.B
+   EmitByte(X64_REX_B);
   end;
-  EmitByte($b8+(aDst and 7));
+  EmitByte(X86_MOV_IMM+(aDst and 7));
   EmitDWord(aImm);
  end;
 end;
@@ -50236,7 +50280,7 @@ begin
  end else begin
   // movabs reg, imm64 — REX.W + B8+rd + imm64
   EmitREX(true,0,0,aDst);
-  EmitByte($b8+(aDst and 7));
+  EmitByte(X86_MOV_IMM+(aDst and 7));
   EmitQWord(aImm);
  end;
 end;
@@ -50256,7 +50300,7 @@ begin
  if (aDst>=8) or (aSrc>=4) then begin
   EmitREX(false,aDst,0,aSrc);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVZXB);
  EmitModRM(3,aDst,aSrc);
 end;
@@ -50265,7 +50309,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMOVSX8(const aDst:TPasRIS
 begin
  // movsx r64, r8 — REX.W 0F BE /r
  EmitREX(true,aDst,0,aSrc);
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXB);
  EmitModRM(3,aDst,aSrc);
 end;
@@ -50276,7 +50320,7 @@ begin
  if (aDst>=8) or (aSrc>=8) then begin
   EmitREX(false,aDst,0,aSrc);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVZXW);
  EmitModRM(3,aDst,aSrc);
 end;
@@ -50285,7 +50329,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMOVSX16(const aDst:TPasRI
 begin
  // movsx r64, r16 — REX.W 0F BF /r
  EmitREX(true,aDst,0,aSrc);
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXW);
  EmitModRM(3,aDst,aSrc);
 end;
@@ -50296,7 +50340,7 @@ begin
  if aIs64 or (aReg>=8) then begin
   EmitREX(aIs64,0,0,aReg);
  end;
- EmitByte($f7);
+ EmitByte(X86_UNARY_OP);
  EmitModRM(3,3,aReg);
 end;
 
@@ -50306,7 +50350,7 @@ begin
  if aIs64 or (aReg>=8) then begin
   EmitREX(aIs64,0,0,aReg);
  end;
- EmitByte($f7);
+ EmitByte(X86_UNARY_OP);
  EmitModRM(3,2,aReg);
 end;
 
@@ -50320,7 +50364,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNOP;
 begin
- EmitByte($90);
+ EmitByte(X86_NOP);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitTEST(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
@@ -50336,9 +50380,9 @@ begin
   EmitREX(aIs64,0,0,aDst);
  end;
  if aDst=0 then begin
-  EmitByte($a9); // test eax/rax, imm32 (only for RAX, not R8!)
+  EmitByte(X86_TEST_RAX_IMM); // test eax/rax, imm32 (only for RAX, not R8!)
  end else begin
-  EmitByte($f7);
+  EmitByte(X86_UNARY_OP);
   EmitModRM(3,0,aDst);
  end;
  EmitDWord(TPasRISCVUInt32(aImm));
@@ -50350,7 +50394,7 @@ begin
  if aIs64 or (aDst>=8) then begin
   EmitREX(aIs64,0,0,aDst);
  end;
- EmitByte($d3);
+ EmitByte(X86_SHIFT_CL);
  EmitModRM(3,aSubOp,aDst);
 end;
 
@@ -50361,10 +50405,10 @@ begin
   EmitREX(aIs64,0,0,aDst);
  end;
  if aImm=1 then begin
-  EmitByte($d1);
+  EmitByte(X86_SHIFT_1);
   EmitModRM(3,aSubOp,aDst);
  end else begin
-  EmitByte($c1);
+  EmitByte(X86_SHIFT_IMM);
   EmitModRM(3,aSubOp,aDst);
   EmitByte(aImm);
  end;
@@ -50451,7 +50495,7 @@ begin
  if aDst>=4 then begin
   EmitREX(false,0,0,aDst);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte($90+aCondition);
  EmitModRM(3,0,aDst);
 end;
@@ -50462,7 +50506,7 @@ begin
  if aIs64 or (aDst>=8) or (aSrc>=8) then begin
   EmitREX(aIs64,aDst,0,aSrc);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte($40+aCondition);
  EmitModRM(3,aDst,aSrc);
 end;
@@ -50478,7 +50522,7 @@ var Mod_:TPasRISCVUInt8;
 begin
  // lea dst, [base+index*1] — 8D /r with SIB
  EmitREX(aIs64,aDst,aIndex,aBase);
- EmitByte($8d);
+ EmitByte(X86_LEA);
  Mod_:=0;
  if (aBase and 7)=5 then begin
   // RBP/R13 require disp8
@@ -50497,7 +50541,7 @@ begin
  if aIs64 or (aDst>=8) or (aSrc>=8) then begin
   EmitREX(aIs64,aDst,0,aSrc);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_IMUL_2REG);
  EmitModRM(3,aDst,aSrc);
 end;
@@ -50508,7 +50552,7 @@ begin
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
- EmitByte($f7);
+ EmitByte(X86_UNARY_OP);
  EmitModRM(3,4,aSrc);
 end;
 
@@ -50518,7 +50562,7 @@ begin
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
- EmitByte($f7);
+ EmitByte(X86_UNARY_OP);
  EmitModRM(3,5,aSrc);
 end;
 
@@ -50528,7 +50572,7 @@ begin
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
- EmitByte($f7);
+ EmitByte(X86_UNARY_OP);
  EmitModRM(3,6,aSrc);
 end;
 
@@ -50538,7 +50582,7 @@ begin
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
- EmitByte($f7);
+ EmitByte(X86_UNARY_OP);
  EmitModRM(3,7,aSrc);
 end;
 
@@ -50548,7 +50592,7 @@ begin
  if aIs64 then begin
   EmitREX(true,0,0,0);
  end;
- EmitByte($99);
+ EmitByte(X86_CDQ_CQO);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMulHDivRem(const aOpcode:TPasRISCVUInt8;const aIsRem:Boolean;const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aIs64:Boolean);
@@ -50710,7 +50754,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJccRel32(const aCondition:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // jcc rel32 — 0F 80+cc rel32
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte($80+aCondition);
  EmitDWord(TPasRISCVUInt32(aOffset));
 end;
@@ -50718,14 +50762,14 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJmpRel32(const aOffset:TPasRISCVInt32);
 begin
  // jmp rel32 — E9 rel32
- EmitByte($e9);
+ EmitByte(X86_JMP_REL32);
  EmitDWord(TPasRISCVUInt32(aOffset));
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJmpRel8(const aOffset:TPasRISCVInt8);
 begin
  // jmp rel8 — EB rel8
- EmitByte($eb);
+ EmitByte(X86_JMP_REL8);
  EmitByte(TPasRISCVUInt8(aOffset));
 end;
 
@@ -50735,7 +50779,7 @@ begin
  if aBase>=8 then begin
   EmitREX(false,0,0,aBase);
  end;
- EmitByte($ff);
+ EmitByte(X86_INDIRECT);
  EmitMemOperand(4,aBase,aOffset);
 end;
 
@@ -50745,7 +50789,7 @@ begin
  if aReg>=8 then begin
   EmitREX(false,0,0,aReg);
  end;
- EmitByte($ff);
+ EmitByte(X86_INDIRECT);
  EmitModRM(3,2,aReg);
 end;
 
@@ -50755,13 +50799,13 @@ begin
  if aReg>=8 then begin
   EmitREX(false,0,0,aReg);
  end;
- EmitByte($ff);
+ EmitByte(X86_INDIRECT);
  EmitModRM(3,4,aReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitRET;
 begin
- EmitByte($c3);
+ EmitByte(X86_RET);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.PatchJmpRel32(const aJmpOffset:TPasRISCVUInt32);
@@ -50892,18 +50936,18 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePush(const aHostReg
 begin
  // push reg
  if aHostReg>=8 then begin
-  EmitByte($41); // REX.B
+  EmitByte(X64_REX_B);
  end;
- EmitByte($50+(aHostReg and 7));
+ EmitByte(X86_PUSH+(aHostReg and 7));
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePop(const aHostReg:TPasRISCVUInt8);
 begin
  // pop reg
  if aHostReg>=8 then begin
-  EmitByte($41); // REX.B
+  EmitByte(X64_REX_B);
  end;
- EmitByte($58+(aHostReg and 7));
+ EmitByte(X86_POP+(aHostReg and 7));
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean);
@@ -50963,7 +51007,7 @@ begin
  if (aDstXMM>=8) or (aSrcXMM>=8) then begin
   EmitREX(false,aDstXMM,0,aSrcXMM);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(aOpcode);
  EmitModRM(3,aDstXMM,aSrcXMM);
 end;
@@ -50975,7 +51019,7 @@ begin
  if (aXMM>=8) or (aBase>=8) then begin
   EmitREX(false,aXMM,0,aBase);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(aOpcode);
  EmitMemOperand(aXMM,aBase,aOffset);
 end;
@@ -50983,20 +51027,20 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2MovGPRToXMM(const aXMM:TPasRISCVUInt8;const aGPR:TPasRISCVUInt8;const aIs64:Boolean);
 begin
  // movd/movq xmm, gpr — 66 [REX.W] 0F 6E /r
- EmitByte($66);
+ EmitByte(X86_PREFIX_66);
  EmitREX(aIs64,aXMM,0,aGPR);
- EmitByte($0f);
- EmitByte($6e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_MOVD_TO_XMM);
  EmitModRM(3,aXMM,aGPR);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2MovXMMToGPR(const aGPR:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aIs64:Boolean);
 begin
  // movd/movq gpr, xmm — 66 [REX.W] 0F 7E /r
- EmitByte($66);
+ EmitByte(X86_PREFIX_66);
  EmitREX(aIs64,aXMM,0,aGPR);
- EmitByte($0f);
- EmitByte($7e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_MOVD_FROM_XMM);
  EmitModRM(3,aXMM,aGPR);
 end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
@@ -51042,12 +51086,12 @@ begin
  // PCMPEQD scratch, scratch — 66 0F 76 /r
  EmitSSE2Op($66,$76,aScratchXMM,aScratchXMM);
  // PSLLQ scratch, 32 — 66 0F 73 /6 ib
- EmitByte($66);
+ EmitByte(X86_PREFIX_66);
  if aScratchXMM>=8 then begin
-  EmitByte($41); // REX.B
+  EmitByte(X64_REX_B);
  end;
- EmitByte($0f);
- EmitByte($73);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_PSLLQ);
  EmitByte($f0 or (aScratchXMM and 7)); // ModRM: 11 110 reg
  EmitByte(32);
  // ORPD dst, scratch — 66 0F 56 /r
@@ -51268,11 +51312,11 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitPatchableRET;
 begin
  // 5 bytes: ret + 4 padding. Patchable to jmp rel32 ($E9 + imm32)
- EmitByte($c3);
- EmitByte($cc);
- EmitByte($cc);
- EmitByte($cc);
- EmitByte($cc);
+ EmitByte(X86_RET);
+ EmitByte(X86_INT3);
+ EmitByte(X86_INT3);
+ EmitByte(X86_INT3);
+ EmitByte(X86_INT3);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitTailBNEZ(const aOffset:TPasRISCVInt32);
@@ -51289,12 +51333,12 @@ begin
   EmitNativeZeroReg(aHostDest);
  end else begin
   if aHostDest>=8 then begin
-   EmitByte($48 or $01); // REX.W + REX.B
+   EmitByte(X64_REX_W or X64_REX_B); // REX.W + REX.B
   end else begin
-   EmitByte($48); // REX.W
+   EmitByte(X64_REX_W); // REX.W
   end;
-  EmitByte($c7);
-  EmitByte($c0 or (aHostDest and 7));
+  EmitByte(X86_MOV_RM_IMM32);
+  EmitByte(X86_2_REGS or (aHostDest and 7));
   EmitDWord(TPasRISCVUInt32(aImm));
  end;
 end;
@@ -51586,7 +51630,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLH(const aHostDest,
 begin
  // MOVSX r64, word [addr+off] — 0F BF with REX.W
  EmitREX(true,aHostDest,0,aHostAddr);
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXW);
  EmitMemOperand(aHostDest,aHostAddr,aOffset);
 end;
@@ -51595,7 +51639,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLB(const aHostDest,
 begin
  // MOVSX r64, byte [addr+off] — 0F BE with REX.W
  EmitREX(true,aHostDest,0,aHostAddr);
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXB);
  EmitMemOperand(aHostDest,aHostAddr,aOffset);
 end;
@@ -51612,7 +51656,7 @@ begin
  if (aHostDest>=8) or (aHostAddr>=8) then begin
   EmitREX(false,aHostDest,0,aHostAddr);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVZXW);
  EmitMemOperand(aHostDest,aHostAddr,aOffset);
 end;
@@ -51623,7 +51667,7 @@ begin
  if (aHostDest>=8) or (aHostAddr>=8) then begin
   EmitREX(false,aHostDest,0,aHostAddr);
  end;
- EmitByte($0f);
+ EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVZXB);
  EmitMemOperand(aHostDest,aHostAddr,aOffset);
 end;
@@ -51643,7 +51687,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOV [addr+off], r16 — 66 prefix + opcode 89 without REX.W
- EmitByte($66);
+ EmitByte(X86_PREFIX_66);
  EmitMemOp(X86_MOV_R_M,aHostSrc,aHostAddr,aOffset,false);
 end;
 
@@ -51657,7 +51701,7 @@ begin
   if (aHostSrc>=8) or (aHostAddr>=8) then begin
    EmitREX(false,aHostSrc,0,aHostAddr);
   end;
-  EmitByte($88);
+  EmitByte(X86_MOV_R8_M);
   EmitMemOperand(aHostSrc,aHostAddr,aOffset);
  end else begin
   // Regs 4-7 (SPL/BPL/SIL/DIL) need REX to be byte-accessible, or use XCHG trick
@@ -51672,7 +51716,7 @@ begin
   if (EffAddr>=8) then begin
    EmitREX(false,0,0,EffAddr);
   end;
-  EmitByte($88);
+  EmitByte(X86_MOV_R8_M);
   EmitMemOperand(0,EffAddr,aOffset);
   EmitXCHG(0,aHostSrc);
  end;
@@ -51959,8 +52003,8 @@ begin
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,true);
  // BTR TempReg1, 63 — clear bit 63
  EmitREX(true,0,0,TempReg1);
- EmitByte($0f);
- EmitByte($ba);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_BT_GROUP);
  EmitModRM(3,6,TempReg1);
  EmitByte(63);
  // Isolate sign of rs2
@@ -52001,8 +52045,8 @@ begin
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,true);
  // BTR TempReg1, 63 — clear bit 63
  EmitREX(true,0,0,TempReg1);
- EmitByte($0f);
- EmitByte($ba);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_BT_GROUP);
  EmitModRM(3,6,TempReg1);
  EmitByte(63);
  // Flip and isolate sign of rs2
@@ -52059,12 +52103,12 @@ begin
  if (aHostSrc1>=8) or (aHostSrc2>=8) then begin
   EmitREX(false,aHostSrc1,0,aHostSrc2);
  end;
- EmitByte($0f);
- EmitByte($2e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte($0f);
- EmitByte($8a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_JP_REL32);
  EmitDWord(0);
  NaNCheckFixup:=fTemporaryCodeSize-4;
  // Normal path: MINSS
@@ -52073,7 +52117,7 @@ begin
  end;
  EmitSSE2Op($f3,$5d,aHostDest,aHostSrc2);
  // JMP .done
- EmitByte($e9);
+ EmitByte(X86_JMP_REL32);
  EmitDWord(0);
  NaNFixupFixup:=fTemporaryCodeSize-4;
  // .nan_case: canonical NaN single $7FC00000
@@ -52097,8 +52141,8 @@ begin
  // UCOMISD rs1, rs2
  EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte($0f);
- EmitByte($8a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_JP_REL32);
  EmitDWord(0);
  NaNCheckFixup:=fTemporaryCodeSize-4;
  // Normal path: MINSD
@@ -52107,7 +52151,7 @@ begin
  end;
  EmitSSE2Op($f2,$5d,aHostDest,aHostSrc2);
  // JMP .done
- EmitByte($e9);
+ EmitByte(X86_JMP_REL32);
  EmitDWord(0);
  NaNFixupFixup:=fTemporaryCodeSize-4;
  // .nan_case: canonical NaN double $7FF8000000000000
@@ -52131,12 +52175,12 @@ begin
  if (aHostSrc1>=8) or (aHostSrc2>=8) then begin
   EmitREX(false,aHostSrc1,0,aHostSrc2);
  end;
- EmitByte($0f);
- EmitByte($2e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte($0f);
- EmitByte($8a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_JP_REL32);
  EmitDWord(0);
  NaNCheckFixup:=fTemporaryCodeSize-4;
  // Normal path: MAXSS
@@ -52145,7 +52189,7 @@ begin
  end;
  EmitSSE2Op($f3,$5f,aHostDest,aHostSrc2);
  // JMP .done
- EmitByte($e9);
+ EmitByte(X86_JMP_REL32);
  EmitDWord(0);
  NaNFixupFixup:=fTemporaryCodeSize-4;
  // .nan_case: canonical NaN single $7FC00000
@@ -52169,8 +52213,8 @@ begin
  // UCOMISD rs1, rs2
  EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte($0f);
- EmitByte($8a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_JP_REL32);
  EmitDWord(0);
  NaNCheckFixup:=fTemporaryCodeSize-4;
  // Normal path: MAXSD
@@ -52179,7 +52223,7 @@ begin
  end;
  EmitSSE2Op($f2,$5f,aHostDest,aHostSrc2);
  // JMP .done
- EmitByte($e9);
+ EmitByte(X86_JMP_REL32);
  EmitDWord(0);
  NaNFixupFixup:=fTemporaryCodeSize-4;
  // .nan_case: canonical NaN double $7FF8000000000000
@@ -52216,8 +52260,8 @@ begin
  if (aHostFPUSrc1>=8) or (aHostFPUSrc2>=8) then begin
   EmitREX(false,aHostFPUSrc1,0,aHostFPUSrc2);
  end;
- EmitByte($0f);
- EmitByte($2e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostFPUSrc1,aHostFPUSrc2);
  // JP skip (PF=1 means NaN, result stays 0)
  EmitJccRel32(CC_P,0);
@@ -52249,8 +52293,8 @@ begin
  if (aHostFPUSrc1>=8) or (aHostFPUSrc2>=8) then begin
   EmitREX(false,aHostFPUSrc1,0,aHostFPUSrc2);
  end;
- EmitByte($0f);
- EmitByte($2e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostFPUSrc1,aHostFPUSrc2);
  // JP skip (PF=1 means NaN, result stays 0)
  EmitJccRel32(CC_P,0);
@@ -52282,8 +52326,8 @@ begin
  if (aHostFPUSrc1>=8) or (aHostFPUSrc2>=8) then begin
   EmitREX(false,aHostFPUSrc1,0,aHostFPUSrc2);
  end;
- EmitByte($0f);
- EmitByte($2e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostFPUSrc1,aHostFPUSrc2);
  // JP skip (PF=1 means NaN, result stays 0)
  EmitJccRel32(CC_P,0);
@@ -52313,12 +52357,12 @@ var TempReg1:TPasRISCVUInt8;
 begin
  TempReg1:=ClaimHostReg;
  // CVTTSS2SI gpr32, xmm (truncation toward zero, 32-bit result)
- EmitByte($f3);
+ EmitByte(X86_PREFIX_F3);
  if (aHostIntDest>=8) or (aHostFPUSrc>=8) then begin
   EmitREX(false,aHostIntDest,0,aHostFPUSrc);
  end;
- EmitByte($0f);
- EmitByte($2c);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($80000000 for 32-bit result)
  EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($80000000),false);
@@ -52329,8 +52373,8 @@ begin
  if (aHostFPUSrc>=8) then begin
   EmitREX(false,aHostFPUSrc,0,aHostFPUSrc);
  end;
- EmitByte($0f);
- EmitByte($2e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostFPUSrc,aHostFPUSrc);
  // JP isNaN
  EmitJccRel32(CC_P,0);
@@ -52367,10 +52411,10 @@ var TempReg1:TPasRISCVUInt8;
 begin
  TempReg1:=ClaimHostReg;
  // CVTTSS2SI gpr64, xmm (truncation toward zero, 64-bit result)
- EmitByte($f3);
+ EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
- EmitByte($0f);
- EmitByte($2c);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($8000000000000000 for 64-bit result)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
@@ -52382,8 +52426,8 @@ begin
  if (aHostFPUSrc>=8) then begin
   EmitREX(false,aHostFPUSrc,0,aHostFPUSrc);
  end;
- EmitByte($0f);
- EmitByte($2e);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostFPUSrc,aHostFPUSrc);
  // JP isNaN
  EmitJccRel32(CC_P,0);
@@ -52418,12 +52462,12 @@ var TempReg1:TPasRISCVUInt8;
 begin
  TempReg1:=ClaimHostReg;
  // CVTTSD2SI gpr32, xmm (truncation toward zero, 32-bit result)
- EmitByte($f2);
+ EmitByte(X86_PREFIX_F2);
  if (aHostIntDest>=8) or (aHostFPUSrc>=8) then begin
   EmitREX(false,aHostIntDest,0,aHostFPUSrc);
  end;
- EmitByte($0f);
- EmitByte($2c);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($80000000 for 32-bit result)
  EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($80000000),false);
@@ -52468,10 +52512,10 @@ var TempReg1:TPasRISCVUInt8;
 begin
  TempReg1:=ClaimHostReg;
  // CVTTSD2SI gpr64, xmm (truncation toward zero, 64-bit result)
- EmitByte($f2);
+ EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
- EmitByte($0f);
- EmitByte($2c);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($8000000000000000 for 64-bit result)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
@@ -52518,12 +52562,12 @@ begin
  // Sign-extend 32 to 64 into scratch to ensure proper signed value
  EmitMOVSXD(TempReg1,aHostIntSrc);
  // CVTSI2SS xmm, gpr32 (signed int32 to single)
- EmitByte($f3);
+ EmitByte(X86_PREFIX_F3);
  if (aHostFPUDest>=8) or (TempReg1>=8) then begin
   EmitREX(false,aHostFPUDest,0,TempReg1);
  end;
- EmitByte($0f);
- EmitByte($2a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,TempReg1);
  // NaN-box single-precision result
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
@@ -52540,10 +52584,10 @@ begin
  // Zero-extend 32 to 64: 32-bit MOV clears upper 32 bits
  EmitMOVRegReg(TempReg1,aHostIntSrc,false);
  // CVTSI2SS xmm, gpr64 (use REX.W so unsigned 32-bit value is positive signed 64-bit)
- EmitByte($f3);
+ EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostFPUDest,0,TempReg1);
- EmitByte($0f);
- EmitByte($2a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,TempReg1);
  // NaN-box single-precision result
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
@@ -52556,10 +52600,10 @@ var ScratchXMM:TPasRISCVUInt8;
 begin
  ScratchXMM:=ClaimFPUReg;
  // CVTSI2SS xmm, gpr64 (signed int64 to single, REX.W)
- EmitByte($f3);
+ EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostFPUDest,0,aHostIntSrc);
- EmitByte($0f);
- EmitByte($2a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,aHostIntSrc);
  // NaN-box single-precision result
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
@@ -52577,12 +52621,12 @@ begin
  // Sign-extend 32 to 64 into scratch to ensure proper signed value
  EmitMOVSXD(TempReg1,aHostIntSrc);
  // CVTSI2SD xmm, gpr32 (signed int32 to double)
- EmitByte($f2);
+ EmitByte(X86_PREFIX_F2);
  if (aHostFPUDest>=8) or (TempReg1>=8) then begin
   EmitREX(false,aHostFPUDest,0,TempReg1);
  end;
- EmitByte($0f);
- EmitByte($2a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,TempReg1);
  // No NaN-boxing for double-precision
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
@@ -52595,10 +52639,10 @@ begin
  // Zero-extend 32 to 64: 32-bit MOV clears upper 32 bits
  EmitMOVRegReg(TempReg1,aHostIntSrc,false);
  // CVTSI2SD xmm, gpr64 (use REX.W so unsigned 32-bit value is positive signed 64-bit)
- EmitByte($f2);
+ EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostFPUDest,0,TempReg1);
- EmitByte($0f);
- EmitByte($2a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,TempReg1);
  // No NaN-boxing for double-precision
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
@@ -52607,10 +52651,10 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDL(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
 begin
  // CVTSI2SD xmm, gpr64 (signed int64 to double, REX.W)
- EmitByte($f2);
+ EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostFPUDest,0,aHostIntSrc);
- EmitByte($0f);
- EmitByte($2a);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,aHostIntSrc);
  // No NaN-boxing for double-precision
 end;
@@ -52682,10 +52726,10 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($b9);
+ EmitByte(X86_VEX_VFMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
@@ -52720,10 +52764,10 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($bb);
+ EmitByte(X86_VEX_VFMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
@@ -52758,10 +52802,10 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($bd);
+ EmitByte(X86_VEX_VFNMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
@@ -52796,10 +52840,10 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($bf);
+ EmitByte(X86_VEX_VFNMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
@@ -52834,10 +52878,10 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($b9);
+ EmitByte(X86_VEX_VFMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
 end;
 
@@ -52869,10 +52913,10 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($bb);
+ EmitByte(X86_VEX_VFMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
 end;
 
@@ -52904,10 +52948,10 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($bd);
+ EmitByte(X86_VEX_VFNMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
 end;
 
@@ -52939,10 +52983,10 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- EmitByte($c4);
+ EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte($bf);
+ EmitByte(X86_VEX_VFNMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
 end;
 
