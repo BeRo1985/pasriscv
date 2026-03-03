@@ -17794,18 +17794,31 @@ var de:Pdirent;
     qid_type,dtype:TPasRISCVUInt8;
     StatData:TStat;
     Path:TPasRISCVRawByteString;
-    Offset:TOff;
+    Offset:TPasRISCVUInt64;
+    Skip:TPasRISCVInt32;
 begin
  if (not aFile.fIsOpened) or (not aFile.fIsDirectory) then begin
   result:=-P9_EPROTO;
  end else begin
   result:=0;
-{ if aOffset=0 then begin
+  { if aOffset=0 then begin
    RewindDir(aFile.fDirectory);
   end else begin
    SeekDir(aFile.fDirectory,aOffset);
   end;}
-  SeekDir(aFile.fDirectory,aOffset);
+  //SeekDir(aFile.fDirectory,aOffset);
+  // TellDir/SeekDir is broken on many Linux filesystems (returns LONG_MAX for all
+  // entries), so we use simple index-based offsets instead: rewind to start and skip.
+  SeekDir(aFile.fDirectory,0);
+  Skip:=TPasRISCVInt32(aOffset);
+  while Skip>0 do begin
+   de:=fpReadDir(aFile.fDirectory^);
+   if not assigned(de) then begin
+    exit;
+   end;
+   dec(Skip);
+  end;
+  Offset:=aOffset;
   pos:=0;
   repeat
    de:=fpReadDir(aFile.fDirectory^);
@@ -17813,7 +17826,7 @@ begin
     name_len:=StrLen(de^.d_name);
     Len:=13+8+1+2+name_len;
     if (pos+len)<=aSize then begin
-     Offset:=TellDir(aFile.fDirectory);
+     inc(Offset);
      qid_type:=P9_QTFILE;
      dtype:=DT_REG;
      if de^.d_type=DT_UNKNOWN then begin
