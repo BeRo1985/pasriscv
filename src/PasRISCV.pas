@@ -331,6 +331,7 @@ unit PasRISCV;
 
 {$ifdef cpux86_64}
  {$define PasRISCVJustInTimeCompilerNativeLinker}
+ {$define PasRISCVJITBlockChaining}
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompiler}
@@ -47591,7 +47592,7 @@ var VirtualPC:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     BlockCallback:TBlockCallback;
     CodePtr:TPasRISCVPtrUInt;
-{$ifndef PasRISCVJustInTimeCompilerNativeLinker}
+{$ifdef PasRISCVJITBlockChaining}
     ChainIndex:TPasRISCVUInt32;
 {$endif}
 {   SavedPC:TPasRISCVUInt64;
@@ -47640,7 +47641,11 @@ begin
     inc(fDebugJITCounter);
    end;
 {$endif}
-{$ifndef PasRISCVJustInTimeCompilerNativeLinker}
+{$ifdef PasRISCVJITBlockChaining}
+   // JTLB-based soft block chaining: after a compiled block returns, immediately check the JTLB for
+   // up to 10 consecutive successors and execute them directly, bypassing the main dispatch loop.
+   // Complements PasRISCVJITNativeLinker by covering cases where native block linking falls short,
+   // such as cross-page branches or blocks that were invalidated and recompiled independently.
    for ChainIndex:=1 to 10 do begin
     VirtualPC:=fHART.fState.PC;
     JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
