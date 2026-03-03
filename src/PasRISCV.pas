@@ -319,7 +319,7 @@ unit PasRISCV;
  {$error Choose only one of PasRISCVSingleStepCounter or PasRISCVSingleStepRunStateWait}
 {$ifend}
 
-{$define PasRISCVJustInTimeCompiler}
+{-$define PasRISCVJustInTimeCompiler}
 {$define PasRISCVJustInTimeCompilerFPU}
 {$define PasRISCVJustInTimeCompilerFMA}
 {-$define PasRISCVJITDebug}
