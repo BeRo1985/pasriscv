@@ -329,7 +329,7 @@ unit PasRISCV;
 
 {-$define PasRISCVJITFastCycle}
 
-{-$define PasRISCVJITSideExit}
+{$define PasRISCVJITSideExit}
 
 {$ifdef cpux86_64}
  {$define PasRISCVJustInTimeCompilerNativeLinker}
@@ -8087,6 +8087,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITSkipExecution:TPasMPBool32;
 {$ifdef PasRISCVJITSideExit}
                      JITDataTLBFillPtr:Pointer;
+                     JITScratch:TPasRISCVPtrUInt;
 {$endif}
 {$endif}
                    end;
@@ -8400,6 +8401,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestJITSkipExecutionOffset:TPasRISCVInt32;
 {$ifdef PasRISCVJITSideExit}
                      function GuestJITDataTLBFillPtrOffset:TPasRISCVInt32;
+                     function GuestJITScratchOffset:TPasRISCVInt32;
                      class function JITDataTLBFillHelper(aHART:Pointer;aVirtualAddress:TPasRISCVUInt64;aTLBFieldOffset:TPasRISCVUInt64;aAlignment:TPasRISCVUInt64):TPasRISCVPtrUInt; static;
                      procedure ReloadAllMappedIntRegs;
 {$endif}
@@ -47528,6 +47530,11 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITDataTLBFillPtr));
 end;
 
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITScratchOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITScratch));
+end;
+
 class function TPasRISCV.THART.TJustInTimeCompiler.JITDataTLBFillHelper(aHART:Pointer;aVirtualAddress:TPasRISCVUInt64;aTLBFieldOffset:TPasRISCVUInt64;aAlignment:TPasRISCVUInt64):TPasRISCVPtrUInt;
 var HART:THART;
     VPN:TPasRISCVUInt64;
@@ -47545,7 +47552,10 @@ begin
  end else begin
   HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
  end;
+ // If AddressTranslate raised an exception, clear it and bail out.
+ // The interpreter will re-execute the instruction and handle the exception properly with correct PC.
  if HART.fState.ExceptionValue<>TExceptionValue.None then begin
+  HART.fState.ExceptionValue:=TExceptionValue.None;
   result:=0;
   exit;
  end;
@@ -51341,29 +51351,32 @@ begin
  SavedFPURegInfos:=fFPURegInfos;
 {$endif}
 
- // Emit: save all dirty guest registers to state
- SaveAllDirtyIntRegs;
-{$ifdef PasRISCVJustInTimeCompilerFPU}
- SaveAllDirtyFPURegs;
-{$endif}
+ // Push all caller-saved registers to preserve runtime state across call
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rRAX)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rRCX)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rRDX)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rRSI)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rRDI)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rR8)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rR9)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rR10)));
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rR11)));
 
- // Emit: push VMPtrReg — will be clobbered by arg setup, need it back after CALL
- EmitNativePush(VMPtrReg);
-
- // Stack alignment: entry CALL(+8) + fABIReclaimCount pushes + VMPtrReg push = (fABIReclaimCount+2)*8 from 16n
- // 16-aligned when fABIReclaimCount is even, misaligned when odd
+ // Stack alignment: after 9 pushes + fABIReclaimCount + 1 (ret addr), pad when fABIReclaimCount is odd
+ // Entry CALL(+8) + fABIReclaimCount pushes + 9 caller-saved pushes
+ // = (fABIReclaimCount+10)*8 from 16n; 16-aligned when fABIReclaimCount is odd, misaligned when even
  if (fABIReclaimCount and 1)<>0 then begin
   EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-8);
  end;
 
- // Emit: set up call arguments
+ // Set up call arguments
  // IMPORTANT: copy HostVirtualAddress FIRST — it might be in any caller-saved reg including RAX
 {$ifdef Windows}
  // Win64 ABI: RCX=arg1, RDX=arg2, R8=arg3, R9=arg4; VMPtrReg=RCX
  EmitMOVRegReg(TPasRISCVUInt8(ord(TX64Register.rRDX)),HostVirtualAddress,true);
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rR8)),TPasRISCVUInt32(aTLBFieldOffset));
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rR9)),TPasRISCVUInt32(aAlignment));
- // Win64: allocate 32 bytes shadow space
+ // Win64: Allocate 32 bytes shadow space
  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-32);
  // Load helper function pointer into RAX (from state, before clobbering VMPtrReg)
  HelperReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
@@ -51382,53 +51395,62 @@ begin
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrReg,GuestJITHARTOffset,true);
 {$endif}
 
- // Emit: CALL RAX (the helper function)
+ // Call the helper function (in RAX)
  EmitCallReg(HelperReg);
 
+ // Cleanup stack: undo shadow space and alignment padding 
 {$ifdef Windows}
  // Win64: deallocate shadow space
  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),32);
 {$endif}
-
  // Undo stack alignment padding
  if (fABIReclaimCount and 1)<>0 then begin
   EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),8);
  end;
 
- // Emit: pop VMPtrReg (restore state pointer)
- EmitNativePop(VMPtrReg);
+ // Store helper result (RAX) into TState scratch field before restoring regs
+ // Peek VMPtrReg from stack (SysV: RDI is 5th push = RSP+4*8; Win64: RCX is 8th push = RSP+1*8)
+{$ifdef Windows}
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),TPasRISCVUInt8(ord(TX64Register.rRSP)),1*8,true);
+{$else}
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),TPasRISCVUInt8(ord(TX64Register.rRSP)),4*8,true);
+{$endif}
+ EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrReg,GuestJITScratchOffset,true);
 
- // Emit: test RAX (return value = host address, 0 = failure)
- EmitTEST(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt8(ord(TX64Register.rRAX)),true);
+ // Pop all caller-saved registers (reverse order)
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rR11)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rR10)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rR9)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rR8)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRDI)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRSI)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRDX)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRCX)));
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRAX)));
+
+ // Load helper result from TState scratch into aHostAddrReg
+ EmitNativeLoad(aHostAddrReg,VMPtrReg,GuestJITScratchOffset,true);
+
+ // Test result (return value = host address, 0 = failure) and branch
+ EmitTEST(aHostAddrReg,aHostAddrReg,true);
  EmitJccRel32(CC_E,0);
  SideExitBailoutFixup:=fTemporaryCodeSize-4;
 
- // Emit: success — put result in aHostAddrReg
- EmitMOVRegReg(aHostAddrReg,TPasRISCVUInt8(ord(TX64Register.rRAX)),true);
-
- // Emit: reload all previously-mapped guest registers from state
- // (they were saved by SaveAllDirtyIntRegs and might have been clobbered by the CALL)
- fHostRegMask:=SavedHostRegMask;
- fIntRegInfos:=SavedIntRegInfos;
-{$ifdef PasRISCVJustInTimeCompilerFPU}
- fFPURegInfos:=SavedFPURegInfos;
-{$endif}
- fABIReclaimMask:=SavedABIReclaimMask;
- fABIReclaimCount:=SavedABIReclaimCount;
- ReloadAllMappedIntRegs;
-{$ifdef PasRISCVJustInTimeCompilerFPU}
- // TODO: ReloadAllMappedFPURegs if needed
-{$endif}
-
- // Emit: JMP .done (skip the hit-path address computation)
+ // Success: aHostAddrReg has host address, all regs restored. JMP to .done (skip the hit-path address computation)
  EmitJmpRel32(0);
  SideExitDoneFixup:=fTemporaryCodeSize-4;
 
- // Emit: .bailout — fall back to interpreter
+ // .bailout: Save registers and then exit and fall back to interpreter
  PatchJmpRel32(SideExitBailoutFixup);
+ SaveAllDirtyIntRegs;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ SaveAllDirtyFPURegs;
+{$endif}
+
  // Set JITSkipExecution := true so interpreter doesn't re-enter JIT for this instruction
- EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt32(TPasMPBool32(true)));
- EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrReg,GuestJITSkipExecutionOffset,false);
+ // Use HostVPN (claimed, not mapped) to avoid clobbering a dirty guest-mapped register
+ EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
+ EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
 
  // Restore compile-time allocator state for continued compilation after the miss path
@@ -51440,7 +51462,7 @@ begin
  fFPURegInfos:=SavedFPURegInfos;
 {$endif}
 
- // .hit: TLB check passed
+ // .hit: TLB check passed (JE from TEST above)
 {$ifdef PasRISCVJITFlexibleBranch}
  EmitBranchTarget(TakenLabel);
 {$else}
@@ -51451,11 +51473,11 @@ begin
  // Final host address = ptr + hvaddr
  Emit2RegOp(X86_ADD,aHostAddrReg,HostVirtualAddress,true);
 
- // .done: side-exit success path lands here
+ // .done: Merge point for side-exit success and TLB hit paths
  PatchJmpRel32(SideExitDoneFixup);
 
 {$else}
- // ---- No side-exit: simple bailout to interpreter on TLB miss ----
+ // No side-exit: Simple bailout to interpreter on TLB miss 
 {$ifdef PasRISCVJITFlexibleBranch}
  TakenLabel:=EmitBranchEntry(CC_E,BRANCH_NEW);
  // Set JITSkipExecution:=true on TLB miss bailout
