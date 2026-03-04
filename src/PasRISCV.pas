@@ -47892,7 +47892,9 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.Trace(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
+ {$ifndef PasRISCVJITZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
+ {$endif}
   result:=true;
  end else begin
   if fCompiling then begin
@@ -47918,7 +47920,9 @@ begin
   if PC=fHART.fState.PC then begin
    fHART.fState.JITSkipExecution:=true;
   end;
+ {$ifndef PasRISCVJITZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
+ {$endif}
   result:=true;
  end else begin
   fHART.fState.JITSkipExecution:=false;
@@ -47940,7 +47944,9 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
+ {$ifndef PasRISCVJITZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
+ {$endif}
   result:=true;
  end else begin
   if fCompiling then begin
@@ -47976,7 +47982,9 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
+ {$ifndef PasRISCVJITZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
+ {$endif}
   result:=true;
  end else begin
   if fCompiling then begin
@@ -71343,7 +71351,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:=2;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit; 
        end;
 {$ifend}
@@ -71370,7 +71378,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -71395,7 +71403,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -71418,7 +71426,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,ord(rd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -71525,7 +71533,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -71545,7 +71553,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -71565,7 +71573,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -71599,7 +71607,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -71616,7 +71624,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -71637,7 +71645,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(TRegister.Zero),TPasRISCVUInt64(Immediate),0,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -71664,7 +71672,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(TRegister.SP),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
-         result:=2;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -71685,7 +71693,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,ord(rd),TPasRISCVUInt64(Immediate),0,0,2) then begin
-         result:=2;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -71797,7 +71805,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:=2;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
 {$ifend}
@@ -71814,7 +71822,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:=2;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
 {$ifend}
@@ -71831,7 +71839,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:=2;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
 {$ifend}
@@ -71851,7 +71859,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:=2;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -71868,7 +71876,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:=2;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -71885,7 +71893,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:=2;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -71902,7 +71910,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:=2;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -71922,7 +71930,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:=2;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -71939,7 +71947,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:=2;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -72045,7 +72053,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,ord(TRegister.Zero),TPasRISCVUInt64(2),0,0,Immediate,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72065,7 +72073,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72074,7 +72082,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72094,7 +72102,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72103,7 +72111,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72132,7 +72140,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72152,7 +72160,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,ord(frd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72184,7 +72192,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72214,7 +72222,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72243,7 +72251,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,ord(TRegister.Zero),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
-         result:=2;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -72290,7 +72298,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,ord(rd),ord(TRegister.Zero),ord(rs1),0,2) then begin
-         result:=2;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -72310,7 +72318,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,ord(TRegister.RA),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
-          result:=2;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
           exit;
          end;
 {$ifend}
@@ -72359,7 +72367,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,ord(rd),ord(rd),ord(rs1),0,2) then begin
-          result:=2;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
           exit;
          end;
 {$ifend}
@@ -72386,7 +72394,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,ord(frs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:=2;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72410,7 +72418,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72429,7 +72437,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-      result:=2;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72470,7 +72478,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLB,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72490,7 +72498,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLH,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72510,7 +72518,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72530,7 +72538,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72550,7 +72558,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLBU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72570,7 +72578,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLHU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72590,7 +72598,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLWU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72719,7 +72727,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72738,7 +72746,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -72962,7 +72970,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72977,7 +72985,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTIU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -72992,7 +73000,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXORI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73011,7 +73019,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73026,7 +73034,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73106,7 +73114,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicORI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73121,7 +73129,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73183,7 +73191,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAUIPC,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
-       result:=4;
+       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
        exit;
       end;
 {$ifend}
@@ -73208,7 +73216,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73227,7 +73235,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLIW,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73295,7 +73303,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLIW,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73311,7 +73319,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAIW,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73361,7 +73369,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSB,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73378,7 +73386,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSH,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73395,7 +73403,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73412,7 +73420,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73451,7 +73459,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73466,7 +73474,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMUL,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73529,7 +73537,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73563,7 +73571,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLL,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73578,7 +73586,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULH,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73643,7 +73651,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLT,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73658,7 +73666,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHSU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73707,7 +73715,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73721,7 +73729,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73754,7 +73762,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73769,7 +73777,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIV,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73844,7 +73852,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRL,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73859,7 +73867,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73902,7 +73910,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRA,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73943,7 +73951,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -73958,7 +73966,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREM,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74017,7 +74025,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74032,7 +74040,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74110,7 +74118,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
-      result:=4;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
 {$ifend}
@@ -74138,7 +74146,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74153,7 +74161,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74176,7 +74184,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74201,7 +74209,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74252,7 +74260,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74308,7 +74316,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74323,7 +74331,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVUW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74342,7 +74350,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74375,7 +74383,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74414,7 +74422,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMUW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:=4;
+          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74461,7 +74469,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74470,7 +74478,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74488,7 +74496,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74497,7 +74505,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74515,7 +74523,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74524,7 +74532,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74542,7 +74550,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74551,7 +74559,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74569,7 +74577,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74578,7 +74586,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74596,7 +74604,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74605,7 +74613,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -74633,7 +74641,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),TPasRISCVUInt64(4)) then begin
-      result:=4;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
 {$ifend}
@@ -74692,7 +74700,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,ord(rd),TPasRISCVUInt64(4),0,0,Immediate,4) then begin
-      result:=4;
+      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
 {$ifend}
@@ -75503,7 +75511,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLW,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75530,7 +75538,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75607,7 +75615,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSW,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75629,7 +75637,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75691,7 +75699,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75714,7 +75722,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75773,7 +75781,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75796,7 +75804,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75881,7 +75889,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75904,7 +75912,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75963,7 +75971,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75986,7 +75994,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76044,7 +76052,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76071,7 +76079,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76114,7 +76122,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76142,7 +76150,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76185,7 +76193,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76207,7 +76215,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76245,7 +76253,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76267,7 +76275,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76308,7 +76316,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76326,7 +76334,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJNS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76344,7 +76352,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76372,7 +76380,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76390,7 +76398,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJND,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76408,7 +76416,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76479,7 +76487,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76523,7 +76531,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76635,7 +76643,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMIND,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76678,7 +76686,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -76878,7 +76886,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSD,ord(frd),ord(frs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77038,7 +77046,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDS,ord(frd),ord(frs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77324,7 +77332,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTS,ord(frd),ord(frs1),0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77347,7 +77355,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTD,ord(frd),ord(frs1),0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77390,7 +77398,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLES,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77412,7 +77420,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTS,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77434,7 +77442,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQS,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77496,7 +77504,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLED,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77518,7 +77526,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTD,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77540,7 +77548,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQD,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77699,7 +77707,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWS,ord(rd),ord(frs1),0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77830,7 +77838,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWD,ord(rd),ord(frs1),0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -78123,7 +78131,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSW,ord(frd),ord(rs1),0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -78166,7 +78174,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDW,ord(frd),ord(rs1),0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -78244,7 +78252,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXW,ord(rd),ord(frs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78262,7 +78270,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSS,ord(rd),ord(frs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78329,7 +78337,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXD,ord(rd),ord(frs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78347,7 +78355,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSD,ord(rd),ord(frs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78490,7 +78498,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVWX,ord(frd),ord(rs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78526,7 +78534,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVDX,ord(frd),ord(rs1),0,0,4) then begin
-           result:=4;
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
