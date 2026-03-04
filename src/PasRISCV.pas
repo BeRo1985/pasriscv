@@ -47822,27 +47822,27 @@ function TPasRISCV.THART.TJustInTimeCompiler.TraceLDST(const aIntrinsicMethod:TI
 var PC:TPasRISCVUInt64;
 begin
  PC:=fHART.fState.PC;
- if (not fCompiling) and not fHART.fState.fJITSkipExecution then begin
+ if (not fCompiling) and (not fHART.fState.fJITSkipExecution) and TLBLookup then begin
+  if PC=fHART.fState.PC then begin
+   fHART.fState.fJITSkipExecution:=true;
+  end;
+  dec(fHART.fState.PC,aInstructionSize);
+  result:=true;
+ end else begin
   fHART.fState.fJITSkipExecution:=false;
-  if TLBLookup then begin
-   fHART.fState.fJITSkipExecution:=fHART.fState.fJITSkipExecution or (PC=fHART.fState.PC);
-   dec(fHART.fState.PC,aInstructionSize);
-   result:=true;
-   exit;
-  end;
- end;
- if fCompiling then begin
+  if fCompiling then begin
 {$ifdef PasRISCVJITDebug}
-  if fDebugJITCounter<60 then begin
-   writeln('  COMPILE LDST @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
-  end;
+   if fDebugJITCounter<60 then begin
+    writeln('  COMPILE LDST @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
+   end;
 {$endif}
-  aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
-  inc(fPCOffset,aInstructionSize);
-  inc(fInstructionCount);
-  fBlockEnds:=false;
+   aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
+   inc(fPCOffset,aInstructionSize);
+   inc(fInstructionCount);
+   fBlockEnds:=false;
+  end;
+  result:=false;
  end;
- result:=false;
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
