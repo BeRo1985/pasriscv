@@ -329,6 +329,8 @@ unit PasRISCV;
 
 {-$define PasRISCVJITFastCycle}
 
+{-$define PasRISCVJITSideExit}
+
 {$ifdef cpux86_64}
  {$define PasRISCVJustInTimeCompilerNativeLinker}
  {$define PasRISCVJITBlockChaining}
