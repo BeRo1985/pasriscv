@@ -320,8 +320,13 @@ unit PasRISCV;
 {$ifend}
 
 {$define PasRISCVJustInTimeCompiler}
-{-$define PasRISCVJustInTimeCompilerFPU}
-{-$define PasRISCVJustInTimeCompilerFMA}
+{$if defined(PasRISCVJustInTimeCompiler)}
+ {$if defined(cpux86_64)}
+  {-$define PasRISCVJustInTimeCompilerFPU}
+  {-$define PasRISCVJustInTimeCompilerFMA}
+ {$ifend}
+{$ifend}
+
 {-$define PasRISCVJITDebug}
 {-$define PasRISCVJITFlexibleBranch}
 {-$define PasRISCVJITShortBranch}
@@ -8458,6 +8463,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); virtual; abstract;
                      procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); virtual; abstract;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); virtual; abstract;
+                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitRestoreRoundingMode; virtual; abstract;
 {$endif}
                      // Epilog helpers (virtual abstract — overridden per platform)
                      procedure EmitRET; virtual; abstract;
@@ -8597,14 +8604,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFCvtDLU(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFMvWX(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFMvDX(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtWS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeFCvtWS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
+                     procedure EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
+                     procedure EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
+                     procedure EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
+                     procedure EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
+                     procedure EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
+                     procedure EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
+                     procedure EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); virtual; abstract;
                      procedure EmitNativeFMvXW(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFMvXD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFClassS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
@@ -8908,6 +8915,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            X86_VEX3=TPasRISCVUInt8($c4);
                            X86_SSE_UCOMISS=TPasRISCVUInt8($2e);
                            X86_SSE_CVTTSI=TPasRISCVUInt8($2c);
+                           X86_SSE_CVT2SI=TPasRISCVUInt8($2d);
                            X86_SSE_CVTSI=TPasRISCVUInt8($2a);
                            X86_SSE_MOVD_TO_XMM=TPasRISCVUInt8($6e);
                            X86_SSE_MOVD_FROM_XMM=TPasRISCVUInt8($7e);
@@ -9010,8 +9018,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); override;
                      procedure EmitNaNBox32(const aXMMReg:TPasRISCVUInt8;const aScratchXMM:TPasRISCVUInt8);
                       // MXCSR rounding mode override for explicit rm != 7 (dynamic)
-                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8);
-                     procedure EmitRestoreRoundingMode;
+                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8); override;
+                     procedure EmitRestoreRoundingMode; override;
 {$endif}
                       // Inline TLB helpers
                      procedure EmitInlineTLBLookup(const aAddrReg:TPasRISCVUInt8;const aIsWrite:Boolean;const aTempReg1:TPasRISCVUInt8;const aTempReg2:TPasRISCVUInt8;out aSlowPathFixup:TPasRISCVUInt32);
@@ -9136,14 +9144,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFLtD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFLeS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFLeD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtWS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-                     procedure EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeFCvtWS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
+                     procedure EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
+                     procedure EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
+                     procedure EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
+                     procedure EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
+                     procedure EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
+                     procedure EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
+                     procedure EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean); override;
                      procedure EmitNativeFCvtSW(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFCvtSWU(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFCvtSL(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); override;
@@ -49614,6 +49622,7 @@ procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWS(const aInstruction
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49622,13 +49631,23 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtWS(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtWS(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49637,13 +49656,23 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtWUS(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtWUS(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49652,13 +49681,23 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtLS(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtLS(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49667,7 +49706,16 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtLUS(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtLUS(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -49762,6 +49810,7 @@ procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWD(const aInstruction
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49770,13 +49819,23 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtWD(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtWD(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49785,13 +49844,23 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtWUD(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtWUD(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49800,13 +49869,23 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtLD(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtLD(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49815,7 +49894,16 @@ begin
  end;
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeFCvtLUD(HostRD,HostFRS1);
+ RM:=(aInstruction shr 12) and 7;
+ if (RM<=4) and (RM<>1) then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+ EmitNativeFCvtLUD(HostRD,HostFRS1,RM=1);
+ if (RM<=4) and (RM<>1) then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -52994,18 +53082,22 @@ begin
  PatchJmpRel32(ParityFixup);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
  TempReg1:=ClaimHostReg;
- // CVTTSS2SI gpr32, xmm (truncation toward zero, 32-bit result)
+ // CVTTSS2SI gpr32, xmm (rounding per aTruncate flag, 32-bit result)
  EmitByte(X86_PREFIX_F3);
  if (aHostIntDest>=8) or (aHostFPUSrc>=8) then begin
   EmitREX(false,aHostIntDest,0,aHostFPUSrc);
  end;
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($80000000 for 32-bit result)
  EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($80000000),false);
@@ -53044,7 +53136,7 @@ begin
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     NegFixup,FastFixup,OverflowFixup,NaNFixup,ZeroFixup,MaxFixup:TPasRISCVUInt32;
 begin
@@ -53053,7 +53145,11 @@ begin
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check negative (catches negatives + x86 indefinite $8000000000000000)
  EmitTEST(aHostIntDest,aHostIntDest,true);
@@ -53100,16 +53196,20 @@ begin
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
  TempReg1:=ClaimHostReg;
- // CVTTSS2SI gpr64, xmm (truncation toward zero, 64-bit result)
+ // CVTTSS2SI gpr64, xmm (rounding per aTruncate flag, 64-bit result)
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($8000000000000000 for 64-bit result)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
@@ -53147,7 +53247,7 @@ begin
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     ScratchXMM1,ScratchXMM2:TPasRISCVUInt8;
     NaNFixup,LargeFixup,ZeroFixup,SmallDoneFixup,LargeDoneFixup,OverflowFixup,MaxDoneFixup:TPasRISCVUInt32;
@@ -53180,7 +53280,11 @@ begin
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Clamp negative to 0
  EmitTEST(aHostIntDest,aHostIntDest,true);
@@ -53195,7 +53299,11 @@ begin
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostIntDest,0,ScratchXMM2);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,ScratchXMM2);
  // Check for overflow (still indefinite → value > UINT64_MAX)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
@@ -53224,18 +53332,22 @@ begin
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
  TempReg1:=ClaimHostReg;
- // CVTTSD2SI gpr32, xmm (truncation toward zero, 32-bit result)
+ // CVTTSD2SI gpr32, xmm (rounding per aTruncate flag, 32-bit result)
  EmitByte(X86_PREFIX_F2);
  if (aHostIntDest>=8) or (aHostFPUSrc>=8) then begin
   EmitREX(false,aHostIntDest,0,aHostFPUSrc);
  end;
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($80000000 for 32-bit result)
  EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($80000000),false);
@@ -53270,7 +53382,7 @@ begin
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     NegFixup,FastFixup,OverflowFixup,NaNFixup,ZeroFixup,MaxFixup:TPasRISCVUInt32;
 begin
@@ -53279,7 +53391,11 @@ begin
  EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check negative (catches negatives + x86 indefinite $8000000000000000)
  EmitTEST(aHostIntDest,aHostIntDest,true);
@@ -53322,16 +53438,20 @@ begin
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
  TempReg1:=ClaimHostReg;
- // CVTTSD2SI gpr64, xmm (truncation toward zero, 64-bit result)
+ // CVTTSD2SI gpr64, xmm (rounding per aTruncate flag, 64-bit result)
  EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($8000000000000000 for 64-bit result)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
@@ -53365,7 +53485,7 @@ begin
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     ScratchXMM1,ScratchXMM2:TPasRISCVUInt8;
     NaNFixup,LargeFixup,ZeroFixup,SmallDoneFixup,LargeDoneFixup,OverflowFixup,MaxDoneFixup:TPasRISCVUInt32;
@@ -53388,7 +53508,11 @@ begin
  EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Clamp negative to 0
  EmitTEST(aHostIntDest,aHostIntDest,true);
@@ -53403,7 +53527,11 @@ begin
  EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostIntDest,0,ScratchXMM2);
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_CVTTSI);
+ if aTruncate then begin
+  EmitByte(X86_SSE_CVTTSI);
+ end else begin
+  EmitByte(X86_SSE_CVT2SI);
+ end;
  EmitModRM(3,aHostIntDest,ScratchXMM2);
  // Check for overflow (still indefinite → value > UINT64_MAX)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
