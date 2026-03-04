@@ -8286,7 +8286,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           TFPURegisterInfos=array[TFPURegister] of TRegisterInfo;
 {$endif}
                           TBlockCallback=procedure(const aStatePointer:Pointer); register;
-                          TIntrinsicMethod=procedure(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64) of object;
+                          TIntrinsicMethod=procedure(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64) of object;
                           TJITTLBEntry=record
                            VirtualPC:TPasRISCVUInt64;
                            case TPasRISCVUInt8 of
@@ -8622,140 +8622,140 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure InvalidatePage(const aPhysicalAddress:TPasRISCVUInt64);
                      // Tracing methods
                      function TLBLookup:Boolean;
-                     function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      // Integer intrinsics (virtual, override in target-specific subclass)
-                     procedure IntrinsicADD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSUB(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicADDI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLLI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRLI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRAI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLTI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLTIU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicXORI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicORI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicANDI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRA(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLT(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLTU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicXOR(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicOR(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAND(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicADDIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLLIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRLIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRAIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicADDW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSUBW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRAW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMUL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULH(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULHU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULHSU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIV(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIVU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREM(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREMU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIVW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIVUW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREMW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREMUW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLUI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAUIPC(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicJAL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicJALR(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBEQ(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBNE(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBLT(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBGE(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBLTU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBGEU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLB(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLH(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLBU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLHU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLWU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSB(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSH(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicADDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRAI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLTIU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicXORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicANDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRA(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicADDIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRAIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicADDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSUBW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSRAW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMULHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMULHSU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicDIV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicDIVU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicREM(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicREMU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMULW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicDIVW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicDIVUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicREMW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicREMUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicJALR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBEQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBNE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBGE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBGEU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLBU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      // FPU intrinsics
-                     procedure IntrinsicFLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMULS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFDIVS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSQRTS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMULD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFDIVD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSQRTD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJNS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJXS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJND(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJXD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMINS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMAXS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMIND(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMAXD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFEQS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLTS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLES(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFEQD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLTD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLED(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWUS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLUS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSWU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSLU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWUD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLUD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDWU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDLU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVXW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVWX(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVXD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVDX(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCLASSS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCLASSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMULS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFDIVS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSQRTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMULD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFDIVD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSQRTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSGNJS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSGNJNS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSGNJXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSGNJD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSGNJND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFSGNJXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMINS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMAXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMIND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMAXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFEQS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFLTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFLES(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFEQD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFLTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFLED(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTWS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTWUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTLS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTLUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTSWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTSL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTSLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTWD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTWUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTLUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTDWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTDL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCVTDLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMVXW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMVWX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMVXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMVDX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCLASSS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFCLASSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
 {$ifdef PasRISCVJustInTimeCompilerFMA}
                      // FMA intrinsics (additionally guarded by fMachine.fJITFMAEnabled at call site)
-                     procedure IntrinsicFMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
 {$endif}
 {$endif}
                      property Enabled:Boolean read fEnabled write fEnabled;
@@ -9009,6 +9009,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); override;
                      procedure EmitNaNBox32(const aXMMReg:TPasRISCVUInt8;const aScratchXMM:TPasRISCVUInt8);
+                      // MXCSR rounding mode override for explicit rm != 7 (dynamic)
+                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8);
+                     procedure EmitRestoreRoundingMode;
 {$endif}
                       // Inline TLB helpers
                      procedure EmitInlineTLBLookup(const aAddrReg:TPasRISCVUInt8;const aIsWrite:Boolean;const aTempReg1:TPasRISCVUInt8;const aTempReg2:TPasRISCVUInt8;out aSlowPathFixup:TPasRISCVUInt32);
@@ -9157,14 +9160,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFClassD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
 {$ifdef PasRISCVJustInTimeCompilerFMA}
                       // FMA IntrinsicXxx overrides
-                     procedure IntrinsicFMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     procedure IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
 {$endif}
 {$endif}
                     public
@@ -47911,7 +47914,7 @@ begin
 
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.Trace(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.TJustInTimeCompiler.Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
  {$ifndef PasRISCVJITZeroInstructionSize}
@@ -47925,7 +47928,7 @@ begin
     writeln('  COMPILE @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
 {$endif}
-   aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
+   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
    inc(fPCOffset,aInstructionSize);
    inc(fInstructionCount);
    fBlockEnds:=false;
@@ -47934,7 +47937,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.TJustInTimeCompiler.TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 var PC:TPasRISCVUInt64;
 begin
  PC:=fHART.fState.PC;
@@ -47954,7 +47957,7 @@ begin
     writeln('  COMPILE LDST @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
 {$endif}
-   aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
+   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
    inc(fPCOffset,aInstructionSize);
    inc(fInstructionCount);
    fBlockEnds:=false;
@@ -47963,7 +47966,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
  {$ifndef PasRISCVJITZeroInstructionSize}
@@ -47977,7 +47980,7 @@ begin
     writeln('  COMPILE JAL @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
 {$endif}
-   aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
+   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
    inc(fPCOffset,aOffset);
    inc(fInstructionCount);
    fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
@@ -47986,7 +47989,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.TJustInTimeCompiler.TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  if fCompiling then begin
 {$ifdef PasRISCVJITDebug}
@@ -47994,14 +47997,14 @@ begin
    writeln('  COMPILE JALR @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
   end;
 {$endif}
-  aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
+  aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
   inc(fInstructionCount);
   fBlockEnds:=true;
  end;
  result:=false;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.THART.TJustInTimeCompiler.TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
  {$ifndef PasRISCVJITZeroInstructionSize}
@@ -48016,7 +48019,7 @@ begin
    end;
 {$endif}
    inc(fPCOffset,aFallthroughOffset);
-   aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
+   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
    inc(fPCOffset,aTargetOffset-aFallthroughOffset);
    inc(fInstructionCount);
    fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
@@ -48026,7 +48029,7 @@ begin
 end;
 
 // Empty base implementations for integer intrinsics
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48042,7 +48045,7 @@ begin
  EmitNativeAdd(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUB(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48058,7 +48061,7 @@ begin
  EmitNativeSub(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48072,7 +48075,7 @@ begin
  EmitNativeAddi(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48086,7 +48089,7 @@ begin
  EmitNativeSlli(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48100,7 +48103,7 @@ begin
  EmitNativeSrli(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48114,7 +48117,7 @@ begin
  EmitNativeSrai(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48128,7 +48131,7 @@ begin
  EmitNativeSlti(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTIU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTIU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48142,7 +48145,7 @@ begin
  EmitNativeSltiu(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXORI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48156,7 +48159,7 @@ begin
  EmitNativeXori(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48170,7 +48173,7 @@ begin
  EmitNativeOri(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicANDI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicANDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48184,7 +48187,7 @@ begin
  EmitNativeAndi(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48200,7 +48203,7 @@ begin
  EmitNativeSll(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48216,7 +48219,7 @@ begin
  EmitNativeSrl(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRA(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRA(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48232,7 +48235,7 @@ begin
  EmitNativeSra(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLT(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48248,7 +48251,7 @@ begin
  EmitNativeSlt(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48264,7 +48267,7 @@ begin
  EmitNativeSltu(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXOR(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48280,7 +48283,7 @@ begin
  EmitNativeXor(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicOR(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48296,7 +48299,7 @@ begin
  EmitNativeOr(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAND(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48312,7 +48315,7 @@ begin
  EmitNativeAnd(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48326,7 +48329,7 @@ begin
  EmitNativeAddiW(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48340,7 +48343,7 @@ begin
  EmitNativeSlliW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48354,7 +48357,7 @@ begin
  EmitNativeSrliW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAIW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
@@ -48368,7 +48371,7 @@ begin
  EmitNativeSraiW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48384,7 +48387,7 @@ begin
  EmitNativeAddW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUBW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUBW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48400,7 +48403,7 @@ begin
  EmitNativeSubW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48416,7 +48419,7 @@ begin
  EmitNativeSllW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48432,7 +48435,7 @@ begin
  EmitNativeSrlW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48448,7 +48451,7 @@ begin
  EmitNativeSraW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMUL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48464,7 +48467,7 @@ begin
  EmitNativeMul(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULH(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48480,7 +48483,7 @@ begin
  EmitNativeMulH(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48496,7 +48499,7 @@ begin
  EmitNativeMulHU(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHSU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHSU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48512,7 +48515,7 @@ begin
  EmitNativeMulHSU(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIV(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48528,7 +48531,7 @@ begin
  EmitNativeDiv(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48544,7 +48547,7 @@ begin
  EmitNativeDivU(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREM(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREM(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48560,7 +48563,7 @@ begin
  EmitNativeRem(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48576,7 +48579,7 @@ begin
  EmitNativeRemU(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48592,7 +48595,7 @@ begin
  EmitNativeMulW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48608,7 +48611,7 @@ begin
  EmitNativeDivW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVUW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48624,7 +48627,7 @@ begin
  EmitNativeDivUW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48640,7 +48643,7 @@ begin
  EmitNativeRemW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMUW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -48656,7 +48659,7 @@ begin
  EmitNativeRemUW(HostRD,HostRS1,HostRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLUI(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
 begin
@@ -48668,7 +48671,7 @@ begin
  EmitNativeSetReg32s(HostRD,TPasRISCVInt32(aParameter1));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAUIPC(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
     Imm:TPasRISCVInt32;
@@ -48687,7 +48690,7 @@ begin
  fIntRegInfos[RD].AUIPCOffset:=Imm;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJAL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
     LinkImm:TPasRISCVInt32;
@@ -48704,7 +48707,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJALR(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJALR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     HostRS1,HostTemp,HostRD:TPasRISCVUInt8;
     Immediate:TPasRISCVInt32;
@@ -48741,7 +48744,7 @@ begin
  FreeHostReg(HostTemp);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEQ(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -48761,7 +48764,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBNE(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBNE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -48781,7 +48784,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLT(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -48801,7 +48804,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGE(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -48821,7 +48824,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLTU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -48841,7 +48844,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGEU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGEU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -48861,7 +48864,7 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLB(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -48878,7 +48881,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLH(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -48895,7 +48898,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -48912,7 +48915,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -48929,7 +48932,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLBU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLBU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -48946,7 +48949,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLHU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -48963,7 +48966,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLWU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -48980,7 +48983,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSB(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -48995,7 +48998,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -49010,7 +49013,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -49025,7 +49028,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -49043,7 +49046,7 @@ end;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 // Base class FPU intrinsic implementations — decode + dispatch to EmitNativeFxx
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -49059,7 +49062,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -49075,7 +49078,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRS2:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -49091,7 +49094,7 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRS2:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -49107,9 +49110,10 @@ begin
  FreeHostReg(HostAddr);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49117,12 +49121,22 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFAddS(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49130,12 +49144,22 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFSubS(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49143,12 +49167,22 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFMulS(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49156,23 +49190,43 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFDivS(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFSqrtS(HostFRD,HostFRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49180,12 +49234,22 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFAddD(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49193,12 +49257,22 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFSubD(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49206,12 +49280,22 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFMulD(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
@@ -49219,21 +49303,40 @@ begin
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFDivD(HostFRD,HostFRS1,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFSqrtD(HostFRD,HostFRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49246,7 +49349,7 @@ begin
  EmitNativeFSgnjS(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJNS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJNS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49259,7 +49362,7 @@ begin
  EmitNativeFSgnjNS(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49272,7 +49375,7 @@ begin
  EmitNativeFSgnjXS(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49285,7 +49388,7 @@ begin
  EmitNativeFSgnjD(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJND(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49298,7 +49401,7 @@ begin
  EmitNativeFSgnjND(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49311,7 +49414,7 @@ begin
  EmitNativeFSgnjXD(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49324,7 +49427,7 @@ begin
  EmitNativeFMinS(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49337,7 +49440,7 @@ begin
  EmitNativeFMaxS(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMIND(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMIND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49350,7 +49453,7 @@ begin
  EmitNativeFMinD(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -49363,29 +49466,49 @@ begin
  EmitNativeFMaxD(HostFRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtSD(HostFRD,HostFRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapFPURegister(FRS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtDS(HostFRD,HostFRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -49402,7 +49525,7 @@ begin
  EmitNativeFEqS(HostRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -49419,7 +49542,7 @@ begin
  EmitNativeFLtS(HostRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLES(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLES(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -49436,7 +49559,7 @@ begin
  EmitNativeFLeS(HostRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -49453,7 +49576,7 @@ begin
  EmitNativeFEqD(HostRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -49470,7 +49593,7 @@ begin
  EmitNativeFLtD(HostRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLED(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLED(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -49487,7 +49610,7 @@ begin
  EmitNativeFLeD(HostRD,HostFRS1,HostFRS2);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49502,7 +49625,7 @@ begin
  EmitNativeFCvtWS(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49517,7 +49640,7 @@ begin
  EmitNativeFCvtWUS(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49532,7 +49655,7 @@ begin
  EmitNativeFCvtLS(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49547,55 +49670,95 @@ begin
  EmitNativeFCvtLUS(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtSW(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSWU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtSWU(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtSL(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSLU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtSLU(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49610,7 +49773,7 @@ begin
  EmitNativeFCvtWD(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49625,7 +49788,7 @@ begin
  EmitNativeFCvtWUD(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49640,7 +49803,7 @@ begin
  EmitNativeFCvtLD(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49655,55 +49818,95 @@ begin
  EmitNativeFCvtLUD(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtDW(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDWU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtDWU(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDL(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtDL(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDLU(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitNativeFCvtDLU(HostFRD,HostRS1);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXW(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49718,7 +49921,7 @@ begin
  EmitNativeFMvXW(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVWX(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVWX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -49730,7 +49933,7 @@ begin
  EmitNativeFMvWX(HostFRD,HostRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49745,7 +49948,7 @@ begin
  EmitNativeFMvXD(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVDX(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVDX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -49757,7 +49960,7 @@ begin
  EmitNativeFMvDX(HostFRD,HostRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49772,7 +49975,7 @@ begin
  EmitNativeFClassS(HostRD,HostFRS1);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -49789,35 +49992,35 @@ end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFMA}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 {$endif}
@@ -51224,6 +51427,51 @@ begin
  // ORPD dst, scratch — 66 0F 56 /r
  EmitSSE2Op($66,$56,aXMMReg,aScratchXMM);
 end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8);
+const RVRMToMXCSR:array[0..4] of TPasRISCVUInt32=(
+       $0000, // 0: RNE → MXCSR 00
+       $6000, // 1: RTZ → MXCSR 11
+       $2000, // 2: RDN → MXCSR 01
+       $4000, // 3: RUP → MXCSR 10
+       $0000  // 4: RMM → MXCSR 00 (best approximation)
+      );
+begin
+ // sub rsp, 8 (allocate for two MXCSR slots)
+ EmitImmOp(ALU_SUB,TPasRISCVUInt8(ord(TX64Register.rRSP)),8,true);
+ // STMXCSR [rsp] — save original MXCSR: 0f ae /3 [rsp]
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte($ae);
+ EmitByte($1c); // ModRM: 00 011 100 (reg=3, rm=RSP → SIB)
+ EmitByte($24); // SIB: 00 100 100 (RSP base, no index)
+ // MOV tmp, [rsp]
+ EmitMemOp(X86_MOV_M_R,aTempReg,TPasRISCVUInt8(ord(TX64Register.rRSP)),0,false);
+ // AND tmp, ~$6000 (clear RC bits 14:13)
+ EmitImmOp(ALU_AND,aTempReg,TPasRISCVInt32(not TPasRISCVInt32($6000)),false);
+ // OR tmp, <new RC bits>
+ if RVRMToMXCSR[aRM]<>0 then begin
+  EmitImmOp(ALU_OR,aTempReg,TPasRISCVInt32(RVRMToMXCSR[aRM]),false);
+ end;
+ // MOV [rsp+4], tmp
+ EmitMemOp(X86_MOV_R_M,aTempReg,TPasRISCVUInt8(ord(TX64Register.rRSP)),4,false);
+ // LDMXCSR [rsp+4] — load modified MXCSR: 0f ae /2 [rsp+4]
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte($ae);
+ EmitByte($54); // ModRM: 01 010 100 (reg=2, rm=RSP → SIB, disp8)
+ EmitByte($24); // SIB: 00 100 100
+ EmitByte($04); // disp8 = 4
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitRestoreRoundingMode;
+begin
+ // LDMXCSR [rsp] — restore original MXCSR: 0f ae /2 [rsp]
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte($ae);
+ EmitByte($14); // ModRM: 00 010 100 (reg=2, rm=RSP → SIB)
+ EmitByte($24); // SIB: 00 100 100
+ // add rsp, 8
+ EmitImmOp(ALU_ADD,TPasRISCVUInt8(ord(TX64Register.rRSP)),8,true);
+end;
 {$endif}
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitInlineTLBLookup(const aAddrReg:TPasRISCVUInt8;const aIsWrite:Boolean;const aTempReg1:TPasRISCVUInt8;const aTempReg2:TPasRISCVUInt8;out aSlowPathFixup:TPasRISCVUInt32);
@@ -52133,18 +52381,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFAddD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f2,$58,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$58,aHostDest,aHostSrc2);
  end else begin
+  ScratchXMM:=ClaimFPUReg;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$58,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSubS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -52168,18 +52416,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSubD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f2,$5c,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$5c,aHostDest,aHostSrc2);
  end else begin
+  ScratchXMM:=ClaimFPUReg;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$5c,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMulS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -52203,18 +52451,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMulD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f2,$59,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$59,aHostDest,aHostSrc2);
  end else begin
+  ScratchXMM:=ClaimFPUReg;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$59,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFDivS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -52238,18 +52486,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFDivD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f2,$5e,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$5e,aHostDest,aHostSrc2);
  end else begin
+  ScratchXMM:=ClaimFPUReg;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$5e,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSqrtS(const aHostDest,aHostSrc:TPasRISCVUInt8);
@@ -52386,7 +52634,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCheckFixup,NaNFixupFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimFPUReg;
  TempReg1:=ClaimHostReg;
@@ -52398,25 +52646,56 @@ begin
  EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_JP_REL32);
- EmitDWord(0);
- NaNCheckFixup:=fTemporaryCodeSize-4;
+ EmitJccRel32(CC_P,0);
+ NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MINSS
  if aHostDest<>aHostSrc1 then begin
   EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
  end;
  EmitSSE2Op($f3,$5d,aHostDest,aHostSrc2);
- // JMP .done
- EmitByte(X86_JMP_REL32);
- EmitDWord(0);
- NaNFixupFixup:=fTemporaryCodeSize-4;
- // .nan_case: canonical NaN single $7FC00000
- PatchJmpRel32(NaNCheckFixup);
+ EmitJmpRel32(0);
+ NormalDoneFixup:=fTemporaryCodeSize-4;
+ // .nan_case: at least one operand is NaN
+ PatchJmpRel32(NaNCaseFixup);
+ // Check if rs1 is NaN
+ if aHostSrc1>=8 then begin
+  EmitREX(false,aHostSrc1,0,aHostSrc1);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostSrc1,aHostSrc1);
+ EmitJccRel32(CC_P,0);
+ RS1NaNFixup:=fTemporaryCodeSize-4;
+ // rs1 not NaN, rs2 is NaN -> result = rs1
+ if aHostDest<>aHostSrc1 then begin
+  EmitFPUMov(aHostDest,aHostSrc1,false);
+ end;
+ EmitJmpRel32(0);
+ RS1OKDoneFixup:=fTemporaryCodeSize-4;
+ // .rs1_nan: rs1 is NaN, check rs2
+ PatchJmpRel32(RS1NaNFixup);
+ if aHostSrc2>=8 then begin
+  EmitREX(false,aHostSrc2,0,aHostSrc2);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostSrc2,aHostSrc2);
+ EmitJccRel32(CC_P,0);
+ BothNaNFixup:=fTemporaryCodeSize-4;
+ // rs2 not NaN, rs1 is NaN -> result = rs2
+ if aHostDest<>aHostSrc2 then begin
+  EmitFPUMov(aHostDest,aHostSrc2,false);
+ end;
+ EmitJmpRel32(0);
+ RS2OKDoneFixup:=fTemporaryCodeSize-4;
+ // .both_nan: canonical NaN single $7fc00000
+ PatchJmpRel32(BothNaNFixup);
  EmitMOVRegImm32(TempReg1,$7fc00000);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,false);
  // .done:
- PatchJmpRel32(NaNFixupFixup);
+ PatchJmpRel32(NormalDoneFixup);
+ PatchJmpRel32(RS1OKDoneFixup);
+ PatchJmpRel32(RS2OKDoneFixup);
  EmitNaNBox32(aHostDest,ScratchXMM);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
@@ -52425,32 +52704,53 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCheckFixup,NaNFixupFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimFPUReg;
  TempReg1:=ClaimHostReg;
  // UCOMISD rs1, rs2
  EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_JP_REL32);
- EmitDWord(0);
- NaNCheckFixup:=fTemporaryCodeSize-4;
+ EmitJccRel32(CC_P,0);
+ NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MINSD
  if aHostDest<>aHostSrc1 then begin
   EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
  end;
  EmitSSE2Op($f2,$5d,aHostDest,aHostSrc2);
- // JMP .done
- EmitByte(X86_JMP_REL32);
- EmitDWord(0);
- NaNFixupFixup:=fTemporaryCodeSize-4;
- // .nan_case: canonical NaN double $7FF8000000000000
- PatchJmpRel32(NaNCheckFixup);
+ EmitJmpRel32(0);
+ NormalDoneFixup:=fTemporaryCodeSize-4;
+ // .nan_case: at least one operand is NaN
+ PatchJmpRel32(NaNCaseFixup);
+ // Check if rs1 is NaN
+ EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc1);
+ EmitJccRel32(CC_P,0);
+ RS1NaNFixup:=fTemporaryCodeSize-4;
+ // rs1 not NaN, rs2 is NaN -> result = rs1
+ if aHostDest<>aHostSrc1 then begin
+  EmitFPUMov(aHostDest,aHostSrc1,true);
+ end;
+ EmitJmpRel32(0);
+ RS1OKDoneFixup:=fTemporaryCodeSize-4;
+ // .rs1_nan: rs1 is NaN, check rs2
+ PatchJmpRel32(RS1NaNFixup);
+ EmitSSE2Op($66,$2e,aHostSrc2,aHostSrc2);
+ EmitJccRel32(CC_P,0);
+ BothNaNFixup:=fTemporaryCodeSize-4;
+ // rs2 not NaN, rs1 is NaN -> result = rs2
+ if aHostDest<>aHostSrc2 then begin
+  EmitFPUMov(aHostDest,aHostSrc2,true);
+ end;
+ EmitJmpRel32(0);
+ RS2OKDoneFixup:=fTemporaryCodeSize-4;
+ // .both_nan: canonical NaN double $7ff8000000000000
+ PatchJmpRel32(BothNaNFixup);
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($7ff8000000000000));
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,true);
  // .done:
- PatchJmpRel32(NaNFixupFixup);
+ PatchJmpRel32(NormalDoneFixup);
+ PatchJmpRel32(RS1OKDoneFixup);
+ PatchJmpRel32(RS2OKDoneFixup);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
@@ -52458,7 +52758,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMaxS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCheckFixup,NaNFixupFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimFPUReg;
  TempReg1:=ClaimHostReg;
@@ -52470,25 +52770,56 @@ begin
  EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_JP_REL32);
- EmitDWord(0);
- NaNCheckFixup:=fTemporaryCodeSize-4;
+ EmitJccRel32(CC_P,0);
+ NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MAXSS
  if aHostDest<>aHostSrc1 then begin
   EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
  end;
  EmitSSE2Op($f3,$5f,aHostDest,aHostSrc2);
- // JMP .done
- EmitByte(X86_JMP_REL32);
- EmitDWord(0);
- NaNFixupFixup:=fTemporaryCodeSize-4;
- // .nan_case: canonical NaN single $7FC00000
- PatchJmpRel32(NaNCheckFixup);
+ EmitJmpRel32(0);
+ NormalDoneFixup:=fTemporaryCodeSize-4;
+ // .nan_case: at least one operand is NaN
+ PatchJmpRel32(NaNCaseFixup);
+ // Check if rs1 is NaN
+ if aHostSrc1>=8 then begin
+  EmitREX(false,aHostSrc1,0,aHostSrc1);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostSrc1,aHostSrc1);
+ EmitJccRel32(CC_P,0);
+ RS1NaNFixup:=fTemporaryCodeSize-4;
+ // rs1 not NaN, rs2 is NaN -> result = rs1
+ if aHostDest<>aHostSrc1 then begin
+  EmitFPUMov(aHostDest,aHostSrc1,false);
+ end;
+ EmitJmpRel32(0);
+ RS1OKDoneFixup:=fTemporaryCodeSize-4;
+ // .rs1_nan: rs1 is NaN, check rs2
+ PatchJmpRel32(RS1NaNFixup);
+ if aHostSrc2>=8 then begin
+  EmitREX(false,aHostSrc2,0,aHostSrc2);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostSrc2,aHostSrc2);
+ EmitJccRel32(CC_P,0);
+ BothNaNFixup:=fTemporaryCodeSize-4;
+ // rs2 not NaN, rs1 is NaN -> result = rs2
+ if aHostDest<>aHostSrc2 then begin
+  EmitFPUMov(aHostDest,aHostSrc2,false);
+ end;
+ EmitJmpRel32(0);
+ RS2OKDoneFixup:=fTemporaryCodeSize-4;
+ // .both_nan: canonical NaN single $7fc00000
+ PatchJmpRel32(BothNaNFixup);
  EmitMOVRegImm32(TempReg1,$7fc00000);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,false);
  // .done:
- PatchJmpRel32(NaNFixupFixup);
+ PatchJmpRel32(NormalDoneFixup);
+ PatchJmpRel32(RS1OKDoneFixup);
+ PatchJmpRel32(RS2OKDoneFixup);
  EmitNaNBox32(aHostDest,ScratchXMM);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
@@ -52497,32 +52828,53 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMaxD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCheckFixup,NaNFixupFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimFPUReg;
  TempReg1:=ClaimHostReg;
  // UCOMISD rs1, rs2
  EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc2);
  // JP .nan_case
- EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_JP_REL32);
- EmitDWord(0);
- NaNCheckFixup:=fTemporaryCodeSize-4;
+ EmitJccRel32(CC_P,0);
+ NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MAXSD
  if aHostDest<>aHostSrc1 then begin
   EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
  end;
  EmitSSE2Op($f2,$5f,aHostDest,aHostSrc2);
- // JMP .done
- EmitByte(X86_JMP_REL32);
- EmitDWord(0);
- NaNFixupFixup:=fTemporaryCodeSize-4;
- // .nan_case: canonical NaN double $7FF8000000000000
- PatchJmpRel32(NaNCheckFixup);
+ EmitJmpRel32(0);
+ NormalDoneFixup:=fTemporaryCodeSize-4;
+ // .nan_case: at least one operand is NaN
+ PatchJmpRel32(NaNCaseFixup);
+ // Check if rs1 is NaN
+ EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc1);
+ EmitJccRel32(CC_P,0);
+ RS1NaNFixup:=fTemporaryCodeSize-4;
+ // rs1 not NaN, rs2 is NaN -> result = rs1
+ if aHostDest<>aHostSrc1 then begin
+  EmitFPUMov(aHostDest,aHostSrc1,true);
+ end;
+ EmitJmpRel32(0);
+ RS1OKDoneFixup:=fTemporaryCodeSize-4;
+ // .rs1_nan: rs1 is NaN, check rs2
+ PatchJmpRel32(RS1NaNFixup);
+ EmitSSE2Op($66,$2e,aHostSrc2,aHostSrc2);
+ EmitJccRel32(CC_P,0);
+ BothNaNFixup:=fTemporaryCodeSize-4;
+ // rs2 not NaN, rs1 is NaN -> result = rs2
+ if aHostDest<>aHostSrc2 then begin
+  EmitFPUMov(aHostDest,aHostSrc2,true);
+ end;
+ EmitJmpRel32(0);
+ RS2OKDoneFixup:=fTemporaryCodeSize-4;
+ // .both_nan: canonical NaN double $7ff8000000000000
+ PatchJmpRel32(BothNaNFixup);
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($7ff8000000000000));
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,true);
  // .done:
- PatchJmpRel32(NaNFixupFixup);
+ PatchJmpRel32(NormalDoneFixup);
+ PatchJmpRel32(RS1OKDoneFixup);
+ PatchJmpRel32(RS2OKDoneFixup);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
@@ -52693,7 +53045,59 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+    NegFixup,FastFixup,OverflowFixup,NaNFixup,ZeroFixup,MaxFixup:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ // CVTTSS2SI gpr64, xmm (signed 64-bit to capture full uint32 range)
+ EmitByte(X86_PREFIX_F3);
+ EmitREX(true,aHostIntDest,0,aHostFPUSrc);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
+ EmitModRM(3,aHostIntDest,aHostFPUSrc);
+ // Check negative (catches negatives + x86 indefinite $8000000000000000)
+ EmitTEST(aHostIntDest,aHostIntDest,true);
+ EmitJccRel32(CC_S,0);
+ NegFixup:=fTemporaryCodeSize-4;
+ // Non-negative: clamp to uint32 range
+ EmitMOVRegImm32(TempReg1,$ffffffff);
+ Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
+ EmitJccRel32(CC_BE,0);
+ FastFixup:=fTemporaryCodeSize-4;
+ // Positive overflow (> $ffffffff but fits int64)
+ EmitMOVRegImm32(aHostIntDest,$ffffffff);
+ EmitJmpRel32(0);
+ OverflowFixup:=fTemporaryCodeSize-4;
+ // .negative: check NaN vs actual negative
+ PatchJmpRel32(NegFixup);
+ if aHostFPUSrc>=8 then begin
+  EmitREX(false,aHostFPUSrc,0,aHostFPUSrc);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostFPUSrc,aHostFPUSrc);
+ EmitJccRel32(CC_P,0);
+ NaNFixup:=fTemporaryCodeSize-4;
+ // Not NaN: check float sign
+ EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,false);
+ EmitTEST(TempReg1,TempReg1,false);
+ EmitJccRel32(CC_S,0);
+ ZeroFixup:=fTemporaryCodeSize-4;
+ // Positive float caused int64 overflow → uint32max
+ PatchJmpRel32(NaNFixup);
+ EmitMOVRegImm32(aHostIntDest,$ffffffff);
+ EmitJmpRel32(0);
+ MaxFixup:=fTemporaryCodeSize-4;
+ // .zero: negative float → 0
+ PatchJmpRel32(ZeroFixup);
+ EmitNativeZeroReg(aHostIntDest);
+ // .done:
+ PatchJmpRel32(FastFixup);
+ PatchJmpRel32(OverflowFixup);
+ PatchJmpRel32(MaxFixup);
+ // Sign-extend 32 to 64 (RISC-V RV64: FCVT.WU result is sign-extended)
+ EmitMOVSXD(aHostIntDest,aHostIntDest);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -52744,7 +53148,80 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+    ScratchXMM1,ScratchXMM2:TPasRISCVUInt8;
+    NaNFixup,LargeFixup,ZeroFixup,SmallDoneFixup,LargeDoneFixup,OverflowFixup,MaxDoneFixup:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ ScratchXMM1:=ClaimFPUReg;
+ ScratchXMM2:=ClaimFPUReg;
+ // NaN check: UCOMISS frs1, frs1
+ if aHostFPUSrc>=8 then begin
+  EmitREX(false,aHostFPUSrc,0,aHostFPUSrc);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostFPUSrc,aHostFPUSrc);
+ EmitJccRel32(CC_P,0);
+ NaNFixup:=fTemporaryCodeSize-4;
+ // Load 2^63 as float32 ($5f000000) into ScratchXMM1
+ EmitMOVRegImm32(TempReg1,$5f000000);
+ EmitSSE2MovGPRToXMM(ScratchXMM1,TempReg1,false);
+ // UCOMISS frs1, ScratchXMM1 (compare with 2^63)
+ if (aHostFPUSrc>=8) or (ScratchXMM1>=8) then begin
+  EmitREX(false,aHostFPUSrc,0,ScratchXMM1);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostFPUSrc,ScratchXMM1);
+ EmitJccRel32(CC_AE,0);
+ LargeFixup:=fTemporaryCodeSize-4;
+ // Small path: value in (-inf, 2^63), fits in signed int64
+ EmitByte(X86_PREFIX_F3);
+ EmitREX(true,aHostIntDest,0,aHostFPUSrc);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
+ EmitModRM(3,aHostIntDest,aHostFPUSrc);
+ // Clamp negative to 0
+ EmitTEST(aHostIntDest,aHostIntDest,true);
+ EmitJccRel32(CC_S,0);
+ ZeroFixup:=fTemporaryCodeSize-4;
+ EmitJmpRel32(0);
+ SmallDoneFixup:=fTemporaryCodeSize-4;
+ // .large: value >= 2^63 — subtract 2^63, convert, add back
+ PatchJmpRel32(LargeFixup);
+ EmitFPUMov(ScratchXMM2,aHostFPUSrc,false);
+ EmitSSE2Op($f3,$5c,ScratchXMM2,ScratchXMM1); // SUBSS scratch2, scratch1
+ EmitByte(X86_PREFIX_F3);
+ EmitREX(true,aHostIntDest,0,ScratchXMM2);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
+ EmitModRM(3,aHostIntDest,ScratchXMM2);
+ // Check for overflow (still indefinite → value > UINT64_MAX)
+ EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
+ Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
+ EmitJccRel32(CC_E,0);
+ OverflowFixup:=fTemporaryCodeSize-4;
+ // Normal: add 2^63 back (TempReg1 still holds $8000000000000000)
+ Emit2RegOp(X86_ADD,aHostIntDest,TempReg1,true);
+ EmitJmpRel32(0);
+ LargeDoneFixup:=fTemporaryCodeSize-4;
+ // .max: NaN or overflow → UINT64_MAX
+ PatchJmpRel32(NaNFixup);
+ PatchJmpRel32(OverflowFixup);
+ EmitMOVRegImm64(aHostIntDest,TPasRISCVUInt64($ffffffffffffffff));
+ EmitJmpRel32(0);
+ MaxDoneFixup:=fTemporaryCodeSize-4;
+ // .zero: negative → 0
+ PatchJmpRel32(ZeroFixup);
+ EmitNativeZeroReg(aHostIntDest);
+ // .done:
+ PatchJmpRel32(SmallDoneFixup);
+ PatchJmpRel32(LargeDoneFixup);
+ PatchJmpRel32(MaxDoneFixup);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM1);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -52794,7 +53271,55 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+    NegFixup,FastFixup,OverflowFixup,NaNFixup,ZeroFixup,MaxFixup:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ // CVTTSD2SI gpr64, xmm (signed 64-bit to capture full uint32 range)
+ EmitByte(X86_PREFIX_F2);
+ EmitREX(true,aHostIntDest,0,aHostFPUSrc);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
+ EmitModRM(3,aHostIntDest,aHostFPUSrc);
+ // Check negative (catches negatives + x86 indefinite $8000000000000000)
+ EmitTEST(aHostIntDest,aHostIntDest,true);
+ EmitJccRel32(CC_S,0);
+ NegFixup:=fTemporaryCodeSize-4;
+ // Non-negative: clamp to uint32 range
+ EmitMOVRegImm32(TempReg1,$ffffffff);
+ Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
+ EmitJccRel32(CC_BE,0);
+ FastFixup:=fTemporaryCodeSize-4;
+ // Positive overflow (> $ffffffff but fits int64)
+ EmitMOVRegImm32(aHostIntDest,$ffffffff);
+ EmitJmpRel32(0);
+ OverflowFixup:=fTemporaryCodeSize-4;
+ // .negative: check NaN vs actual negative
+ PatchJmpRel32(NegFixup);
+ // UCOMISD frs1, frs1
+ EmitSSE2Op($66,$2e,aHostFPUSrc,aHostFPUSrc);
+ EmitJccRel32(CC_P,0);
+ NaNFixup:=fTemporaryCodeSize-4;
+ // Not NaN: check float sign (MOVQ 64-bit for double sign bit)
+ EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,true);
+ EmitTEST(TempReg1,TempReg1,true);
+ EmitJccRel32(CC_S,0);
+ ZeroFixup:=fTemporaryCodeSize-4;
+ // Positive float caused int64 overflow → uint32max
+ PatchJmpRel32(NaNFixup);
+ EmitMOVRegImm32(aHostIntDest,$ffffffff);
+ EmitJmpRel32(0);
+ MaxFixup:=fTemporaryCodeSize-4;
+ // .zero: negative float → 0
+ PatchJmpRel32(ZeroFixup);
+ EmitNativeZeroReg(aHostIntDest);
+ // .done:
+ PatchJmpRel32(FastFixup);
+ PatchJmpRel32(OverflowFixup);
+ PatchJmpRel32(MaxFixup);
+ // Sign-extend 32 to 64 (RISC-V RV64: FCVT.WU result is sign-extended)
+ EmitMOVSXD(aHostIntDest,aHostIntDest);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -52841,7 +53366,70 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+    ScratchXMM1,ScratchXMM2:TPasRISCVUInt8;
+    NaNFixup,LargeFixup,ZeroFixup,SmallDoneFixup,LargeDoneFixup,OverflowFixup,MaxDoneFixup:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ ScratchXMM1:=ClaimFPUReg;
+ ScratchXMM2:=ClaimFPUReg;
+ // NaN check: UCOMISD frs1, frs1
+ EmitSSE2Op($66,$2e,aHostFPUSrc,aHostFPUSrc);
+ EmitJccRel32(CC_P,0);
+ NaNFixup:=fTemporaryCodeSize-4;
+ // Load 2^63 as float64 ($43e0000000000000) into ScratchXMM1
+ EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($43e0000000000000));
+ EmitSSE2MovGPRToXMM(ScratchXMM1,TempReg1,true);
+ // UCOMISD frs1, ScratchXMM1 (compare with 2^63)
+ EmitSSE2Op($66,$2e,aHostFPUSrc,ScratchXMM1);
+ EmitJccRel32(CC_AE,0);
+ LargeFixup:=fTemporaryCodeSize-4;
+ // Small path: value in (-inf, 2^63), fits in signed int64
+ EmitByte(X86_PREFIX_F2);
+ EmitREX(true,aHostIntDest,0,aHostFPUSrc);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
+ EmitModRM(3,aHostIntDest,aHostFPUSrc);
+ // Clamp negative to 0
+ EmitTEST(aHostIntDest,aHostIntDest,true);
+ EmitJccRel32(CC_S,0);
+ ZeroFixup:=fTemporaryCodeSize-4;
+ EmitJmpRel32(0);
+ SmallDoneFixup:=fTemporaryCodeSize-4;
+ // .large: value >= 2^63 — subtract 2^63, convert, add back
+ PatchJmpRel32(LargeFixup);
+ EmitFPUMov(ScratchXMM2,aHostFPUSrc,true);
+ EmitSSE2Op($f2,$5c,ScratchXMM2,ScratchXMM1); // SUBSD scratch2, scratch1
+ EmitByte(X86_PREFIX_F2);
+ EmitREX(true,aHostIntDest,0,ScratchXMM2);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTTSI);
+ EmitModRM(3,aHostIntDest,ScratchXMM2);
+ // Check for overflow (still indefinite → value > UINT64_MAX)
+ EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
+ Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
+ EmitJccRel32(CC_E,0);
+ OverflowFixup:=fTemporaryCodeSize-4;
+ // Normal: add 2^63 back (TempReg1 still holds $8000000000000000)
+ Emit2RegOp(X86_ADD,aHostIntDest,TempReg1,true);
+ EmitJmpRel32(0);
+ LargeDoneFixup:=fTemporaryCodeSize-4;
+ // .max: NaN or overflow → UINT64_MAX
+ PatchJmpRel32(NaNFixup);
+ PatchJmpRel32(OverflowFixup);
+ EmitMOVRegImm64(aHostIntDest,TPasRISCVUInt64($ffffffffffffffff));
+ EmitJmpRel32(0);
+ MaxDoneFixup:=fTemporaryCodeSize-4;
+ // .zero: negative → 0
+ PatchJmpRel32(ZeroFixup);
+ EmitNativeZeroReg(aHostIntDest);
+ // .done:
+ PatchJmpRel32(SmallDoneFixup);
+ PatchJmpRel32(LargeDoneFixup);
+ PatchJmpRel32(MaxDoneFixup);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM1);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSW(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
@@ -52902,7 +53490,47 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSLU(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
+var TempReg1,TempReg2:TPasRISCVUInt8;
+    ScratchXMM:TPasRISCVUInt8;
+    LargeFixup,DoneFixup:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ TempReg2:=ClaimHostReg;
+ ScratchXMM:=ClaimFPUReg;
+ // Check if value >= 2^63 (bit 63 set)
+ EmitTEST(aHostIntSrc,aHostIntSrc,true);
+ EmitJccRel32(CC_S,0);
+ LargeFixup:=fTemporaryCodeSize-4;
+ // Small path: fits in signed int64 — CVTSI2SS xmm, gpr64
+ EmitByte(X86_PREFIX_F3);
+ EmitREX(true,aHostFPUDest,0,aHostIntSrc);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
+ EmitModRM(3,aHostFPUDest,aHostIntSrc);
+ EmitJmpRel32(0);
+ DoneFixup:=fTemporaryCodeSize-4;
+ // .large: value >= 2^63, halve + convert + double
+ PatchJmpRel32(LargeFixup);
+ EmitMOVRegReg(TempReg1,aHostIntSrc,true);
+ EmitMOVRegReg(TempReg2,aHostIntSrc,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg1,1,true);  // tmp1 = src >> 1
+ EmitImmOp(ALU_AND,TempReg2,1,true);           // tmp2 = src & 1
+ Emit2RegOp(X86_OR,TempReg1,TempReg2,true);    // tmp1 = (src >> 1) | (src & 1)
+ // CVTSI2SS xmm, tmp1
+ EmitByte(X86_PREFIX_F3);
+ EmitREX(true,aHostFPUDest,0,TempReg1);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
+ EmitModRM(3,aHostFPUDest,TempReg1);
+ // ADDSS xmm, xmm (double the result)
+ EmitSSE2Op($f3,$58,aHostFPUDest,aHostFPUDest);
+ // .done:
+ PatchJmpRel32(DoneFixup);
+ // NaN-box single-precision result
+ EmitNaNBox32(aHostFPUDest,ScratchXMM);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDW(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
@@ -52951,7 +53579,42 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDLU(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
+var TempReg1,TempReg2:TPasRISCVUInt8;
+    LargeFixup,DoneFixup:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ TempReg2:=ClaimHostReg;
+ // Check if value >= 2^63 (bit 63 set)
+ EmitTEST(aHostIntSrc,aHostIntSrc,true);
+ EmitJccRel32(CC_S,0);
+ LargeFixup:=fTemporaryCodeSize-4;
+ // Small path: fits in signed int64 — CVTSI2SD xmm, gpr64
+ EmitByte(X86_PREFIX_F2);
+ EmitREX(true,aHostFPUDest,0,aHostIntSrc);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
+ EmitModRM(3,aHostFPUDest,aHostIntSrc);
+ EmitJmpRel32(0);
+ DoneFixup:=fTemporaryCodeSize-4;
+ // .large: value >= 2^63, halve + convert + double
+ PatchJmpRel32(LargeFixup);
+ EmitMOVRegReg(TempReg1,aHostIntSrc,true);
+ EmitMOVRegReg(TempReg2,aHostIntSrc,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg1,1,true);  // tmp1 = src >> 1
+ EmitImmOp(ALU_AND,TempReg2,1,true);           // tmp2 = src & 1
+ Emit2RegOp(X86_OR,TempReg1,TempReg2,true);    // tmp1 = (src >> 1) | (src & 1)
+ // CVTSI2SD xmm, tmp1
+ EmitByte(X86_PREFIX_F2);
+ EmitREX(true,aHostFPUDest,0,TempReg1);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVTSI);
+ EmitModRM(3,aHostFPUDest,TempReg1);
+ // ADDSD xmm, xmm (double the result)
+ EmitSSE2Op($f2,$58,aHostFPUDest,aHostFPUDest);
+ // .done: (no NaN-boxing for double-precision)
+ PatchJmpRel32(DoneFixup);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMvXW(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -52980,19 +53643,210 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFClassS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+    NaNFixup,InfFixup,ZeroSubFixup,ZeroFixup,
+    NegNormFixup,NegSubFixup,NegZeroFixup,NegInfFixup,QNaNFixup,
+    Done1,Done2,Done3,Done4,Done5,Done6,Done7,Done8,Done9:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ // MOVD TempReg1, xmm (raw float32 bits)
+ EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,false);
+ // abs = TempReg1 & $7fffffff
+ EmitMOVRegReg(aHostIntDest,TempReg1,false);
+ EmitImmOp(ALU_AND,aHostIntDest,TPasRISCVInt32($7fffffff),false);
+ // Check NaN/Inf: CMP abs, $7f800000
+ EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($7f800000),false);
+ EmitJccRel32(CC_A,0);
+ NaNFixup:=fTemporaryCodeSize-4;
+ EmitJccRel32(CC_E,0);
+ InfFixup:=fTemporaryCodeSize-4;
+ // Check zero/subnormal: CMP abs, $00800000
+ EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($00800000),false);
+ EmitJccRel32(CC_B,0);
+ ZeroSubFixup:=fTemporaryCodeSize-4;
+ // Normal: check sign
+ EmitTEST(TempReg1,TempReg1,false);
+ EmitJccRel32(CC_S,0);
+ NegNormFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$40); // bit 6: +normal
+ EmitJmpRel32(0);
+ Done1:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegNormFixup);
+ EmitMOVRegImm32(aHostIntDest,$02); // bit 1: -normal
+ EmitJmpRel32(0);
+ Done2:=fTemporaryCodeSize-4;
+ // .zero_or_sub:
+ PatchJmpRel32(ZeroSubFixup);
+ EmitTEST(aHostIntDest,aHostIntDest,false);
+ EmitJccRel32(CC_E,0);
+ ZeroFixup:=fTemporaryCodeSize-4;
+ // Subnormal: check sign
+ EmitTEST(TempReg1,TempReg1,false);
+ EmitJccRel32(CC_S,0);
+ NegSubFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$20); // bit 5: +subnormal
+ EmitJmpRel32(0);
+ Done3:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegSubFixup);
+ EmitMOVRegImm32(aHostIntDest,$04); // bit 2: -subnormal
+ EmitJmpRel32(0);
+ Done4:=fTemporaryCodeSize-4;
+ // .zero:
+ PatchJmpRel32(ZeroFixup);
+ EmitTEST(TempReg1,TempReg1,false);
+ EmitJccRel32(CC_S,0);
+ NegZeroFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$10); // bit 4: +zero
+ EmitJmpRel32(0);
+ Done5:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegZeroFixup);
+ EmitMOVRegImm32(aHostIntDest,$08); // bit 3: -zero
+ EmitJmpRel32(0);
+ Done6:=fTemporaryCodeSize-4;
+ // .inf:
+ PatchJmpRel32(InfFixup);
+ EmitTEST(TempReg1,TempReg1,false);
+ EmitJccRel32(CC_S,0);
+ NegInfFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$80); // bit 7: +infinity
+ EmitJmpRel32(0);
+ Done7:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegInfFixup);
+ EmitMOVRegImm32(aHostIntDest,$01); // bit 0: -infinity
+ EmitJmpRel32(0);
+ Done8:=fTemporaryCodeSize-4;
+ // .nan: check quiet bit (bit 22)
+ PatchJmpRel32(NaNFixup);
+ EmitTESTImm(aHostIntDest,TPasRISCVInt32($00400000),false);
+ EmitJccRel32(CC_NE,0);
+ QNaNFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$100); // bit 8: sNaN
+ EmitJmpRel32(0);
+ Done9:=fTemporaryCodeSize-4;
+ PatchJmpRel32(QNaNFixup);
+ EmitMOVRegImm32(aHostIntDest,$200); // bit 9: qNaN
+ // .done: (qNaN falls through)
+ PatchJmpRel32(Done1);
+ PatchJmpRel32(Done2);
+ PatchJmpRel32(Done3);
+ PatchJmpRel32(Done4);
+ PatchJmpRel32(Done5);
+ PatchJmpRel32(Done6);
+ PatchJmpRel32(Done7);
+ PatchJmpRel32(Done8);
+ PatchJmpRel32(Done9);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFClassD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
+var TempReg1,TempReg2:TPasRISCVUInt8;
+    NaNFixup,InfFixup,ZeroSubFixup,ZeroFixup,
+    NegNormFixup,NegSubFixup,NegZeroFixup,NegInfFixup,QNaNFixup,
+    Done1,Done2,Done3,Done4,Done5,Done6,Done7,Done8,Done9:TPasRISCVUInt32;
 begin
+ TempReg1:=ClaimHostReg;
+ TempReg2:=ClaimHostReg;
+ // MOVQ TempReg1, xmm (raw float64 bits)
+ EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,true);
+ // abs = clear sign bit via shift trick
+ EmitMOVRegReg(aHostIntDest,TempReg1,true);
+ EmitShiftRegImm(SHIFT_SHL,aHostIntDest,1,true);
+ EmitShiftRegImm(SHIFT_SHR,aHostIntDest,1,true);
+ // Check NaN/Inf: CMP abs, $7ff0000000000000
+ EmitMOVRegImm64(TempReg2,TPasRISCVUInt64($7ff0000000000000));
+ Emit2RegOp(X86_CMP,aHostIntDest,TempReg2,true);
+ EmitJccRel32(CC_A,0);
+ NaNFixup:=fTemporaryCodeSize-4;
+ EmitJccRel32(CC_E,0);
+ InfFixup:=fTemporaryCodeSize-4;
+ // Check zero/subnormal: CMP abs, $0010000000000000
+ EmitMOVRegImm64(TempReg2,TPasRISCVUInt64($0010000000000000));
+ Emit2RegOp(X86_CMP,aHostIntDest,TempReg2,true);
+ EmitJccRel32(CC_B,0);
+ ZeroSubFixup:=fTemporaryCodeSize-4;
+ // Normal: check sign
+ EmitTEST(TempReg1,TempReg1,true);
+ EmitJccRel32(CC_S,0);
+ NegNormFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$40); // bit 6: +normal
+ EmitJmpRel32(0);
+ Done1:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegNormFixup);
+ EmitMOVRegImm32(aHostIntDest,$02); // bit 1: -normal
+ EmitJmpRel32(0);
+ Done2:=fTemporaryCodeSize-4;
+ // .zero_or_sub:
+ PatchJmpRel32(ZeroSubFixup);
+ EmitTEST(aHostIntDest,aHostIntDest,true);
+ EmitJccRel32(CC_E,0);
+ ZeroFixup:=fTemporaryCodeSize-4;
+ // Subnormal: check sign
+ EmitTEST(TempReg1,TempReg1,true);
+ EmitJccRel32(CC_S,0);
+ NegSubFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$20); // bit 5: +subnormal
+ EmitJmpRel32(0);
+ Done3:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegSubFixup);
+ EmitMOVRegImm32(aHostIntDest,$04); // bit 2: -subnormal
+ EmitJmpRel32(0);
+ Done4:=fTemporaryCodeSize-4;
+ // .zero:
+ PatchJmpRel32(ZeroFixup);
+ EmitTEST(TempReg1,TempReg1,true);
+ EmitJccRel32(CC_S,0);
+ NegZeroFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$10); // bit 4: +zero
+ EmitJmpRel32(0);
+ Done5:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegZeroFixup);
+ EmitMOVRegImm32(aHostIntDest,$08); // bit 3: -zero
+ EmitJmpRel32(0);
+ Done6:=fTemporaryCodeSize-4;
+ // .inf:
+ PatchJmpRel32(InfFixup);
+ EmitTEST(TempReg1,TempReg1,true);
+ EmitJccRel32(CC_S,0);
+ NegInfFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$80); // bit 7: +infinity
+ EmitJmpRel32(0);
+ Done7:=fTemporaryCodeSize-4;
+ PatchJmpRel32(NegInfFixup);
+ EmitMOVRegImm32(aHostIntDest,$01); // bit 0: -infinity
+ EmitJmpRel32(0);
+ Done8:=fTemporaryCodeSize-4;
+ // .nan: check quiet bit (bit 51 = $0008000000000000)
+ PatchJmpRel32(NaNFixup);
+ EmitMOVRegImm64(TempReg2,TPasRISCVUInt64($0008000000000000));
+ EmitTEST(aHostIntDest,TempReg2,true);
+ EmitJccRel32(CC_NE,0);
+ QNaNFixup:=fTemporaryCodeSize-4;
+ EmitMOVRegImm32(aHostIntDest,$100); // bit 8: sNaN
+ EmitJmpRel32(0);
+ Done9:=fTemporaryCodeSize-4;
+ PatchJmpRel32(QNaNFixup);
+ EmitMOVRegImm32(aHostIntDest,$200); // bit 9: qNaN
+ // .done: (qNaN falls through)
+ PatchJmpRel32(Done1);
+ PatchJmpRel32(Done2);
+ PatchJmpRel32(Done3);
+ PatchJmpRel32(Done4);
+ PatchJmpRel32(Done5);
+ PatchJmpRel32(Done6);
+ PatchJmpRel32(Done7);
+ PatchJmpRel32(Done8);
+ PatchJmpRel32(Done9);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFMA}
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53017,20 +53871,30 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53055,20 +53919,30 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53093,20 +53967,30 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFNMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53131,20 +54015,30 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFNMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
  ScratchXMM:=ClaimFPUReg;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53169,17 +54063,27 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53204,17 +54108,27 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53239,17 +54153,27 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFNMADD231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDD(const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     VexByte1,VexByte2:TPasRISCVUInt8;
+    RM,RMTmp:TPasRISCVUInt8;
 begin
  if not fHasFMA3 then begin
   exit;
@@ -53274,11 +54198,20 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFNMSUB231);
  EmitModRM(3,HostFRD,HostFRS2);
+ if RM<=4 then begin
+  EmitRestoreRoundingMode;
+ end;
 end;
 
 
@@ -71361,7 +72294,7 @@ begin
        rd:=TRegister(((aInstruction shr 2) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit; 
        end;
@@ -71388,7 +72321,7 @@ begin
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -71413,7 +72346,7 @@ begin
      Immediate:=((aInstruction shl 1) and $40) or ((aInstruction shr 7) and $38) or ((aInstruction shr 4) and $04);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -71436,7 +72369,7 @@ begin
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,ord(rd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -71543,7 +72476,7 @@ begin
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -71563,7 +72496,7 @@ begin
      Offset:=(((aInstruction shl 1) and $40) or ((aInstruction shr 7) and $38) or ((aInstruction shr 4) and $04));
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -71583,7 +72516,7 @@ begin
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -71617,7 +72550,7 @@ begin
       Immediate:=SignExtend(((aInstruction shr 7) and $20) or ((aInstruction shr 2) and $1f),6);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
+         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -71634,7 +72567,7 @@ begin
       Immediate:=SignExtend(((aInstruction shr 7) and $20) or ((aInstruction shr 2) and $1f),6);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
+         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -71655,7 +72588,7 @@ begin
       Immediate:=SignExtend(((aInstruction shr 7) and $20) or ((aInstruction shr 2) and $1f),6);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(TRegister.Zero),TPasRISCVUInt64(Immediate),0,2) then begin
+         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(TRegister.Zero),TPasRISCVUInt64(Immediate),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -71682,7 +72615,7 @@ begin
        if Immediate<>0 then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(TRegister.SP),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(TRegister.SP),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
@@ -71703,7 +72636,7 @@ begin
        if Immediate<>0 then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,ord(rd),TPasRISCVUInt64(Immediate),0,0,2) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,aInstruction,ord(rd),TPasRISCVUInt64(Immediate),0,0,2) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
@@ -71815,7 +72748,7 @@ begin
        Immediate:=((aInstruction shr 7) and $20) or ((aInstruction shr 2) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
@@ -71832,7 +72765,7 @@ begin
        Immediate:=((aInstruction shr 7) and $20) or ((aInstruction shr 2) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
@@ -71849,7 +72782,7 @@ begin
        Immediate:=SignExtend(((aInstruction shr 7) and $20) or ((aInstruction shr 2) and $1f),6);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
@@ -71869,7 +72802,7 @@ begin
           rs2:=TRegister(((aInstruction shr 2) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,ord(rd),ord(rd),ord(rs2),0,2) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
@@ -71886,7 +72819,7 @@ begin
           rs2:=TRegister(((aInstruction shr 2) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,ord(rd),ord(rd),ord(rs2),0,2) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
@@ -71903,7 +72836,7 @@ begin
           rs2:=TRegister(((aInstruction shr 2) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,ord(rd),ord(rd),ord(rs2),0,2) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
@@ -71920,7 +72853,7 @@ begin
           rs2:=TRegister(((aInstruction shr 2) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,ord(rd),ord(rd),ord(rs2),0,2) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
@@ -71940,7 +72873,7 @@ begin
           rs2:=TRegister(((aInstruction shr 2) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,ord(rd),ord(rd),ord(rs2),0,2) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
@@ -71957,7 +72890,7 @@ begin
           rs2:=TRegister(((aInstruction shr 2) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,ord(rd),ord(rd),ord(rs2),0,2) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
@@ -72063,7 +72996,7 @@ begin
                            ((aInstruction shr 2) and $0e),12); //  bits [5:3] -> [3:1]
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,ord(TRegister.Zero),TPasRISCVUInt64(2),0,0,Immediate,2) then begin
+        fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,aInstruction,ord(TRegister.Zero),TPasRISCVUInt64(2),0,0,Immediate,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -72083,7 +73016,7 @@ begin
      if fState.Registers[rs1]=0 then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72092,7 +73025,7 @@ begin
      end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72112,7 +73045,7 @@ begin
      if fState.Registers[rs1]<>0 then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72121,7 +73054,7 @@ begin
      end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
+         fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72150,7 +73083,7 @@ begin
      Immediate:=((aInstruction shr 7) and $20) or ((aInstruction shr 2) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
+        fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -72170,7 +73103,7 @@ begin
               ((aInstruction shr 2) and $18);
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,ord(frd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
+         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72202,7 +73135,7 @@ begin
               ((aInstruction shr 2) and $1c);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
+         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,aInstruction,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72232,7 +73165,7 @@ begin
               ((aInstruction shr 2) and $18);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
+         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,aInstruction,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72261,7 +73194,7 @@ begin
         rs1:=TRegister((aInstruction shr 7) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,ord(TRegister.Zero),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
+           fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(TRegister.Zero),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
@@ -72308,7 +73241,7 @@ begin
         rs1:=TRegister((aInstruction shr 2) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,ord(rd),ord(TRegister.Zero),ord(rs1),0,2) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,aInstruction,ord(rd),ord(TRegister.Zero),ord(rs1),0,2) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
@@ -72328,7 +73261,7 @@ begin
          rs1:=TRegister((aInstruction shr 7) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,ord(TRegister.RA),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
+            fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(TRegister.RA),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
           exit;
          end;
@@ -72377,7 +73310,7 @@ begin
          rs1:=TRegister((aInstruction shr 2) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,ord(rd),ord(rd),ord(rs1),0,2) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,aInstruction,ord(rd),ord(rd),ord(rs1),0,2) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
           exit;
          end;
@@ -72404,7 +73337,7 @@ begin
       Offset:=(((aInstruction shr 1) and $1c0) or ((aInstruction shr 7) and $38));
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,ord(frs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
+         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
@@ -72428,7 +73361,7 @@ begin
      Offset:=(((aInstruction shr 1) and $c0) or ((aInstruction shr 7) and $3c));
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,aInstruction,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -72447,7 +73380,7 @@ begin
      Offset:=(((aInstruction shr 1) and $1c0) or ((aInstruction shr 7) and $38));
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
+        fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,aInstruction,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
@@ -72488,7 +73421,7 @@ begin
        // lb
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLB,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLB,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72508,7 +73441,7 @@ begin
        // lh
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLH,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLH,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72528,7 +73461,7 @@ begin
        // lw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72548,7 +73481,7 @@ begin
        // ld
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72568,7 +73501,7 @@ begin
        // lbu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLBU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLBU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72588,7 +73521,7 @@ begin
        // lhu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLHU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLHU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72608,7 +73541,7 @@ begin
        // lwu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLWU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLWU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72737,7 +73670,7 @@ begin
        // addi
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72756,7 +73689,7 @@ begin
          // slli
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -72980,7 +73913,7 @@ begin
        // slti
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -72995,7 +73928,7 @@ begin
        // sltiu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTIU,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTIU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73010,7 +73943,7 @@ begin
        // xori
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXORI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXORI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73029,7 +73962,7 @@ begin
          // srli
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73044,7 +73977,7 @@ begin
          // srai
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73124,7 +74057,7 @@ begin
        // ori
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicORI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicORI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73139,7 +74072,7 @@ begin
        // andi
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73201,7 +74134,7 @@ begin
       Immediate:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fffff000))));
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
-         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAUIPC,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
+         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAUIPC,aInstruction,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
        exit;
       end;
@@ -73226,7 +74159,7 @@ begin
        Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction{and TPasRISCVUInt32($fff00000)}))),20);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73245,7 +74178,7 @@ begin
          {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $1f;
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLIW,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73313,7 +74246,7 @@ begin
          // srliw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLIW,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73329,7 +74262,7 @@ begin
          Immediate:=(aInstruction shr 20) and $1f;
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAIW,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73379,7 +74312,7 @@ begin
        // sb
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSB,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSB,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73396,7 +74329,7 @@ begin
        // sh
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSH,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSH,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73413,7 +74346,7 @@ begin
        // sw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73430,7 +74363,7 @@ begin
        // sd
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
+          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -73469,7 +74402,7 @@ begin
          // add
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73484,7 +74417,7 @@ begin
          // mul
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMUL,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMUL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73547,7 +74480,7 @@ begin
          // sub
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73581,7 +74514,7 @@ begin
          // sll
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLL,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73596,7 +74529,7 @@ begin
          // mulh
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULH,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73661,7 +74594,7 @@ begin
          // slt
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLT,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLT,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73676,7 +74609,7 @@ begin
          // mulhsu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHSU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHSU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73725,7 +74658,7 @@ begin
          // sltu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73739,7 +74672,7 @@ begin
         $01:begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73772,7 +74705,7 @@ begin
          // xor
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73787,7 +74720,7 @@ begin
          // div
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIV,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIV,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73862,7 +74795,7 @@ begin
          // srl
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRL,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73877,7 +74810,7 @@ begin
          // divu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73920,7 +74853,7 @@ begin
          // sra
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRA,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRA,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73961,7 +74894,7 @@ begin
          // or
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -73976,7 +74909,7 @@ begin
          // rem
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREM,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREM,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74035,7 +74968,7 @@ begin
          // and
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74050,7 +74983,7 @@ begin
          // remu
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMU,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74128,7 +75061,7 @@ begin
      Immediate:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fffff000))));
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
+        fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,aInstruction,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
@@ -74156,7 +75089,7 @@ begin
          // addw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74171,7 +75104,7 @@ begin
          // mulw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74194,7 +75127,7 @@ begin
          // subw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74219,7 +75152,7 @@ begin
          // sllw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74270,7 +75203,7 @@ begin
          // divw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74326,7 +75259,7 @@ begin
          // srlw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74341,7 +75274,7 @@ begin
          // divuw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVUW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74360,7 +75293,7 @@ begin
          // sraw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74393,7 +75326,7 @@ begin
          // remw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74432,7 +75365,7 @@ begin
          // remuw
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
-            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMUW,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
@@ -74479,7 +75412,7 @@ begin
        if fState.Registers[rs1]=fState.Registers[rs2] then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74488,7 +75421,7 @@ begin
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74506,7 +75439,7 @@ begin
        if fState.Registers[rs1]<>fState.Registers[rs2] then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74515,7 +75448,7 @@ begin
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74533,7 +75466,7 @@ begin
        if TPasRISCVInt64(fState.Registers[rs1])<TPasRISCVInt64(fState.Registers[rs2]) then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74542,7 +75475,7 @@ begin
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74560,7 +75493,7 @@ begin
        if TPasRISCVInt64(fState.Registers[rs1])>=TPasRISCVInt64(fState.Registers[rs2]) then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74569,7 +75502,7 @@ begin
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74587,7 +75520,7 @@ begin
        if fState.Registers[rs1]<fState.Registers[rs2] then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74596,7 +75529,7 @@ begin
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74614,7 +75547,7 @@ begin
        if fState.Registers[rs1]>=fState.Registers[rs2] then begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74623,7 +75556,7 @@ begin
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
-           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
+           fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -74651,7 +75584,7 @@ begin
      rs1:=TRegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),TPasRISCVUInt64(4)) then begin
+        fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),TPasRISCVUInt64(4)) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
@@ -74710,7 +75643,7 @@ begin
                 ((aInstruction shr 20) and $7fe); // Immediate[10:1]
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
-        fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,ord(rd),TPasRISCVUInt64(4),0,0,Immediate,4) then begin
+        fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,aInstruction,ord(rd),TPasRISCVUInt64(4),0,0,Immediate,4) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
@@ -75521,7 +76454,7 @@ begin
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLW,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
+           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLW,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75548,7 +76481,7 @@ begin
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
+           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75625,7 +76558,7 @@ begin
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSW,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
+           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSW,aInstruction,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75647,7 +76580,7 @@ begin
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
+           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75709,7 +76642,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75732,7 +76665,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75791,7 +76724,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75814,7 +76747,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75899,7 +76832,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75922,7 +76855,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -75981,7 +76914,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBS,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76004,7 +76937,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBD,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76062,7 +76995,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76089,7 +77022,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76132,7 +77065,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76160,7 +77093,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76203,7 +77136,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76225,7 +77158,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76263,7 +77196,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76285,7 +77218,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -76326,7 +77259,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76344,7 +77277,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJNS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJNS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76362,7 +77295,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76390,7 +77323,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76408,7 +77341,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJND,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJND,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76426,7 +77359,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76497,7 +77430,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76541,7 +77474,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXS,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76653,7 +77586,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMIND,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMIND,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76696,7 +77629,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXD,ord(frd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -76896,7 +77829,7 @@ begin
           // fcvt.s.d
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSD,ord(frd),ord(frs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSD,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77056,7 +77989,7 @@ begin
           // fcvt.d.s
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDS,ord(frd),ord(frs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDS,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77342,7 +78275,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTS,ord(frd),ord(frs1),0,0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTS,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -77365,7 +78298,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTD,ord(frd),ord(frs1),0,0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTD,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -77408,7 +78341,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLES,ord(rd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLES,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77430,7 +78363,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTS,ord(rd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTS,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77452,7 +78385,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQS,ord(rd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQS,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77514,7 +78447,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLED,ord(rd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLED,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77536,7 +78469,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTD,ord(rd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTD,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77558,7 +78491,7 @@ begin
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQD,ord(rd),ord(frs1),ord(frs2),0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQD,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -77717,7 +78650,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWS,ord(rd),ord(frs1),0,0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -77848,7 +78781,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWD,ord(rd),ord(frs1),0,0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -78141,7 +79074,7 @@ begin
         rs1:=TRegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSW,ord(frd),ord(rs1),0,0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -78184,7 +79117,7 @@ begin
         rs1:=TRegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDW,ord(frd),ord(rs1),0,0,4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -78262,7 +79195,7 @@ begin
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXW,ord(rd),ord(frs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXW,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -78280,7 +79213,7 @@ begin
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSS,ord(rd),ord(frs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -78347,7 +79280,7 @@ begin
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXD,ord(rd),ord(frs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -78365,7 +79298,7 @@ begin
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSD,ord(rd),ord(frs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -78508,7 +79441,7 @@ begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVWX,ord(frd),ord(rs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVWX,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -78544,7 +79477,7 @@ begin
           rs1:=TRegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVDX,ord(frd),ord(rs1),0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVDX,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
            result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
