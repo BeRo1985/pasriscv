@@ -8253,8 +8253,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            JIT_TLB_ENTRY_SHIFT=4;
                            JIT_CODE_BUFFER_SIZE=64*1024*1024;
                            JIT_MAX_BLOCK_SIZE=4096;
-                           JIT_TEMP_CODE_SIZE=65536;
-                           JIT_CYCLE_COUNTDOWN_RESET=65536;
+                           JIT_TEMPORARY_CODE_INITIAL_SIZE=1024*1024;
                            UNROLL_MAX_BLOCK_SIZE=256;
                            JIT_DIRTY_PAGE_SHIFT=12; // 4KB pages
                            JIT_DIRTY_WORD_SHIFT=17; // 32 pages per word (12+5)
@@ -8375,7 +8374,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fLRUCounter:TPasRISCVUInt32;
                      fSignalMask:TPasRISCVUInt32;
                      fTemporaryCode:TPasRISCVUInt8DynamicArray;
-                     fTemporaryCodeSize:TPasRISCVUInt32;
+                     fTemporaryCodeSize:TPasRISCVSizeInt;
                      fCurrentPhysicalPC:TPasRISCVUInt64;
                      fCurrentMode:TMode;
                      fBlockVirtualPC:TPasRISCVUInt64;
@@ -8419,7 +8418,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitDWord(const aValue:TPasRISCVUInt32);
                      procedure EmitQWord(const aValue:TPasRISCVUInt64);
                      procedure EmitInt32(const aValue:TPasRISCVInt32);
-                     procedure EmitBytes(const aData;const aSize:TPasRISCVUInt32);
+                     procedure EmitBytes(const aData;const aSize:TPasRISCVSizeInt);
                      // Executable memory
                      function AllocateExecutableMemory(const aSize:TPasRISCVUInt64):Pointer;
                      procedure FreeExecutableMemory(const aPointer:Pointer;const aSize:TPasRISCVUInt64);
@@ -47019,7 +47018,7 @@ begin
  fLinkEntryCount:=0;
 {$endif}
  fSignalMask:=fHART.fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK);
- SetLength(fTemporaryCode,JIT_TEMP_CODE_SIZE);
+ SetLength(fTemporaryCode,JIT_TEMPORARY_CODE_INITIAL_SIZE);
  FillChar(fJITTLB,SizeOf(fJITTLB),#0);
  FillChar(fIntRegInfos,SizeOf(fIntRegInfos),#0);
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -47116,31 +47115,70 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitByte(const aValue:TPasRISCVUInt8);
+var Index:TPasRISCVSizeInt;
 begin
- if fTemporaryCodeSize<TPasRISCVUInt32(length(fTemporaryCode)) then begin
-  fTemporaryCode[fTemporaryCodeSize]:=aValue;
-  inc(fTemporaryCodeSize);
+ Index:=fTemporaryCodeSize;
+ inc(fTemporaryCodeSize);
+ if length(fTemporaryCode)<fTemporaryCodeSize then begin
+  SetLength(fTemporaryCode,fTemporaryCodeSize+((fTemporaryCodeSize+1) shr 1));
  end;
+ fTemporaryCode[Index]:=aValue;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitWord(const aValue:TPasRISCVUInt16);
+var Index:TPasRISCVSizeInt;
 begin
- EmitByte(TPasRISCVUInt8(aValue and $ff));
- EmitByte(TPasRISCVUInt8((aValue shr 8) and $ff));
+ Index:=fTemporaryCodeSize;
+ inc(fTemporaryCodeSize,2);
+ if length(fTemporaryCode)<fTemporaryCodeSize then begin
+  SetLength(fTemporaryCode,fTemporaryCodeSize+((fTemporaryCodeSize+1) shr 1));
+ end;
+{$ifdef LITTLE_ENDIAN}
+ PPasRISCVUInt16(Pointer(@fTemporaryCode[Index]))^:=aValue;
+{$else}
+ fTemporaryCode[Index]:=TPasRISCVUInt8(aValue and $ff);
+ fTemporaryCode[Index+1]:=TPasRISCVUInt8((aValue shr 8) and $ff);
+{$endif}
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitDWord(const aValue:TPasRISCVUInt32);
+var Index:TPasRISCVSizeInt;
 begin
- EmitByte(TPasRISCVUInt8(aValue and $ff));
- EmitByte(TPasRISCVUInt8((aValue shr 8) and $ff));
- EmitByte(TPasRISCVUInt8((aValue shr 16) and $ff));
- EmitByte(TPasRISCVUInt8((aValue shr 24) and $ff));
+ Index:=fTemporaryCodeSize;
+ inc(fTemporaryCodeSize,4);
+ if length(fTemporaryCode)<fTemporaryCodeSize then begin
+  SetLength(fTemporaryCode,fTemporaryCodeSize+((fTemporaryCodeSize+1) shr 1));
+ end;
+{$ifdef LITTLE_ENDIAN}
+ PPasRISCVUInt32(Pointer(@fTemporaryCode[Index]))^:=aValue;
+{$else}
+ fTemporaryCode[Index]:=TPasRISCVUInt8(aValue and $ff);
+ fTemporaryCode[Index+1]:=TPasRISCVUInt8((aValue shr 8) and $ff);
+ fTemporaryCode[Index+2]:=TPasRISCVUInt8((aValue shr 16) and $ff);
+ fTemporaryCode[Index+3]:=TPasRISCVUInt8((aValue shr 24) and $ff);
+{$endif}
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitQWord(const aValue:TPasRISCVUInt64);
+var Index:TPasRISCVSizeInt;
 begin
- EmitDWord(TPasRISCVUInt32(aValue and $ffffffff));
- EmitDWord(TPasRISCVUInt32((aValue shr 32) and $ffffffff));
+ Index:=fTemporaryCodeSize;
+ inc(fTemporaryCodeSize,8);
+ if length(fTemporaryCode)<fTemporaryCodeSize then begin
+  SetLength(fTemporaryCode,fTemporaryCodeSize+((fTemporaryCodeSize+1) shr 1));
+ end;
+{$ifdef LITTLE_ENDIAN}
+ PPasRISCVUInt64(Pointer(@fTemporaryCode[Index]))^:=aValue;
+{$else}
+ fTemporaryCode[Index]:=TPasRISCVUInt8(aValue and $ff);
+ fTemporaryCode[Index+1]:=TPasRISCVUInt8((aValue shr 8) and $ff);
+ fTemporaryCode[Index+2]:=TPasRISCVUInt8((aValue shr 16) and $ff);
+ fTemporaryCode[Index+3]:=TPasRISCVUInt8((aValue shr 24) and $ff);
+ fTemporaryCode[Index+4]:=TPasRISCVUInt8((aValue shr 32) and $ff);
+ fTemporaryCode[Index+5]:=TPasRISCVUInt8((aValue shr 40) and $ff);
+ fTemporaryCode[Index+6]:=TPasRISCVUInt8((aValue shr 48) and $ff);
+ fTemporaryCode[Index+7]:=TPasRISCVUInt8((aValue shr 56) and $ff);
+{$endif}
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitInt32(const aValue:TPasRISCVInt32);
@@ -47148,14 +47186,16 @@ begin
  EmitDWord(TPasRISCVUInt32(aValue));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.EmitBytes(const aData;const aSize:TPasRISCVUInt32);
-var Index:TPasRISCVUInt32;
-    Source:PByte;
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitBytes(const aData;const aSize:TPasRISCVSizeInt);
+var Index:TPasRISCVSizeInt;
 begin
- Source:=@aData;
- for Index:=0 to aSize-1 do begin
-  EmitByte(Source^);
-  inc(Source);
+ if aSize>0 then begin
+  Index:=fTemporaryCodeSize;
+  inc(fTemporaryCodeSize,aSize);
+  if length(fTemporaryCode)<fTemporaryCodeSize then begin
+   SetLength(fTemporaryCode,fTemporaryCodeSize+((fTemporaryCodeSize+1) shr 1));
+  end;
+  Move(aData,fTemporaryCode[Index],aSize);
  end;
 end;
 
@@ -47201,7 +47241,7 @@ begin
  fBlockLinkPoolCount:=0;
  fBlockLinkFreeList.Clear;
 {$endif}
- FillChar(fJITTLB,SizeOf(fJITTLB),#0);
+ FlushJITTLB;
  if length(fDirtyPageBitmap)>0 then begin
   FillChar(fDirtyPageBitmap[0],length(fDirtyPageBitmap)*SizeOf(TPasRISCVUInt32),#0);
  end;
@@ -47580,9 +47620,16 @@ begin
 {$endif}
  EmitEnd(fLinkage);
 
+ // Discard truncated traces (temporary code buffer was full, epilogue may be missing)
+ if fTemporaryCodeSize>=TPasRISCVUInt32(length(fTemporaryCode)) then begin
+  fCompiling:=false;
+  exit;
+ end;
+
  inc(fStatBlocksCompiled);
  inc(fStatTotalInstructions,fInstructionCount);
  if (fCodeBufferUsed+fTemporaryCodeSize)>fCodeBufferSize then begin
+  writeln('JIT CODE BUFFER OVERFLOW: used=',fCodeBufferUsed,' new=',fTemporaryCodeSize,' max=',fCodeBufferSize,' -> ClearBlocks');
   ClearBlocks;
   fCompiling:=false;
   exit;
@@ -54357,9 +54404,7 @@ begin
   TMMU.TAccessType.Store:begin
    DirectAccessTLBEntry^.Read:=VPN;
    DirectAccessTLBEntry^.Write:=VPN;
-   if DirectAccessTLBEntry^.Execute<>VPN then begin
-    DirectAccessTLBEntry^.Execute:=VPN-1;
-   end;
+   DirectAccessTLBEntry^.Execute:=VPN-1;
   end;
   TMMU.TAccessType.Instruction:begin
    if DirectAccessTLBEntry^.Read<>VPN then begin
@@ -80976,7 +81021,8 @@ begin
 
 {$ifdef PasRISCVJustInTimeCompiler}
    if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
-    if fJustInTimeCompiler.fBlockEnds or ((InstructionAddress shr PAGE_SHIFT)<>(fJustInTimeCompiler.BlockVirtualPC shr PAGE_SHIFT)) then begin
+    if fJustInTimeCompiler.fBlockEnds or
+       ((InstructionAddress shr PAGE_SHIFT)<>(fJustInTimeCompiler.BlockVirtualPC shr PAGE_SHIFT)) then begin
      fJustInTimeCompiler.EndTrace;
     end;
     fJustInTimeCompiler.fBlockEnds:=true;
