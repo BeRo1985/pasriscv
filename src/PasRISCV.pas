@@ -8299,6 +8299,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           end;
                           PJITTLBEntry=^TJITTLBEntry;
                           TJITTLBEntries=array[0..JIT_TLB_SIZE-1] of TJITTLBEntry;
+                          TDirtyPageBitmap=array of TPasRISCVUInt32;
+                          TJITedPageBitmap=array of TPasRISCVUInt32;
                           TBlockMapKey=packed record
                            PhysicalPC:TPasRISCVUInt64;
                            Mode:TMode;
@@ -8347,7 +8349,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fCodeBufferSize:TPasRISCVUInt64;
                      fCodeBufferUsed:TPasRISCVUInt64;
                      // Dirty page tracking
-                     fDirtyPageBitmap:array of TPasRISCVUInt32;
+                     fDirtyPageBitmap:TDirtyPageBitmap;
+                     fJITedPageBitmap:TJITedPageBitmap;
                      fDirtyPageBitmapMask:TPasRISCVUInt32;
                      fRAMHostToPhysOffset:TPasRISCVPtrUInt;
                      // Trace state
@@ -8427,6 +8430,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure ClearBlocks;
                      // Dirty page tracking
                      procedure MarkPageDirty(const aPhysicalAddress:TPasRISCVUInt64);
+                     procedure MarkPageJITed(const aPhysicalAddress:TPasRISCVUInt64);
                      function PageNeedsFlush(const aPhysicalAddress:TPasRISCVUInt64):Boolean;
                      procedure FlushJITTLB;
                      // Block-to-block linking
@@ -19562,13 +19566,13 @@ end;
 
 function TPasRISCVFUSEFileSystem.Stat(const aPath:TPasRISCVRawByteString;out aStat:TFileStat):TPasRISCVInt32;
 begin
- FillChar(aStat,SizeOf(TFileStat),0);
+ FillChar(aStat,SizeOf(TFileStat),#0);
  result:=-FUSE_ENOSYS;
 end;
 
 function TPasRISCVFUSEFileSystem.StatFS(out aStat:TFileSystemStat):TPasRISCVInt32;
 begin
- FillChar(aStat,SizeOf(TFileSystemStat),0);
+ FillChar(aStat,SizeOf(TFileSystemStat),#0);
  result:=-FUSE_ENOSYS;
 end;
 
@@ -19757,7 +19761,7 @@ end;
 
 procedure TPasRISCVFUSEFileSystemPOSIX.StatBufToFileStat(const aSB:PStat;out aStat:TPasRISCVFUSEFileSystem.TFileStat);
 begin
- FillChar(aStat,SizeOf(aStat),0);
+ FillChar(aStat,SizeOf(aStat),#0);
  aStat.Ino:=aSB^.st_ino;
  aStat.Size:=aSB^.st_size;
  aStat.Blocks:=aSB^.st_blocks;
@@ -19790,7 +19794,7 @@ begin
 {$endif}
   result:=FUSE_OK;
  end else begin
-  FillChar(aStat,SizeOf(aStat),0);
+  FillChar(aStat,SizeOf(aStat),#0);
   result:=POSIXErrorToFUSEError(fpGetErrno);
 {$ifdef PasRISCVDebugVirtIOFS}
   writeln('FUSEFileSystemPOSIX.Stat: FAILED path="',FullPath,'" errno=',fpGetErrno,' fuseErr=',result);
@@ -19801,7 +19805,7 @@ end;
 function TPasRISCVFUSEFileSystemPOSIX.StatFS(out aStat:TPasRISCVFUSEFileSystem.TFileSystemStat):TPasRISCVInt32;
 var SVfs:TStatFS;
 begin
- FillChar(aStat,SizeOf(aStat),0);
+ FillChar(aStat,SizeOf(aStat),#0);
  if fpStatFS(PAnsiChar(fRootPath),@SVfs)=0 then begin
   aStat.Blocks:=SVfs.blocks;
   aStat.BFree:=SVfs.bfree;
@@ -20294,7 +20298,7 @@ end;
 
 procedure TPasRISCVFUSEFileSystemWindows.Win32FileInfoToFileStat(const aInfo:BY_HANDLE_FILE_INFORMATION;const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat);
 begin
- FillChar(aStat,SizeOf(aStat),0);
+ FillChar(aStat,SizeOf(aStat),#0);
  aStat.Ino:=(TPasRISCVUInt64(aInfo.nFileIndexHigh) shl 32) or aInfo.nFileIndexLow;
  aStat.Size:=(TPasRISCVUInt64(aInfo.nFileSizeHigh) shl 32) or aInfo.nFileSizeLow;
  aStat.Blocks:=(aStat.Size+511) div 512;
@@ -20337,7 +20341,7 @@ var FullPath:TPasRISCVRawByteString;
     H:THandle;
     Info:BY_HANDLE_FILE_INFORMATION;
 begin
- FillChar(aStat,SizeOf(aStat),0);
+ FillChar(aStat,SizeOf(aStat),#0);
  FullPath:=fRootPath+aPath;
  H:=Windows.CreateFileA(PAnsiChar(FullPath),GENERIC_READ,FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE,nil,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,0);
  if H=INVALID_HANDLE_VALUE then begin
@@ -20359,7 +20363,7 @@ end;
 function TPasRISCVFUSEFileSystemWindows.StatFS(out aStat:TPasRISCVFUSEFileSystem.TFileSystemStat):TPasRISCVInt32;
 var FreeBytesAvailable,TotalBytes,TotalFreeBytes:TPasRISCVInt64;
 begin
- FillChar(aStat,SizeOf(aStat),0);
+ FillChar(aStat,SizeOf(aStat),#0);
  if GetDiskFreeSpaceExA(PAnsiChar(fRootPath),{%H-}FreeBytesAvailable,{%H-}TotalBytes,PLargeInteger(@TotalFreeBytes)) then begin
   aStat.BSize:=4096;
   aStat.FRSize:=4096;
@@ -20409,7 +20413,7 @@ function TPasRISCVFUSEFileSystemWindows.ReadFile(const aHandle:TPasRISCVFUSEFile
 var BytesRead:DWORD;
     OVL:OVERLAPPED;
 begin
- FillChar(OVL,SizeOf(OVL),0);
+ FillChar(OVL,SizeOf(OVL),#0);
  OVL.Offset:=DWORD(aOffset);
  OVL.OffsetHigh:=DWORD(aOffset shr 32);
  if Windows.ReadFile(THandle(aHandle),aBuffer^,aSize,BytesRead,@OVL) then begin
@@ -20423,7 +20427,7 @@ function TPasRISCVFUSEFileSystemWindows.WriteFile(const aHandle:TPasRISCVFUSEFil
 var BytesWritten:DWORD;
     OVL:OVERLAPPED;
 begin
- FillChar(OVL,SizeOf(OVL),0);
+ FillChar(OVL,SizeOf(OVL),#0);
  OVL.Offset:=DWORD(aOffset);
  OVL.OffsetHigh:=DWORD(aOffset shr 32);
  if Windows.WriteFile(THandle(aHandle),aBuffer^,aSize,BytesWritten,@OVL) then begin
@@ -25685,7 +25689,7 @@ begin
  fMSIXControl:=0;
  fMSIXBAR:=0;
  fMSIXDevice:=nil;
- FillChar(fMSIXTable,SizeOf(fMSIXTable),0);
+ FillChar(fMSIXTable,SizeOf(fMSIXTable),#0);
  // Set all MSI-X table entries to per-vector masked by default (bit 0 of vector_control)
  for BARIndex:=0 to TPCI.PCI_MSIX_MAX_IRQS-1 do begin
   fMSIXTable[(BARIndex shl 2)+3]:=1; // vector_control: masked
@@ -34500,7 +34504,7 @@ begin
     if WriteSize>0 then begin
      GetMem(Buf,WriteSize);
      try
-      FillChar(Buf^,WriteSize,0);
+      FillChar(Buf^,WriteSize,#0);
       PPasRISCVUInt8Array(Buf)^[WriteSize-1]:=VIRTIO_BLK_S_OK;
       if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,Buf,WriteSize) and
               ConsumeDescriptor(aQueueIndex,aDescriptorIndex,WriteSize) and
@@ -36918,7 +36922,7 @@ begin
 
  // Config space: tag[36] + num_request_queues(le32)
  fConfigSpaceSize:=40;
- FillChar(fConfigSpace,SizeOf(fConfigSpace),0);
+ FillChar(fConfigSpace,SizeOf(fConfigSpace),#0);
 
  // Write tag (max 36 bytes, zero-padded, NOT null-terminated)
  MountTag:=aMachine.fConfiguration.fVirtIOFSMountTag;
@@ -37077,7 +37081,7 @@ end;
 
 procedure TPasRISCV.TVirtIOFSDevice.FillAttr(var aAttr:TFUSEAttr;const aStat:TPasRISCVFUSEFileSystem.TFileStat;const aNodeID:TPasRISCVUInt64);
 begin
- FillChar(aAttr,SizeOf(aAttr),0);
+ FillChar(aAttr,SizeOf(TFUSEAttr),#0);
  aAttr.Ino:=aNodeID;
  aAttr.Size:=aStat.Size;
  aAttr.Blocks:=aStat.Blocks;
@@ -37145,7 +37149,7 @@ var InitIn:TFUSEInitIn;
     InitOut:TFUSEInitOut;
 begin
  if CopyMemoryFromQueue(@InitIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEInitIn)) then begin
-  FillChar(InitOut,SizeOf(InitOut),0);
+  FillChar(InitOut,SizeOf(TFUSEInitOut),#0);
   InitOut.Major:=FUSE_KERNEL_VERSION;
   InitOut.Minor:=FUSE_KERNEL_MINOR_VERSION;
   InitOut.MaxReadahead:=InitIn.MaxReadahead;
@@ -37232,7 +37236,7 @@ begin
     finally
      fLock.Release;
     end;
-    FillChar(EntryOut,SizeOf(EntryOut),0);
+    FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
     EntryOut.NodeID:=ChildNodeID;
     EntryOut.Generation:=0;
     EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
@@ -37291,7 +37295,7 @@ begin
 {$ifdef PasRISCVDebugVirtIOFS}
    writeln('VirtIOFS: GETATTR OK mode=$',IntToHex(FileStat.Mode,8),' size=',FileStat.Size);
 {$endif}
-   FillChar(AttrOut,SizeOf(AttrOut),0);
+   FillChar(AttrOut,SizeOf(TFUSEAttrOut),#0);
    AttrOut.AttrValid:=FUSE_ATTR_TIMEOUT;
    FillAttr(AttrOut.Attr,FileStat,aHeader^.NodeID);
    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@AttrOut,SizeOf(TFUSEAttrOut));
@@ -37339,7 +37343,7 @@ begin
    if Err=0 then begin
     Err:=fFileSystem.Stat(NodePath,FileStat);
     if Err=0 then begin
-     FillChar(AttrOut,SizeOf(AttrOut),0);
+     FillChar(AttrOut,SizeOf(TFUSEAttrOut),#0);
      AttrOut.AttrValid:=FUSE_ATTR_TIMEOUT;
      FillAttr(AttrOut.Attr,FileStat,aHeader^.NodeID);
      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@AttrOut,SizeOf(TFUSEAttrOut));
@@ -37405,7 +37409,7 @@ begin
     finally
      fLock.Release;
     end;
-    FillChar(OpenOut,SizeOf(OpenOut),0);
+    FillChar(OpenOut,SizeOf(TFUSEOpenOut),#0);
     OpenOut.FH:=FHID;
     OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
 {$ifdef PasRISCVDebugVirtIOFS}
@@ -37534,7 +37538,7 @@ begin
     if CopyMemoryFromQueue(Buf,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSEWriteIn),WriteIn.Size) then begin
      BytesWritten:=fFileSystem.WriteFile(LocalFH,WriteIn.Offset,Buf,WriteIn.Size);
      if BytesWritten>=0 then begin
-      FillChar(WriteOut,SizeOf(WriteOut),0);
+      FillChar(WriteOut,SizeOf(TFUSEWriteOut),#0);
       WriteOut.Size:=BytesWritten;
       SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@WriteOut,SizeOf(TFUSEWriteOut));
      end else begin
@@ -37634,7 +37638,7 @@ begin
        finally
         fLock.Release;
        end;
-       FillChar(DirentPlusEntryOut,SizeOf(DirentPlusEntryOut),0);
+       FillChar(DirentPlusEntryOut,SizeOf(TFUSEEntryOut),#0);
        if DirentPlusChildFound and (fFileSystem.Stat(DirentPlusChildPath,DirentPlusFileStat)=0) then begin
         fLock.Acquire;
         try
@@ -37677,7 +37681,7 @@ begin
        Move(DirEntries[Index].Name[1],PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET],DirEntries[Index].NameLen);
        PadLen:=(8-((FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen) and 7)) and 7;
        if PadLen>0 then begin
-        FillChar(PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen],PadLen,0);
+        FillChar(PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen],PadLen,#0);
        end;
        inc(BufOfs,FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen+PadLen);
       end else begin
@@ -37695,7 +37699,7 @@ begin
        Move(Dirent,PPasRISCVUInt8Array(Buf)^[BufOfs],FUSE_DIRENT_NAME_OFFSET);
        Move(DirEntries[Index].Name[1],PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET],DirEntries[Index].NameLen);
        if PadLen>0 then begin
-        FillChar(PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen],PadLen,0);
+        FillChar(PPasRISCVUInt8Array(Buf)^[BufOfs+FUSE_DIRENT_NAME_OFFSET+DirEntries[Index].NameLen],PadLen,#0);
        end;
        inc(BufOfs,EntryLen);
       end;
@@ -37798,12 +37802,12 @@ begin
      end;
      Err:=fFileSystem.Stat(ChildPath,FileStat);
      if Err=0 then begin
-      FillChar(EntryOut,SizeOf(EntryOut),0);
+      FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
       EntryOut.NodeID:=ChildNodeID;
       EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
       EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
       FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
-      FillChar(OpenOut,SizeOf(OpenOut),0);
+      FillChar(OpenOut,SizeOf(TFUSEOpenOut),#0);
       OpenOut.FH:=FHID;
       OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
       Move(EntryOut,ReplyBuf[0],SizeOf(TFUSEEntryOut));
@@ -37881,7 +37885,7 @@ begin
      end;
      Err:=fFileSystem.Stat(ChildPath,FileStat);
      if Err=0 then begin
-      FillChar(EntryOut,SizeOf(EntryOut),0);
+      FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
       EntryOut.NodeID:=ChildNodeID;
       EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
       EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
@@ -38111,7 +38115,7 @@ begin
  if assigned(fFileSystem) then begin
   Err:=fFileSystem.StatFS(FSStat);
   if Err=0 then begin
-   FillChar(StatFSOut,SizeOf(StatFSOut),0);
+   FillChar(StatFSOut,SizeOf(TFUSEStatFSOut),#0);
    StatFSOut.Blocks:=FSStat.Blocks;
    StatFSOut.BFree:=FSStat.BFree;
    StatFSOut.BAvail:=FSStat.BAvail;
@@ -38318,7 +38322,7 @@ begin
     if Err=0 then begin
      Err:=fFileSystem.Stat(ChildPath,FileStat);
      if Err=0 then begin
-      FillChar(EntryOut,SizeOf(EntryOut),0);
+      FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
       EntryOut.NodeID:=ChildNodeID;
       EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
       EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
@@ -38397,7 +38401,7 @@ begin
    if Err=0 then begin
     Err:=fFileSystem.Stat(ChildPath,FileStat);
     if Err=0 then begin
-     FillChar(EntryOut,SizeOf(EntryOut),0);
+     FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
      EntryOut.NodeID:=ChildNodeID;
      EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
      EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
@@ -38493,7 +38497,7 @@ begin
     if Err=0 then begin
      Err:=fFileSystem.Stat(ChildPath,FileStat);
      if Err=0 then begin
-      FillChar(EntryOut,SizeOf(EntryOut),0);
+      FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
       EntryOut.NodeID:=ChildNodeID;
       EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
       EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
@@ -41399,7 +41403,7 @@ begin
  if TPasRISCVSizeInt(length(fSendBuffer))<TPasRISCVSizeInt(aWriteSize) then begin
   SetLength(fSendBuffer,aWriteSize+((aWriteSize+1) shr 1));
  end;
- FillChar(fSendBuffer[0],aWriteSize,0);
+ FillChar(fSendBuffer[0],aWriteSize,#0);
  case MsgType of
   VIRTIO_RTC_REQ_CFG:begin
    // Response: head(8) + le16 num_clocks + reserved[6] = 16 bytes
@@ -47038,6 +47042,8 @@ begin
  fDirtyPageBitmapMask:=DirtyBitmapSize-1;
  SetLength(fDirtyPageBitmap,DirtyBitmapSize);
  FillChar(fDirtyPageBitmap[0],DirtyBitmapSize*SizeOf(TPasRISCVUInt32),#0);
+ SetLength(fJITedPageBitmap,DirtyBitmapSize);
+ FillChar(fJITedPageBitmap[0],DirtyBitmapSize*SizeOf(TPasRISCVUInt32),#0);
  fRAMHostToPhysOffset:=TPasRISCVPtrUInt(fHART.fMachine.fMemoryDevice.fBase)-TPasRISCVPtrUInt(fHART.fMachine.fMemoryDevice.fData);
  fDebugDisassembler:=TDisassembler.Create(fHART.fMachine); // DEBUG
 end;
@@ -47050,8 +47056,9 @@ begin
   FreeExecutableMemory(fCodeBuffer,fCodeBufferSize);
   fCodeBuffer:=nil;
  end;
- SetLength(fTemporaryCode,0);
- SetLength(fDirtyPageBitmap,0);
+ fTemporaryCode:=nil;
+ fDirtyPageBitmap:=nil;
+ fJITedPageBitmap:=nil;
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fBlockLinkFreeList.Finalize;
  FreeAndNil(fBlockLinks);
@@ -47245,6 +47252,9 @@ begin
  if length(fDirtyPageBitmap)>0 then begin
   FillChar(fDirtyPageBitmap[0],length(fDirtyPageBitmap)*SizeOf(TPasRISCVUInt32),#0);
  end;
+ if length(fJITedPageBitmap)>0 then begin
+  FillChar(fJITedPageBitmap[0],length(fJITedPageBitmap)*SizeOf(TPasRISCVUInt32),#0);
+ end;
  fCodeBufferUsed:=0;
  fHART.fState.JITSkipExecution:=false;
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
@@ -47254,9 +47264,21 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.MarkPageDirty(const aPhysicalAddress:TPasRISCVUInt64);
 var Offset:TPasRISCVUInt32;
+    Bit:TPasRISCVUInt32;
 begin
  Offset:=(aPhysicalAddress shr JIT_DIRTY_WORD_SHIFT) and fDirtyPageBitmapMask;
- TPasMPInterlocked.BitwiseOr(fDirtyPageBitmap[Offset],TPasMPUInt32(TPasRISCVUInt32(1) shl ((aPhysicalAddress shr JIT_DIRTY_PAGE_SHIFT) and $1f)));
+ Bit:=TPasRISCVUInt32(1) shl ((aPhysicalAddress shr JIT_DIRTY_PAGE_SHIFT) and $1f);
+ if (fJITedPageBitmap[Offset] and Bit)<>0 then begin
+  TPasMPInterlocked.BitwiseOr(fDirtyPageBitmap[Offset],TPasMPUInt32(Bit));
+  TPasMPInterlocked.BitwiseAnd(fJITedPageBitmap[Offset],TPasMPUInt32(not Bit));
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.MarkPageJITed(const aPhysicalAddress:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt32;
+begin
+ Offset:=(aPhysicalAddress shr JIT_DIRTY_WORD_SHIFT) and fDirtyPageBitmapMask;
+ TPasMPInterlocked.BitwiseOr(fJITedPageBitmap[Offset],TPasMPUInt32(TPasRISCVUInt32(1) shl ((aPhysicalAddress shr JIT_DIRTY_PAGE_SHIFT) and $1f)));
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.PageNeedsFlush(const aPhysicalAddress:TPasRISCVUInt64):Boolean;
@@ -47646,6 +47668,9 @@ begin
  Key.VirtualMode:=fHART.fState.VirtualMode;
  fBlockMap.Add(Key,TPasRISCVPtrUInt(CodeDest));
 
+ // Mark page as having JIT code (for dirty-tracking optimization)
+ MarkPageJITed(fCurrentPhysicalPC);
+
  // Populate JTLB
  TLBIndex:=(fBlockVirtualPC shr 1) and JIT_TLB_MASK;
  fJITTLB[TLBIndex].VirtualPC:=fBlockVirtualPC;
@@ -47720,8 +47745,13 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.InvalidatePage(const aPhysicalAddress:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt32;
+    Bit:TPasRISCVUInt32;
 begin
- MarkPageDirty(aPhysicalAddress);
+ Offset:=(aPhysicalAddress shr JIT_DIRTY_WORD_SHIFT) and fDirtyPageBitmapMask;
+ Bit:=TPasRISCVUInt32(1) shl ((aPhysicalAddress shr JIT_DIRTY_PAGE_SHIFT) and $1f);
+ TPasMPInterlocked.BitwiseOr(fDirtyPageBitmap[Offset],TPasMPUInt32(Bit));
+ TPasMPInterlocked.BitwiseAnd(fJITedPageBitmap[Offset],TPasMPUInt32(not Bit));
  FlushJITTLB;
 end;
 
@@ -54343,7 +54373,7 @@ begin
  DirectAccessTLBEntry^.Execute:=TPasRISCVUInt64($ffffffffffffffff);
 {$ifdef PasRISCVJustInTimeCompiler}
  if assigned(fJustInTimeCompiler) then begin
-  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),0);
+  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
  end;
 {$endif}
  if aInterrupt then begin
@@ -54375,7 +54405,7 @@ begin
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
  if assigned(fJustInTimeCompiler) then begin
-  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),0);
+  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
  end;
 {$endif}
  if aInterrupt then begin
