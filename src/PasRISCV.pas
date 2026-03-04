@@ -322,8 +322,10 @@ unit PasRISCV;
 {$define PasRISCVJustInTimeCompiler}
 {$if defined(PasRISCVJustInTimeCompiler)}
  {$if defined(cpux86_64)}
-  {-$define PasRISCVJustInTimeCompilerFPU}
-  {-$define PasRISCVJustInTimeCompilerFMA}
+  {$define PasRISCVJustInTimeCompilerFPU}
+  {$define PasRISCVJustInTimeCompilerFMA}
+  {$define PasRISCVJITUseRealFMA}
+  {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
 {$ifend}
 
@@ -8419,6 +8421,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function ClaimFPUReg:TPasRISCVUInt8;
                      procedure FreeFPUGuestReg(const aGuestReg:TFPURegister);
                      procedure SaveAllDirtyFPURegs;
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+                     procedure FlushAllFPURegs;
+{$endif}
 {$endif}
                      // Code emission
                      procedure EmitByte(const aValue:TPasRISCVUInt8);
@@ -47937,6 +47942,9 @@ begin
    end;
 {$endif}
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+   FlushAllFPURegs;
+{$endif}
    inc(fPCOffset,aInstructionSize);
    inc(fInstructionCount);
    fBlockEnds:=false;
@@ -47966,6 +47974,9 @@ begin
    end;
 {$endif}
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+   FlushAllFPURegs;
+{$endif}
    inc(fPCOffset,aInstructionSize);
    inc(fInstructionCount);
    fBlockEnds:=false;
@@ -47989,6 +48000,9 @@ begin
    end;
 {$endif}
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+   FlushAllFPURegs;
+{$endif}
    inc(fPCOffset,aOffset);
    inc(fInstructionCount);
    fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
@@ -48006,6 +48020,9 @@ begin
   end;
 {$endif}
   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+  FlushAllFPURegs;
+{$endif}
   inc(fInstructionCount);
   fBlockEnds:=true;
  end;
@@ -48028,6 +48045,9 @@ begin
 {$endif}
    inc(fPCOffset,aFallthroughOffset);
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+    FlushAllFPURegs;
+{$endif}
    inc(fPCOffset,aTargetOffset-aFallthroughOffset);
    inc(fInstructionCount);
    fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
@@ -50300,6 +50320,8 @@ begin
   result:=fFPURegInfos[TFPURegister.f0].HostReg;
   FreeFPUGuestReg(TFPURegister.f0);
  end;
+ // FreeFPUGuestReg added the bit back to fFPURegMask — clear it since we're claiming it
+ fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl result);
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.MapFPURegister(const aGuestReg:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
@@ -50359,6 +50381,23 @@ begin
   end;
  end;
 end;
+
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllFPURegs;
+var FPUReg:TFPURegister;
+begin
+ SaveAllDirtyFPURegs;
+ for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
+   fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl fFPURegInfos[FPUReg].HostReg);
+   fFPURegInfos[FPUReg].HostReg:=REG_ILL;
+   fFPURegInfos[FPUReg].Flags:=0;
+   fFPURegInfos[FPUReg].LastUsed:=0;
+  end;
+ end;
+end;
+{$endif}
+
 {$endif}
 
 {$if defined(PasRISCVJITTargetX8664)}
@@ -51661,6 +51700,7 @@ var HostVirtualAddress,HostVPN,HostIndex:TPasRISCVUInt8;
     SavedIntRegInfos:TIntRegisterInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
     SavedFPURegInfos:TFPURegisterInfos;
+    FPUReg:TFPURegister;
 {$endif}
     SideExitBailoutFixup:TPasRISCVUInt32;
     SideExitDoneFixup:TPasRISCVUInt32;
@@ -51714,6 +51754,16 @@ begin
  SavedIntRegInfos:=fIntRegInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  SavedFPURegInfos:=fFPURegInfos;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ // Save dirty mapped FPU regs to TState before helper call (XMMs are caller-saved)
+ for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
+  if (fFPURegInfos[FPUReg].HostReg<>REG_ILL) and
+     ((fFPURegInfos[FPUReg].Flags and REG_DIRTY)<>0) then begin
+   EmitFPUStore(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
+  end;
+ end;
 {$endif}
 
  // Push all caller-saved registers to preserve runtime state across call
@@ -51792,6 +51842,15 @@ begin
  EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRDX)));
  EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRCX)));
  EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRAX)));
+
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ // Reload all mapped FPU regs from TState (XMMs were clobbered by helper call)
+ for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
+  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
+   EmitFPULoad(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
+  end;
+ end;
+{$endif}
 
  // Load helper result from TState scratch into aHostAddrReg
  EmitNativeLoad(aHostAddrReg,VMPtrReg,GuestJITScratchOffset,true);
@@ -53973,12 +54032,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -53987,10 +54052,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,false);
- // VFMADD231SS: dst = frs1*frs2 + dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFMADD231SS: dst = vvvv*rm + dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,false);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -53999,17 +54077,24 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMADD231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,false);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = frs1*frs2 + frs3
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,false);
+ EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
+ EmitSSE2Op($f3,$58,ScratchXMM2,HostFRS3); // add
+ EmitFPUMov(HostFRD,ScratchXMM2,false);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
@@ -54021,12 +54106,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -54035,10 +54126,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,false);
- // VFMSUB231SS: dst = frs1*frs2 - dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFMSUB231SS: dst = vvvv*rm - dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,false);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -54047,17 +54151,24 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMSUB231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,false);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = frs1*frs2 - frs3
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,false);
+ EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
+ EmitSSE2Op($f3,$5c,ScratchXMM2,HostFRS3); // sub
+ EmitFPUMov(HostFRD,ScratchXMM2,false);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
@@ -54069,12 +54180,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -54083,10 +54200,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,false);
- // VFNMADD231SS: dst = -(frs1*frs2) + dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFNMSUB231SS: dst = -(vvvv*rm) - dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,false);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -54095,17 +54225,26 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte(X86_VEX_VFNMADD231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitByte(X86_VEX_VFNMSUB231);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,false);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = -(frs1*frs2) - frs3
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,false);
+ EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
+ EmitSSE2Op($f3,$58,ScratchXMM2,HostFRS3); // add
+ // negate: frd = 0 - scratch
+ EmitSSE2Op($66,$ef,HostFRD,HostFRD); // PXOR frd,frd (zero)
+ EmitSSE2Op($f3,$5c,HostFRD,ScratchXMM2); // sub: frd = 0 - result
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
@@ -54117,12 +54256,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -54131,10 +54276,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,false);
- // VFNMSUB231SS: dst = -(frs1*frs2) - dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFNMADD231SS: dst = -(vvvv*rm) + dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,false);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -54143,17 +54301,24 @@ begin
  end;
  VexByte2:=$01;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte(X86_VEX_VFNMSUB231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitByte(X86_VEX_VFNMADD231);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,false);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = -(frs1*frs2) + frs3 = frs3 - frs1*frs2
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,false);
+ EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
+ EmitFPUMov(HostFRD,HostFRS3,false);
+ EmitSSE2Op($f3,$5c,HostFRD,ScratchXMM2); // frd = frs3 - mul
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
@@ -54165,12 +54330,19 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM:TPasRISCVUInt8;
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -54179,10 +54351,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,true);
- // VFMADD231SD: dst = frs1*frs2 + dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFMADD231SD: dst = vvvv*rm + dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,true);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -54191,17 +54376,24 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMADD231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = frs1*frs2 + frs3
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,true);
+ EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
+ EmitSSE2Op($f2,$58,ScratchXMM2,HostFRS3); // add
+ EmitFPUMov(HostFRD,ScratchXMM2,true);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
@@ -54210,12 +54402,19 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM:TPasRISCVUInt8;
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -54224,10 +54423,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,true);
- // VFMSUB231SD: dst = frs1*frs2 - dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFMSUB231SD: dst = vvvv*rm - dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,true);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -54236,17 +54448,24 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
  EmitByte(X86_VEX_VFMSUB231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = frs1*frs2 - frs3
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,true);
+ EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
+ EmitSSE2Op($f2,$5c,ScratchXMM2,HostFRS3); // sub
+ EmitFPUMov(HostFRD,ScratchXMM2,true);
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
@@ -54255,12 +54474,19 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM:TPasRISCVUInt8;
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -54269,10 +54495,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,true);
- // VFNMADD231SD: dst = -(frs1*frs2) + dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFNMSUB231SD: dst = -(vvvv*rm) - dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,true);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -54281,17 +54520,26 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte(X86_VEX_VFNMADD231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitByte(X86_VEX_VFNMSUB231);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = -(frs1*frs2) - frs3
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,true);
+ EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
+ EmitSSE2Op($f2,$58,ScratchXMM2,HostFRS3); // add
+ // negate: frd = 0 - scratch
+ EmitSSE2Op($66,$ef,HostFRD,HostFRD); // PXOR frd,frd (zero)
+ EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // sub: frd = 0 - result
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
@@ -54300,12 +54548,19 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-    VexByte1,VexByte2:TPasRISCVUInt8;
+{$ifdef PasRISCVJITUseRealFMA}
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
+{$else}
+    ScratchXMM:TPasRISCVUInt8;
+    ScratchXMM2:TPasRISCVUInt8;
+{$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
+{$endif}
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -54314,10 +54569,23 @@ begin
  HostFRS2:=MapFPURegister(FRS2,REG_SRC);
  HostFRS3:=MapFPURegister(FRS3,REG_SRC);
  HostFRD:=MapFPURegister(FRD,REG_DST);
- EmitFPUMov(HostFRD,HostFRS3,true);
- // VFNMSUB231SD: dst = -(frs1*frs2) - dst(=frs3)
+ RM:=(aInstruction shr 12) and 7;
+ if RM<=4 then begin
+  RMTmp:=ClaimHostReg;
+  EmitSaveAndSetRoundingMode(RM,RMTmp);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+ end;
+{$ifdef PasRISCVJITUseRealFMA}
+ // VFNMADD231SD: dst = -(vvvv*rm) + dst
+ // use scratch if dst aliases vvvv(frs1) or rm(frs2)
+ if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
+  FMADst:=ClaimFPUReg;
+ end else begin
+  FMADst:=HostFRD;
+ end;
+ EmitFPUMov(FMADst,HostFRS3,true);
  VexByte1:=$02;
- if HostFRD<8 then begin
+ if FMADst<8 then begin
   VexByte1:=VexByte1 or $80;
  end;
  VexByte1:=VexByte1 or $40;
@@ -54326,22 +54594,28 @@ begin
  end;
  VexByte2:=$81;
  VexByte2:=VexByte2 or (((not HostFRS1) and $0f) shl 3);
- RM:=(aInstruction shr 12) and 7;
- if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
-  EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
- end;
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte(X86_VEX_VFNMSUB231);
- EmitModRM(3,HostFRD,HostFRS2);
+ EmitByte(X86_VEX_VFNMADD231);
+ EmitModRM(3,FMADst,HostFRS2);
+ if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,true);
+  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+ end;
+{$else}
+ // emulated: frd = -(frs1*frs2) + frs3 = frs3 - frs1*frs2
+ ScratchXMM2:=ClaimFPUReg;
+ EmitFPUMov(ScratchXMM2,HostFRS1,true);
+ EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
+ EmitFPUMov(HostFRD,HostFRS3,true);
+ EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // frd = frs3 - mul
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+{$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
 end;
-
 
 {$endif}
 
@@ -72447,7 +72721,7 @@ begin
      frd:=TFPURegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
@@ -72602,7 +72876,7 @@ begin
      frd:=TFPURegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
@@ -73229,7 +73503,7 @@ begin
       Offset:=((aInstruction shl 4) and $1c0) or
               ((aInstruction shr 7) and $20) or
               ((aInstruction shr 2) and $18);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
@@ -73463,7 +73737,7 @@ begin
      if fState.CSR.IsFPUEnabled then begin
       frs1:=TFPURegister((aInstruction shr 2) and $1f);
       Offset:=(((aInstruction shr 1) and $1c0) or ((aInstruction shr 7) and $38));
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
@@ -76580,7 +76854,7 @@ begin
         Offset:=TPasRISCVInt64(TPasRISCVInt32(SARLongint(TPasRISCVInt32(aInstruction),20)));
 //      Offset:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(aInstruction)),20);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLW,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
@@ -76607,7 +76881,7 @@ begin
         Offset:=TPasRISCVInt64(TPasRISCVInt32(SARLongint(TPasRISCVInt32(aInstruction),20)));
 //      Offset:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(aInstruction)),20);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
@@ -76684,7 +76958,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         Offset:=SignExtend((((aInstruction shr 25) and $7f) shl 5) or ((aInstruction shr 7) and $1f),12);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSW,aInstruction,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
@@ -76706,7 +76980,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         Offset:=SignExtend((((aInstruction shr 25) and $7f) shl 5) or ((aInstruction shr 7) and $1f),12);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
