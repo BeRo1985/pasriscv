@@ -327,8 +327,6 @@ unit PasRISCV;
 {-$define PasRISCVJITShortBranch}
 {-$define PasRISCVJITStats}
 
-{-$define PasRISCVJITFastCycle}
-
 {$define PasRISCVJITSideExit}
 
 {$define PasRISCVJITZeroInstructionSize}
@@ -8055,13 +8053,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      ExceptionValue:TExceptionValue;
                      ExceptionData:TPasRISCVUInt64;
                      ExceptionPC:TPasRISCVUInt64;
-{$ifndef PasRISCVJITFastCycle}
                      Cycle:TPasRISCVUInt64;
-{$endif}
                      LRSC:TPasMPBool32;
-{$ifndef PasRISCVJITFastCycle}
                      LRSCCycle:TPasRISCVUInt64;
-{$endif}
                      LRSCAddress:TPasRISCVUInt64;
                      LRSCCAS:TPasRISCVUInt64;
                      Bounce:TBounce;
@@ -8392,10 +8386,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestFPURegOffset(const aGuestReg:TFPURegister):TPasRISCVInt32;
 {$endif}
                      function GuestPCOffset:TPasRISCVInt32;
-{$ifndef PasRISCVJITFastCycle}
                      function GuestCycleOffset:TPasRISCVInt32;
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; virtual; abstract;
-{$endif}
                      function GuestRunStatePtrOffset:TPasRISCVInt32;
                      function GuestJITTLBPtrOffset:TPasRISCVInt32;
                      function GuestJITBlockTLBPtrOffset:TPasRISCVInt32;
@@ -9003,9 +8995,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
                      procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-{$ifndef PasRISCVJITFastCycle}
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
-{$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // SSE2 encoding helpers
                      procedure EmitSSE2Op(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
@@ -9191,9 +9181,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
                      procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-{$ifndef PasRISCVJITFastCycle}
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
-{$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
@@ -9223,9 +9211,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
                      procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-{$ifndef PasRISCVJITFastCycle}
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
-{$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
@@ -9686,9 +9672,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fLocalHARTIndex:TPasRISCVUInt64;
               fLastHaltHART:THART;
               fLastHaltPC:TPasRISCVUInt64;
-{$ifndef PasRISCVJITFastCycle}
               fLastHaltCycle:TPasRISCVUInt64;
-{$endif}
               fLastHaltInstruction:TPasRISCVUInt32;
               fBreakpoints:TBreakpointMap;
               fDisassembler:TDisassembler;
@@ -46779,32 +46763,6 @@ begin
   TAddress.TIMEH:begin
    result:=fHART.fMachine.fACLINTDevice.GetTime shr 32;
   end;
-{$ifdef PasRISCVJITFastCycle}
-  TAddress.MCYCLE:begin
-   result:=GetCurrentCycleTime;
-  end;
-  TAddress.MCYCLEH:begin
-   result:=GetCurrentCycleTime shr 32;
-  end;
-  TAddress.CYCLE:begin
-   result:=GetCurrentCycleTime;
-  end;
-  TAddress.CYCLEH:begin
-   result:=GetCurrentCycleTime shr 32;
-  end;
-  TAddress.MINSTRET:begin
-   result:=GetCurrentCycleTime;
-  end;
-  TAddress.MINSTRETH:begin
-   result:=GetCurrentCycleTime shr 32;
-  end;
-  TAddress.INSTRET:begin
-   result:=GetCurrentCycleTime;
-  end;
-  TAddress.INSTRETH:begin
-   result:=GetCurrentCycleTime shr 32;
-  end;
-{$else}
   TAddress.MCYCLE:begin
    result:=fHART.fState.Cycle;
   end;
@@ -46829,7 +46787,6 @@ begin
   TAddress.INSTRETH:begin
    result:=fHART.fState.Cycle shr 32;
   end;
-{$endif}
   TAddress.MENVCFG:begin
    result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.MENVCFG] and CSR_MENVCFG_MASK));
   end;
@@ -47378,9 +47335,7 @@ var SavedHostRegMask:TPasRISCVUInt32;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
     SavedFPURegInfos:TFPURegisterInfos;
 {$endif}
-{$ifndef PasRISCVJITFastCycle}
     ExitFixup:TPasRISCVUInt32;
-{$endif}
     RunStateExitFixup:TPasRISCVUInt32;
 begin
 
@@ -47410,14 +47365,12 @@ begin
  // 3. Update guest PC
  EmitUpdatePC;
 
-{$ifndef PasRISCVJITFastCycle}
  // 4. Update cycle counter and check 16-bit boundary crossing
  if fInstructionCount<>0 then begin
   ExitFixup:=EmitCycleUpdateAndCheck(fInstructionCount);
  end else begin
   ExitFixup:=0;
  end;
-{$endif}
 
  // 5. RunState check: jne .exit if not running
  EmitRunStateCheck;
@@ -47445,11 +47398,9 @@ begin
 {$endif}
 
  // 8. .exit path (countdown expired or runstate not running)
-{$ifndef PasRISCVJITFastCycle}
  if ExitFixup<>0 then begin
   PatchJmpRel32(ExitFixup);
  end;
-{$endif}
  PatchJmpRel32(RunStateExitFixup);
 
  EmitRestoreABIRegs;
@@ -47494,12 +47445,10 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.PC));
 end;
 
-{$ifndef PasRISCVJITFastCycle}
 function TPasRISCV.THART.TJustInTimeCompiler.GuestCycleOffset:TPasRISCVInt32;
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle));
 end;
-{$endif}
 
 function TPasRISCV.THART.TJustInTimeCompiler.GuestRunStatePtrOffset:TPasRISCVInt32;
 begin
@@ -47769,9 +47718,7 @@ begin
     end;
    end;
 {$endif}
-{$ifndef PasRISCVJITFastCycle}
 // dec(fHART.fState.Cycle);
-{$endif}
 {$ifdef PasRISCVJITBlockChaining}
    LastCycles:=fHART.fState.Cycle;
 {$endif}
@@ -47838,9 +47785,7 @@ begin
    end;
   end;
 {$endif}
-{$ifndef PasRISCVJITFastCycle}
 //dec(fHART.fState.Cycle);
-{$endif}
   TBlockCallback(Pointer(CodePtr))(@fHART.fState);
 {$ifdef PasRISCVJITDebug}
   if fDebugJITCounter<40 then begin
@@ -51084,8 +51029,6 @@ begin
  EmitMemImmOp(ALU_CMP,aBaseReg,aOffset,aValue,aIs64);
 end;
 
-{$ifndef PasRISCVJITFastCycle}
-
 function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32;
 var ScratchReg:TPasRISCVUInt8;
 begin
@@ -51104,7 +51047,6 @@ begin
  EmitJccRel32(CC_NE,0);
  result:=fTemporaryCodeSize-4;
 end;
-{$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2Op(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
@@ -53313,12 +53255,10 @@ procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeMemCmpImm(const a
 begin
 end;
 
-{$ifndef PasRISCVJITFastCycle}
 function TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32;
 begin
  result:=0;
 end;
-{$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
@@ -53407,12 +53347,10 @@ procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeMemCmpImm(const a
 begin
 end;
 
-{$ifndef PasRISCVJITFastCycle}
 function TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32;
 begin
  result:=0;
 end;
-{$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
@@ -53945,9 +53883,7 @@ begin
  fState.ExceptionData:=0;
  fState.ExceptionPC:=0;
  fState.LRSC:=false;
-{$ifndef PasRISCVJITFastCycle}
  fState.LRSCCycle:=0;
-{$endif}
  fState.LRSCAddress:=0;
  fState.LRSCCAS:=0;
 
@@ -79468,9 +79404,7 @@ begin
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            fState.LRSC:=true;
-{$ifndef PasRISCVJITFastCycle}
            fState.LRSCCycle:=fState.Cycle;
-{$endif}
            fState.LRSCAddress:=fState.Registers[rs1];
            fState.LRSCCAS:=TPasMPInterlocked.Read(PPasMPUInt32(Ptr)^);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -79487,11 +79421,9 @@ begin
           // approachs may lead to unnecessary page faults when the reservation
           // address doesn't match, which is inefficient in some scenarios.
           if fState.LRSC and
-{$ifndef PasRISCVJITFastCycle}
              ((fMachine.fLRSCMaximumCycles=0) or
               ((fState.Cycle-fState.LRSCCycle)<fMachine.fLRSCMaximumCycles)) and
-{$endif}
-             (fState.LRSCAddress=fState.Registers[rs1]) then begin 
+             (fState.LRSCAddress=fState.Registers[rs1]) then begin
            Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
            if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
             if (TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.LRSCCAS))=TPasMPUInt32(fState.LRSCCAS)) then begin
@@ -79758,9 +79690,7 @@ begin
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            fState.LRSC:=true;
-{$ifndef PasRISCVJITFastCycle}
            fState.LRSCCycle:=fState.Cycle;
-{$endif}
            fState.LRSCAddress:=fState.Registers[rs1];
            fState.LRSCCAS:=TPasMPInterlocked.Read(PPasMPUInt64(Ptr)^);
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -79777,11 +79707,9 @@ begin
           // approachs may lead to unnecessary page faults when the reservation
           // address doesn't match, which is inefficient in some scenarios.
           if fState.LRSC and
-{$ifndef PasRISCVJITFastCycle}
              ((fMachine.fLRSCMaximumCycles=0) or
               ((fState.Cycle-fState.LRSCCycle)<fMachine.fLRSCMaximumCycles)) and
-{$endif}
-             (fState.LRSCAddress=fState.Registers[rs1]) then begin 
+             (fState.LRSCAddress=fState.Registers[rs1]) then begin
            Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
            if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
             if (TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.LRSCCAS))=TPasMPUInt64(fState.LRSCCAS)) then begin
@@ -80988,7 +80916,7 @@ var DumpFile:^Text=nil;
 procedure TPasRISCV.THART.Execute;
 type PDirectAccessTLBEntry=TMMU.PDirectAccessTLBEntry;
 var Instruction:TPasRISCVUInt32;
-    InstructionAddress,PageAddress{$ifndef PasRISCVJITFastCycle},LastCycles{$endif}:TPasRISCVUInt64;
+    InstructionAddress,PageAddress,LastCycles:TPasRISCVUInt64;
     InstructionPointer:TPasRISCVPtrUInt;
     RunState:PPasRISCVUInt32;
 begin
@@ -81022,15 +80950,11 @@ begin
   Instruction:=0;
   PageAddress:=TPasRISCVUInt64($7fffffffffffffff);
 
-{$ifndef PasRISCVJITFastCycle}
   LastCycles:=fState.Cycle;
-{$endif}
 
   repeat
 
-{$ifndef PasRISCVJITFastCycle}
    inc(fState.Cycle);
-{$endif}
 
    InstructionAddress:=fState.PC;
 
@@ -81101,8 +81025,8 @@ begin
    inc(fState.PC,ExecuteInstruction(Instruction));
 {$endif}
 
-  until ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))<>RUNSTATE_RUNNING){$ifndef PasRISCVJITFastCycle}or
-        (((fState.Cycle xor LastCycles) shr 16)<>0){$endif};
+  until ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))<>RUNSTATE_RUNNING) or
+        (((fState.Cycle xor LastCycles) shr 16)<>0);
 
 {$ifdef PasRISCVJustInTimeCompiler}
 {$ifdef PasRISCVJITDebug}
@@ -81112,12 +81036,8 @@ begin
   end;
 {$endif}
 {$ifdef PasRISCVJITStats}
-  if assigned(fJustInTimeCompiler) and {$ifdef PasRISCVJITFastCycle}((fMachine.fACLINTDevice.GetTime-fJustInTimeCompiler.fStatLastReport)>=10000000){$else}((fState.Cycle-fJustInTimeCompiler.fStatLastReport)>=10000000){$endif} then begin
-{$ifdef PasRISCVJITFastCycle}
-   fJustInTimeCompiler.fStatLastReport:=fMachine.fACLINTDevice.GetTime;
-{$else}
+  if assigned(fJustInTimeCompiler) and ((fState.Cycle-fJustInTimeCompiler.fStatLastReport)>=10000000) then begin
    fJustInTimeCompiler.fStatLastReport:=fState.Cycle;
-{$endif}
    writeln('JIT STATS: hits=',fJustInTimeCompiler.fStatTLBHits,
     ' misses=',fJustInTimeCompiler.fStatTLBMisses,
     ' blocks=',fJustInTimeCompiler.fStatBlocksCompiled,
@@ -81138,13 +81058,11 @@ begin
 
   TPasMPInterlocked.BitwiseAnd(RunState^,TPasRISCVUInt32(TPasRISCVUInt32(not TPasRISCVUInt32(fHARTMask)) or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)));
 
-{$ifndef PasRISCVJITFastCycle}
   // Clear LR/SC reservation after a certain number of cycles to prevent, what some real RISC-V SoCs are
   // known to do, i.e. holding on to reservations indefinitely in case of busy-wait loops.
   if fState.LRSC and (fMachine.fLRSCMaximumCycles>0) and ((fState.Cycle-fState.LRSCCycle)>=fMachine.fLRSCMaximumCycles) then begin
    fState.LRSC:=false;
   end;
-{$endif}
 
 {$ifdef PasMPDebugSpinDetect}
   // Spinlock/deadlock detector: check if the PC has been stuck in a small range for too long
@@ -83637,9 +83555,7 @@ begin
  fLocalHARTIndex:=0;
  fLastHaltHART:=nil;
  fLastHaltPC:=0;
-{$ifndef PasRISCVJITFastCycle}
  fLastHaltCycle:=High(TPasRISCVUInt64);
-{$endif}
  fLastHaltInstruction:=0;
  FillChar(DefaultBreakpoint,SizeOf(TBreakpoint),#0);
  fBreakpoints:=TBreakpointMap.Create(DefaultBreakpoint);
@@ -84881,29 +84797,23 @@ begin
      fBreakpointsLock.Release;
     end;
    end;
-   if (not OK) or (assigned(aHART) and (fLastHaltHART=aHART) and (fLastHaltPC=aPC) {$ifndef PasRISCVJITFastCycle}and (fLastHaltCycle<=aHART.fState.Cycle){$endif}) then begin
+   if (not OK) or (assigned(aHART) and (fLastHaltHART=aHART) and (fLastHaltPC=aPC) and (fLastHaltCycle<=aHART.fState.Cycle)) then begin
     fLastHaltHART:=nil;
     fLastHaltPC:=0;
-{$ifndef PasRISCVJITFastCycle}
     fLastHaltCycle:=High(TPasRISCVUInt64);
-{$endif}
     fLastHaltInstruction:=0;
     result:=false;
    end else begin
     fLastHaltHART:=aHART;
     fLastHaltPC:=aPC;
-{$ifndef PasRISCVJITFastCycle}
     fLastHaltCycle:=aHART.fState.Cycle;
-{$endif}
     fLastHaltInstruction:=aInstruction;
     result:=fMachine.QueuePause(false);//TPasMPInterlocked.CompareExchange(fSWBreakState,SWBREAK_TRIGGERED,SWBREAK_NONE)=SWBREAK_NONE;
    end;
   end else begin
    fLastHaltHART:=aHART;
    fLastHaltPC:=aPC;
-{$ifndef PasRISCVJITFastCycle}
    fLastHaltCycle:=aHART.fState.Cycle;
-{$endif}
    fLastHaltInstruction:=aInstruction;
    result:=false;
   end;
@@ -84960,7 +84870,7 @@ begin
   finally
    fLock.Release;
   end;
-  if assigned(HART) and (HART.fState.PC=HaltPC) {$ifndef PasRISCVJITFastCycle}and (HaltCycle<=(HART.fState.Cycle+1)){$endif} then begin
+  if assigned(HART) and (HART.fState.PC=HaltPC) and (HaltCycle<=(HART.fState.Cycle+1)) then begin
    if (HaltInstruction=TPasRISCVUInt32($00100073)) or (HaltInstruction=TPasRISCVUInt32($9002)) then begin
     InstructionSize:=HART.GetInstructionSize(HaltInstruction);
     if InstructionSize>0 then begin
@@ -88241,12 +88151,6 @@ begin
      if assigned(fAPLICDevice) then begin
       fAPLICDevice.FullUpdate;
      end;
-
-{$ifdef PasRISCVJITFastCycle}
-     if not aForce then begin
-      TPasMPInterlocked.BitwiseOr(fRunState,fAllHARTMask);
-     end;
-{$endif}
 
     end;
 
