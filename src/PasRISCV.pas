@@ -8081,6 +8081,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITRunStatePtr:Pointer; // = @fMachine.fRunState, set once in THART.Create
                      JITTLBPtr:Pointer; // = @fDirectAccessTLBCache[0], set once in THART.Create
                      JITBlockTLBPtr:Pointer; // = @fJustInTimeCompiler.fJITTLB[0], set once in THART.Create
+                     fJITSkipExecution:TPasMPBool32;
 {$endif}
                    end;
                    PState=^TState;
@@ -8374,7 +8375,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fTemporaryCodeSize:TPasRISCVUInt32;
                      fCurrentPhysicalPC:TPasRISCVUInt64;
                      fCurrentMode:TMode;
-                     fSkipExecution:Boolean;
                      fBlockVirtualPC:TPasRISCVUInt64;
                      fLinkage:TLinkage;
                      // Offset helpers
@@ -8390,6 +8390,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestRunStatePtrOffset:TPasRISCVInt32;
                      function GuestJITTLBPtrOffset:TPasRISCVInt32;
                      function GuestJITBlockTLBPtrOffset:TPasRISCVInt32;
+                     function GuestJITSkipExecutionOffset:TPasRISCVInt32;
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
                      // Register allocator
@@ -47232,7 +47233,7 @@ begin
   FillChar(fDirtyPageBitmap[0],length(fDirtyPageBitmap)*SizeOf(TPasRISCVUInt32),#0);
  end;
  fCodeBufferUsed:=0;
- fSkipExecution:=false;
+ fHART.fState.fJITSkipExecution:=false;
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fLinkEntryCount:=0;
 {$endif}
@@ -47497,6 +47498,11 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.GuestJITBlockTLBPtrOffset:TPasRISCVInt32;
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITBlockTLBPtr));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITSkipExecutionOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.fJITSkipExecution));
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.JITTLBEntryCodePtrOffset:TPasRISCVInt32;
@@ -47775,7 +47781,7 @@ begin
 
  fBlockEnds:=false;
 
- fSkipExecution:=false;
+ fHART.fState.fJITSkipExecution:=false;
 
  fTemporaryCodeSize:=0;
 
@@ -47816,25 +47822,27 @@ function TPasRISCV.THART.TJustInTimeCompiler.TraceLDST(const aIntrinsicMethod:TI
 var PC:TPasRISCVUInt64;
 begin
  PC:=fHART.fState.PC;
- if (not fCompiling) and (not fSkipExecution) and TLBLookup then begin
-  fSkipExecution:=PC=fHART.fState.PC;
-  dec(fHART.fState.PC,aInstructionSize);
-  result:=true;
- end else begin
-  fSkipExecution:=false;
-  if fCompiling then begin
-{$ifdef PasRISCVJITDebug}
-   if fDebugJITCounter<60 then begin
-    writeln('  COMPILE LDST @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
-   end;
-{$endif}
-   aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
-   inc(fPCOffset,aInstructionSize);
-   inc(fInstructionCount);
-   fBlockEnds:=false;
+ if (not fCompiling) and not fHART.fState.fJITSkipExecution then begin
+  fHART.fState.fJITSkipExecution:=false;
+  if TLBLookup then begin
+   fHART.fState.fJITSkipExecution:=fHART.fState.fJITSkipExecution or (PC=fHART.fState.PC);
+   dec(fHART.fState.PC,aInstructionSize);
+   result:=true;
+   exit;
   end;
-  result:=false;
  end;
+ if fCompiling then begin
+{$ifdef PasRISCVJITDebug}
+  if fDebugJITCounter<60 then begin
+   writeln('  COMPILE LDST @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
+  end;
+{$endif}
+  aIntrinsicMethod(aParameter0,aParameter1,aParameter2,aParameter3);
+  inc(fPCOffset,aInstructionSize);
+  inc(fInstructionCount);
+  fBlockEnds:=false;
+ end;
+ result:=false;
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
