@@ -51233,11 +51233,17 @@ begin
  EmitTEST(HostVPN,HostVPN,true);
 {$ifdef PasRISCVJITFlexibleBranch}
  TakenLabel:=EmitBranchEntry(CC_E,BRANCH_NEW);
+ // Set fJITSkipExecution := true on TLB miss bailout
+ EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
+ EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
  EmitBranchTarget(TakenLabel);
 {$else}
  EmitJccRel32(CC_E,0);
  TakenLabel:=fTemporaryCodeSize;
+ // Set fJITSkipExecution := true on TLB miss bailout
+ EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
+ EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
  PatchBranchLabel(TakenLabel);
 {$endif}
