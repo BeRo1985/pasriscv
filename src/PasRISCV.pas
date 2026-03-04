@@ -8081,7 +8081,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITRunStatePtr:Pointer; // = @fMachine.fRunState, set once in THART.Create
                      JITTLBPtr:Pointer; // = @fDirectAccessTLBCache[0], set once in THART.Create
                      JITBlockTLBPtr:Pointer; // = @fJustInTimeCompiler.fJITTLB[0], set once in THART.Create
-                     fJITSkipExecution:TPasMPBool32;
+                     JITHART:THART;
+                     JITSkipExecution:TPasMPBool32;
 {$endif}
                    end;
                    PState=^TState;
@@ -8390,6 +8391,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestRunStatePtrOffset:TPasRISCVInt32;
                      function GuestJITTLBPtrOffset:TPasRISCVInt32;
                      function GuestJITBlockTLBPtrOffset:TPasRISCVInt32;
+                     function GuestJITHARTOffset:TPasRISCVInt32;
                      function GuestJITSkipExecutionOffset:TPasRISCVInt32;
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
@@ -47233,7 +47235,7 @@ begin
   FillChar(fDirtyPageBitmap[0],length(fDirtyPageBitmap)*SizeOf(TPasRISCVUInt32),#0);
  end;
  fCodeBufferUsed:=0;
- fHART.fState.fJITSkipExecution:=false;
+ fHART.fState.JITSkipExecution:=false;
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fLinkEntryCount:=0;
 {$endif}
@@ -47500,9 +47502,14 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITBlockTLBPtr));
 end;
 
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITHARTOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITHART));
+end;
+
 function TPasRISCV.THART.TJustInTimeCompiler.GuestJITSkipExecutionOffset:TPasRISCVInt32;
 begin
- result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.fJITSkipExecution));
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITSkipExecution));
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.JITTLBEntryCodePtrOffset:TPasRISCVInt32;
@@ -47781,7 +47788,7 @@ begin
 
  fBlockEnds:=false;
 
- fHART.fState.fJITSkipExecution:=false;
+ fHART.fState.JITSkipExecution:=false;
 
  fTemporaryCodeSize:=0;
 
@@ -47822,14 +47829,14 @@ function TPasRISCV.THART.TJustInTimeCompiler.TraceLDST(const aIntrinsicMethod:TI
 var PC:TPasRISCVUInt64;
 begin
  PC:=fHART.fState.PC;
- if (not fCompiling) and (not fHART.fState.fJITSkipExecution) and TLBLookup then begin
+ if (not fCompiling) and (not fHART.fState.JITSkipExecution) and TLBLookup then begin
   if PC=fHART.fState.PC then begin
-   fHART.fState.fJITSkipExecution:=true;
+   fHART.fState.JITSkipExecution:=true;
   end;
   dec(fHART.fState.PC,aInstructionSize);
   result:=true;
  end else begin
-  fHART.fState.fJITSkipExecution:=false;
+  fHART.fState.JITSkipExecution:=false;
   if fCompiling then begin
 {$ifdef PasRISCVJITDebug}
    if fDebugJITCounter<60 then begin
@@ -51233,7 +51240,7 @@ begin
  EmitTEST(HostVPN,HostVPN,true);
 {$ifdef PasRISCVJITFlexibleBranch}
  TakenLabel:=EmitBranchEntry(CC_E,BRANCH_NEW);
- // Set fJITSkipExecution:=true on TLB miss bailout
+ // Set JITSkipExecution:=true on TLB miss bailout
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
  EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
@@ -51241,7 +51248,7 @@ begin
 {$else}
  EmitJccRel32(CC_E,0);
  TakenLabel:=fTemporaryCodeSize;
- // Set fJITSkipExecution:=true on TLB miss bailout
+ // Set JITSkipExecution:=true on TLB miss bailout
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
  EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
@@ -53701,6 +53708,8 @@ begin
   fState.JITRunStatePtr:=@fMachine.fRunState;
   fState.JITTLBPtr:=@fDirectAccessTLBCache[0];
   fState.JITBlockTLBPtr:=@fJustInTimeCompiler.fJITTLB[0];
+  fState.JITHART:=self;
+  fState.JITSkipExecution:=false;
   fJustInTimeCompiler.ClearBlocks;
  end;
 {$endif}
