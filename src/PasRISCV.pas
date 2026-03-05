@@ -48092,7 +48092,9 @@ begin
  inc(fStatBlocksCompiled);
  inc(fStatTotalInstructions,fInstructionCount);
  if (fCodeBufferUsed+fTemporaryCodeSize)>fCodeBufferSize then begin
+{$ifdef PasRISCVJustInTimeCompilerDebug}
   writeln('JIT CODE BUFFER OVERFLOW: used=',fCodeBufferUsed,' new=',fTemporaryCodeSize,' max=',fCodeBufferSize,' -> ClearBlocks');
+{$endif}
   ClearBlocks;
   fCompiling:=false;
   exit;
