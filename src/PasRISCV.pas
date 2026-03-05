@@ -8690,7 +8690,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     public
                      constructor Create(const aHART:THART); virtual;
                      destructor Destroy; override;
-                     function EndTrace:Boolean;
+                     procedure BeginTrace(const aVirtualPC,aPhysicalPC:TPasRISCVUInt64);
+                     procedure EndTrace;
                      procedure Compile;
                      procedure Discard;
                      procedure FlushAllBlocks;
@@ -48163,7 +48164,28 @@ begin
 end;
 {$endif}
 
-function TPasRISCV.THART.TJustInTimeCompiler.EndTrace:Boolean;
+procedure TPasRISCV.THART.TJustInTimeCompiler.BeginTrace(const aVirtualPC,aPhysicalPC:TPasRISCVUInt64);
+begin
+
+ fBlockVirtualPC:=aVirtualPC;
+
+ fCompiling:=true;
+
+ fBlockEnds:=false;
+
+ fHART.fState.JITSkipExecution:=false;
+
+ fTemporaryCodeSize:=0;
+
+ fCurrentPhysicalPC:=aPhysicalPC;
+
+ fCurrentMode:=fHART.fState.Mode;
+
+ EmitInit;
+
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.EndTrace;
 var CodeDest:Pointer;
     TLBIndex:TPasRISCVUInt32;
     Key:TBlockMapKey;
@@ -48171,7 +48193,6 @@ var CodeDest:Pointer;
     LinkIndex,PoolIndex,Index,Count:TPasRISCVInt32;
 {$endif}
 begin
- result:=false;
 
  // Discard traces with no compiled instructions
  if fInstructionCount=0 then begin
@@ -48281,8 +48302,6 @@ begin
  fTemporaryCodeSize:=0;
 
  fCompiling:=false;
-
- result:=true;
 
 end;
 
@@ -48446,23 +48465,9 @@ begin
  end;
 {$endif}
 
- fBlockVirtualPC:=VirtualPC;
-
- fCompiling:=true;
-
- fBlockEnds:=false;
-
- fHART.fState.JITSkipExecution:=false;
-
- fTemporaryCodeSize:=0;
-
- fCurrentPhysicalPC:=PhysicalPC;
-
- fCurrentMode:=fHART.fState.Mode;
-
- EmitInit;
-
  inc(fStatTLBMisses);
+
+ BeginTrace(VirtualPC,PhysicalPC);
 
  result:=false;
 
