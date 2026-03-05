@@ -325,9 +325,9 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerFPU}
   {$define PasRISCVJustInTimeCompilerFMA}
   {$define PasRISCVJustInTimeCompilerUseRealFMA}
-  {-$define PasRISCVJustInTimeCompilerZbb}
-  {-$define PasRISCVJustInTimeCompilerZbs}
-  {-$define PasRISCVJustInTimeCompilerZba}
+  {$define PasRISCVJustInTimeCompilerZbb}
+  {$define PasRISCVJustInTimeCompilerZbs}
+  {$define PasRISCVJustInTimeCompilerZba}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
 {$ifend}
@@ -9120,7 +9120,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // SSE2 encoding helpers
-                     procedure EmitSSE2Op(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
+                     procedure EmitSSE2Op(const aPrefix:TPasRISCVInt32;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
                      procedure EmitSSE2MemOp(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
                      procedure EmitSSE2MovGPRToXMM(const aXMM:TPasRISCVUInt8;const aGPR:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitSSE2MovXMMToGPR(const aGPR:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aIs64:Boolean);
@@ -52347,11 +52347,13 @@ begin
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2Op(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2Op(const aPrefix:TPasRISCVInt32;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
 begin
  // prefix 0F opcode modrm(11,dst,src)
  // Handle REX for XMM8+ regs
- EmitByte(aPrefix);
+ if aPrefix>=0 then begin
+  EmitByte(aPrefix);
+ end;
  if (aDstXMM>=8) or (aSrcXMM>=8) then begin
   EmitREX(false,aDstXMM,0,aSrcXMM);
  end;
@@ -53268,7 +53270,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMIN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 begin
  // CMP rs1, rs2; if rd=rs2: CMOVL rd, rs1 else: MOV rd, rs1; CMOVGE rd, rs2
- Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  if aHostDest=aHostSrc2 then begin
   EmitCMOVCC(CC_L,aHostDest,aHostSrc1,true);
  end else begin
@@ -53281,7 +53283,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMINU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 begin
- Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  if aHostDest=aHostSrc2 then begin
   EmitCMOVCC(CC_B,aHostDest,aHostSrc1,true);
  end else begin
@@ -53294,7 +53296,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMAX(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 begin
- Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  if aHostDest=aHostSrc2 then begin
   EmitCMOVCC(CC_G,aHostDest,aHostSrc1,true);
  end else begin
@@ -53307,7 +53309,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMAXU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 begin
- Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
  if aHostDest=aHostSrc2 then begin
   EmitCMOVCC(CC_A,aHostDest,aHostSrc1,true);
  end else begin
@@ -53331,7 +53333,7 @@ begin
  if aHostDest<>aHostSrc1 then begin
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
  end;
- Emit2RegOp($23,aHostDest,TempReg1,true); // AND rd, temp
+ Emit2RegOp(X86_AND,aHostDest,TempReg1,true); // AND rd, temp
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
@@ -53348,7 +53350,7 @@ begin
  if aHostDest<>aHostSrc1 then begin
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
  end;
- Emit2RegOp($0b,aHostDest,TempReg1,true); // OR rd, temp
+ Emit2RegOp(X86_OR,aHostDest,TempReg1,true); // OR rd, temp
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
@@ -53357,13 +53359,13 @@ begin
  // rd = ~(rs1 ^ rs2)
  if (aHostDest=aHostSrc1) or (aHostDest=aHostSrc2) then begin
   if aHostDest=aHostSrc1 then begin
-   Emit2RegOp($33,aHostDest,aHostSrc2,true); // XOR rd, rs2
+   Emit2RegOp(X86_XOR,aHostDest,aHostSrc2,true); // XOR rd, rs2
   end else begin
-   Emit2RegOp($33,aHostDest,aHostSrc1,true); // XOR rd, rs1
+   Emit2RegOp(X86_XOR,aHostDest,aHostSrc1,true); // XOR rd, rs1
   end;
  end else begin
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
-  Emit2RegOp($33,aHostDest,aHostSrc2,true); // XOR rd, rs2
+  Emit2RegOp(X86_XOR,aHostDest,aHostSrc2,true); // XOR rd, rs2
  end;
  // NOT rd
  EmitREX(true,2,0,aHostDest);
@@ -53453,38 +53455,57 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeORCB(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg1:TPasRISCVUInt8;
+const XMM01Mask=(TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1);
+var TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- // orc.b: for each byte, if any bit set => 0xff, else 0x00
- TempReg1:=ClaimHostReg;
- if aHostDest<>aHostSrc then begin
-  EmitMOVRegReg(aHostDest,aHostSrc,true);
+ if (fFPURegMask and XMM01Mask)<>XMM01Mask then begin
+  // orc.b: for each byte, if any bit set => 0xff, else 0x00
+  // Same algorithm as BitwiseOrCombine:
+  // t = (((val | 0x8080...) - 0x0101...) | val) & 0x8080...
+  // t >>= 7; result = (t << 8) - t
+  TempReg1:=ClaimHostReg;
+  TempReg2:=ClaimHostReg;
+  // TempReg1 = aHostSrc | 0x8080808080808080
+  EmitMOVRegReg(TempReg1,aHostSrc,true);
+  EmitNativeSetReg64(TempReg2,TPasRISCVUInt64($8080808080808080));
+  Emit2RegOp(X86_OR,TempReg1,TempReg2,true); // TempReg1 |= 0x8080...
+  // TempReg1 -= 0x0101010101010101
+  EmitNativeSetReg64(TempReg2,TPasRISCVUInt64($0101010101010101));
+  Emit2RegOp($29,TempReg1,TempReg2,true); // TempReg1 -= 0x0101...
+  // TempReg1 |= aHostSrc
+  Emit2RegOp(X86_OR,TempReg1,aHostSrc,true);
+  // TempReg1 &= 0x8080808080808080
+  EmitNativeSetReg64(TempReg2,TPasRISCVUInt64($8080808080808080));
+  Emit2RegOp(X86_AND,TempReg1,TempReg2,true); // TempReg1 &= 0x8080...
+  // TempReg1 >>= 7
+  EmitShiftRegImm(SHIFT_SHR,TempReg1,7,true);
+  // aHostDest = (TempReg1 << 8) - TempReg1
+  EmitMOVRegReg(aHostDest,TempReg1,true);
+  EmitShiftRegImm(SHIFT_SHL,aHostDest,8,true);
+  Emit2RegOp($29,aHostDest,TempReg1,true); // aHostDest -= TempReg1
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ end else begin
+  // Inline SSE2 approach: movq xmm0,src; xorps xmm1,xmm1; pcmpeqb xmm0,xmm1; pcmpeqb xmm0,xmm1; movq dst,xmm0
+  // Save xmm0+xmm1 on stack (may be mapped FPU regs)
+  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-32);
+  EmitSSE2MemOp(X86_PREFIX_F3,$7f,0,TPasRISCVUInt8(ord(TX64Register.rRSP)),0);  // movdqu [rsp],xmm0
+  EmitSSE2MemOp(X86_PREFIX_F3,$7f,1,TPasRISCVUInt8(ord(TX64Register.rRSP)),16); // movdqu [rsp+16],xmm1
+  // movq xmm0, aHostSrc
+  EmitSSE2MovGPRToXMM(0,aHostSrc,true);
+  // xorps xmm1, xmm1 (0f 57 c9 — no prefix)
+  EmitSSE2Op(-1,$57,1,1);
+  // pcmpeqb xmm0, xmm1 (66 0f 74 c1)
+  EmitSSE2Op(X86_PREFIX_66,$74,0,1);
+  // pcmpeqb xmm0, xmm1 (66 0f 74 c1)
+  EmitSSE2Op(X86_PREFIX_66,$74,0,1);
+  // movq aHostDest, xmm0
+  EmitSSE2MovXMMToGPR(aHostDest,0,true);
+  // Restore xmm0+xmm1
+  EmitSSE2MemOp(X86_PREFIX_F3,$6f,0,TPasRISCVUInt8(ord(TX64Register.rRSP)),0);  // movdqu xmm0,[rsp]
+  EmitSSE2MemOp(X86_PREFIX_F3,$6f,1,TPasRISCVUInt8(ord(TX64Register.rRSP)),16); // movdqu xmm1,[rsp+16]
+  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),32);
  end;
- // Spread bits within each byte
- EmitMOVRegReg(TempReg1,aHostDest,true);
- EmitShiftRegImm(SHIFT_SHR,TempReg1,1,true);
- Emit2RegOp($0b,aHostDest,TempReg1,true); // OR
- EmitMOVRegReg(TempReg1,aHostDest,true);
- EmitShiftRegImm(SHIFT_SHR,TempReg1,2,true);
- Emit2RegOp($0b,aHostDest,TempReg1,true); // OR
- EmitMOVRegReg(TempReg1,aHostDest,true);
- EmitShiftRegImm(SHIFT_SHR,TempReg1,4,true);
- Emit2RegOp($0b,aHostDest,TempReg1,true); // OR
- // Now low bit of each byte is set iff any bit was set
- // Mask to get one bit per byte: AND with 0x0101010101010101
- EmitNativeSetReg64(TempReg1,TPasRISCVUInt64($0101010101010101));
- Emit2RegOp($23,aHostDest,TempReg1,true); // AND
- // Expand each 0x01 byte to 0xff: val |= val<<1; val |= val<<2; val |= val<<4
- EmitMOVRegReg(TempReg1,aHostDest,true);
- EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
- Emit2RegOp($0b,aHostDest,TempReg1,true);
- EmitMOVRegReg(TempReg1,aHostDest,true);
- EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
- Emit2RegOp($0b,aHostDest,TempReg1,true);
- EmitMOVRegReg(TempReg1,aHostDest,true);
- EmitShiftRegImm(SHIFT_SHL,TempReg1,4,true);
- Emit2RegOp($0b,aHostDest,TempReg1,true);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 {$endif}
 
@@ -53644,7 +53665,7 @@ begin
   TempReg1:=ClaimHostReg;
   EmitMOVRegReg(TempReg1,aHostSrc1,true);
   EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
-  Emit2RegOp($03,TempReg1,aHostSrc2,true);
+  Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
   if aHostDest<>TempReg1 then begin
    EmitMOVRegReg(aHostDest,TempReg1,true);
   end;
@@ -53671,7 +53692,7 @@ begin
   TempReg1:=ClaimHostReg;
   EmitMOVRegReg(TempReg1,aHostSrc1,true);
   EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
-  Emit2RegOp($03,TempReg1,aHostSrc2,true);
+  Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
   if aHostDest<>TempReg1 then begin
    EmitMOVRegReg(aHostDest,TempReg1,true);
   end;
@@ -53698,7 +53719,7 @@ begin
   TempReg1:=ClaimHostReg;
   EmitMOVRegReg(TempReg1,aHostSrc1,true);
   EmitShiftRegImm(SHIFT_SHL,TempReg1,3,true);
-  Emit2RegOp($03,TempReg1,aHostSrc2,true);
+  Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
   if aHostDest<>TempReg1 then begin
    EmitMOVRegReg(aHostDest,TempReg1,true);
   end;
@@ -53713,7 +53734,7 @@ begin
  TempReg1:=ClaimHostReg;
  EmitMOVRegReg(TempReg1,aHostSrc1,false); // zero-extend 32->64
  EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
- Emit2RegOp($03,TempReg1,aHostSrc2,true);
+ Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
@@ -53727,7 +53748,7 @@ begin
  TempReg1:=ClaimHostReg;
  EmitMOVRegReg(TempReg1,aHostSrc1,false);
  EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
- Emit2RegOp($03,TempReg1,aHostSrc2,true);
+ Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
@@ -53741,7 +53762,7 @@ begin
  TempReg1:=ClaimHostReg;
  EmitMOVRegReg(TempReg1,aHostSrc1,false);
  EmitShiftRegImm(SHIFT_SHL,TempReg1,3,true);
- Emit2RegOp($03,TempReg1,aHostSrc2,true);
+ Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
@@ -53754,7 +53775,7 @@ begin
  // rd = rs2 + zext32(rs1)
  TempReg1:=ClaimHostReg;
  EmitMOVRegReg(TempReg1,aHostSrc1,false); // zero-extend 32->64
- Emit2RegOp($03,TempReg1,aHostSrc2,true); // ADD
+ Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true); // ADD
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
