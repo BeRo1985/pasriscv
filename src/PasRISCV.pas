@@ -328,6 +328,8 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZbb}
   {$define PasRISCVJustInTimeCompilerZbs}
   {$define PasRISCVJustInTimeCompilerZba}
+  {-$define PasRISCVJustInTimeCompilerAMO}
+  {-$define PasRISCVJustInTimeCompilerAMOBounceGuard}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
 {$ifend}
@@ -8369,6 +8371,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                      fCompiling:Boolean;
                      fBlockEnds:Boolean;
+                     fSavedTemporaryCodeSize:TPasRISCVSizeInt;
+                     fSavedPCOffset:TPasRISCVInt32;
+                     fSavedInstructionCount:TPasRISCVUInt32;
 {$ifdef PasRISCVJustInTimeCompilerDebug}
                      fDebugJITCounter:TPasRISCVUInt32;
                      fDebugInstruction:TPasRISCVUInt32;
@@ -8603,6 +8608,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerAMO}
+                     // AMO (Atomic Memory Operations)
+                     procedure EmitNativeAMOADD(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOSWAP(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOXOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOAND(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOMIN(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOMAX(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOMINU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64); virtual; abstract;
+{$endif}
                      procedure EmitNativeSetReg32s(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64); virtual; abstract;
                      procedure EmitNativeLD(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
@@ -8701,6 +8720,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function TLBLookup:Boolean;
                      function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     procedure SaveState;
+                     procedure RollbackLastState;
                      function TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; //inline;
                      function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
@@ -8814,6 +8835,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$ifdef PasRISCVJustInTimeCompilerAMO}
+                     // AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2, aParameter3=aIs32 (0=.d, 1=.w)
+                     procedure IntrinsicAMOADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOSWAP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      // FPU intrinsics
                      procedure IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
@@ -9279,6 +9314,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeSH3ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerAMO}
+                     // AMO
+                     procedure EmitNativeAMOADD(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOSWAP(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOXOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOAND(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOMIN(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOMAX(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOMINU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64); override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // EmitNativeFxx overrides
@@ -48531,6 +48580,23 @@ begin
  end;
 end;
 
+procedure TPasRISCV.THART.TJustInTimeCompiler.SaveState;
+begin
+ fSavedTemporaryCodeSize:=fTemporaryCodeSize;
+ fSavedPCOffset:=fPCOffset;
+ fSavedInstructionCount:=fInstructionCount;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.RollbackLastState;
+begin
+ if fCompiling then begin
+  fTemporaryCodeSize:=fSavedTemporaryCodeSize;
+  fPCOffset:=fSavedPCOffset;
+  fInstructionCount:=fSavedInstructionCount;
+  fBlockEnds:=true;
+ end;
+end;
+
 function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
@@ -50227,8 +50293,227 @@ begin
  FreeHostReg(HostAddr);
 end;
 
+{$ifdef PasRISCVJustInTimeCompilerAMO}
+// AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2, aParameter3=Is32 (0=.d, 1=.w)
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOADD(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOSWAP(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOXOR(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOAND(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOOR(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOMIN(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOMAX(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOMINU(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeAMOMAXU(HostDest,HostAddr,HostSrc,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostGuestAddr:TPasRISCVUInt8;
+begin
+{$if defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+ SaveState;
+{$ifend}
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,4 shl ord(not Is32));
+ HostGuestAddr:=MapIntRegister(RS1,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeLR(HostDest,HostAddr,HostGuestAddr,Is32);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc,HostGuestAddr:TPasRISCVUInt8;
+begin
+{$if defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+ SaveState;
+{$ifend}
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ HostAddr:=ClaimHostReg;
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
+ HostSrc:=MapIntRegister(RS2,REG_SRC);
+ HostGuestAddr:=MapIntRegister(RS1,REG_SRC);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapIntRegister(RD,REG_DST);
+  EmitNativeSC(HostDest,HostAddr,HostSrc,HostGuestAddr,Is32,fHART.fMachine.fLRSCMaximumCycles);
+ end;
+ FreeHostReg(HostAddr);
+end;
+
+{$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-// Base class FPU intrinsic implementations — decode + dispatch to EmitNativeFxx
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD:TFPURegister;
@@ -53795,6 +54080,411 @@ begin
   EmitShiftRegImm(SHIFT_SHL,aHostDest,aShamt,true);
  end;
 end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerAMO}
+// AMO x86-64 implementations
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOADD(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+begin
+ // LOCK XADD [addr], temp — atomically: old=[addr]; [addr]+=temp; temp=old
+ HostTemp:=ClaimHostReg;
+ EmitMOVRegReg(HostTemp,aHostSrc,true);
+ // LOCK prefix
+ EmitByte($f0);
+ // 0F C1 /r — XADD r/m, r
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($c1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ // HostTemp now contains old value
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,HostTemp);
+ end else begin
+  EmitMOVRegReg(aHostDest,HostTemp,true);
+ end;
+ FreeHostReg(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOSWAP(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+begin
+ // XCHG [addr], temp — implicitly locked, atomically swaps
+ HostTemp:=ClaimHostReg;
+ EmitMOVRegReg(HostTemp,aHostSrc,true);
+ // 87 /r — XCHG r/m, r (implicitly locked)
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($87);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ // HostTemp now contains old value
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,HostTemp);
+ end else begin
+  EmitMOVRegReg(aHostDest,HostTemp,true);
+ end;
+ FreeHostReg(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOXOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; XOR temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ HostTemp:=ClaimHostReg;
+ // Load current value into RAX
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
+ RetryOffset:=fTemporaryCodeSize;
+ // Copy RAX to temp, apply XOR
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_XOR,HostTemp,aHostSrc,not aIs32);
+ // LOCK CMPXCHG [addr], temp
+ EmitByte($f0);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ // JNE retry
+ EmitByte($75);
+ EmitByte(TPasRISCVUInt8(RetryOffset-fTemporaryCodeSize));
+ // RAX = old value
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+ FreeHostReg(HostTemp);
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOAND(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ HostTemp:=ClaimHostReg;
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_AND,HostTemp,aHostSrc,not aIs32);
+ EmitByte($f0);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75);
+ EmitByte(TPasRISCVUInt8(RetryOffset-fTemporaryCodeSize));
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+ FreeHostReg(HostTemp);
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ HostTemp:=ClaimHostReg;
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_OR,HostTemp,aHostSrc,not aIs32);
+ EmitByte($f0);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75);
+ EmitByte(TPasRISCVUInt8(RetryOffset-fTemporaryCodeSize));
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+ FreeHostReg(HostTemp);
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMIN(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with signed min: new = (old < rs2) ? old : rs2
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ HostTemp:=ClaimHostReg;
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
+ // CMP RAX, rs2 — if RAX < rs2 (signed), keep RAX (old), else use rs2
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
+ // CMOVLE temp, RAX — if old <= rs2, temp=old (temp already = rs2)
+ if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($0f);
+ EmitByte($4e); // CMOVLE
+ EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+ // LOCK CMPXCHG
+ EmitByte($f0);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75);
+ EmitByte(TPasRISCVUInt8(RetryOffset-fTemporaryCodeSize));
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+ FreeHostReg(HostTemp);
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAX(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with signed max: new = (old > rs2) ? old : rs2
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ HostTemp:=ClaimHostReg;
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
+ // CMOVGE temp, RAX — if old >= rs2, temp=old
+ if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($0f);
+ EmitByte($4d); // CMOVGE
+ EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($f0);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75);
+ EmitByte(TPasRISCVUInt8(RetryOffset-fTemporaryCodeSize));
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+ FreeHostReg(HostTemp);
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMINU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with unsigned min
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ HostTemp:=ClaimHostReg;
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
+ // CMOVBE temp, RAX — if old <= rs2 (unsigned), temp=old
+ if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($0f);
+ EmitByte($46); // CMOVBE
+ EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($f0);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75);
+ EmitByte(TPasRISCVUInt8(RetryOffset-fTemporaryCodeSize));
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+ FreeHostReg(HostTemp);
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with unsigned max
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ HostTemp:=ClaimHostReg;
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
+ // CMOVAE temp, RAX — if old >= rs2 (unsigned), temp=old
+ if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($0f);
+ EmitByte($43); // CMOVAE
+ EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($f0);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75);
+ EmitByte(TPasRISCVUInt8(RetryOffset-fTemporaryCodeSize));
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+ FreeHostReg(HostTemp);
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean);
+begin
+ // LR: load value + store reservation state in fState
+ // Load value from [addr]
+ if aIs32 then begin
+  EmitMemOp(X86_MOV_M_R,aHostDest,aHostAddr,0,false);
+  EmitMOVSXD(aHostDest,aHostDest);
+ end else begin
+  EmitMemOp(X86_MOV_M_R,aHostDest,aHostAddr,0,true);
+ end;
+ // Store loaded value as LRSCCAS
+ EmitNativeStore(aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCAS)),true);
+ // Store guest address as LRSCAddress
+ EmitNativeStore(aHostGuestAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCAddress)),true);
+ // Store current Cycle as LRSCCycle (reuse aHostAddr as temp since TLB lookup is done)
+ EmitNativeLoad(aHostAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle)),true);
+ EmitNativeStore(aHostAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCycle)),true);
+ // Set LRSC flag to 1
+ EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ EmitDWord(1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64);
+var FailLabelLRSC,FailLabelCycle,FailLabelAddr,DoneLabel,FailTarget:TPasRISCVSizeInt;
+begin
+
+ FailLabelCycle:=0;
+
+ // SC: check reservation + cycle limit + address match, attempt CMPXCHG
+
+ // Check fState.LRSC
+ EmitNativeLoad(aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ Emit2RegOp(X86_TEST,aHostDest,aHostDest,false);
+
+ // JZ fail
+ EmitByte($74);
+ FailLabelLRSC:=fTemporaryCodeSize;
+ EmitByte(0);
+
+ // Check cycle limit (if aLRSCMaximumCycles > 0)
+ if aLRSCMaximumCycles>0 then begin
+  // dest = Cycle - LRSCCycle
+  EmitNativeLoad(aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle)),true);
+  EmitMemOp(X86_SUB,aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCycle)),true);
+  // CMP dest, aLRSCMaximumCycles
+  if aLRSCMaximumCycles<=TPasRISCVUInt64($7fffffff) then begin
+   EmitImmOp(ALU_CMP,aHostDest,TPasRISCVInt32(aLRSCMaximumCycles),true);
+  end else begin
+   EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+   EmitMOVRegImm64(TPasRISCVUInt8(TX64Register.rRAX),aLRSCMaximumCycles);
+   Emit2RegOp(X86_CMP,aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+   EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  // JAE fail
+  EmitByte($73);
+  FailLabelCycle:=fTemporaryCodeSize;
+  EmitByte(0);
+ end;
+
+ // Check LRSCAddress = guest rs1
+ EmitMemOp(X86_CMP,aHostGuestAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCAddress)),true);
+
+ // JNE fail
+ EmitByte($75);
+ FailLabelAddr:=fTemporaryCodeSize;
+ EmitByte(0);
+
+ // All checks passed — attempt CMPXCHG
+ EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
+ EmitNativeLoad(TPasRISCVUInt8(TX64Register.rRAX),VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCAS)),true);
+
+ // LOCK CMPXCHG [addr], src
+ EmitByte($f0);
+ if (not aIs32) or (aHostSrc>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,aHostSrc,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(aHostSrc,aHostAddr,0);
+
+ EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+
+ // SETNE dest (0=success, 1=fail)
+ if aHostDest>=8 then begin
+  EmitByte(X64_REX_B);
+ end;
+ EmitByte($0f);
+ EmitByte($95);
+ EmitModRM(3,0,aHostDest);
+ EmitMOVZX8(aHostDest,aHostDest);
+
+ // Clear reservation
+ EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ EmitDWord(0);
+
+ // JMP done
+ EmitByte($eb);
+ DoneLabel:=fTemporaryCodeSize;
+ EmitByte(0);
+
+ // fail:
+ FailTarget:=fTemporaryCodeSize;
+ EmitMOVRegImm32(aHostDest,1);
+ EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ EmitDWord(0);
+
+ // done:
+ // Patch fail labels to FailTarget
+ fTemporaryCode[FailLabelLRSC]:=TPasRISCVUInt8(FailTarget-(FailLabelLRSC+1));
+ if FailLabelCycle>0 then begin
+  fTemporaryCode[FailLabelCycle]:=TPasRISCVUInt8(FailTarget-(FailLabelCycle+1));
+ end;
+ fTemporaryCode[FailLabelAddr]:=TPasRISCVUInt8(FailTarget-(FailLabelAddr+1));
+
+ // Patch done label
+ fTemporaryCode[DoneLabel]:=TPasRISCVUInt8(fTemporaryCodeSize-(DoneLabel+1));
+
+end;
+
 {$endif}
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLD(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
@@ -82651,6 +83341,13 @@ begin
         case ((aInstruction shr 25) and $7c) shr 2 of
          $00:begin
           // amoadd.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOADD,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Add(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
@@ -82658,6 +83355,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82666,6 +83368,13 @@ begin
          end;
          $01:begin
           // amoswap.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOSWAP,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
@@ -82673,6 +83382,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82681,8 +83395,22 @@ begin
          end;
          $02:begin
           // lr.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLR,aInstruction,ord(rd),ord(rs1),0,1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+             if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+              fJustInTimeCompiler.RollbackLastState;
+             end;
+{$ifend}
+            end;
            fState.LRSC:=true;
            fState.LRSCCycle:=fState.Cycle;
            fState.LRSCAddress:=fState.Registers[rs1];
@@ -82696,6 +83424,13 @@ begin
          end;
          $03:begin
           // sc.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSC,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           // QEMU checks LRSC address match first, then memory translation.
           // We follow QEMU here for better compatibility, since other
           // approachs may lead to unnecessary page faults when the reservation
@@ -82711,6 +83446,11 @@ begin
               fState.Registers[rd]:=0;
              end;
              if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+              if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+               fJustInTimeCompiler.RollbackLastState;
+              end;
+{$ifend}
               RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
              end;
             end else begin
@@ -82730,6 +83470,13 @@ begin
          end;
          $04:begin
           // amoxor.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOXOR,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseXor(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
@@ -82737,6 +83484,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82760,6 +83512,13 @@ begin
          end;
          $08:begin
           // amoor.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOOR,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseOr(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
@@ -82767,6 +83526,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82799,6 +83563,13 @@ begin
 {$endif}
          $0c:begin
           // amoand.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOAND,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseAnd(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
@@ -82806,6 +83577,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82814,6 +83590,13 @@ begin
          end;
          $10:begin
           // amomin.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMIN,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -82832,6 +83615,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82840,6 +83628,13 @@ begin
          end;
          $14:begin
           // amomax.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAX,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -82858,6 +83653,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82866,6 +83666,13 @@ begin
          end;
          $18:begin
           // amominu.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMINU,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -82884,6 +83691,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82892,6 +83704,13 @@ begin
          end;
          $1c:begin
           // amomaxu.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAXU,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -82910,6 +83729,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui32 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
            end;
           end;
@@ -82937,6 +83761,13 @@ begin
         case ((aInstruction shr 25) and $7c) shr 2 of
          $00:begin
           // amoadd.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOADD,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Add(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
@@ -82944,6 +83775,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -82952,6 +83788,13 @@ begin
          end;
          $01:begin
           // amoswap.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOSWAP,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
@@ -82959,6 +83802,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -82967,8 +83815,22 @@ begin
          end;
          $02:begin
           // lr.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLR,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,true);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+             if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+              fJustInTimeCompiler.RollbackLastState;
+             end;
+{$ifend}
+            end;
            fState.LRSC:=true;
            fState.LRSCCycle:=fState.Cycle;
            fState.LRSCAddress:=fState.Registers[rs1];
@@ -82982,6 +83844,13 @@ begin
          end;
          $03:begin
           // sc.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSC,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           // QEMU checks LRSC address match first, then memory translation.
           // We follow QEMU here for better compatibility, since other
           // approachs may lead to unnecessary page faults when the reservation
@@ -82997,6 +83866,11 @@ begin
               fState.Registers[rd]:=0;
              end;
              if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+              if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+               fJustInTimeCompiler.RollbackLastState;
+              end;
+{$ifend}
               RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
              end;
             end else begin
@@ -83016,6 +83890,13 @@ begin
          end;
          $04:begin
           // amoxor.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOXOR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseXor(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
@@ -83023,6 +83904,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -83046,6 +83932,13 @@ begin
          end;
          $08:begin
           // amoor.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOOR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseOr(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
@@ -83053,6 +83946,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -83085,6 +83983,13 @@ begin
 {$endif}
          $0c:begin
           // amoand.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOAND,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPInterlocked.ExchangeBitwiseAnd(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
@@ -83092,6 +83997,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -83100,6 +84010,13 @@ begin
          end;
          $10:begin
           // amomin.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMIN,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -83118,6 +84035,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -83126,6 +84048,13 @@ begin
          end;
          $14:begin
           // amomax.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAX,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -83144,6 +84073,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -83152,6 +84086,13 @@ begin
          end;
          $18:begin
           // amominu.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMINU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -83170,6 +84111,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
@@ -83178,6 +84124,13 @@ begin
          end;
          $1c:begin
           // amomaxu.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAXU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            repeat
@@ -83196,6 +84149,11 @@ begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
            if Ptr=@fState.Bounce.ui64 then begin
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
+            if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+             fJustInTimeCompiler.RollbackLastState;
+            end;
+{$ifend}
             RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
            end;
           end;
