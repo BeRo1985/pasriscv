@@ -8369,9 +8369,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                      fCompiling:Boolean;
                      fBlockEnds:Boolean;
-                     fDebugJITCounter:TPasRISCVUInt32; // DEBUG
-                     fDebugInstruction:TPasRISCVUInt32; // DEBUG
-                     fDebugDisassembler:TDisassembler; // DEBUG
+{$ifdef PasRISCVJustInTimeCompilerDebug}
+                     fDebugJITCounter:TPasRISCVUInt32;
+                     fDebugInstruction:TPasRISCVUInt32;
+                     fDebugDisassembler:TDisassembler;
+{$endif}
                      fStatTLBHits:TPasRISCVUInt64;
                      fStatTLBMisses:TPasRISCVUInt64;
                      fStatBlocksCompiled:TPasRISCVUInt64;
@@ -47181,30 +47183,47 @@ end;
 constructor TPasRISCV.THART.TJustInTimeCompiler.Create(const aHART:THART);
 var DirtyBitmapSize:TPasRISCVUInt32;
 begin
+
  inherited Create;
+
  fMachine:=aHART.fMachine;
+
  fHART:=aHART;
+
  fHARTMask:=fHART.fHARTMask;
+
  fEnabled:=false;
+
  fCompiling:=false;
+
  fBlockEnds:=false;
+
  fPCOffset:=0;
+
  fInstructionCount:=0;
+
  fLRUCounter:=0;
- fCodeBufferUsed:=0;
- fTemporaryCodeSize:=0;
+
  fLinkage:=TLinkage.Jmp;
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fLinkEntryCount:=0;
 {$endif}
+
  fSignalMask:=fHART.fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK);
+
  SetLength(fTemporaryCode,JIT_TEMPORARY_CODE_INITIAL_SIZE);
+ fTemporaryCodeSize:=0;
+
  FillChar(fJITTLB,SizeOf(fJITTLB),#0);
+
  FillChar(fIntRegInfos,SizeOf(fIntRegInfos),#0);
-{$ifdef PasRISCVJustInTimeCompilerFPU}
+
+ {$ifdef PasRISCVJustInTimeCompilerFPU}
  FillChar(fFPURegInfos,SizeOf(fFPURegInfos),#0);
 {$endif}
+
  fBlockMap:=TBlockMap.Create(0);
+
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fBlockLinks:=TBlockLinkMap.Create(-1);
  fBlockLinkPool:=nil;
@@ -47212,33 +47231,52 @@ begin
  fBlockLinkPoolCount:=0;
  fBlockLinkFreeList.Initialize;
 {$endif}
- fCodeBuffer:=AllocateExecutableMemory(JIT_CODE_BUFFER_SIZE);
+
  fCodeBufferSize:=JIT_CODE_BUFFER_SIZE;
+ fCodeBufferUsed:=0;
+ fCodeBuffer:=AllocateExecutableMemory(fCodeBufferSize);
+
  DirtyBitmapSize:=TPasRISCVUInt32(1) shl (BSRQWord((fHART.fMachine.fConfiguration.fMemorySize shr JIT_DIRTY_WORD_SHIFT) or 1)+1);
+
  fDirtyPageBitmapMask:=DirtyBitmapSize-1;
  SetLength(fDirtyPageBitmap,DirtyBitmapSize);
+
  FillChar(fDirtyPageBitmap[0],DirtyBitmapSize*SizeOf(TPasRISCVUInt32),#0);
  SetLength(fJITedPageBitmap,DirtyBitmapSize);
+
  FillChar(fJITedPageBitmap[0],DirtyBitmapSize*SizeOf(TPasRISCVUInt32),#0);
  fRAMHostToPhysOffset:=TPasRISCVPtrUInt(fHART.fMachine.fMemoryDevice.fBase)-TPasRISCVPtrUInt(fHART.fMachine.fMemoryDevice.fData);
- fDebugDisassembler:=TDisassembler.Create(fHART.fMachine); // DEBUG
+
+{$ifdef PasRISCVJustInTimeCompilerDebug}
+ fDebugDisassembler:=TDisassembler.Create(fHART.fMachine);
+{$endif}
+
 end;
 
 destructor TPasRISCV.THART.TJustInTimeCompiler.Destroy;
 begin
+
  ClearBlocks;
- FreeAndNil(fDebugDisassembler); // DEBUG
+
+{$ifdef PasRISCVJustInTimeCompilerDebug}
+ FreeAndNil(fDebugDisassembler);
+{$endif}
+
  if assigned(fCodeBuffer) then begin
   FreeExecutableMemory(fCodeBuffer,fCodeBufferSize);
   fCodeBuffer:=nil;
  end;
+
  fTemporaryCode:=nil;
+
  fDirtyPageBitmap:=nil;
  fJITedPageBitmap:=nil;
+
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fBlockLinkFreeList.Finalize;
  FreeAndNil(fBlockLinks);
 {$endif}
+
  FreeAndNil(fBlockMap);
  inherited Destroy;
 end;
@@ -47390,6 +47428,7 @@ var Key:TBlockMapKey;
     PoolIndex:TPasRISCVInt32;
 {$endif}
 begin
+
  if PageNeedsFlush(aPhysicalPC) then begin
   PageBase:=aPhysicalPC and not TPasRISCVUInt64($fff);
   Key.Mode:=aMode;
@@ -47408,15 +47447,19 @@ begin
   result:=0;
   exit;
  end;
+
  Key.PhysicalPC:=aPhysicalPC;
  Key.Mode:=aMode;
  Key.VirtualMode:=aVirtualMode;
  result:=fBlockMap.GetValue(Key);
+
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.ClearBlocks;
 begin
+
  fBlockMap.Clear;
+
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fBlockLinks.Clear;
  fBlockLinkPool:=nil;
@@ -47424,15 +47467,21 @@ begin
  fBlockLinkPoolCount:=0;
  fBlockLinkFreeList.Clear;
 {$endif}
+
  FlushJITTLB;
+
  if length(fDirtyPageBitmap)>0 then begin
   FillChar(fDirtyPageBitmap[0],length(fDirtyPageBitmap)*SizeOf(TPasRISCVUInt32),#0);
  end;
+
  if length(fJITedPageBitmap)>0 then begin
   FillChar(fJITedPageBitmap[0],length(fJITedPageBitmap)*SizeOf(TPasRISCVUInt32),#0);
  end;
+
  fCodeBufferUsed:=0;
+
  fHART.fState.JITSkipExecution:=false;
+
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fLinkEntryCount:=0;
 {$endif}
@@ -47495,20 +47544,25 @@ var Key:TBlockMapKey;
     SlotIndex:TPasRISCVInt32;
     NewCodePtr:TPasRISCVPtrUInt;
 begin
+
  Key.PhysicalPC:=aPhysPC;
  Key.Mode:=aMode;
  Key.VirtualMode:=aVirtualMode;
+
  if not fBlockLinks.TryGet(Key,PoolIndex) then begin
   exit;
  end;
+
  NewCodePtr:=fBlockMap.GetValue(Key);
  if NewCodePtr=0 then begin
   exit;
  end;
+
  for SlotIndex:=0 to fBlockLinkPoolCounts[PoolIndex]-1 do begin
   PatchJmp(Pointer(fBlockLinkPool[PoolIndex][SlotIndex]),TPasRISCVInt32((TPasRISCVPtrInt(NewCodePtr)-TPasRISCVPtrInt(fBlockLinkPool[PoolIndex][SlotIndex]))-5));
   inc(fStatLinksPatched);
  end;
+
 //fBlockLinkPool[PoolIndex]:=nil;
  fBlockLinkPoolCounts[PoolIndex]:=0;
  fBlockLinkFreeList.Enqueue(PoolIndex);
@@ -47539,22 +47593,26 @@ var GuestReg:TRegister;
     FPUReg:TFPURegister;
 {$endif}
 begin
- fHostRegMask:=DefaultHostRegMask;
- fABIReclaimMask:=ABIReclaimHostRegMask;
- fABIReclaimCount:=0;
+
  fLinkage:=TLinkage.Jmp;
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fLinkEntryCount:=0;
 {$endif}
  fPCOffset:=0;
  fInstructionCount:=0;
+
+ fABIReclaimMask:=ABIReclaimHostRegMask;
+ fABIReclaimCount:=0;
  fLRUCounter:=0;
+
+ fHostRegMask:=DefaultHostRegMask;
  for GuestReg:=Low(TRegister) to High(TRegister) do begin
   fIntRegInfos[GuestReg].HostReg:=REG_ILL;
   fIntRegInfos[GuestReg].LastUsed:=0;
   fIntRegInfos[GuestReg].Flags:=0;
   fIntRegInfos[GuestReg].AUIPCOffset:=0;
  end;
+
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  fFPURegMask:=DefaultFPURegMask;
  for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
@@ -47729,18 +47787,22 @@ var HART:THART;
     VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
+
  HART:=THART(aHART);
+
  // Page crossing check: cannot handle inline, fall back to interpreter
- if (aAlignment>1) and (((aVirtualAddress and PAGE_MASK)+aAlignment-1)>=PAGE_SIZE) then begin
+ if (aAlignment>1) and (((aVirtualAddress and PAGE_MASK)+(aAlignment-1))>=PAGE_SIZE) then begin
   result:=0;
   exit;
  end;
+
  // Do page walk to fill the data TLB
  if aTLBFieldOffset=TLB_W then begin
   HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[]);
  end else begin
   HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
  end;
+
  // If AddressTranslate raised an exception, clear it and bail out.
  // The interpreter will re-execute the instruction and handle the exception properly with correct PC.
  if HART.fState.ExceptionValue<>TExceptionValue.None then begin
@@ -47748,6 +47810,7 @@ begin
   result:=0;
   exit;
  end;
+
  // TLB should now be filled — read back the host address
  VPN:=aVirtualAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@HART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
@@ -47762,15 +47825,17 @@ begin
    exit;
   end;
  end;
- {$ifdef CombinedDirectAccessTLBCache}
+
+{$ifdef CombinedDirectAccessTLBCache}
  result:=TPasRISCVPtrUInt(DirectAccessTLBEntry^.RelativeMemory+aVirtualAddress);
- {$else}
+{$else}
  if aTLBFieldOffset=TLB_W then begin
   result:=TPasRISCVPtrUInt(DirectAccessTLBEntry^.RelativeMemoryWrite+aVirtualAddress);
  end else begin
   result:=TPasRISCVPtrUInt(DirectAccessTLBEntry^.RelativeMemoryRead+aVirtualAddress);
  end;
- {$endif}
+{$endif}
+
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.ReloadAllMappedIntRegs;
@@ -47800,15 +47865,18 @@ var GuestReg:TRegister;
     FPUReg:TFPURegister;
 {$endif}
 begin
- fHostRegMask:=DefaultHostRegMask;
+
  fABIReclaimMask:=ABIReclaimHostRegMask;
  fABIReclaimCount:=0;
  fLRUCounter:=0;
+
+ fHostRegMask:=DefaultHostRegMask;
  for GuestReg:=Low(TRegister) to High(TRegister) do begin
   fIntRegInfos[GuestReg].HostReg:=REG_ILL;
   fIntRegInfos[GuestReg].Flags:=0;
   fIntRegInfos[GuestReg].LastUsed:=0;
  end;
+
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  fFPURegMask:=DefaultFPURegMask;
  for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
@@ -47826,6 +47894,7 @@ var Mask:TPasRISCVUInt32;
     LRUReg:TRegister;
     GuestReg:TRegister;
 begin
+
  // Tier 1: Free caller-saved register from mask
  if fHostRegMask<>0 then begin
   // Find lowest set bit
@@ -47839,6 +47908,7 @@ begin
   result:=TPasRISCVUInt8(BitIndex);
   exit;
  end;
+
  // Tier 2: Reclaim callee-saved register (push it first)
  if fABIReclaimMask<>0 then begin
   Mask:=fABIReclaimMask;
@@ -47854,6 +47924,7 @@ begin
   result:=TPasRISCVUInt8(BitIndex);
   exit;
  end;
+
  // Tier 3: LRU eviction — find guest reg with oldest LastUsed
  LRUBest:=$ffffffff;
  LRUReg:=TRegister.x0;
@@ -47865,6 +47936,7 @@ begin
    end;
   end;
  end;
+
  if LRUReg<>TRegister.x0 then begin
   result:=fIntRegInfos[LRUReg].HostReg;
   FreeIntGuestReg(LRUReg);
@@ -47873,12 +47945,15 @@ begin
   // Should not happen — we always have at least some mapped regs
   result:=REG_ILL;
  end;
+
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.MapIntRegister(const aGuestReg:TRegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
 var HostReg:TPasRISCVUInt8;
 begin
+
  inc(fLRUCounter);
+
  // Already mapped?
  if fIntRegInfos[aGuestReg].HostReg<>REG_ILL then begin
   fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
@@ -47889,44 +47964,55 @@ begin
   result:=fIntRegInfos[aGuestReg].HostReg;
   exit;
  end;
+
  // Claim a host register
  HostReg:=ClaimHostReg;
  fIntRegInfos[aGuestReg].HostReg:=HostReg;
  fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
  fIntRegInfos[aGuestReg].Flags:=0;
+
  // x0 is always zero
  if aGuestReg=TRegister.x0 then begin
   EmitNativeZeroReg(HostReg);
   fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
  end else begin
+
   // If SRC, load from TState
   if (aFlags and REG_SRC)<>0 then begin
    EmitNativeLoad(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
    fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
   end;
+
  end;
+
  if (aFlags and REG_DST)<>0 then begin
   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
  end;
+
  result:=HostReg;
+
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.FreeIntGuestReg(const aGuestReg:TRegister);
 var HostReg:TPasRISCVUInt8;
 begin
+
  HostReg:=fIntRegInfos[aGuestReg].HostReg;
  if HostReg=REG_ILL then begin
   exit;
  end;
+
  // Save dirty register back to TState (unless x0)
  if (aGuestReg<>TRegister.x0) and ((fIntRegInfos[aGuestReg].Flags and REG_DIRTY)<>0) then begin
   EmitNativeStore(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
  end;
+
  // Release host register back to free mask
  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl HostReg);
  fIntRegInfos[aGuestReg].HostReg:=REG_ILL;
  fIntRegInfos[aGuestReg].Flags:=0;
+
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyIntRegs;
@@ -47950,6 +48036,7 @@ var Mask:TPasRISCVUInt32;
     LRUReg:TFPURegister;
     FPUReg:TFPURegister;
 begin
+
  // Tier 1: Free XMM from mask
  if fFPURegMask<>0 then begin
   Mask:=fFPURegMask;
@@ -47962,6 +48049,7 @@ begin
   result:=TPasRISCVUInt8(BitIndex);
   exit;
  end;
+
  // Tier 2: LRU eviction (no abireclaim for XMM)
  LRUBest:=$ffffffff;
  LRUReg:=TFPURegister.f0;
@@ -47973,6 +48061,7 @@ begin
    end;
   end;
  end;
+
  if LRUReg<>TFPURegister.f0 then begin
   result:=fFPURegInfos[LRUReg].HostReg;
   FreeFPUGuestReg(LRUReg);
@@ -47981,14 +48070,18 @@ begin
   result:=fFPURegInfos[TFPURegister.f0].HostReg;
   FreeFPUGuestReg(TFPURegister.f0);
  end;
+
  // FreeFPUGuestReg added the bit back to fFPURegMask — clear it since we're claiming it
  fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl result);
+
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.MapFPURegister(const aGuestReg:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
 var HostReg:TPasRISCVUInt8;
 begin
+
  inc(fLRUCounter);
+
  // Already mapped?
  if fFPURegInfos[aGuestReg].HostReg<>REG_ILL then begin
   fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
@@ -47998,37 +48091,46 @@ begin
   result:=fFPURegInfos[aGuestReg].HostReg;
   exit;
  end;
+
  // Claim an XMM register
  HostReg:=ClaimFPUReg;
  fFPURegInfos[aGuestReg].HostReg:=HostReg;
  fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
  fFPURegInfos[aGuestReg].Flags:=0;
+
  // If SRC, load from TState
  if (aFlags and REG_SRC)<>0 then begin
   EmitFPULoad(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
   fFPURegInfos[aGuestReg].Flags:=REG_LOADED;
  end;
+
  if (aFlags and REG_DST)<>0 then begin
   fFPURegInfos[aGuestReg].Flags:=fFPURegInfos[aGuestReg].Flags or REG_DIRTY;
  end;
+
  result:=HostReg;
+
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.FreeFPUGuestReg(const aGuestReg:TFPURegister);
 var HostReg:TPasRISCVUInt8;
 begin
+
  HostReg:=fFPURegInfos[aGuestReg].HostReg;
  if HostReg=REG_ILL then begin
   exit;
  end;
+
  // Save dirty register back to TState
  if (fFPURegInfos[aGuestReg].Flags and REG_DIRTY)<>0 then begin
   EmitFPUStore(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
  end;
+
  // Release XMM register back to free mask
  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl HostReg);
  fFPURegInfos[aGuestReg].HostReg:=REG_ILL;
  fFPURegInfos[aGuestReg].Flags:=0;
+
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyFPURegs;
@@ -84145,11 +84247,11 @@ begin
    end;
 {$ifend}
 
-{$ifdef PasRISCVJustInTimeCompiler}
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerDebug)}
    if assigned(fJustInTimeCompiler) then begin
     fJustInTimeCompiler.fDebugInstruction:=Instruction;
    end;
-{$endif}
+{$ifend}
 
 {$ifdef Zicfilp}
    inc(fState.PC,fExecuteInstructionMethod(Instruction));
