@@ -337,18 +337,14 @@ unit PasRISCV;
 {-$define PasRISCVJustInTimeCompilerShortBranch}
 {-$define PasRISCVJustInTimeCompilerStats}
 
-{$define PasRISCVJustInTimeCompilerSideExit}
-
 {$define PasRISCVJustInTimeCompilerZeroInstructionSize}
-
-{$ifdef cpux86_64}
- {$define PasRISCVJustInTimeCompilerNativeLinker}
- {$define PasRISCVJustInTimeCompilerBlockChaining}
-{$endif}
 
 {$ifdef PasRISCVJustInTimeCompiler}
  {$if defined(cpux86_64) or defined(cpuamd64) or defined(CPUX64)}
   {$define PasRISCVJustInTimeCompilerTargetX8664}
+  {$define PasRISCVJustInTimeCompilerNativeLinker}
+  {$define PasRISCVJustInTimeCompilerBlockChaining}
+  {$define PasRISCVJustInTimeCompilerSideExit}
  {$ifend}
  {$if defined(cpuaarch64) or defined(CPUAARCH64)}
   {$define PasRISCVJustInTimeCompilerTargetAArch64}
