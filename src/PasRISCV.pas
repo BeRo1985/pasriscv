@@ -8691,6 +8691,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      constructor Create(const aHART:THART); virtual;
                      destructor Destroy; override;
                      function EndTrace:Boolean;
+                     procedure Compile;
+                     procedure Discard;
                      procedure FlushAllBlocks;
                      procedure InvalidatePage(const aPhysicalAddress:TPasRISCVUInt64);
 
@@ -48284,6 +48286,16 @@ begin
 
 end;
 
+procedure TPasRISCV.THART.TJustInTimeCompiler.Compile;
+begin
+ fBlockEnds:=true;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.Discard;
+begin
+ fCompiling:=false;
+end;
+
 procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllBlocks;
 begin
  FlushJITTLB;
@@ -56813,6 +56825,15 @@ procedure TPasRISCV.THART.SetException(const aExceptionValue:TExceptionValue;
                                        const aExceptionData:TPasRISCVUInt64;
                                        const aExceptionPC:TPasRISCVUInt64);
 begin
+{$ifdef PasRISCVJustInTimeCompiler}
+ if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+  if fState.ExceptionValue in [TExceptionValue.InstructionPageFault..TExceptionValue.StorePageFault] then begin
+   fJustInTimeCompiler.Discard;
+  end else begin
+   fJustInTimeCompiler.Compile;
+  end;
+ end;
+{$endif}
  if not (assigned(fMachine.fOnCPUException) and fMachine.fOnCPUException(self,aExceptionValue,aExceptionData,aExceptionPC)) then begin
   fState.ExceptionValue:=aExceptionValue;
   fState.ExceptionData:=aExceptionData;
@@ -83577,6 +83598,12 @@ begin
    exit;
   end else if IRQs<>0 then begin
 
+{$ifdef PasRISCVJustInTimeCompiler}
+   if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+    fJustInTimeCompiler.Discard;
+   end;
+{$endif}
+
    PC:=fState.PC;
 
    InterruptValue:=TInterruptValue(TPasMPMath.BitScanReverse64(IRQs));
@@ -83803,6 +83830,16 @@ begin
   fState.PC:=fState.ExceptionPC;
   exit;
  end;
+
+{$ifdef PasRISCVJustInTimeCompiler}
+ if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
+  if fState.ExceptionValue in [TExceptionValue.InstructionPageFault..TExceptionValue.StorePageFault] then begin
+   fJustInTimeCompiler.Discard;
+  end else begin
+   fJustInTimeCompiler.Compile;
+  end;
+ end;
+{$endif}
 
  // Clear any pending LR/SC reservation on trap entry, as recommended by the RISC-V Privileged
  // Specification (Volume II, Section 3.1.6). While the spec uses "may" rather than "must",
