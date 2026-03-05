@@ -324,34 +324,37 @@ unit PasRISCV;
  {$if defined(cpux86_64)}
   {$define PasRISCVJustInTimeCompilerFPU}
   {$define PasRISCVJustInTimeCompilerFMA}
-  {$define PasRISCVJITUseRealFMA}
+  {$define PasRISCVJustInTimeCompilerUseRealFMA}
+  {-$define PasRISCVJustInTimeCompilerZbb}
+  {-$define PasRISCVJustInTimeCompilerZbs}
+  {-$define PasRISCVJustInTimeCompilerZba}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
 {$ifend}
 
-{-$define PasRISCVJITDebug}
-{-$define PasRISCVJITFlexibleBranch}
-{-$define PasRISCVJITShortBranch}
-{-$define PasRISCVJITStats}
+{-$define PasRISCVJustInTimeCompilerDebug}
+{-$define PasRISCVJustInTimeCompilerFlexibleBranch}
+{-$define PasRISCVJustInTimeCompilerShortBranch}
+{-$define PasRISCVJustInTimeCompilerStats}
 
-{$define PasRISCVJITSideExit}
+{$define PasRISCVJustInTimeCompilerSideExit}
 
-{$define PasRISCVJITZeroInstructionSize}
+{$define PasRISCVJustInTimeCompilerZeroInstructionSize}
 
 {$ifdef cpux86_64}
  {$define PasRISCVJustInTimeCompilerNativeLinker}
- {$define PasRISCVJITBlockChaining}
+ {$define PasRISCVJustInTimeCompilerBlockChaining}
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompiler}
  {$if defined(cpux86_64) or defined(cpuamd64) or defined(CPUX64)}
-  {$define PasRISCVJITTargetX8664}
+  {$define PasRISCVJustInTimeCompilerTargetX8664}
  {$ifend}
  {$if defined(cpuaarch64) or defined(CPUAARCH64)}
-  {$define PasRISCVJITTargetAArch64}
+  {$define PasRISCVJustInTimeCompilerTargetAArch64}
  {$ifend}
  {$if defined(cpuriscv64)}
-  {$define PasRISCVJITTargetRISCV64}
+  {$define PasRISCVJustInTimeCompilerTargetRISCV64}
  {$ifend}
 {$endif}
 
@@ -8088,7 +8091,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITBlockTLBPtr:Pointer; // = @fJustInTimeCompiler.fJITTLB[0], set once in THART.Create
                      JITHART:THART;
                      JITSkipExecution:TPasMPBool32;
-{$ifdef PasRISCVJITSideExit}
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
                      JITDataTLBFillPtr:Pointer;
                      JITScratch:TPasRISCVPtrUInt;
 {$endif}
@@ -8277,7 +8280,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            CC_AE=TPasRISCVUInt8($3);
                            CC_BE=TPasRISCVUInt8($6);
                            CC_A=TPasRISCVUInt8($7);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
                            BRANCH_NEW=TPasRISCVUInt32($ffffffff);
 {$endif}
                      type TLinkage=(None,Tail,Jmp);
@@ -8389,6 +8392,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fCurrentMode:TMode;
                      fBlockVirtualPC:TPasRISCVUInt64;
                      fLinkage:TLinkage;
+
                      // Offset helpers
                      function GuestIntRegOffset(const aGuestReg:TRegister):TPasRISCVInt32;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -8396,26 +8400,29 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                      function GuestPCOffset:TPasRISCVInt32;
                      function GuestCycleOffset:TPasRISCVInt32;
-                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; virtual; abstract;
                      function GuestRunStatePtrOffset:TPasRISCVInt32;
                      function GuestJITTLBPtrOffset:TPasRISCVInt32;
                      function GuestJITBlockTLBPtrOffset:TPasRISCVInt32;
                      function GuestJITHARTOffset:TPasRISCVInt32;
                      function GuestJITSkipExecutionOffset:TPasRISCVInt32;
-{$ifdef PasRISCVJITSideExit}
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
                      function GuestJITDataTLBFillPtrOffset:TPasRISCVInt32;
                      function GuestJITScratchOffset:TPasRISCVInt32;
                      class function JITDataTLBFillHelper(aHART:Pointer;aVirtualAddress:TPasRISCVUInt64;aTLBFieldOffset:TPasRISCVUInt64;aAlignment:TPasRISCVUInt64):TPasRISCVPtrUInt; static;
-                     procedure ReloadAllMappedIntRegs;
 {$endif}
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
+
                      // Register allocator
                      procedure ResetRegisterState;
                      function MapIntRegister(const aGuestReg:TRegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
                      function ClaimHostReg:TPasRISCVUInt8;
+                     procedure FreeHostReg(const aHostReg:TPasRISCVUInt8);
                      procedure FreeIntGuestReg(const aGuestReg:TRegister);
                      procedure SaveAllDirtyIntRegs;
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
+                     procedure ReloadAllMappedIntRegs;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      function MapFPURegister(const aGuestReg:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
                      function ClaimFPUReg:TPasRISCVUInt8;
@@ -8432,17 +8439,21 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitQWord(const aValue:TPasRISCVUInt64);
                      procedure EmitInt32(const aValue:TPasRISCVInt32);
                      procedure EmitBytes(const aData;const aSize:TPasRISCVSizeInt);
+
                      // Executable memory
                      function AllocateExecutableMemory(const aSize:TPasRISCVUInt64):Pointer;
                      procedure FreeExecutableMemory(const aPointer:Pointer;const aSize:TPasRISCVUInt64);
+
                      // Block cache
                      function FindBlockCodePtr(const aPhysicalPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean):TPasRISCVPtrUInt;
                      procedure ClearBlocks;
+
                      // Dirty page tracking
                      procedure MarkPageDirty(const aPhysicalAddress:TPasRISCVUInt64);
                      procedure MarkPageJITed(const aPhysicalAddress:TPasRISCVUInt64);
                      function PageNeedsFlush(const aPhysicalAddress:TPasRISCVUInt64):Boolean;
                      procedure FlushJITTLB;
+
                      // Block-to-block linking
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
                      procedure AddLinkEntry(const aDestPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aPatchPtr:TPasRISCVPtrUInt);
@@ -8450,11 +8461,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      class procedure PatchJmp(const aAddr:Pointer;const aOffset:TPasRISCVInt32); static;
                      class procedure PatchRET(const aAddr:Pointer); static;
 {$endif}
+
                      // EmitInit / EmitEnd (base-class)
                      procedure EmitInit; virtual;
                      procedure EmitEnd(const aLinkage:TLinkage); virtual;
                      procedure EmitBlockExit; virtual;
                      procedure FlushICache(const aAddr:Pointer;const aSize:TPasRISCVUInt32); virtual;
+                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; virtual; abstract;
+
                      // Backend hooks (virtual, override in target-specific subclass)
                      procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
                      procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
@@ -8471,6 +8485,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitRestoreRoundingMode; virtual; abstract;
 {$endif}
+
                      // Epilog helpers (virtual abstract — overridden per platform)
                      procedure EmitRET; virtual; abstract;
                      procedure EmitUpdatePC; virtual; abstract;
@@ -8479,7 +8494,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitJccRel32(const aCondition:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitJmpRel32(const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure PatchJmpRel32(const aJmpOffset:TPasRISCVUInt32); virtual; abstract;
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
                      function EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
                      function EmitBranchTarget(const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
 {$endif}
@@ -8498,8 +8513,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      function DefaultFPURegMask:TPasRISCVUInt32; virtual; abstract;
 {$endif}
-                     // Free host reg (return to fHostRegMask, no guest reg)
-                     procedure FreeHostReg(const aHostReg:TPasRISCVUInt8);
+
                      // Native emit helpers for intrinsics (virtual abstract, platform-specific)
                      procedure EmitNativeAdd(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeSub(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
@@ -8542,6 +8556,55 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeDivUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeRemW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeRemUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+{$ifdef PasRISCVJustInTimeCompilerZbb}
+                     // Zbb
+                     procedure EmitNativeCLZ(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCTZ(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCPOP(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCLZW(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCTZW(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCPOPW(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeMIN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeMINU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeMAX(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeMAXU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeANDN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeORN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeXNOR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeROL(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeROR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeROLW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeRORW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeRORI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeRORIW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSEXTB(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSEXTH(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeZEXTH(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeORCB(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbs}
+                     // Zbs
+                     procedure EmitNativeBSET(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeBCLR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeBEXT(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeBINV(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeBSETI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeBCLRI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeBEXTI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeBINVI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZba}
+                     // Zba
+                     procedure EmitNativeSH1ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSH2ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSH3ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSH1ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSH2ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSH3ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
+{$endif}
                      procedure EmitNativeSetReg32s(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64); virtual; abstract;
                      procedure EmitNativeLD(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
@@ -8555,7 +8618,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeSW(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeSH(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeSB(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
                      function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
                      function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
                      function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; virtual; abstract;
@@ -8632,6 +8695,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function EndTrace:Boolean;
                      procedure FlushAllBlocks;
                      procedure InvalidatePage(const aPhysicalAddress:TPasRISCVUInt64);
+
                      // Tracing methods
                      function TLBLookup:Boolean;
                      function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
@@ -8639,6 +8703,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; //inline;
                      function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+
                      // Integer intrinsics (virtual, override in target-specific subclass)
                      procedure IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
@@ -8681,6 +8746,52 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure IntrinsicDIVUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicREMW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicREMUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$ifdef PasRISCVJustInTimeCompilerZbb}
+                     procedure IntrinsicCLZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicCTZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicCPOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicCLZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicCTZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicCPOPW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicANDN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicORN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicXNOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicROL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicROR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicROLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicRORW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicRORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicRORIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSEXTB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicZEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicORCB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbs}
+                     procedure IntrinsicBSET(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBCLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBEXTR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBINV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBSETI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBCLRI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBEXTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicBINVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZba}
+                     procedure IntrinsicSH1ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSH2ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSH3ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSH1ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSH2ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSH3ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSLLIUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
                      procedure IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
@@ -8770,6 +8881,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
 {$endif}
 {$endif}
+                    public
                      property Enabled:Boolean read fEnabled write fEnabled;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      property FPUEnabled:Boolean read fFPUEnabled write fFPUEnabled;
@@ -8778,7 +8890,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      property BlockEnds:Boolean read fBlockEnds write fBlockEnds;
                      property BlockVirtualPC:TPasRISCVUInt64 read fBlockVirtualPC write fBlockVirtualPC;
                     end;
-{$ifdef PasRISCVJITTargetX8664}
+{$ifdef PasRISCVJustInTimeCompilerTargetX8664}
                    { TJustInTimeCompilerX8664 }
                    TJustInTimeCompilerX8664=class(TJustInTimeCompiler)
                     public
@@ -8987,22 +9099,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitMulHDivRem(const aOpcode:TPasRISCVUInt8;const aIsRem:Boolean;const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitDivuRemu(const aIsRem:Boolean;const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitDivRem(const aIsRem:Boolean;const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aIs64:Boolean);
-                     procedure EmitJccRel32(const aCondition:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
-                     procedure EmitJmpRel32(const aOffset:TPasRISCVInt32); override;
                      procedure EmitJmpRel8(const aOffset:TPasRISCVInt8);
                      procedure EmitJmpMemIndirect(const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
                      procedure EmitCallReg(const aReg:TPasRISCVUInt8);
-                     procedure EmitJmpReg(const aReg:TPasRISCVUInt8); override;
-                     procedure EmitRET; override;
-                     procedure PatchJmpRel32(const aJmpOffset:TPasRISCVUInt32); override;
-                     function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; override;
-{$ifdef PasRISCVJITFlexibleBranch}
-                     function EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
-                     function EmitBranchTarget(const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
                      function EmitBranch(const aCondition:TPasRISCVUInt8;const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
                      function EmitBranchImm(const aCondition:TPasRISCVUInt8;const aHostSrc1:TPasRISCVUInt8;const aImm:TPasRISCVInt32;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 {$endif}
+
                       // Base overrides
+                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
                      procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8); override;
@@ -9011,7 +9117,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
                      procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // SSE2 encoding helpers
                      procedure EmitSSE2Op(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
@@ -9026,26 +9131,39 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8); override;
                      procedure EmitRestoreRoundingMode; override;
 {$endif}
-                      // Inline TLB helpers
+
+                     // Inline TLB helpers
                      procedure EmitInlineTLBLookup(const aAddrReg:TPasRISCVUInt8;const aIsWrite:Boolean;const aTempReg1:TPasRISCVUInt8;const aTempReg2:TPasRISCVUInt8;out aSlowPathFixup:TPasRISCVUInt32);
-                      // Epilog overrides
+
+                     // Epilog overrides
+                     procedure EmitRET; override;
                      procedure EmitUpdatePC; override;
                      procedure EmitRestoreABIRegs; override;
                      procedure EmitRunStateCheck; override;
-                     procedure EmitDataTLBLookup(const aHostAddrReg:TPasRISCVUInt8;const aGuestBaseReg:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8); override;
+                     procedure EmitJccRel32(const aCondition:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
+                     procedure EmitJmpRel32(const aOffset:TPasRISCVInt32); override;
+                     procedure PatchJmpRel32(const aJmpOffset:TPasRISCVUInt32); override;
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+                     function EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+                     function EmitBranchTarget(const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
                      procedure LinkBlock; override;
                      procedure EmitLookupBlock; override;
                      procedure EmitPatchableRET; override;
                      procedure EmitTailBNEZ(const aOffset:TPasRISCVInt32); override;
 {$endif}
+                     procedure EmitDataTLBLookup(const aHostAddrReg:TPasRISCVUInt8;const aGuestBaseReg:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8); override;
+                     procedure EmitJmpReg(const aReg:TPasRISCVUInt8); override;
+                     function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; override;
                      function VMPtrReg:TPasRISCVUInt8; override;
                      function DefaultHostRegMask:TPasRISCVUInt32; override;
                      function ABIReclaimHostRegMask:TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      function DefaultFPURegMask:TPasRISCVUInt32; override;
 {$endif}
-                      // EmitNativeXxx overrides for intrinsics
+
+                     // EmitNativeXxx overrides for intrinsics
                      procedure EmitNativeSetReg32s(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVInt32); override;
                      procedure EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64); override;
                      procedure EmitNativeAdd(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
@@ -9100,7 +9218,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeSW(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
                      procedure EmitNativeSH(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
                      procedure EmitNativeSB(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
                      function EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
                      function EmitNativeBne(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
                      function EmitNativeBlt(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
@@ -9114,6 +9232,52 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function EmitNativeBge(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
                      function EmitNativeBltu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
                      function EmitNativeBgeu(const aHostSrc1,aHostSrc2:TPasRISCVUInt8):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel; override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbb}
+                     procedure EmitNativeCLZ(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeCTZ(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeCPOP(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeCLZW(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeCTZW(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeCPOPW(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeMIN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeMINU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeMAX(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeMAXU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeANDN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeORN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeXNOR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeROL(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeROR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeROLW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeRORW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeRORI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+                     procedure EmitNativeRORIW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+                     procedure EmitNativeSEXTB(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSEXTH(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeZEXTH(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeORCB(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbs}
+                     procedure EmitNativeBSET(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeBCLR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeBEXT(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeBINV(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeBSETI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+                     procedure EmitNativeBCLRI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+                     procedure EmitNativeBEXTI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+                     procedure EmitNativeBINVI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZba}
+                     procedure EmitNativeSH1ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeSH2ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeSH3ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeSH1ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeSH2ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeSH3ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // EmitNativeFxx overrides
@@ -9188,10 +9352,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      destructor Destroy; override;
                    end;
 {$endif}
-{$ifdef PasRISCVJITTargetAArch64}
+{$ifdef PasRISCVJustInTimeCompilerTargetAArch64}
                    { TJustInTimeCompilerAArch64 - stub }
                    TJustInTimeCompilerAArch64=class(TJustInTimeCompiler)
                     private
+                     procedure EmitBlockExit; override;
+                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
                      procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8); override;
@@ -9200,13 +9366,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
                      procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); override;
 {$endif}
-                     procedure EmitBlockExit; override;
                      function VMPtrReg:TPasRISCVUInt8; override;
                      function DefaultHostRegMask:TPasRISCVUInt32; override;
                      function ABIReclaimHostRegMask:TPasRISCVUInt32; override;
@@ -9218,10 +9382,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      destructor Destroy; override;
                    end;
 {$endif}
-{$ifdef PasRISCVJITTargetRISCV64}
+{$ifdef PasRISCVJustInTimeCompilerTargetRISCV64}
                    { TJustInTimeCompilerRISCV64 - stub }
                    TJustInTimeCompilerRISCV64=class(TJustInTimeCompiler)
                     private
+                     procedure EmitBlockExit; override;
+                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
                      procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8); override;
@@ -9230,13 +9396,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
                      procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-                     function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); override;
 {$endif}
-                     procedure EmitBlockExit; override;
                      function VMPtrReg:TPasRISCVUInt8; override;
                      function DefaultHostRegMask:TPasRISCVUInt32; override;
                      function ABIReclaimHostRegMask:TPasRISCVUInt32; override;
@@ -47425,7 +47589,7 @@ begin
  SavedFPURegInfos:=fFPURegInfos;
 {$endif}
 
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
  if fDebugJITCounter<60 then begin
   writeln('  EmitEnd: pcOff=',fPCOffset,' cnt=',fInstructionCount,' linkage=',ord(aLinkage));
  end;
@@ -47553,7 +47717,7 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITSkipExecution));
 end;
 
-{$ifdef PasRISCVJITSideExit}
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
 function TPasRISCV.THART.TJustInTimeCompiler.GuestJITDataTLBFillPtrOffset:TPasRISCVInt32;
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITDataTLBFillPtr));
@@ -47634,6 +47798,271 @@ begin
  result:=TPasRISCVInt32(SizeOf(TPasRISCVUInt64)); // Block field offset in TJITTLBEntry after VirtualPC
 end;
 
+procedure TPasRISCV.THART.TJustInTimeCompiler.ResetRegisterState;
+var GuestReg:TRegister;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+    FPUReg:TFPURegister;
+{$endif}
+begin
+ fHostRegMask:=DefaultHostRegMask;
+ fABIReclaimMask:=ABIReclaimHostRegMask;
+ fABIReclaimCount:=0;
+ fLRUCounter:=0;
+ for GuestReg:=Low(TRegister) to High(TRegister) do begin
+  fIntRegInfos[GuestReg].HostReg:=REG_ILL;
+  fIntRegInfos[GuestReg].Flags:=0;
+  fIntRegInfos[GuestReg].LastUsed:=0;
+ end;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ fFPURegMask:=DefaultFPURegMask;
+ for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
+  fFPURegInfos[FPUReg].HostReg:=REG_ILL;
+  fFPURegInfos[FPUReg].Flags:=0;
+  fFPURegInfos[FPUReg].LastUsed:=0;
+ end;
+{$endif}
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.ClaimHostReg:TPasRISCVUInt8;
+var Mask:TPasRISCVUInt32;
+    BitIndex:TPasRISCVUInt32;
+    LRUBest:TPasRISCVUInt32;
+    LRUReg:TRegister;
+    GuestReg:TRegister;
+begin
+ // Tier 1: Free caller-saved register from mask
+ if fHostRegMask<>0 then begin
+  // Find lowest set bit
+  Mask:=fHostRegMask;
+  BitIndex:=0;
+  while (Mask and 1)=0 do begin
+   Mask:=Mask shr 1;
+   inc(BitIndex);
+  end;
+  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl BitIndex);
+  result:=TPasRISCVUInt8(BitIndex);
+  exit;
+ end;
+ // Tier 2: Reclaim callee-saved register (push it first)
+ if fABIReclaimMask<>0 then begin
+  Mask:=fABIReclaimMask;
+  BitIndex:=0;
+  while (Mask and 1)=0 do begin
+   Mask:=Mask shr 1;
+   inc(BitIndex);
+  end;
+  fABIReclaimMask:=fABIReclaimMask and not (TPasRISCVUInt32(1) shl BitIndex);
+  EmitNativePush(TPasRISCVUInt8(BitIndex));
+  fABIReclaimOrder[fABIReclaimCount]:=TPasRISCVUInt8(BitIndex);
+  inc(fABIReclaimCount);
+  result:=TPasRISCVUInt8(BitIndex);
+  exit;
+ end;
+ // Tier 3: LRU eviction — find guest reg with oldest LastUsed
+ LRUBest:=$ffffffff;
+ LRUReg:=TRegister.x0;
+ for GuestReg:=TRegister.x1 to TRegister.x31 do begin
+  if fIntRegInfos[GuestReg].HostReg<>REG_ILL then begin
+   if (LRUBest=$ffffffff) or (fIntRegInfos[GuestReg].LastUsed<LRUBest) then begin
+    LRUBest:=fIntRegInfos[GuestReg].LastUsed;
+    LRUReg:=GuestReg;
+   end;
+  end;
+ end;
+ if LRUReg<>TRegister.x0 then begin
+  result:=fIntRegInfos[LRUReg].HostReg;
+  FreeIntGuestReg(LRUReg);
+  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl result);
+ end else begin
+  // Should not happen — we always have at least some mapped regs
+  result:=REG_ILL;
+ end;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.MapIntRegister(const aGuestReg:TRegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
+var HostReg:TPasRISCVUInt8;
+begin
+ inc(fLRUCounter);
+ // Already mapped?
+ if fIntRegInfos[aGuestReg].HostReg<>REG_ILL then begin
+  fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
+  if (aFlags and REG_DST)<>0 then begin
+   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
+   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
+  end;
+  result:=fIntRegInfos[aGuestReg].HostReg;
+  exit;
+ end;
+ // Claim a host register
+ HostReg:=ClaimHostReg;
+ fIntRegInfos[aGuestReg].HostReg:=HostReg;
+ fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
+ fIntRegInfos[aGuestReg].Flags:=0;
+ // x0 is always zero
+ if aGuestReg=TRegister.x0 then begin
+  EmitNativeZeroReg(HostReg);
+  fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
+ end else begin
+  // If SRC, load from TState
+  if (aFlags and REG_SRC)<>0 then begin
+   EmitNativeLoad(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
+   fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
+  end;
+ end;
+ if (aFlags and REG_DST)<>0 then begin
+  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
+  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
+ end;
+ result:=HostReg;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeIntGuestReg(const aGuestReg:TRegister);
+var HostReg:TPasRISCVUInt8;
+begin
+ HostReg:=fIntRegInfos[aGuestReg].HostReg;
+ if HostReg=REG_ILL then begin
+  exit;
+ end;
+ // Save dirty register back to TState (unless x0)
+ if (aGuestReg<>TRegister.x0) and ((fIntRegInfos[aGuestReg].Flags and REG_DIRTY)<>0) then begin
+  EmitNativeStore(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
+ end;
+ // Release host register back to free mask
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl HostReg);
+ fIntRegInfos[aGuestReg].HostReg:=REG_ILL;
+ fIntRegInfos[aGuestReg].Flags:=0;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyIntRegs;
+var GuestReg:TRegister;
+begin
+ for GuestReg:=TRegister.x1 to TRegister.x31 do begin
+  if (fIntRegInfos[GuestReg].HostReg<>REG_ILL) and
+     ((fIntRegInfos[GuestReg].Flags and REG_DIRTY)<>0) then begin
+   EmitNativeStore(fIntRegInfos[GuestReg].HostReg,VMPtrReg,GuestIntRegOffset(GuestReg),true);
+   // Clear dirty flag but keep mapping alive
+   fIntRegInfos[GuestReg].Flags:=fIntRegInfos[GuestReg].Flags and not REG_DIRTY;
+  end;
+ end;
+end;
+
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+function TPasRISCV.THART.TJustInTimeCompiler.ClaimFPUReg:TPasRISCVUInt8;
+var Mask:TPasRISCVUInt32;
+    BitIndex:TPasRISCVUInt32;
+    LRUBest:TPasRISCVUInt32;
+    LRUReg:TFPURegister;
+    FPUReg:TFPURegister;
+begin
+ // Tier 1: Free XMM from mask
+ if fFPURegMask<>0 then begin
+  Mask:=fFPURegMask;
+  BitIndex:=0;
+  while (Mask and 1)=0 do begin
+   Mask:=Mask shr 1;
+   inc(BitIndex);
+  end;
+  fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl BitIndex);
+  result:=TPasRISCVUInt8(BitIndex);
+  exit;
+ end;
+ // Tier 2: LRU eviction (no abireclaim for XMM)
+ LRUBest:=$ffffffff;
+ LRUReg:=TFPURegister.f0;
+ for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
+   if (LRUBest=$ffffffff) or (fFPURegInfos[FPUReg].LastUsed<LRUBest) then begin
+    LRUBest:=fFPURegInfos[FPUReg].LastUsed;
+    LRUReg:=FPUReg;
+   end;
+  end;
+ end;
+ if LRUReg<>TFPURegister.f0 then begin
+  result:=fFPURegInfos[LRUReg].HostReg;
+  FreeFPUGuestReg(LRUReg);
+ end else begin
+  // Fallback: evict f0
+  result:=fFPURegInfos[TFPURegister.f0].HostReg;
+  FreeFPUGuestReg(TFPURegister.f0);
+ end;
+ // FreeFPUGuestReg added the bit back to fFPURegMask — clear it since we're claiming it
+ fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl result);
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.MapFPURegister(const aGuestReg:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
+var HostReg:TPasRISCVUInt8;
+begin
+ inc(fLRUCounter);
+ // Already mapped?
+ if fFPURegInfos[aGuestReg].HostReg<>REG_ILL then begin
+  fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
+  if (aFlags and REG_DST)<>0 then begin
+   fFPURegInfos[aGuestReg].Flags:=fFPURegInfos[aGuestReg].Flags or REG_DIRTY;
+  end;
+  result:=fFPURegInfos[aGuestReg].HostReg;
+  exit;
+ end;
+ // Claim an XMM register
+ HostReg:=ClaimFPUReg;
+ fFPURegInfos[aGuestReg].HostReg:=HostReg;
+ fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
+ fFPURegInfos[aGuestReg].Flags:=0;
+ // If SRC, load from TState
+ if (aFlags and REG_SRC)<>0 then begin
+  EmitFPULoad(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
+  fFPURegInfos[aGuestReg].Flags:=REG_LOADED;
+ end;
+ if (aFlags and REG_DST)<>0 then begin
+  fFPURegInfos[aGuestReg].Flags:=fFPURegInfos[aGuestReg].Flags or REG_DIRTY;
+ end;
+ result:=HostReg;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeFPUGuestReg(const aGuestReg:TFPURegister);
+var HostReg:TPasRISCVUInt8;
+begin
+ HostReg:=fFPURegInfos[aGuestReg].HostReg;
+ if HostReg=REG_ILL then begin
+  exit;
+ end;
+ // Save dirty register back to TState
+ if (fFPURegInfos[aGuestReg].Flags and REG_DIRTY)<>0 then begin
+  EmitFPUStore(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
+ end;
+ // Release XMM register back to free mask
+ fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl HostReg);
+ fFPURegInfos[aGuestReg].HostReg:=REG_ILL;
+ fFPURegInfos[aGuestReg].Flags:=0;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyFPURegs;
+var FPUReg:TFPURegister;
+begin
+ for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if (fFPURegInfos[FPUReg].HostReg<>REG_ILL) and
+     ((fFPURegInfos[FPUReg].Flags and REG_DIRTY)<>0) then begin
+   EmitFPUStore(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
+   fFPURegInfos[FPUReg].Flags:=fFPURegInfos[FPUReg].Flags and not REG_DIRTY;
+  end;
+ end;
+end;
+
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllFPURegs;
+var FPUReg:TFPURegister;
+begin
+ SaveAllDirtyFPURegs;
+ for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
+   fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl fFPURegInfos[FPUReg].HostReg);
+   fFPURegInfos[FPUReg].HostReg:=REG_ILL;
+   fFPURegInfos[FPUReg].Flags:=0;
+   fFPURegInfos[FPUReg].LastUsed:=0;
+  end;
+ end;
+end;
+{$endif}
+
 function TPasRISCV.THART.TJustInTimeCompiler.EndTrace:Boolean;
 var CodeDest:Pointer;
     TLBIndex:TPasRISCVUInt32;
@@ -47651,7 +48080,7 @@ begin
  end;
 
  // Emit final block epilog
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
  if fDebugJITCounter<60 then begin
   writeln('  ENDTRACE: VPC=',LowerCase(IntToHex(fBlockVirtualPC,16)),' pcOff=',fPCOffset,' cnt=',fInstructionCount,' sz=',fTemporaryCodeSize);
  end;
@@ -47779,7 +48208,7 @@ var VirtualPC:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     BlockCallback:TBlockCallback;
     CodePtr:TPasRISCVPtrUInt;
-{$ifdef PasRISCVJITBlockChaining}
+{$ifdef PasRISCVJustInTimeCompilerBlockChaining}
     ChainIndex:TPasRISCVUInt32;
     LastCycles:TPasRISCVUInt64;
 {$endif}
@@ -47802,7 +48231,7 @@ begin
  if JITTLBEntry^.VirtualPC=VirtualPC then begin
   BlockCallback:=JITTLBEntry^.Block;
   if assigned(BlockCallback) then begin
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
    if fDebugJITCounter<40 then begin
     SavedPC:=fHART.fState.PC;
     SavedCycle:=fHART.fState.Cycle;
@@ -47812,12 +48241,12 @@ begin
    end;
 {$endif}
 // dec(fHART.fState.Cycle);
-{$ifdef PasRISCVJITBlockChaining}
+{$ifdef PasRISCVJustInTimeCompilerBlockChaining}
    LastCycles:=fHART.fState.Cycle;
 {$endif}
    BlockCallback(@fHART.fState);
    inc(fStatTLBHits);
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
    if fDebugJITCounter<40 then begin
     write('JIT FAST PC=',LowerCase(IntToHex(SavedPC,16)),'->',LowerCase(IntToHex(fHART.fState.PC,16)));
     write(' cy+',fHART.fState.Cycle-SavedCycle);
@@ -47830,7 +48259,7 @@ begin
     inc(fDebugJITCounter);
    end;
 {$endif}
-{$ifdef PasRISCVJITBlockChaining}
+{$ifdef PasRISCVJustInTimeCompilerBlockChaining}
    // JTLB-based soft block chaining: after a compiled block returns, immediately check the JTLB for
    // up to 10 consecutive successors and execute them directly, bypassing the main dispatch loop.
    // The chain is aborted early if the machine run state changes (e.g. interrupt or halt) or if the
@@ -47869,7 +48298,7 @@ begin
   JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
   JITTLBEntry^.VirtualPC:=VirtualPC;
   JITTLBEntry^.Block:=TBlockCallback(Pointer(CodePtr));
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
   if fDebugJITCounter<40 then begin
    SavedPC:=fHART.fState.PC;
    SavedCycle:=fHART.fState.Cycle;
@@ -47880,7 +48309,7 @@ begin
 {$endif}
 //dec(fHART.fState.Cycle);
   TBlockCallback(Pointer(CodePtr))(@fHART.fState);
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
   if fDebugJITCounter<40 then begin
    write('JIT SLOW PC=',LowerCase(IntToHex(SavedPC,16)),'->',LowerCase(IntToHex(fHART.fState.PC,16)));
    write(' cy+',fHART.fState.Cycle-SavedCycle);
@@ -47898,7 +48327,7 @@ begin
  end;
 
  // Miss — start new trace
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
  if fDebugJITCounter<40 then begin
   writeln('JIT MISS: PC=',LowerCase(IntToHex(VirtPC,16)),' PhysPC=',LowerCase(IntToHex(PhysPC,16)));
   inc(fDebugJITCounter);
@@ -47930,13 +48359,13 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
- {$ifndef PasRISCVJITZeroInstructionSize}
+ {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
  {$endif}
   result:=true;
  end else begin
   if fCompiling then begin
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
    if fDebugJITCounter<60 then begin
     writeln('  COMPILE @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
@@ -47961,14 +48390,14 @@ begin
   if PC=fHART.fState.PC then begin
    fHART.fState.JITSkipExecution:=true;
   end;
- {$ifndef PasRISCVJITZeroInstructionSize}
+ {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
  {$endif}
   result:=true;
  end else begin
   fHART.fState.JITSkipExecution:=false;
   if fCompiling then begin
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
    if fDebugJITCounter<60 then begin
     writeln('  COMPILE LDST @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
@@ -47988,13 +48417,13 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
- {$ifndef PasRISCVJITZeroInstructionSize}
+ {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
  {$endif}
   result:=true;
  end else begin
   if fCompiling then begin
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
    if fDebugJITCounter<60 then begin
     writeln('  COMPILE JAL @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
@@ -48014,7 +48443,7 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  if fCompiling then begin
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
   if fDebugJITCounter<60 then begin
    writeln('  COMPILE JALR @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
   end;
@@ -48032,13 +48461,13 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
- {$ifndef PasRISCVJITZeroInstructionSize}
+ {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
  {$endif}
   result:=true;
  end else begin
   if fCompiling then begin
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
    if fDebugJITCounter<60 then begin
     writeln('  COMPILE BRANCH @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
@@ -48687,6 +49116,616 @@ begin
  EmitNativeRemUW(HostRD,HostRS1,HostRS2);
 end;
 
+{$ifdef PasRISCVJustInTimeCompilerZbb}
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeCLZ(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeCTZ(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeCPOP(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeCLZW(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeCTZW(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOPW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeCPOPW(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeMIN(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeMINU(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeMAX(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeMAXU(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicANDN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeANDN(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeORN(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXNOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeXNOR(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeROL(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeROR(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeROLW(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeRORW(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeRORI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeRORIW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSEXTB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSEXTB(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSEXTH(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicZEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeZEXTH(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeREV8(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORCB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeORCB(HostRD,HostRS1);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZbs}
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBSET(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBSET(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBCLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBCLR(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEXTR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBEXT(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBINV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBINV(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBSETI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBSETI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBCLRI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBCLRI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEXTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBEXTI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBINVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeBINVI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZba}
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH1ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSH1ADD(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH2ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSH2ADD(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH3ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSH3ADD(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH1ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSH1ADDUW(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH2ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSH2ADDUW(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH3ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSH3ADDUW(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeADDUW(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLIUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapIntRegister(RS1,REG_SRC);
+ HostRD:=MapIntRegister(RD,REG_DST);
+ EmitNativeSLLIUW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+end;
+{$endif}
+
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
@@ -48781,7 +49820,7 @@ begin
  RS2:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostRS2:=MapIntRegister(RS2,REG_SRC);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
  EmitNativeBeq(HostRS1,HostRS2,TakenLabel,true);
@@ -48801,7 +49840,7 @@ begin
  RS2:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostRS2:=MapIntRegister(RS2,REG_SRC);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
  EmitNativeBne(HostRS1,HostRS2,TakenLabel,true);
@@ -48821,7 +49860,7 @@ begin
  RS2:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostRS2:=MapIntRegister(RS2,REG_SRC);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
  EmitNativeBlt(HostRS1,HostRS2,TakenLabel,true);
@@ -48841,7 +49880,7 @@ begin
  RS2:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostRS2:=MapIntRegister(RS2,REG_SRC);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
  EmitNativeBge(HostRS1,HostRS2,TakenLabel,true);
@@ -48861,7 +49900,7 @@ begin
  RS2:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostRS2:=MapIntRegister(RS2,REG_SRC);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
  EmitNativeBltu(HostRS1,HostRS2,TakenLabel,true);
@@ -48881,7 +49920,7 @@ begin
  RS2:=TRegister(aParameter1);
  HostRS1:=MapIntRegister(RS1,REG_SRC);
  HostRS2:=MapIntRegister(RS2,REG_SRC);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
  EmitNativeBgeu(HostRS1,HostRS2,TakenLabel,true);
@@ -50133,274 +51172,9 @@ begin
 end;
 {$endif}
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.ResetRegisterState;
-var GuestReg:TRegister;
-{$ifdef PasRISCVJustInTimeCompilerFPU}
-    FPUReg:TFPURegister;
-{$endif}
-begin
- fHostRegMask:=DefaultHostRegMask;
- fABIReclaimMask:=ABIReclaimHostRegMask;
- fABIReclaimCount:=0;
- fLRUCounter:=0;
- for GuestReg:=Low(TRegister) to High(TRegister) do begin
-  fIntRegInfos[GuestReg].HostReg:=REG_ILL;
-  fIntRegInfos[GuestReg].Flags:=0;
-  fIntRegInfos[GuestReg].LastUsed:=0;
- end;
-{$ifdef PasRISCVJustInTimeCompilerFPU}
- fFPURegMask:=DefaultFPURegMask;
- for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
-  fFPURegInfos[FPUReg].HostReg:=REG_ILL;
-  fFPURegInfos[FPUReg].Flags:=0;
-  fFPURegInfos[FPUReg].LastUsed:=0;
- end;
-{$endif}
-end;
-
-function TPasRISCV.THART.TJustInTimeCompiler.ClaimHostReg:TPasRISCVUInt8;
-var Mask:TPasRISCVUInt32;
-    BitIndex:TPasRISCVUInt32;
-    LRUBest:TPasRISCVUInt32;
-    LRUReg:TRegister;
-    GuestReg:TRegister;
-begin
- // Tier 1: Free caller-saved register from mask
- if fHostRegMask<>0 then begin
-  // Find lowest set bit
-  Mask:=fHostRegMask;
-  BitIndex:=0;
-  while (Mask and 1)=0 do begin
-   Mask:=Mask shr 1;
-   inc(BitIndex);
-  end;
-  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl BitIndex);
-  result:=TPasRISCVUInt8(BitIndex);
-  exit;
- end;
- // Tier 2: Reclaim callee-saved register (push it first)
- if fABIReclaimMask<>0 then begin
-  Mask:=fABIReclaimMask;
-  BitIndex:=0;
-  while (Mask and 1)=0 do begin
-   Mask:=Mask shr 1;
-   inc(BitIndex);
-  end;
-  fABIReclaimMask:=fABIReclaimMask and not (TPasRISCVUInt32(1) shl BitIndex);
-  EmitNativePush(TPasRISCVUInt8(BitIndex));
-  fABIReclaimOrder[fABIReclaimCount]:=TPasRISCVUInt8(BitIndex);
-  inc(fABIReclaimCount);
-  result:=TPasRISCVUInt8(BitIndex);
-  exit;
- end;
- // Tier 3: LRU eviction — find guest reg with oldest LastUsed
- LRUBest:=$ffffffff;
- LRUReg:=TRegister.x0;
- for GuestReg:=TRegister.x1 to TRegister.x31 do begin
-  if fIntRegInfos[GuestReg].HostReg<>REG_ILL then begin
-   if (LRUBest=$ffffffff) or (fIntRegInfos[GuestReg].LastUsed<LRUBest) then begin
-    LRUBest:=fIntRegInfos[GuestReg].LastUsed;
-    LRUReg:=GuestReg;
-   end;
-  end;
- end;
- if LRUReg<>TRegister.x0 then begin
-  result:=fIntRegInfos[LRUReg].HostReg;
-  FreeIntGuestReg(LRUReg);
-  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl result);
- end else begin
-  // Should not happen — we always have at least some mapped regs
-  result:=REG_ILL;
- end;
-end;
-
-function TPasRISCV.THART.TJustInTimeCompiler.MapIntRegister(const aGuestReg:TRegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
-var HostReg:TPasRISCVUInt8;
-begin
- inc(fLRUCounter);
- // Already mapped?
- if fIntRegInfos[aGuestReg].HostReg<>REG_ILL then begin
-  fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
-  if (aFlags and REG_DST)<>0 then begin
-   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
-   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
-  end;
-  result:=fIntRegInfos[aGuestReg].HostReg;
-  exit;
- end;
- // Claim a host register
- HostReg:=ClaimHostReg;
- fIntRegInfos[aGuestReg].HostReg:=HostReg;
- fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
- fIntRegInfos[aGuestReg].Flags:=0;
- // x0 is always zero
- if aGuestReg=TRegister.x0 then begin
-  EmitNativeZeroReg(HostReg);
-  fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
- end else begin
-  // If SRC, load from TState
-  if (aFlags and REG_SRC)<>0 then begin
-   EmitNativeLoad(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
-   fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
-  end;
- end;
- if (aFlags and REG_DST)<>0 then begin
-  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
-  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
- end;
- result:=HostReg;
-end;
-
-procedure TPasRISCV.THART.TJustInTimeCompiler.FreeIntGuestReg(const aGuestReg:TRegister);
-var HostReg:TPasRISCVUInt8;
-begin
- HostReg:=fIntRegInfos[aGuestReg].HostReg;
- if HostReg=REG_ILL then begin
-  exit;
- end;
- // Save dirty register back to TState (unless x0)
- if (aGuestReg<>TRegister.x0) and ((fIntRegInfos[aGuestReg].Flags and REG_DIRTY)<>0) then begin
-  EmitNativeStore(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
- end;
- // Release host register back to free mask
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl HostReg);
- fIntRegInfos[aGuestReg].HostReg:=REG_ILL;
- fIntRegInfos[aGuestReg].Flags:=0;
-end;
-
-procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyIntRegs;
-var GuestReg:TRegister;
-begin
- for GuestReg:=TRegister.x1 to TRegister.x31 do begin
-  if (fIntRegInfos[GuestReg].HostReg<>REG_ILL) and
-     ((fIntRegInfos[GuestReg].Flags and REG_DIRTY)<>0) then begin
-   EmitNativeStore(fIntRegInfos[GuestReg].HostReg,VMPtrReg,GuestIntRegOffset(GuestReg),true);
-   // Clear dirty flag but keep mapping alive
-   fIntRegInfos[GuestReg].Flags:=fIntRegInfos[GuestReg].Flags and not REG_DIRTY;
-  end;
- end;
-end;
-
-{$ifdef PasRISCVJustInTimeCompilerFPU}
-function TPasRISCV.THART.TJustInTimeCompiler.ClaimFPUReg:TPasRISCVUInt8;
-var Mask:TPasRISCVUInt32;
-    BitIndex:TPasRISCVUInt32;
-    LRUBest:TPasRISCVUInt32;
-    LRUReg:TFPURegister;
-    FPUReg:TFPURegister;
-begin
- // Tier 1: Free XMM from mask
- if fFPURegMask<>0 then begin
-  Mask:=fFPURegMask;
-  BitIndex:=0;
-  while (Mask and 1)=0 do begin
-   Mask:=Mask shr 1;
-   inc(BitIndex);
-  end;
-  fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl BitIndex);
-  result:=TPasRISCVUInt8(BitIndex);
-  exit;
- end;
- // Tier 2: LRU eviction (no abireclaim for XMM)
- LRUBest:=$ffffffff;
- LRUReg:=TFPURegister.f0;
- for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
-  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
-   if (LRUBest=$ffffffff) or (fFPURegInfos[FPUReg].LastUsed<LRUBest) then begin
-    LRUBest:=fFPURegInfos[FPUReg].LastUsed;
-    LRUReg:=FPUReg;
-   end;
-  end;
- end;
- if LRUReg<>TFPURegister.f0 then begin
-  result:=fFPURegInfos[LRUReg].HostReg;
-  FreeFPUGuestReg(LRUReg);
- end else begin
-  // Fallback: evict f0
-  result:=fFPURegInfos[TFPURegister.f0].HostReg;
-  FreeFPUGuestReg(TFPURegister.f0);
- end;
- // FreeFPUGuestReg added the bit back to fFPURegMask — clear it since we're claiming it
- fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl result);
-end;
-
-function TPasRISCV.THART.TJustInTimeCompiler.MapFPURegister(const aGuestReg:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
-var HostReg:TPasRISCVUInt8;
-begin
- inc(fLRUCounter);
- // Already mapped?
- if fFPURegInfos[aGuestReg].HostReg<>REG_ILL then begin
-  fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
-  if (aFlags and REG_DST)<>0 then begin
-   fFPURegInfos[aGuestReg].Flags:=fFPURegInfos[aGuestReg].Flags or REG_DIRTY;
-  end;
-  result:=fFPURegInfos[aGuestReg].HostReg;
-  exit;
- end;
- // Claim an XMM register
- HostReg:=ClaimFPUReg;
- fFPURegInfos[aGuestReg].HostReg:=HostReg;
- fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
- fFPURegInfos[aGuestReg].Flags:=0;
- // If SRC, load from TState
- if (aFlags and REG_SRC)<>0 then begin
-  EmitFPULoad(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
-  fFPURegInfos[aGuestReg].Flags:=REG_LOADED;
- end;
- if (aFlags and REG_DST)<>0 then begin
-  fFPURegInfos[aGuestReg].Flags:=fFPURegInfos[aGuestReg].Flags or REG_DIRTY;
- end;
- result:=HostReg;
-end;
-
-procedure TPasRISCV.THART.TJustInTimeCompiler.FreeFPUGuestReg(const aGuestReg:TFPURegister);
-var HostReg:TPasRISCVUInt8;
-begin
- HostReg:=fFPURegInfos[aGuestReg].HostReg;
- if HostReg=REG_ILL then begin
-  exit;
- end;
- // Save dirty register back to TState
- if (fFPURegInfos[aGuestReg].Flags and REG_DIRTY)<>0 then begin
-  EmitFPUStore(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
- end;
- // Release XMM register back to free mask
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl HostReg);
- fFPURegInfos[aGuestReg].HostReg:=REG_ILL;
- fFPURegInfos[aGuestReg].Flags:=0;
-end;
-
-procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyFPURegs;
-var FPUReg:TFPURegister;
-begin
- for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
-  if (fFPURegInfos[FPUReg].HostReg<>REG_ILL) and
-     ((fFPURegInfos[FPUReg].Flags and REG_DIRTY)<>0) then begin
-   EmitFPUStore(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
-   fFPURegInfos[FPUReg].Flags:=fFPURegInfos[FPUReg].Flags and not REG_DIRTY;
-  end;
- end;
-end;
-
-{$ifdef PasRISCVJITFPUFlushAfterEachOp}
-procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllFPURegs;
-var FPUReg:TFPURegister;
-begin
- SaveAllDirtyFPURegs;
- for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
-  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
-   fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl fFPURegInfos[FPUReg].HostReg);
-   fFPURegInfos[FPUReg].HostReg:=REG_ILL;
-   fFPURegInfos[FPUReg].Flags:=0;
-   fFPURegInfos[FPUReg].LastUsed:=0;
-  end;
- end;
-end;
 {$endif}
 
-{$endif}
-
-{$if defined(PasRISCVJITTargetX8664)}
+{$if defined(PasRISCVJustInTimeCompilerTargetX8664)}
 
 { TJustInTimeCompilerX8664 }
 
@@ -51115,10 +51889,10 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDivuRemu(const aIsRem:Boolean;const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aIs64:Boolean);
-var DivZeroFixup,DoneFixup:{$ifdef PasRISCVJITFlexibleBranch}TBranchLabel{$else}TPasRISCVUInt32{$endif};
+var DivZeroFixup,DoneFixup:{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}TBranchLabel{$else}TPasRISCVUInt32{$endif};
 begin
  EmitImmOp(ALU_CMP,aHostSrc2,0,aIs64);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  DivZeroFixup:=EmitBranchEntry(CC_NE,BRANCH_NEW);
 {$else}
  EmitJccRel32(CC_NE,0);
@@ -51133,7 +51907,7 @@ begin
  end;
  EmitJmpRel32(0);
  DoneFixup:=fTemporaryCodeSize-4;
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  EmitBranchTarget(DivZeroFixup);
 {$else}
  PatchJmpRel32(DivZeroFixup);
@@ -51143,7 +51917,7 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDivRem(const aIsRem:Boolean;const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aIs64:Boolean);
-var OverflowFixup1,OverflowFixup2,DivZeroFixup:{$ifdef PasRISCVJITFlexibleBranch}TBranchLabel{$else}TPasRISCVUInt32{$endif};
+var OverflowFixup1,OverflowFixup2,DivZeroFixup:{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}TBranchLabel{$else}TPasRISCVUInt32{$endif};
     DoneFixup1,DoneFixup2:TPasRISCVUInt32;
 begin
  if aIs64 then begin
@@ -51154,14 +51928,14 @@ begin
  end else begin
   EmitImmOp(ALU_CMP,aHostSrc1,TPasRISCVInt32($80000000),false);
  end;
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  OverflowFixup1:=EmitBranchEntry(CC_NE,BRANCH_NEW);
 {$else}
  EmitJccRel32(CC_NE,0);
  OverflowFixup1:=fTemporaryCodeSize-4;
 {$endif}
  EmitImmOp(ALU_CMP,aHostSrc2,-1,aIs64);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  OverflowFixup2:=EmitBranchEntry(CC_NE,BRANCH_NEW);
 {$else}
  EmitJccRel32(CC_NE,0);
@@ -51178,7 +51952,7 @@ begin
  end;
  EmitJmpRel32(0);
  DoneFixup1:=fTemporaryCodeSize-4;
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  EmitBranchTarget(OverflowFixup1);
  EmitBranchTarget(OverflowFixup2);
 {$else}
@@ -51186,7 +51960,7 @@ begin
  PatchJmpRel32(OverflowFixup2);
 {$endif}
  EmitImmOp(ALU_CMP,aHostSrc2,0,aIs64);
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  DivZeroFixup:=EmitBranchEntry(CC_NE,BRANCH_NEW);
 {$else}
  EmitJccRel32(CC_NE,0);
@@ -51201,7 +51975,7 @@ begin
  end;
  EmitJmpRel32(0);
  DoneFixup2:=fTemporaryCodeSize-4;
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  EmitBranchTarget(DivZeroFixup);
 {$else}
  PatchJmpRel32(DivZeroFixup);
@@ -51287,14 +52061,14 @@ begin
  result:=fTemporaryCodeSize;
 end;
 
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
 function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchEntry(const aCondition:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
-{$ifdef PasRISCVJITShortBranch}
+{$ifdef PasRISCVJustInTimeCompilerShortBranch}
 var Offset:TPasRISCVInt32;
 {$endif}
 begin
  if aHandle=BRANCH_NEW then begin
-{$ifdef PasRISCVJITShortBranch}
+{$ifdef PasRISCVJustInTimeCompilerShortBranch}
   result:=fTemporaryCodeSize;
   EmitByte(X86_JB+(aCondition-CC_B));
   EmitByte($fe);
@@ -51303,7 +52077,7 @@ begin
   result:=fTemporaryCodeSize;
 {$endif}
  end else begin
-{$ifdef PasRISCVJITShortBranch}
+{$ifdef PasRISCVJustInTimeCompilerShortBranch}
   Offset:=TPasRISCVInt32(aHandle)-TPasRISCVInt32(fTemporaryCodeSize)-2;
   if (Offset>=Low(TPasRISCVInt8)) and (Offset<=High(TPasRISCVInt8)) then begin
    EmitByte($70+aCondition);
@@ -51321,14 +52095,14 @@ begin
 end;
 
 function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBranchTarget(const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
-{$ifdef PasRISCVJITShortBranch}
+{$ifdef PasRISCVJustInTimeCompilerShortBranch}
 var Offset:TPasRISCVInt32;
 {$endif}
 begin
  if aHandle=BRANCH_NEW then begin
   result:=fTemporaryCodeSize;
  end else begin
-{$ifdef PasRISCVJITShortBranch}
+{$ifdef PasRISCVJustInTimeCompilerShortBranch}
   Offset:=TPasRISCVInt32(fTemporaryCodeSize)-TPasRISCVInt32(aHandle)-2;
   if (Offset>=Low(TPasRISCVInt8)) and (Offset<=High(TPasRISCVInt8)) then begin
    fTemporaryCode[aHandle+1]:=TPasRISCVUInt8(Offset);
@@ -51693,7 +52467,7 @@ const TLB_RELMEM_OFFSET=24; // offset of RelativeMemory in TDirectAccessTLBEntry
 var HostVirtualAddress,HostVPN,HostIndex:TPasRISCVUInt8;
     HostBase:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
-{$ifdef PasRISCVJITSideExit}
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
     SavedHostRegMask:TPasRISCVUInt32;
     SavedABIReclaimMask:TPasRISCVUInt32;
     SavedABIReclaimCount:TPasRISCVUInt32;
@@ -51738,9 +52512,9 @@ begin
  end;
  // BEQ (vpn==0 means match): TEST + JE
  EmitTEST(HostVPN,HostVPN,true);
-{$ifdef PasRISCVJITSideExit}
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
  // ---- Side-exit patching: on TLB miss, call runtime helper to fill TLB ----
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitBranchEntry(CC_E,BRANCH_NEW);
 {$else}
  EmitJccRel32(CC_E,0);
@@ -51887,7 +52661,7 @@ begin
 {$endif}
 
  // .hit: TLB check passed (JE from TEST above)
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  EmitBranchTarget(TakenLabel);
 {$else}
  PatchBranchLabel(TakenLabel);
@@ -51902,7 +52676,7 @@ begin
 
 {$else}
  // No side-exit: Simple bailout to interpreter on TLB miss 
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitBranchEntry(CC_E,BRANCH_NEW);
  // Set JITSkipExecution:=true on TLB miss bailout
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
@@ -52300,6 +53074,591 @@ begin
  EmitMOVSXD(aHostDest,aHostDest);
 end;
 
+{$ifdef PasRISCVJustInTimeCompilerZbb}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCLZ(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // LZCNT r64, r/m64: f3 REX.W 0f bd /r
+ EmitByte($f3);
+ EmitREX(true,aHostDest,0,aHostSrc);
+ EmitByte($0f);
+ EmitByte($bd);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCTZ(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // TZCNT r64, r/m64: f3 REX.W 0f bc /r
+ EmitByte($f3);
+ EmitREX(true,aHostDest,0,aHostSrc);
+ EmitByte($0f);
+ EmitByte($bc);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCPOP(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // POPCNT r64, r/m64: f3 REX.W 0f b8 /r
+ EmitByte($f3);
+ EmitREX(true,aHostDest,0,aHostSrc);
+ EmitByte($0f);
+ EmitByte($b8);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCLZW(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // LZCNT r32, r/m32: f3 0f bd /r (no REX.W)
+ EmitByte($f3);
+ if (aHostDest>=8) or (aHostSrc>=8) then begin
+  EmitREX(false,aHostDest,0,aHostSrc);
+ end;
+ EmitByte($0f);
+ EmitByte($bd);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+ EmitMOVSXD(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCTZW(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // TZCNT r32, r/m32: f3 0f bc /r (no REX.W)
+ EmitByte($f3);
+ if (aHostDest>=8) or (aHostSrc>=8) then begin
+  EmitREX(false,aHostDest,0,aHostSrc);
+ end;
+ EmitByte($0f);
+ EmitByte($bc);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+ EmitMOVSXD(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCPOPW(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // zero-extend to 32 bits first
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,false);
+ end;
+ // POPCNT r32, r/m32: f3 0f b8 /r (no REX.W)
+ EmitByte($f3);
+ if (aHostDest>=8) then begin
+  EmitREX(false,aHostDest,0,aHostDest);
+ end;
+ EmitByte($0f);
+ EmitByte($b8);
+ EmitModRM(3,aHostDest and 7,aHostDest and 7);
+ EmitMOVSXD(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMIN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ // CMP rs1, rs2; if rd=rs2: CMOVL rd, rs1 else: MOV rd, rs1; CMOVGE rd, rs2
+ Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ if aHostDest=aHostSrc2 then begin
+  EmitCMOVCC(CC_L,aHostDest,aHostSrc1,true);
+ end else begin
+  if aHostDest<>aHostSrc1 then begin
+   EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  end;
+  EmitCMOVCC(CC_GE,aHostDest,aHostSrc2,true);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMINU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ if aHostDest=aHostSrc2 then begin
+  EmitCMOVCC(CC_B,aHostDest,aHostSrc1,true);
+ end else begin
+  if aHostDest<>aHostSrc1 then begin
+   EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  end;
+  EmitCMOVCC(CC_AE,aHostDest,aHostSrc2,true);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMAX(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ if aHostDest=aHostSrc2 then begin
+  EmitCMOVCC(CC_G,aHostDest,aHostSrc1,true);
+ end else begin
+  if aHostDest<>aHostSrc1 then begin
+   EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  end;
+  EmitCMOVCC(CC_LE,aHostDest,aHostSrc2,true);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMAXU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ Emit2RegOp($3b,aHostSrc1,aHostSrc2,true);
+ if aHostDest=aHostSrc2 then begin
+  EmitCMOVCC(CC_A,aHostDest,aHostSrc1,true);
+ end else begin
+  if aHostDest<>aHostSrc1 then begin
+   EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  end;
+  EmitCMOVCC(CC_BE,aHostDest,aHostSrc2,true);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeANDN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs1 & ~rs2
+ TempReg1:=ClaimHostReg;
+ EmitMOVRegReg(TempReg1,aHostSrc2,true);
+ // NOT temp
+ EmitREX(true,2,0,TempReg1);
+ EmitByte($f7);
+ EmitModRM(3,2,TempReg1 and 7);
+ if aHostDest<>aHostSrc1 then begin
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+ end;
+ Emit2RegOp($23,aHostDest,TempReg1,true); // AND rd, temp
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeORN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs1 | ~rs2
+ TempReg1:=ClaimHostReg;
+ EmitMOVRegReg(TempReg1,aHostSrc2,true);
+ // NOT temp
+ EmitREX(true,2,0,TempReg1);
+ EmitByte($f7);
+ EmitModRM(3,2,TempReg1 and 7);
+ if aHostDest<>aHostSrc1 then begin
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+ end;
+ Emit2RegOp($0b,aHostDest,TempReg1,true); // OR rd, temp
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeXNOR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ // rd = ~(rs1 ^ rs2)
+ if (aHostDest=aHostSrc1) or (aHostDest=aHostSrc2) then begin
+  if aHostDest=aHostSrc1 then begin
+   Emit2RegOp($33,aHostDest,aHostSrc2,true); // XOR rd, rs2
+  end else begin
+   Emit2RegOp($33,aHostDest,aHostSrc1,true); // XOR rd, rs1
+  end;
+ end else begin
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  Emit2RegOp($33,aHostDest,aHostSrc2,true); // XOR rd, rs2
+ end;
+ // NOT rd
+ EmitREX(true,2,0,aHostDest);
+ EmitByte($f7);
+ EmitModRM(3,2,aHostDest and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeROL(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ Emit3RegShiftOp(SHIFT_ROL,aHostDest,aHostSrc1,aHostSrc2,true);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeROR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ Emit3RegShiftOp(SHIFT_ROR,aHostDest,aHostSrc1,aHostSrc2,true);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeROLW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ Emit3RegShiftOp(SHIFT_ROL,aHostDest,aHostSrc1,aHostSrc2,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeRORW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ Emit3RegShiftOp(SHIFT_ROR,aHostDest,aHostSrc1,aHostSrc2,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeRORI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
+begin
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,true);
+ end;
+ if aShamt<>0 then begin
+  EmitShiftRegImm(SHIFT_ROR,aHostDest,aShamt,true);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeRORIW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
+begin
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,false);
+ end;
+ if aShamt<>0 then begin
+  EmitShiftRegImm(SHIFT_ROR,aHostDest,aShamt,false);
+ end;
+ EmitMOVSXD(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSEXTB(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // MOVSX r64, r/m8: REX.W 0f be /r
+ EmitREX(true,aHostDest,0,aHostSrc);
+ EmitByte($0f);
+ EmitByte($be);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSEXTH(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // MOVSX r64, r/m16: REX.W 0f bf /r
+ EmitREX(true,aHostDest,0,aHostSrc);
+ EmitByte($0f);
+ EmitByte($bf);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeZEXTH(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ // MOVZX r64, r/m16: REX.W 0f b7 /r
+ EmitREX(true,aHostDest,0,aHostSrc);
+ EmitByte($0f);
+ EmitByte($b7);
+ EmitModRM(3,aHostDest and 7,aHostSrc and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeREV8(const aHostDest,aHostSrc:TPasRISCVUInt8);
+begin
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,true);
+ end;
+ // BSWAP r64: REX.W 0f c8+rd
+ EmitREX(true,0,0,aHostDest);
+ EmitByte($0f);
+ EmitByte($c8+(aHostDest and 7));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeORCB(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // orc.b: for each byte, if any bit set => 0xff, else 0x00
+ TempReg1:=ClaimHostReg;
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,true);
+ end;
+ // Spread bits within each byte
+ EmitMOVRegReg(TempReg1,aHostDest,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg1,1,true);
+ Emit2RegOp($0b,aHostDest,TempReg1,true); // OR
+ EmitMOVRegReg(TempReg1,aHostDest,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg1,2,true);
+ Emit2RegOp($0b,aHostDest,TempReg1,true); // OR
+ EmitMOVRegReg(TempReg1,aHostDest,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg1,4,true);
+ Emit2RegOp($0b,aHostDest,TempReg1,true); // OR
+ // Now low bit of each byte is set iff any bit was set
+ // Mask to get one bit per byte: AND with 0x0101010101010101
+ EmitNativeSetReg64(TempReg1,TPasRISCVUInt64($0101010101010101));
+ Emit2RegOp($23,aHostDest,TempReg1,true); // AND
+ // Expand each 0x01 byte to 0xff: val |= val<<1; val |= val<<2; val |= val<<4
+ EmitMOVRegReg(TempReg1,aHostDest,true);
+ EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
+ Emit2RegOp($0b,aHostDest,TempReg1,true);
+ EmitMOVRegReg(TempReg1,aHostDest,true);
+ EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
+ Emit2RegOp($0b,aHostDest,TempReg1,true);
+ EmitMOVRegReg(TempReg1,aHostDest,true);
+ EmitShiftRegImm(SHIFT_SHL,TempReg1,4,true);
+ Emit2RegOp($0b,aHostDest,TempReg1,true);
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZbs}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBSET(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs1 | (1 << (rs2 & 63)) — BTS rd, rs2
+ if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
+  TempReg1:=ClaimHostReg;
+  EmitMOVRegReg(TempReg1,aHostSrc2,true);
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  EmitREX(true,TempReg1,0,aHostDest);
+  EmitByte($0f);
+  EmitByte($ab);
+  EmitModRM(3,TempReg1 and 7,aHostDest and 7);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ end else begin
+  if aHostDest<>aHostSrc1 then begin
+   EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  end;
+  EmitREX(true,aHostSrc2,0,aHostDest);
+  EmitByte($0f);
+  EmitByte($ab);
+  EmitModRM(3,aHostSrc2 and 7,aHostDest and 7);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBCLR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs1 & ~(1 << (rs2 & 63)) — BTR rd, rs2
+ if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
+  TempReg1:=ClaimHostReg;
+  EmitMOVRegReg(TempReg1,aHostSrc2,true);
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  EmitREX(true,TempReg1,0,aHostDest);
+  EmitByte($0f);
+  EmitByte($b3);
+  EmitModRM(3,TempReg1 and 7,aHostDest and 7);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ end else begin
+  if aHostDest<>aHostSrc1 then begin
+   EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  end;
+  EmitREX(true,aHostSrc2,0,aHostDest);
+  EmitByte($0f);
+  EmitByte($b3);
+  EmitModRM(3,aHostSrc2 and 7,aHostDest and 7);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBEXT(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ // rd = (rs1 >> (rs2 & 63)) & 1 — BT rs1, rs2; SETB rd; MOVZX rd
+ EmitREX(true,aHostSrc2,0,aHostSrc1);
+ EmitByte($0f);
+ EmitByte($a3);
+ EmitModRM(3,aHostSrc2 and 7,aHostSrc1 and 7);
+ EmitSETCC(CC_B,aHostDest);
+ EmitMOVZX8(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBINV(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs1 ^ (1 << (rs2 & 63)) — BTC rd, rs2
+ if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
+  TempReg1:=ClaimHostReg;
+  EmitMOVRegReg(TempReg1,aHostSrc2,true);
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  EmitREX(true,TempReg1,0,aHostDest);
+  EmitByte($0f);
+  EmitByte($bb);
+  EmitModRM(3,TempReg1 and 7,aHostDest and 7);
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ end else begin
+  if aHostDest<>aHostSrc1 then begin
+   EmitMOVRegReg(aHostDest,aHostSrc1,true);
+  end;
+  EmitREX(true,aHostSrc2,0,aHostDest);
+  EmitByte($0f);
+  EmitByte($bb);
+  EmitModRM(3,aHostSrc2 and 7,aHostDest and 7);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBSETI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
+begin
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,true);
+ end;
+ // BTS r64, imm8: REX.W 0f ba /5 ib
+ EmitREX(true,5,0,aHostDest);
+ EmitByte($0f);
+ EmitByte($ba);
+ EmitModRM(3,5,aHostDest and 7);
+ EmitByte(aShamt);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBCLRI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
+begin
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,true);
+ end;
+ // BTR r64, imm8: REX.W 0f ba /6 ib
+ EmitREX(true,6,0,aHostDest);
+ EmitByte($0f);
+ EmitByte($ba);
+ EmitModRM(3,6,aHostDest and 7);
+ EmitByte(aShamt);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBEXTI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
+begin
+ // BT r64, imm8: REX.W 0f ba /4 ib; SETB rd; MOVZX
+ EmitREX(true,4,0,aHostSrc);
+ EmitByte($0f);
+ EmitByte($ba);
+ EmitModRM(3,4,aHostSrc and 7);
+ EmitByte(aShamt);
+ EmitSETCC(CC_B,aHostDest);
+ EmitMOVZX8(aHostDest,aHostDest);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBINVI(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
+begin
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,true);
+ end;
+ // BTC r64, imm8: REX.W 0f ba /7 ib
+ EmitREX(true,7,0,aHostDest);
+ EmitByte($0f);
+ EmitByte($ba);
+ EmitModRM(3,7,aHostDest and 7);
+ EmitByte(aShamt);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZba}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH1ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs2 + (rs1 << 1) — LEA rd, [rs2 + rs1*2]
+ if (aHostSrc1 and 7)<>4 then begin
+  EmitREX(true,aHostDest,aHostSrc1,aHostSrc2);
+  EmitByte($8d);
+  if (aHostSrc2 and 7)=5 then begin
+   EmitModRM(1,aHostDest and 7,4);
+   EmitSIB(1,aHostSrc1 and 7,aHostSrc2 and 7);
+   EmitByte(0);
+  end else begin
+   EmitModRM(0,aHostDest and 7,4);
+   EmitSIB(1,aHostSrc1 and 7,aHostSrc2 and 7);
+  end;
+ end else begin
+  TempReg1:=ClaimHostReg;
+  EmitMOVRegReg(TempReg1,aHostSrc1,true);
+  EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
+  Emit2RegOp($03,TempReg1,aHostSrc2,true);
+  if aHostDest<>TempReg1 then begin
+   EmitMOVRegReg(aHostDest,TempReg1,true);
+  end;
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH2ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs2 + (rs1 << 2) — LEA rd, [rs2 + rs1*4]
+ if (aHostSrc1 and 7)<>4 then begin
+  EmitREX(true,aHostDest,aHostSrc1,aHostSrc2);
+  EmitByte($8d);
+  if (aHostSrc2 and 7)=5 then begin
+   EmitModRM(1,aHostDest and 7,4);
+   EmitSIB(2,aHostSrc1 and 7,aHostSrc2 and 7);
+   EmitByte(0);
+  end else begin
+   EmitModRM(0,aHostDest and 7,4);
+   EmitSIB(2,aHostSrc1 and 7,aHostSrc2 and 7);
+  end;
+ end else begin
+  TempReg1:=ClaimHostReg;
+  EmitMOVRegReg(TempReg1,aHostSrc1,true);
+  EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
+  Emit2RegOp($03,TempReg1,aHostSrc2,true);
+  if aHostDest<>TempReg1 then begin
+   EmitMOVRegReg(aHostDest,TempReg1,true);
+  end;
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH3ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs2 + (rs1 << 3) — LEA rd, [rs2 + rs1*8]
+ if (aHostSrc1 and 7)<>4 then begin
+  EmitREX(true,aHostDest,aHostSrc1,aHostSrc2);
+  EmitByte($8d);
+  if (aHostSrc2 and 7)=5 then begin
+   EmitModRM(1,aHostDest and 7,4);
+   EmitSIB(3,aHostSrc1 and 7,aHostSrc2 and 7);
+   EmitByte(0);
+  end else begin
+   EmitModRM(0,aHostDest and 7,4);
+   EmitSIB(3,aHostSrc1 and 7,aHostSrc2 and 7);
+  end;
+ end else begin
+  TempReg1:=ClaimHostReg;
+  EmitMOVRegReg(TempReg1,aHostSrc1,true);
+  EmitShiftRegImm(SHIFT_SHL,TempReg1,3,true);
+  Emit2RegOp($03,TempReg1,aHostSrc2,true);
+  if aHostDest<>TempReg1 then begin
+   EmitMOVRegReg(aHostDest,TempReg1,true);
+  end;
+  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH1ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs2 + (zext32(rs1) << 1)
+ TempReg1:=ClaimHostReg;
+ EmitMOVRegReg(TempReg1,aHostSrc1,false); // zero-extend 32->64
+ EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
+ Emit2RegOp($03,TempReg1,aHostSrc2,true);
+ if aHostDest<>TempReg1 then begin
+  EmitMOVRegReg(aHostDest,TempReg1,true);
+ end;
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH2ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs2 + (zext32(rs1) << 2)
+ TempReg1:=ClaimHostReg;
+ EmitMOVRegReg(TempReg1,aHostSrc1,false);
+ EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
+ Emit2RegOp($03,TempReg1,aHostSrc2,true);
+ if aHostDest<>TempReg1 then begin
+  EmitMOVRegReg(aHostDest,TempReg1,true);
+ end;
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH3ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs2 + (zext32(rs1) << 3)
+ TempReg1:=ClaimHostReg;
+ EmitMOVRegReg(TempReg1,aHostSrc1,false);
+ EmitShiftRegImm(SHIFT_SHL,TempReg1,3,true);
+ Emit2RegOp($03,TempReg1,aHostSrc2,true);
+ if aHostDest<>TempReg1 then begin
+  EmitMOVRegReg(aHostDest,TempReg1,true);
+ end;
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg1:TPasRISCVUInt8;
+begin
+ // rd = rs2 + zext32(rs1)
+ TempReg1:=ClaimHostReg;
+ EmitMOVRegReg(TempReg1,aHostSrc1,false); // zero-extend 32->64
+ Emit2RegOp($03,TempReg1,aHostSrc2,true); // ADD
+ if aHostDest<>TempReg1 then begin
+  EmitMOVRegReg(aHostDest,TempReg1,true);
+ end;
+ fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
+begin
+ // rd = zext32(rs1) << shamt
+ if aHostDest<>aHostSrc then begin
+  EmitMOVRegReg(aHostDest,aHostSrc,false); // zero-extend 32->64
+ end else begin
+  // zero-extend in place: MOV r32, r32
+  EmitMOVRegReg(aHostDest,aHostDest,false);
+ end;
+ if aShamt<>0 then begin
+  EmitShiftRegImm(SHIFT_SHL,aHostDest,aShamt,true);
+ end;
+end;
+{$endif}
+
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLD(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
  // MOV r64, [addr+off] — opcode 8B with REX.W
@@ -52408,7 +53767,7 @@ begin
  end;
 end;
 
-{$ifdef PasRISCVJITFlexibleBranch}
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
 function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBeq(const aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aHandle:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;const aTarget:Boolean):TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
  result:=EmitBranch(CC_E,aHostSrc1,aHostSrc2,aHandle,aTarget);
@@ -54032,14 +55391,14 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM2:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54058,7 +55417,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMADD231SS: dst = vvvv*rm + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54106,14 +55465,14 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM2:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54132,7 +55491,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMSUB231SS: dst = vvvv*rm - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54180,14 +55539,14 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM2:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54206,7 +55565,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMSUB231SS: dst = -(vvvv*rm) - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54256,14 +55615,14 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM2:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54282,7 +55641,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMADD231SS: dst = -(vvvv*rm) + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54330,7 +55689,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM:TPasRISCVUInt8;
@@ -54338,7 +55697,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54357,7 +55716,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMADD231SD: dst = vvvv*rm + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54402,7 +55761,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM:TPasRISCVUInt8;
@@ -54410,7 +55769,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54429,7 +55788,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMSUB231SD: dst = vvvv*rm - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54474,7 +55833,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM:TPasRISCVUInt8;
@@ -54482,7 +55841,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54501,7 +55860,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMSUB231SD: dst = -(vvvv*rm) - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54548,7 +55907,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM:TPasRISCVUInt8;
@@ -54556,7 +55915,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
   exit;
  end;
@@ -54575,7 +55934,7 @@ begin
   EmitSaveAndSetRoundingMode(RM,RMTmp);
   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
-{$ifdef PasRISCVJITUseRealFMA}
+{$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMADD231SD: dst = -(vvvv*rm) + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
@@ -54621,7 +55980,7 @@ end;
 
 
 
-{$elseif defined(PasRISCVJITTargetAArch64)}
+{$elseif defined(PasRISCVJustInTimeCompilerTargetAArch64)}
 
 { TJustInTimeCompilerAArch64 - stub implementations }
 
@@ -54713,7 +56072,7 @@ end;
 {$endif}
 
 
-{$elseif defined(PasRISCVJITTargetRISCV64)}
+{$elseif defined(PasRISCVJustInTimeCompilerTargetRISCV64)}
 
 { TJustInTimeCompilerRISCV64 - stub implementations }
 
@@ -55225,11 +56584,11 @@ begin
 
 {$ifdef PasRISCVJustInTimeCompiler}
  if fMachine.fJITEnabled then begin
-{$if defined(PasRISCVJITTargetX8664)}
+{$if defined(PasRISCVJustInTimeCompilerTargetX8664)}
   fJustInTimeCompiler:=TJustInTimeCompilerX8664.Create(self);
-{$elseif defined(PasRISCVJITTargetAArch64)}
+{$elseif defined(PasRISCVJustInTimeCompilerTargetAArch64)}
   fJustInTimeCompiler:=TJustInTimeCompilerAArch64.Create(self);
-{$elseif defined(PasRISCVJITTargetRISCV64)}
+{$elseif defined(PasRISCVJustInTimeCompilerTargetRISCV64)}
   fJustInTimeCompiler:=TJustInTimeCompilerRISCV64.Create(self);
 {$else}
   fJustInTimeCompiler:=nil;
@@ -55309,7 +56668,7 @@ begin
   fState.JITBlockTLBPtr:=@fJustInTimeCompiler.fJITTLB[0];
   fState.JITHART:=self;
   fState.JITSkipExecution:=false;
-{$ifdef PasRISCVJITSideExit}
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
   fState.JITDataTLBFillPtr:=@TJustInTimeCompiler.JITDataTLBFillHelper;
 {$endif}
   fJustInTimeCompiler.ClearBlocks;
@@ -72697,7 +74056,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
         exit; 
        end;
 {$ifend}
@@ -72724,7 +74083,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72749,7 +74108,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72772,7 +74131,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72879,7 +74238,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
      if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72899,7 +74258,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72919,7 +74278,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Offset),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -72953,7 +74312,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72970,7 +74329,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -72991,7 +74350,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(TRegister.Zero),TPasRISCVUInt64(Immediate),0,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73018,7 +74377,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(TRegister.SP),ord(TRegister.SP),TPasRISCVUInt64(Immediate),0,2) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -73039,7 +74398,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,aInstruction,ord(rd),TPasRISCVUInt64(Immediate),0,0,2) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -73151,7 +74510,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
 {$ifend}
@@ -73168,7 +74527,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
 {$ifend}
@@ -73185,7 +74544,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
         exit;
        end;
 {$ifend}
@@ -73205,7 +74564,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -73222,7 +74581,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -73239,7 +74598,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -73256,7 +74615,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -73276,7 +74635,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -73293,7 +74652,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,aInstruction,ord(rd),ord(rd),ord(rs2),0,2) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
            exit;
           end;
 {$ifend}
@@ -73399,7 +74758,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,aInstruction,ord(TRegister.Zero),TPasRISCVUInt64(2),0,0,Immediate,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -73419,7 +74778,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73428,7 +74787,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73448,7 +74807,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,Immediate,2,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73457,7 +74816,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(TRegister.Zero),0,0,2,Immediate,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73486,7 +74845,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,aInstruction,ord(rd),ord(rd),TPasRISCVUInt64(Immediate),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -73506,7 +74865,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73538,7 +74897,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,aInstruction,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73568,7 +74927,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,aInstruction,ord(rd),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73597,7 +74956,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(TRegister.Zero),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -73644,7 +75003,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,aInstruction,ord(rd),ord(TRegister.Zero),ord(rs1),0,2) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
          exit;
         end;
 {$ifend}
@@ -73664,7 +75023,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(TRegister.RA),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
           exit;
          end;
 {$ifend}
@@ -73713,7 +75072,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,aInstruction,ord(rd),ord(rd),ord(rs1),0,2) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
           exit;
          end;
 {$ifend}
@@ -73740,7 +75099,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
       if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
          fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
        exit;
       end;
 {$ifend}
@@ -73764,7 +75123,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,aInstruction,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -73783,7 +75142,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,aInstruction,ord(rs1),ord(TRegister.SP),TPasRISCVUInt64(Offset),0,2) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}2{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
       exit;
      end;
 {$ifend}
@@ -73824,7 +75183,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLB,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73844,7 +75203,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLH,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73864,7 +75223,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73884,7 +75243,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLD,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73904,7 +75263,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLBU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73924,7 +75283,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLHU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -73944,7 +75303,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLWU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74073,7 +75432,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74092,7 +75451,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74104,6 +75463,13 @@ begin
         end;
         $14:begin
          // bseti (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBSETI,aInstruction,ord(rd),ord(rs1),{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif},0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] or (TPasRISCVUInt64(1) shl {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
@@ -74112,6 +75478,13 @@ begin
         end;
         $24:begin
          // bclri (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBCLRI,aInstruction,ord(rd),ord(rs1),{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif},0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] and not TPasRISCVUInt64(TPasRISCVUInt64(1) shl {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
@@ -74123,6 +75496,13 @@ begin
          case {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} of
           $00:begin
            // clz (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCLZ,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CLZQWord(fState.Registers[rs1]);
            end;
@@ -74131,6 +75511,13 @@ begin
           end;
           $01:begin
            // ctz (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCTZ,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CTZQWord(fState.Registers[rs1]);
            end;
@@ -74139,6 +75526,13 @@ begin
           end;
           $02:begin
            // cpop (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCPOP,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=POPCNTQWord(fState.Registers[rs1]);
            end;
@@ -74147,6 +75541,13 @@ begin
           end;
           $04:begin
            // sext.b (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSEXTB,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fState.Registers[rs1]))));
            end;
@@ -74155,6 +75556,13 @@ begin
           end;
           $05:begin
            // sext.h (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSEXTH,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fState.Registers[rs1]))));
            end;
@@ -74298,6 +75706,13 @@ begin
         end;
         $34:begin
          // binvi (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBINVI,aInstruction,ord(rd),ord(rs1),{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif},0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] xor (TPasRISCVUInt64(1) shl {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
@@ -74316,7 +75731,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74331,7 +75746,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTIU,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74346,7 +75761,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXORI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74365,7 +75780,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74380,7 +75795,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74394,6 +75809,13 @@ begin
          case {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} of
           $07:begin
            // orc.b (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicORCB,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=BitwiseOrCombine(fState.Registers[rs1]);
            end;
@@ -74409,6 +75831,13 @@ begin
         end;
         $24:begin
          // bexti (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBEXTI,aInstruction,ord(rd),ord(rs1),{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif},0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=(fState.Registers[rs1] shr {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}) and 1;
          end;
@@ -74417,6 +75846,13 @@ begin
         end;
         $30:begin
          // rori (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicRORI,aInstruction,ord(rd),ord(rs1),{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif},0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=RORQWord(fState.Registers[rs1],{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
@@ -74435,6 +75871,13 @@ begin
           end;
           $38:begin
            // rev8 (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREV8,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=ByteSwap64(fState.Registers[rs1]);
            end;
@@ -74460,7 +75903,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicORI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74475,7 +75918,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDI,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74537,7 +75980,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
       if assigned(fJustInTimeCompiler) and
          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAUIPC,aInstruction,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
-       result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
        exit;
       end;
 {$ifend}
@@ -74562,7 +76005,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74581,7 +76024,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74594,6 +76037,13 @@ begin
         $04,$05:begin
          // slli.uw
          {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}:=(aInstruction shr 20) and $3f;
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLIUW,aInstruction,ord(rd),ord(rs1),{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif},0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1])) shl TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif});
          end;
@@ -74604,6 +76054,13 @@ begin
          case (aInstruction shr 20) and $1f of
           $00:begin
            // clzw (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCLZW,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CLZDWord(TPasRISCVUInt32(fState.Registers[rs1]));
            end;
@@ -74612,6 +76069,13 @@ begin
           end;
           $01:begin
            // ctzw (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCTZW,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=CTZDWord(TPasRISCVUInt32(fState.Registers[rs1]));
            end;
@@ -74620,6 +76084,13 @@ begin
           end;
           $02:begin
            // cpopw (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCPOPW,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=POPCNTDWord(TPasRISCVUInt32(fState.Registers[rs1]));
            end;
@@ -74649,7 +76120,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74665,7 +76136,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAIW,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif}),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74678,6 +76149,13 @@ begin
         $30:begin
          // roriw (Zbb)
          Immediate:=(aInstruction shr 20) and $1f;
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicRORIW,aInstruction,ord(rd),ord(rs1),{$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif},0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),TPasRISCVUInt32({$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif})))));
          end;
@@ -74715,7 +76193,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSB,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74732,7 +76210,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSH,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74749,7 +76227,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSW,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74766,7 +76244,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicSD,aInstruction,ord(rs2),ord(rs1),TPasRISCVUInt64(Immediate),0,4) then begin
-        result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
 {$ifend}
@@ -74805,7 +76283,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADD,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74820,7 +76298,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMUL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74883,7 +76361,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74917,7 +76395,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74932,7 +76410,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -74952,6 +76430,13 @@ begin
         end;
         $14:begin
          // bset (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBSET,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] or (TPasRISCVUInt64(1) shl (fState.Registers[rs2] and $3f));
          end;
@@ -74960,6 +76445,13 @@ begin
         end;
         $24:begin
          // bclr (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBCLR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] and not TPasRISCVUInt64(TPasRISCVUInt64(1) shl (fState.Registers[rs2] and $3f));
          end;
@@ -74968,6 +76460,13 @@ begin
         end;
         $30:begin
          // rol (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicROL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=ROLQWord(fState.Registers[rs1],fState.Registers[rs2] and $3f);
          end;
@@ -74976,6 +76475,13 @@ begin
         end;
         $34:begin
          // binv (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBINV,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] xor (TPasRISCVUInt64(1) shl (fState.Registers[rs2] and $3f));
          end;
@@ -74997,7 +76503,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLT,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75012,7 +76518,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHSU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75032,6 +76538,13 @@ begin
         end;
         $10:begin
          // sh1add (Zba)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSH1ADD,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(fState.Registers[rs1] shl 1);
          end;
@@ -75061,7 +76574,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLTU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75075,7 +76588,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULHU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75108,7 +76621,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXOR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75123,7 +76636,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIV,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75149,6 +76662,13 @@ begin
         end;
         $05:begin
          // min (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMIN,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           if TPasRISCVInt64(fState.Registers[rs1])<TPasRISCVInt64(fState.Registers[rs2]) then begin
            fState.Registers[rd]:=fState.Registers[rs1];
@@ -75161,6 +76681,13 @@ begin
         end;
         $10:begin
          // sh2add (Zba)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSH2ADD,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(fState.Registers[rs1] shl 2);
          end;
@@ -75177,6 +76704,13 @@ begin
         end;
         $20:begin
          // xnor (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicXNOR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] xor not fState.Registers[rs2];
          end;
@@ -75198,7 +76732,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75213,7 +76747,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75229,6 +76763,13 @@ begin
         end;
         $05:begin
          // minu (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMINU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           if TPasRISCVUInt64(fState.Registers[rs1])<TPasRISCVUInt64(fState.Registers[rs2]) then begin
            fState.Registers[rd]:=fState.Registers[rs1];
@@ -75256,7 +76797,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRA,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75268,6 +76809,13 @@ begin
         end;
         $24:begin
          // bext (Zbs)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbs)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicBEXTR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=(fState.Registers[rs1] shr (fState.Registers[rs2] and $3f)) and 1;
          end;
@@ -75276,6 +76824,13 @@ begin
         end;
         $30:begin
          // ror (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicROR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=RORQWord(fState.Registers[rs1],fState.Registers[rs2] and $3f);
          end;
@@ -75297,7 +76852,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicOR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75312,7 +76867,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREM,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75330,6 +76885,13 @@ begin
         end;
         $05:begin
          // max (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMAX,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           if TPasRISCVInt64(fState.Registers[rs1])>TPasRISCVInt64(fState.Registers[rs2]) then begin
            fState.Registers[rd]:=fState.Registers[rs1];
@@ -75342,6 +76904,13 @@ begin
         end;
         $10:begin
          // sh3add (Zba)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSH3ADD,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(fState.Registers[rs1] shl 3);
          end;
@@ -75350,6 +76919,13 @@ begin
         end;
         $20:begin
          // orn (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicORN,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] or not fState.Registers[rs2];
          end;
@@ -75371,7 +76947,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicAND,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75386,7 +76962,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75410,6 +76986,13 @@ begin
         end;
         $05:begin
          // maxu (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMAXU,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           if TPasRISCVUInt64(fState.Registers[rs1])>TPasRISCVUInt64(fState.Registers[rs2]) then begin
            fState.Registers[rd]:=fState.Registers[rs1];
@@ -75434,6 +77017,13 @@ begin
         end;
         $20:begin
          // andn (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicANDN,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs1] and not fState.Registers[rs2];
          end;
@@ -75464,7 +77054,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicLUI,aInstruction,ord(rd),TPasRISCVUInt64(Immediate),0,0,4) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
 {$ifend}
@@ -75492,7 +77082,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75507,7 +77097,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicMULW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75519,6 +77109,13 @@ begin
         end;
         $04:begin
          // add.uw (Zba)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1]));
          end;
@@ -75530,7 +77127,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSUBW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75555,7 +77152,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSLLW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75567,6 +77164,13 @@ begin
         end;
         $30:begin
          // rolw (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicROLW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(ROLDWord(TPasRISCVUInt32(fState.Registers[rs1]),fState.Registers[rs2] and $1f))));
          end;
@@ -75585,6 +77189,13 @@ begin
        case (aInstruction shr 25) and $7f of
         $10:begin
          // sh1add.uw (Zba)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSH1ADDUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1])) shl 1);
          end;
@@ -75606,7 +77217,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75625,6 +77236,13 @@ begin
         $04:begin
          if TPasRISCVUInt64(rs2)=0 then begin
           // zext.h (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicZEXTH,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs1]));
           end;
@@ -75641,6 +77259,13 @@ begin
         end;
         $10:begin
          // sh2add.uw (Zba)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSH2ADDUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1])) shl 2);
          end;
@@ -75662,7 +77287,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRLW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75677,7 +77302,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicDIVUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75696,7 +77321,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSRAW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75708,6 +77333,13 @@ begin
         end;
         $30:begin
          // rorw (Zbb)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicRORW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=TPasRISCVInt64(TPasRISCVInt32(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),fState.Registers[rs2] and $1f))));
          end;
@@ -75729,7 +77361,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75747,6 +77379,13 @@ begin
         end;
         $10:begin
          // sh3add.uw (Zba)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZba)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSH3ADDUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=fState.Registers[rs2]+(TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1])) shl 3);
          end;
@@ -75768,7 +77407,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicREMUW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-          result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
           exit;
          end;
 {$ifend}
@@ -75815,7 +77454,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75824,7 +77463,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75842,7 +77481,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBNE,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75851,7 +77490,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBEQ,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75869,7 +77508,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75878,7 +77517,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75896,7 +77535,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGE,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75905,7 +77544,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLT,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75923,7 +77562,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75932,7 +77571,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75950,7 +77589,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBGEU,aInstruction,ord(rs1),ord(rs2),0,0,Immediate,4,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75959,7 +77598,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
            fJustInTimeCompiler.TraceBranch(fJustInTimeCompiler.IntrinsicBLTU,aInstruction,ord(rs1),ord(rs2),0,0,4,Immediate,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -75987,7 +77626,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),TPasRISCVUInt64(4)) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
 {$ifend}
@@ -76046,7 +77685,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
         fJustInTimeCompiler.TraceJAL(fJustInTimeCompiler.IntrinsicJAL,aInstruction,ord(rd),TPasRISCVUInt64(4),0,0,Immediate,4) then begin
-      result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+      result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
       exit;
      end;
 {$ifend}
@@ -76857,7 +78496,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLW,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76884,7 +78523,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLD,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76961,7 +78600,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSW,aInstruction,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -76983,7 +78622,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSD,aInstruction,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77045,7 +78684,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77068,7 +78707,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77127,7 +78766,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77150,7 +78789,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77235,7 +78874,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77258,7 +78897,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77317,7 +78956,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77340,7 +78979,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77398,7 +79037,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77425,7 +79064,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77468,7 +79107,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77496,7 +79135,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77539,7 +79178,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77561,7 +79200,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77599,7 +79238,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77621,7 +79260,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -77662,7 +79301,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77680,7 +79319,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJNS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77698,7 +79337,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77726,7 +79365,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77744,7 +79383,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJND,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77762,7 +79401,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77833,7 +79472,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77877,7 +79516,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -77989,7 +79628,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMIND,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78032,7 +79671,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78232,7 +79871,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSD,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78392,7 +80031,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDS,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78678,7 +80317,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTS,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -78701,7 +80340,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTD,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
@@ -78744,7 +80383,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLES,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78766,7 +80405,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTS,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78788,7 +80427,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQS,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78850,7 +80489,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLED,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78872,7 +80511,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTD,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -78894,7 +80533,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQD,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79091,7 +80730,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79119,7 +80758,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWUS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79143,7 +80782,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79171,7 +80810,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLUS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79243,7 +80882,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79271,7 +80910,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWUD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79295,7 +80934,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79323,7 +80962,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLUD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79522,7 +81161,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79534,7 +81173,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSWU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79546,7 +81185,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSL,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79558,7 +81197,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSLU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79586,7 +81225,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79597,7 +81236,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDWU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79608,7 +81247,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDL,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79619,7 +81258,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDLU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79682,7 +81321,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXW,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79700,7 +81339,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79767,7 +81406,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79785,7 +81424,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79928,7 +81567,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVWX,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -79964,7 +81603,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVDX,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
 {$ifend}
@@ -82524,13 +84163,13 @@ begin
         (((fState.Cycle xor LastCycles) shr 16)<>0);
 
 {$ifdef PasRISCVJustInTimeCompiler}
-{$ifdef PasRISCVJITDebug}
+{$ifdef PasRISCVJustInTimeCompilerDebug}
   if assigned(fJustInTimeCompiler) and (fJustInTimeCompiler.fDebugJITCounter<30) then begin
    writeln('CYCLE EXIT: Cycle=',fState.Cycle,' PC=',LowerCase(IntToHex(fState.PC,16)));
    inc(fJustInTimeCompiler.fDebugJITCounter);
   end;
 {$endif}
-{$ifdef PasRISCVJITStats}
+{$ifdef PasRISCVJustInTimeCompilerStats}
   if assigned(fJustInTimeCompiler) and ((fState.Cycle-fJustInTimeCompiler.fStatLastReport)>=10000000) then begin
    fJustInTimeCompiler.fStatLastReport:=fState.Cycle;
    writeln('JIT STATS: hits=',fJustInTimeCompiler.fStatTLBHits,
