@@ -79050,13 +79050,6 @@ begin
         // fcvt.w.s
         rd:=TRegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
-        if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
-         exit;
-        end;
-{$ifend}
         f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64);
         Immediate:=(aInstruction shr 12) and 7;
         if Immediate=TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
@@ -79094,7 +79087,14 @@ begin
         end;
         case (aInstruction shr 20) and $1f of
          $00:begin
-          // fcvt0
+          // fcvt.w.s
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat32NaNOrInfinite(f32) or (f32n<Low(TPasRISCVInt32)) or (f32n>High(TPasRISCVInt32)) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
@@ -79115,7 +79115,14 @@ begin
           end;
          end;
          $01:begin
-          // fcvt1
+          // fcvt.wu.s
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWUS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat32NaNOrInfinite(f32) or (f32n<Low(TPasRISCVUInt32)) or (f32n>High(TPasRISCVUInt32)) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
@@ -79132,7 +79139,14 @@ begin
           end;
          end;
          $02:begin
-          // fcvt2
+          // fcvt.l.s
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat32NaNOrInfinite(f32) or (f32n<=-9223372036854775808.0) or (f32n>=9223372036854775807.0) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
@@ -79153,7 +79167,14 @@ begin
           end;
          end;
          $03:begin
-          // fcvt3
+          // fcvt.lu.s
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLUS,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat32NaNOrInfinite(f32) or (f32n<0.0) or (f32n>=18446744073709551615.0) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
@@ -79181,13 +79202,6 @@ begin
         // fcvt.w.d
         rd:=TRegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
-        if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
-         exit;
-        end;
-{$ifend}
         f64:=fState.FPURegisters[frs1].f64;
         Immediate:=(aInstruction shr 12) and 7;
         if Immediate=TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic) then begin
@@ -79225,7 +79239,14 @@ begin
         end;
         case (aInstruction shr 20) and $1f of
          $00:begin
-          // fcvt0
+          // fcvt.w.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat64NaNOrInfinite(f64) or (f64n<Low(TPasRISCVInt32)) or (f64n>High(TPasRISCVInt32)) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
@@ -79246,7 +79267,14 @@ begin
           end;
          end;
          $01:begin
-          // fcvt1
+          // fcvt.wu.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWUD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat64NaNOrInfinite(f64) or (f64n<Low(TPasRISCVUInt32)) or (f64n>High(TPasRISCVUInt32)) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
@@ -79263,7 +79291,14 @@ begin
           end;
          end;
          $02:begin
-          // fcvt2
+          // fcvt.l.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat64NaNOrInfinite(f64) or (f64n<=-9223372036854775808.0) or (f64n>=9223372036854775807.0) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
@@ -79284,7 +79319,14 @@ begin
           end;
          end;
          $03:begin
-          // fcvt3
+          // fcvt.lu.d
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLUD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           if IsFloat64NaNOrInfinite(f64) or (f64n<0.0) or (f64n>=18446744073709551615.0) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
@@ -79474,31 +79516,52 @@ begin
         // fcvtsdw.s
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         rs1:=TRegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
-        if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
-         exit;
-        end;
-{$ifend}
         case (aInstruction shr 20) and $1f of
          0:begin
-          // fcvt0
+          // fcvt.s.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f32:=TPasRISCVInt32(fState.Registers[rs1]);
           fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
          end;
          1:begin
-          // fcvt1
+          // fcvt.s.wu
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSWU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f32:=TPasRISCVUInt32(fState.Registers[rs1]);
           fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
          end;
          2:begin
-          // fcvt2
+          // fcvt.s.l
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSL,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f32:=TPasRISCVInt64(fState.Registers[rs1]);
           fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
          end;
          3:begin
-          // fcvt3
+          // fcvt.s.lu
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSLU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f32:=TPasRISCVUInt64(fState.Registers[rs1]);
           fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
          end;
@@ -79517,28 +79580,49 @@ begin
         // fcvtdw.d
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         rs1:=TRegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
-        if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
-         result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
-         exit;
-        end;
-{$ifend}
         case (aInstruction shr 20) and $1f of
          0:begin
-          // fcvt0
+          // fcvt.d.w
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f64:=TPasRISCVInt32(fState.Registers[rs1]);
          end;
          1:begin
-          // fcvt1
+          // fcvt.d.wu
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDWU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f64:=TPasRISCVUInt32(fState.Registers[rs1]);
          end;
          2:begin
-          // fcvt2
+          // fcvt.d.l
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDL,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f64:=TPasRISCVInt64(fState.Registers[rs1]);
          end;
          3:begin
-          // fcvt3
+          // fcvt.d.lu
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU)}
+          if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDLU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
+           result:={$ifdef PasRISCVJITZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           fState.FPURegisters[frd].f64:=TPasRISCVUInt64(fState.Registers[rs1]);
          end;
          else begin
