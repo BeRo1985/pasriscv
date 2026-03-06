@@ -5123,9 +5123,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               const DefaultBaseAddress=TPasRISCVUInt64($10052000);
                     DefaultSize=TPasRISCVUInt64($1000);
                     DefaultIRQ=TPasRISCVUInt64($12);
+             private
+              fAbsoluteEvents:Boolean;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               procedure DeviceInitialize; override;
+              property AbsoluteEvents:Boolean read fAbsoluteEvents write fAbsoluteEvents;
             end;
             { TVirtIOSoundDevice }
             TVirtIOSoundDevice=class(TVirtIODevice)
@@ -35341,8 +35344,15 @@ end;
 { TPasRISCV.TVirtIOInputMouseDevice }
 
 constructor TPasRISCV.TVirtIOInputMouseDevice.Create(const aMachine:TPasRISCV);
+var InputKind:TVirtIOInputDevice.TKind;
 begin
- inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputMouseBase,aMachine.fConfiguration.fVirtIOInputMouseSize,TVirtIOInputDevice.TKind.Mouse);
+ fAbsoluteEvents:=true;
+ if fAbsoluteEvents then begin
+  InputKind:=TVirtIOInputDevice.TKind.Tablet;
+ end else begin
+  InputKind:=TVirtIOInputDevice.TKind.Mouse;
+ end;
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputMouseBase,aMachine.fConfiguration.fVirtIOInputMouseSize,InputKind);
  fIRQ:=aMachine.fConfiguration.fVirtIOInputMouseIRQ;
 end;
 
