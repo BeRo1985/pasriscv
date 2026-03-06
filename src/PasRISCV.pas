@@ -6818,6 +6818,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCursorCompositing:Boolean;
               fDirectRGBA32:Boolean;
               fSwapColorChannels:Boolean;
+              fFormatSwapColorChannels:Boolean;
               fDirty:TPasMPBool32;
               fIgnoreDirty:TPasMPBool32;
              public
@@ -39659,6 +39660,20 @@ begin
  fScanouts[aCmd^.ScanoutID].ResourceID:=aCmd^.ResourceID;
  fScanouts[aCmd^.ScanoutID].Rect:=aCmd^.Rect;
  fScanouts[aCmd^.ScanoutID].Enabled:=true;
+ // Set format swap flag: R-first formats are already RGBA, cancel base swap via XOR
+ if aCmd^.ScanoutID=0 then begin
+  case Resource.Format of
+   VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM,
+   VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM,
+   VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM,
+   VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM:begin
+    fFrameBuffer.fFormatSwapColorChannels:=true;
+   end;
+   else begin
+    fFrameBuffer.fFormatSwapColorChannels:=false;
+   end;
+  end;
+ end;
  // Resize framebuffer to match scanout if needed
  if (aCmd^.ScanoutID=0) and
     ((fFrameBuffer.fWidth<>aCmd^.Rect.Width) or
@@ -43427,6 +43442,7 @@ begin
  fCursorCompositing:=false;
  fDirectRGBA32:=false;
  fSwapColorChannels:=false;
+ fFormatSwapColorChannels:=false;
  fDirty:=true;
  fIgnoreDirty:=false;
  ClearFrameBuffer;
@@ -43619,7 +43635,7 @@ begin
   4:begin
    // BGRA8888/RGBA8888 — copy with optional channel swap
    if length(aSrc)>=(PixelCount*4) then begin
-    if fSwapColorChannels then begin
+    if fSwapColorChannels xor fFormatSwapColorChannels then begin
      SrcPtr:=@aSrc[0];
      DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
      for PixelIndex:=1 to PixelCount do begin
@@ -43640,7 +43656,7 @@ begin
    if length(aSrc)>=(PixelCount*2) then begin
     SrcPtr:=@aSrc[0];
     DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
-    if fSwapColorChannels then begin
+    if fSwapColorChannels xor fFormatSwapColorChannels then begin
      for PixelIndex:=1 to PixelCount do begin
       Pixel16:=PPasRISCVUInt16(SrcPtr)^;
       b:=(Pixel16 shr 11) and $1f;
@@ -43670,7 +43686,7 @@ begin
    if length(aSrc)>=(PixelCount*3) then begin
     SrcPtr:=@aSrc[0];
     DstPtr:=PPasRISCVUInt32(@fRGBA32Data[0]);
-    if fSwapColorChannels then begin
+    if fSwapColorChannels xor fFormatSwapColorChannels then begin
      for PixelIndex:=1 to PixelCount do begin
       DstPtr^:=$ff000000 or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[0]) shl 16) or (TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[1]) shl 8) or TPasRISCVUInt32(PPasRISCVUInt8Array(SrcPtr)^[2]);
       inc(SrcPtr,3);
@@ -43709,7 +43725,7 @@ end;
 
 procedure TPasRISCV.TFrameBufferDevice.UpdateOutputData;
 begin
- if (fCursorCompositing and fCursor.Visible) or (fBytesPerPixel<>4) or fSwapColorChannels or not fDirectRGBA32 then begin
+ if (fCursorCompositing and fCursor.Visible) or (fBytesPerPixel<>4) or (fSwapColorChannels xor fFormatSwapColorChannels) or not fDirectRGBA32 then begin
   ConvertToRGBA32(fData);
   if fCursorCompositing and fCursor.Visible then begin
    CompositeCursor;
