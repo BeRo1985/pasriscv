@@ -48400,12 +48400,10 @@ var VirtualPC:TPasRISCVUInt64;
     r:TRegister;}
 begin
 
-{$ifdef Zicfilp}
- if fHART.fState.ELP<>0 then begin
+ if ((fMachine.fRunState and RUNSTATE_SINGLESTEP)<>0){$ifdef Zicfilp}or (fHART.fState.ELP<>0){$endif} then begin
   result:=false;
   exit;
  end;
-{$endif}
 
  // JTLB fast path
  VirtualPC:=fHART.fState.PC;
@@ -48454,7 +48452,7 @@ begin
     if (JITTLBEntry^.VirtualPC=VirtualPC) and
        ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
        (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
-      JITTLBEntry^.Block(@fHART.fState);
+     JITTLBEntry^.Block(@fHART.fState);
     end else begin
      break;
     end;
@@ -48527,9 +48525,9 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
- {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
+{$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
- {$endif}
+{$endif}
   result:=true;
  end else begin
   if fCompiling then begin
@@ -48558,9 +48556,9 @@ begin
   if PC=fHART.fState.PC then begin
    fHART.fState.JITSkipExecution:=true;
   end;
- {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
+{$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
- {$endif}
+{$endif}
   result:=true;
  end else begin
   fHART.fState.JITSkipExecution:=false;
@@ -48582,42 +48580,12 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.SaveState;
-begin
- fSavedTemporaryCodeSize:=fTemporaryCodeSize;
- fSavedPCOffset:=fPCOffset;
- fSavedInstructionCount:=fInstructionCount;
-end;
-
-procedure TPasRISCV.THART.TJustInTimeCompiler.RollbackLastState;
-begin
- if fCompiling then begin
-  fTemporaryCodeSize:=fSavedTemporaryCodeSize;
-  fPCOffset:=fSavedPCOffset;
-  fInstructionCount:=fSavedInstructionCount;
-  fBlockEnds:=true;
- end;
-end;
-
-procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllIntRegs;
-var GuestReg:TRegister;
-begin
- SaveAllDirtyIntRegs;
- for GuestReg:=TRegister.x1 to TRegister.x31 do begin
-  if fIntRegInfos[GuestReg].HostReg<>REG_ILL then begin
-   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl fIntRegInfos[GuestReg].HostReg);
-   fIntRegInfos[GuestReg].HostReg:=REG_ILL;
-   fIntRegInfos[GuestReg].Flags:=0;
-  end;
- end;
-end;
-
 function TPasRISCV.THART.TJustInTimeCompiler.TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
- {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
+{$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
- {$endif}
+{$endif}
   result:=true;
  end else begin
   if fCompiling then begin
@@ -48659,9 +48627,9 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 begin
  if (not fCompiling) and TLBLookup then begin
- {$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
+{$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
   dec(fHART.fState.PC,aInstructionSize);
- {$endif}
+{$endif}
   result:=true;
  end else begin
   if fCompiling then begin
@@ -48680,6 +48648,36 @@ begin
    fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
   end;
   result:=false;
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.SaveState;
+begin
+ fSavedTemporaryCodeSize:=fTemporaryCodeSize;
+ fSavedPCOffset:=fPCOffset;
+ fSavedInstructionCount:=fInstructionCount;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.RollbackLastState;
+begin
+ if fCompiling then begin
+  fTemporaryCodeSize:=fSavedTemporaryCodeSize;
+  fPCOffset:=fSavedPCOffset;
+  fInstructionCount:=fSavedInstructionCount;
+  fBlockEnds:=true;
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllIntRegs;
+var GuestReg:TRegister;
+begin
+ SaveAllDirtyIntRegs;
+ for GuestReg:=TRegister.x1 to TRegister.x31 do begin
+  if fIntRegInfos[GuestReg].HostReg<>REG_ILL then begin
+   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl fIntRegInfos[GuestReg].HostReg);
+   fIntRegInfos[GuestReg].HostReg:=REG_ILL;
+   fIntRegInfos[GuestReg].Flags:=0;
+  end;
  end;
 end;
 
@@ -57241,7 +57239,6 @@ begin
  result:=0;
 end;
 {$endif}
-
 
 {$ifend}
 
@@ -85427,6 +85424,12 @@ var Instruction:TPasRISCVUInt32;
 begin
 
  RunState:=@fMachine.fRunState;
+
+{$ifdef PasRISCVJustInTimeCompiler}
+ if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling and ((RunState^ and RUNSTATE_SINGLESTEP)<>0) then begin
+  fJustInTimeCompiler.Discard;
+ end;
+{$endif}
 
  repeat
 
