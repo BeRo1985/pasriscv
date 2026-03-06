@@ -303,6 +303,8 @@ unit PasRISCV;
 
 {$define NVMELevelTriggeredPCIEInterrupts}
 
+{$define VirtIOReadAvailRingFlags} // VirtIO spec 2.7.7.1: read VIRTQ_AVAIL_F_NO_INTERRUPT from available ring instead of used ring
+
 {$undef UseAtomicMemAccessForTLBFastPath}
 
 {$define UseAtomicMemCopyRelaxedForSlowPath}
@@ -33811,15 +33813,28 @@ begin
    NewValue:=(OldValue and $ffff) or (TPasRISCVUInt32(Queue^.ShadowUsedIndex) shl 16);
   until TPasMPInterlocked.CompareExchange(PPasRISCVUInt32(VirtQAvailPtr)^,NewValue,OldValue)=OldValue;
 
+{$ifdef VirtIOReadAvailRingFlags}
+  if not Read16(Queue^.AvailableAddress,Flags) then begin
+   exit;
+  end;
+{$else}
   Flags:=OldValue and $ffff;
+{$endif}
 
  end else begin
 
+{$ifdef VirtIOReadAvailRingFlags}
+  Write16(Queue^.UsedAddress+2,Queue^.ShadowUsedIndex);
+  if not Read16(Queue^.AvailableAddress,Flags) then begin
+   exit;
+  end;
+{$else}
   if Read16(Queue^.UsedAddress,Flags) then begin
    Write16(Queue^.UsedAddress+2,Queue^.ShadowUsedIndex);
   end else begin
    exit;
   end;
+{$endif}
 
  end;
 
@@ -39937,14 +39952,22 @@ begin
   fFrameBuffer.SetCursorVisible(false);
  end;
  fFrameBuffer.fDirty:=true;
- SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+ // Cursor queue has no write descriptors per VirtIO spec — consume with length 0
+ if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
+         UsedRingSync(aQueueIndex)) then begin
+  NotifyDeviceNeedsReset;
+ end;
 end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleMoveCursor(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUUpdateCursor);
 begin
  fFrameBuffer.SetCursorPosition(aCmd^.Pos.X,aCmd^.Pos.Y);
  fFrameBuffer.fDirty:=true;
- SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
+ // Cursor queue has no write descriptors per VirtIO spec — consume with length 0
+ if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
+         UsedRingSync(aQueueIndex)) then begin
+  NotifyDeviceNeedsReset;
+ end;
 end;
 
 function TPasRISCV.TVirtIOGPUDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
@@ -40033,18 +40056,30 @@ begin
      if aReadSize>=SizeOf(TVirtIOGPUUpdateCursor) then begin
       HandleUpdateCursor(aQueueIndex,aDescriptorIndex,PVirtIOGPUUpdateCursor(@fRecvBuffer[0]));
      end else begin
-      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+      // Cursor queue has no write descriptors — just consume
+      if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
+              UsedRingSync(aQueueIndex)) then begin
+       NotifyDeviceNeedsReset;
+      end;
      end;
     end;
     VIRTIO_GPU_CMD_MOVE_CURSOR:begin
      if aReadSize>=SizeOf(TVirtIOGPUUpdateCursor) then begin
       HandleMoveCursor(aQueueIndex,aDescriptorIndex,PVirtIOGPUUpdateCursor(@fRecvBuffer[0]));
      end else begin
-      SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_INVALID_PARAMETER);
+      // Cursor queue has no write descriptors — just consume
+      if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
+              UsedRingSync(aQueueIndex)) then begin
+       NotifyDeviceNeedsReset;
+      end;
      end;
     end;
     else begin
-     SendError(aQueueIndex,aDescriptorIndex,@Header,VIRTIO_GPU_RESP_ERR_UNSPEC);
+     // Unknown cursor command — just consume without response
+     if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
+             UsedRingSync(aQueueIndex)) then begin
+      NotifyDeviceNeedsReset;
+     end;
     end;
    end;
   end;
