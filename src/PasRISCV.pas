@@ -43761,10 +43761,17 @@ end;
 procedure TPasRISCV.TFrameBufferDevice.UpdateOutputData;
 begin
  if (fCursorCompositing and fCursor.Visible) or (fBytesPerPixel<>4) or (fSwapColorChannels xor fFormatSwapColorChannels) or not fDirectRGBA32 then begin
-  ConvertToRGBA32(fData);
-  if fCursorCompositing and fCursor.Visible then begin
+  if (fBytesPerPixel=4) and fCursorCompositing and fCursor.Visible then begin
+   // 32bpp with cursor: composite first on raw data, then convert both together
    CompositeCursor;
-   fRGBA32Data:=fComposited;
+   ConvertToRGBA32(fComposited);
+  end else begin
+   ConvertToRGBA32(fData);
+   if fCursorCompositing and fCursor.Visible then begin
+    // Non-32bpp with cursor: convert first, then composite on converted data
+    CompositeCursor;
+    fRGBA32Data:=fComposited;
+   end;
   end;
  end else begin 
   fRGBA32Data:=fData;
