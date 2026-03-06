@@ -334,6 +334,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZihintpause}
   {$define PasRISCVJustInTimeCompilerFence}
   {$define PasRISCVJustInTimeCompilerZbkb}
+  {$define PasRISCVJustInTimeCompilerZabha}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
 {$ifend}
@@ -8629,6 +8630,28 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
                      procedure EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
                      procedure EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64); virtual; abstract;
+{$ifdef PasRISCVJustInTimeCompilerZabha}
+                     // Zabha (Byte Atomic Memory Operations)
+                     procedure EmitNativeAMOADDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOSWAPB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOXORB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOANDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOORB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMINB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMAXB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMINUB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMAXUB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     // Zabha (Halfword Atomic Memory Operations)
+                     procedure EmitNativeAMOADDH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOSWAPH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOXORH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOANDH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOORH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMINH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMAXH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMINUH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeAMOMAXUH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+{$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZihintpause}
                      // Zihintpause
@@ -8880,6 +8903,28 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$ifdef PasRISCVJustInTimeCompilerZabha}
+                     // Zabha byte AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
+                     procedure IntrinsicAMOADDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOSWAPB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOXORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOANDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMINB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMAXB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMINUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMAXUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     // Zabha halfword AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
+                     procedure IntrinsicAMOADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOSWAPH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOXORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOANDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMINH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMAXH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMINUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicAMOMAXUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      // FPU intrinsics
@@ -9362,6 +9407,28 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
                      procedure EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean); override;
                      procedure EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64); override;
+{$ifdef PasRISCVJustInTimeCompilerZabha}
+                     // Zabha byte
+                     procedure EmitNativeAMOADDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOSWAPB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOXORB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOANDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOORB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMINB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMAXB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMINUB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMAXUB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     // Zabha halfword
+                     procedure EmitNativeAMOADDH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOSWAPH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOXORH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOANDH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOORH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMINH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMAXH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMINUH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeAMOMAXUH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
+{$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZihintpause}
                      procedure EmitNativePause; override;
@@ -50726,6 +50793,480 @@ begin
  FreeHostIntRegister(HostAddr);
 end;
 
+{$ifdef PasRISCVJustInTimeCompilerZabha}
+// Zabha byte AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOADDB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAPB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOSWAPB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOXORB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOANDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOANDB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOORB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMINB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMAXB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMINUB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMAXUB(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+// Zabha halfword AMO intrinsics
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOADDH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAPH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOSWAPH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOXORH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOANDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOANDH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOORH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMINH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMAXH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMINUH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOMAXUH(HostDest,HostAddr,HostSrc);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+end;
+{$endif}
+
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 
@@ -54766,6 +55307,564 @@ begin
  fTemporaryCode[DoneLabel]:=TPasRISCVUInt8(fTemporaryCodeSize-(DoneLabel+1));
 
 end;
+
+{$ifdef PasRISCVJustInTimeCompilerZabha}
+// Zabha byte AMO x86-64 implementations
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOADDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+begin
+ // LOCK XADD byte [addr], temp — atomically: old=[addr]; [addr]+=temp; temp=old
+ HostTemp:=ClaimHostIntRegister;
+ EmitMOVRegReg(HostTemp,aHostSrc,true);
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($c0); // XADD r/m8, r8
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitMOVSX8(aHostDest,HostTemp);
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOSWAPB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+begin
+ // XCHG byte [addr], temp — implicitly locked, atomically swaps
+ HostTemp:=ClaimHostIntRegister;
+ EmitMOVRegReg(HostTemp,aHostSrc,true);
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($86); // XCHG r/m8, r8
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitMOVSX8(aHostDest,HostTemp);
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOXORB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop: retry: MOVZX EAX,byte [addr]; MOV temp,RAX; XOR temp,src; LOCK CMPXCHG byte [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, byte [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b6); // MOVZX r32, r/m8
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_XOR,HostTemp,aHostSrc,true); // 64-bit XOR, only low byte matters
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($b0); // CMPXCHG r/m8, r8
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX8(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOANDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop: retry: MOVZX EAX,byte [addr]; MOV temp,RAX; AND temp,src; LOCK CMPXCHG byte [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, byte [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b6); // MOVZX r32, r/m8
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_AND,HostTemp,aHostSrc,true); // 64-bit AND, only low byte matters
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($b0); // CMPXCHG r/m8, r8
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX8(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOORB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop: retry: MOVZX EAX,byte [addr]; MOV temp,RAX; OR temp,src; LOCK CMPXCHG byte [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, byte [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b6); // MOVZX r32, r/m8
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_OR,HostTemp,aHostSrc,true); // 64-bit OR, only low byte matters
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($b0); // CMPXCHG r/m8, r8
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX8(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMINB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with byte-width comparison for min
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, byte [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b6);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AL, src — 8-bit comparison sets flags correctly
+ EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
+ EmitByte($38); // CMP r/m8, r8
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVLE temp, RAX — if old <= src (signed), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($4e);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($b0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX8(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAXB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with byte-width comparison for max
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, byte [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b6);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AL, src — 8-bit comparison sets flags correctly
+ EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
+ EmitByte($38); // CMP r/m8, r8
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVGE temp, RAX — if old >= src (signed), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($4d);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($b0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX8(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMINUB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with byte-width comparison for minu
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, byte [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b6);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AL, src — 8-bit comparison sets flags correctly
+ EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
+ EmitByte($38); // CMP r/m8, r8
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVBE temp, RAX — if old <= src (unsigned), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($46);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($b0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX8(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAXUB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with byte-width comparison for maxu
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, byte [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b6);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AL, src — 8-bit comparison sets flags correctly
+ EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
+ EmitByte($38); // CMP r/m8, r8
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVAE temp, RAX — if old >= src (unsigned), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($43);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($f0); // LOCK
+ EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
+ EmitByte($0f);
+ EmitByte($b0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX8(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+// Zabha halfword AMO x86-64 implementations
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOADDH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+begin
+ // LOCK XADD word [addr], temp — atomically: old=[addr]; [addr]+=temp; temp=old
+ HostTemp:=ClaimHostIntRegister;
+ EmitMOVRegReg(HostTemp,aHostSrc,true);
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($c1); // XADD r/m16, r16
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitMOVSX16(aHostDest,HostTemp);
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOSWAPH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+begin
+ // XCHG word [addr], temp — implicitly locked, atomically swaps
+ HostTemp:=ClaimHostIntRegister;
+ EmitMOVRegReg(HostTemp,aHostSrc,true);
+ EmitByte($66); // operand size prefix
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($87); // XCHG r/m16, r16
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitMOVSX16(aHostDest,HostTemp);
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOXORH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop: retry: MOVZX EAX,word [addr]; MOV temp,RAX; XOR temp,src; LOCK CMPXCHG word [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, word [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b7); // MOVZX r32, r/m16
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_XOR,HostTemp,aHostSrc,true); // 64-bit XOR, only low halfword matters
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1); // CMPXCHG r/m16, r16
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX16(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOANDH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop: retry: MOVZX EAX,word [addr]; MOV temp,RAX; AND temp,src; LOCK CMPXCHG word [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, word [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b7); // MOVZX r32, r/m16
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_AND,HostTemp,aHostSrc,true); // 64-bit AND, only low halfword matters
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1); // CMPXCHG r/m16, r16
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX16(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOORH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop: retry: MOVZX EAX,word [addr]; MOV temp,RAX; OR temp,src; LOCK CMPXCHG word [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, word [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b7); // MOVZX r32, r/m16
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+ Emit2RegOp(X86_OR,HostTemp,aHostSrc,true); // 64-bit OR, only low halfword matters
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1); // CMPXCHG r/m16, r16
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX16(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMINH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with word-width comparison for min
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, word [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b7);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AX, src — 16-bit comparison sets flags correctly
+ EmitByte($66); // operand size prefix for 16-bit CMP
+ if (aHostSrc>=8) then begin
+  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($39); // CMP r/m16, r16
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVLE temp, RAX — if old <= src (signed), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($4e);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX16(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAXH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with word-width comparison for max
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, word [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b7);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AX, src — 16-bit comparison sets flags correctly
+ EmitByte($66); // operand size prefix for 16-bit CMP
+ if (aHostSrc>=8) then begin
+  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($39); // CMP r/m16, r16
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVGE temp, RAX — if old >= src (signed), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($4d);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX16(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMINUH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with word-width comparison for minu
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, word [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b7);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AX, src — 16-bit comparison sets flags correctly
+ EmitByte($66); // operand size prefix for 16-bit CMP
+ if (aHostSrc>=8) then begin
+  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($39); // CMP r/m16, r16
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVBE temp, RAX — if old <= src (unsigned), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($46);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX16(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAXUH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+    RetryOffset:TPasRISCVSizeInt;
+begin
+ // CAS loop with word-width comparison for maxu
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ // MOVZX EAX, word [addr]
+ if aHostAddr>=8 then begin
+  EmitREX(false,0,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b7);
+ EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
+ RetryOffset:=fTemporaryCodeSize;
+ EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
+ // CMP AX, src — 16-bit comparison sets flags correctly
+ EmitByte($66); // operand size prefix for 16-bit CMP
+ if (aHostSrc>=8) then begin
+  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
+ end;
+ EmitByte($39); // CMP r/m16, r16
+ EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ // CMOVAE temp, RAX — if old >= src (unsigned), temp=old
+ EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
+ EmitByte($0f);
+ EmitByte($43);
+ EmitModRM(3,HostTemp and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
+ EmitByte($66); // operand size prefix
+ EmitByte($f0); // LOCK
+ if (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(false,HostTemp,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(HostTemp,aHostAddr,0);
+ EmitByte($75); // JNE retry
+ EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
+ EmitMOVSX16(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ FreeHostIntRegister(HostTemp);
+end;
+
+{$endif}
 
 {$endif}
 
@@ -82948,6 +84047,68 @@ begin
        rs1:=TRegister((aInstruction shr 15) and $1f);
        rs2:=TRegister((aInstruction shr 20) and $1f);
        begin
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZabha)}
+        if assigned(fJustInTimeCompiler) then begin
+         case ((aInstruction shr 25) and $7c) shr 2 of
+          $00:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOADDB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $01:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOSWAPB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $04:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOXORB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $08:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOORB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $0c:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOANDB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $10:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMINB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $14:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAXB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $18:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMINUB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $1c:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAXUB,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          else begin
+          end;
+         end;
+        end;
+{$ifend}
 {$if defined(cpu386) or defined(cpux86_64)}
         // Native 8-bit atomics (x86/x86_64)
         Ptr:=MemoryPointerTranslate(fState.Registers[rs1],1,@fState.Bounce.ui8,false);
@@ -83346,6 +84507,68 @@ begin
         result:=4;
         exit;
        end else begin
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZabha)}
+        if assigned(fJustInTimeCompiler) then begin
+         case ((aInstruction shr 25) and $7c) shr 2 of
+          $00:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOADDH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $01:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOSWAPH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $04:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOXORH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $08:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOORH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $0c:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOANDH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $10:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMINH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $14:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAXH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $18:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMINUH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          $1c:begin
+           if fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOMAXUH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+          else begin
+          end;
+         end;
+        end;
+{$ifend}
 {$if defined(cpu386) or defined(cpux86_64)}
         // Native 16-bit atomics (x86/x86_64)
         Ptr:=MemoryPointerTranslate(fState.Registers[rs1],2,@fState.Bounce.ui16,false);
