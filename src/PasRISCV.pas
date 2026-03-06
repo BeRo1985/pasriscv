@@ -328,7 +328,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZbb}
   {$define PasRISCVJustInTimeCompilerZbs}
   {$define PasRISCVJustInTimeCompilerZba}
-  {$define PasRISCVJustInTimeCompilerAMO}
+  {-$define PasRISCVJustInTimeCompilerAMO}
   {-$define PasRISCVJustInTimeCompilerAMOBounceGuard}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
