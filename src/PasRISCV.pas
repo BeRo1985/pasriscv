@@ -305,6 +305,8 @@ unit PasRISCV;
 
 {$define VirtIOReadAvailRingFlags} // VirtIO spec 2.7.7.1: read VIRTQ_AVAIL_F_NO_INTERRUPT from available ring instead of used ring
 
+{$define VirtIOGPUFastTransfer} // Avoid O(n^2) page walking in HandleTransferToHost2D by tracking page position across rows
+
 {$undef UseAtomicMemAccessForTLBFastPath}
 
 {$define UseAtomicMemCopyRelaxedForSlowPath}
@@ -39747,10 +39749,18 @@ end;
 
 procedure TPasRISCV.TVirtIOGPUDevice.HandleTransferToHost2D(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aCmd:PVirtIOGPUTransferToHost2D);
 var Resource:TGPUResource;
+{$ifdef VirtIOGPUFastTransfer}
+    PageIndex,SavedPageIndex:TPasRISCVSizeInt;
+{$else}
     PageIndex:TPasRISCVSizeInt;
+{$endif}
     SrcRow,DstRow:TPasRISCVUInt32;
     SrcStride,DstStride:TPasRISCVUInt32;
+{$ifdef VirtIOGPUFastTransfer}
+    Offset,PageOffset,SavedPageOffset,CopyLen,PageRemain:TPasRISCVUInt64;
+{$else}
     Offset,PageOffset,CopyLen,PageRemain:TPasRISCVUInt64;
+{$endif}
     DstOffset:TPasRISCVUInt64;
     ResourceDataSize:TPasRISCVUInt64;
 begin
@@ -39767,12 +39777,26 @@ begin
  DstStride:=Resource.Width*Resource.BytesPerPixel;
  ResourceDataSize:=length(Resource.Data);
  Offset:=aCmd^.Offset;
+{$ifdef VirtIOGPUFastTransfer}
+ // Find initial page position once
+ PageOffset:=Offset;
+ PageIndex:=0;
+ while (PageIndex<length(Resource.BackingPages)) and (PageOffset>=Resource.BackingPages[PageIndex].Length) do begin
+  dec(PageOffset,Resource.BackingPages[PageIndex].Length);
+  inc(PageIndex);
+ end;
+{$endif}
  for DstRow:=0 to aCmd^.Rect.Height-1 do begin
   DstOffset:=TPasRISCVUInt64(aCmd^.Rect.Y+DstRow)*DstStride+TPasRISCVUInt64(aCmd^.Rect.X)*Resource.BytesPerPixel;
   CopyLen:=TPasRISCVUInt64(aCmd^.Rect.Width)*Resource.BytesPerPixel;
   if (DstOffset+CopyLen)>ResourceDataSize then begin
    break;
   end;
+{$ifdef VirtIOGPUFastTransfer}
+  // Save page position before copy (copy may modify PageIndex in span case)
+  SavedPageIndex:=PageIndex;
+  SavedPageOffset:=PageOffset;
+{$else}
   // Walk backing pages to find source data at Offset
   PageOffset:=Offset;
   PageIndex:=0;
@@ -39780,6 +39804,7 @@ begin
    dec(PageOffset,Resource.BackingPages[PageIndex].Length);
    inc(PageIndex);
   end;
+{$endif}
   if PageIndex<length(Resource.BackingPages) then begin
    PageRemain:=Resource.BackingPages[PageIndex].Length-PageOffset;
    if PageRemain>=CopyLen then begin
@@ -39793,7 +39818,17 @@ begin
     end;
    end;
   end;
+{$ifdef VirtIOGPUFastTransfer}
+  // Advance page position by DstStride from saved row-start position
+  PageIndex:=SavedPageIndex;
+  PageOffset:=SavedPageOffset+DstStride;
+  while (PageIndex<length(Resource.BackingPages)) and (PageOffset>=Resource.BackingPages[PageIndex].Length) do begin
+   dec(PageOffset,Resource.BackingPages[PageIndex].Length);
+   inc(PageIndex);
+  end;
+{$else}
   inc(Offset,DstStride);
+{$endif}
  end;
  SendOKNoData(aQueueIndex,aDescriptorIndex,@aCmd^.Header);
 end;
