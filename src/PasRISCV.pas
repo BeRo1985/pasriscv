@@ -334,6 +334,8 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZihintpause}
   {$define PasRISCVJustInTimeCompilerFence}
   {$define PasRISCVJustInTimeCompilerZbkb}
+  {$define PasRISCVJustInTimeCompilerZknh}
+  {$define PasRISCVJustInTimeCompilerZksh}
   {$define PasRISCVJustInTimeCompilerZabha}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
@@ -8666,6 +8668,28 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      // Zbkb
                      procedure EmitNativeBREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerZknh}
+                     // Zknh (SHA-256/SHA-512 scalar)
+                     procedure EmitNativeSHA256SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSHA256SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSHA256SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSHA256SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSHA512SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSHA512SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSHA512SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSHA512SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZksh}
+                     // Zksh (SM3 scalar)
+                     procedure EmitNativeSM3P0(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeSM3P1(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbkb}
+                     // Zbkb (pack operations)
+                     procedure EmitNativePACK(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativePACKH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativePACKW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+{$endif}
                      procedure EmitNativeSetReg32s(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64); virtual; abstract;
                      procedure EmitNativeLD(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
@@ -8868,6 +8892,25 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      procedure IntrinsicBREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZknh}
+                     procedure IntrinsicSHA256SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSHA256SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSHA256SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSHA256SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSHA512SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSHA512SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSHA512SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSHA512SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZksh}
+                     procedure IntrinsicSM3P0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicSM3P1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbkb}
+                     procedure IntrinsicPACK(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicPACKH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     procedure IntrinsicPACKW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
 {$endif}
                      procedure IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
                      procedure IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
@@ -9439,6 +9482,25 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      procedure EmitNativeBREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZknh}
+                     procedure EmitNativeSHA256SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSHA256SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSHA256SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSHA256SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSHA512SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSHA512SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSHA512SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSHA512SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZksh}
+                     procedure EmitNativeSM3P0(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeSM3P1(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbkb}
+                     procedure EmitNativePACK(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativePACKH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativePACKW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // EmitNativeFxx overrides
@@ -49846,6 +49908,200 @@ begin
 end;
 {$endif}
 
+{$ifdef PasRISCVJustInTimeCompilerZknh}
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA256SUM0(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA256SUM1(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA256SIG0(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA256SIG1(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA512SUM0(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA512SUM1(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA512SIG0(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSHA512SIG1(HostRD,HostRS1);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZksh}
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSM3P0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSM3P0(HostRD,HostRS1);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSM3P1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1:TRegister;
+    HostRD,HostRS1:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeSM3P1(HostRD,HostRS1);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZbkb}
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACK(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativePACK(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACKH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativePACKH(HostRD,HostRS1,HostRS2);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACKW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativePACKW(HostRD,HostRS1,HostRS2);
+end;
+{$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerZbs}
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBSET(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
@@ -54623,6 +54879,213 @@ begin
  Emit2RegOp(X86_OR,aHostDest,TempReg2,true);
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZknh}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha256sum0: ROR(x,2) ^ ROR(x,13) ^ ROR(x,22) on 32-bit, then sign-extend
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,2,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,13,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,22,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha256sum1: ROR(x,6) ^ ROR(x,11) ^ ROR(x,25)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,6,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,11,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,25,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha256sig0: ROR(x,7) ^ ROR(x,18) ^ (x >> 3)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,7,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,18,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_SHR,TempReg,3,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha256sig1: ROR(x,17) ^ ROR(x,19) ^ (x >> 10)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,17,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,19,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_SHR,TempReg,10,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha512sum0: ROR(x,28) ^ ROR(x,34) ^ ROR(x,39) on 64-bit
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,28,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,34,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,39,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha512sum1: ROR(x,14) ^ ROR(x,18) ^ ROR(x,41)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,14,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,18,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,41,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha512sig0: ROR(x,1) ^ ROR(x,8) ^ (x >> 7) on 64-bit
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,1,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,8,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg,7,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sha512sig1: ROR(x,19) ^ ROR(x,61) ^ (x >> 6)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,19,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg,61,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ EmitMOVRegReg(TempReg,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg,6,true);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZksh}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSM3P0(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sm3p0: x ^ ROL(x,9) ^ ROL(x,17) on 32-bit, then sign-extend
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROL,TempReg,9,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROL,TempReg,17,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSM3P1(const aHostDest,aHostSrc:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // sm3p1: x ^ ROL(x,15) ^ ROL(x,23)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROL,TempReg,15,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVRegReg(TempReg,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROL,TempReg,23,false);
+ Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg);
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZbkb}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePACK(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // pack: rd = rs1[31:0] | (rs2[31:0] << 32)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVRegReg(aHostDest,aHostSrc1,false);
+ EmitMOVRegReg(TempReg,aHostSrc2,false);
+ EmitShiftRegImm(SHIFT_SHL,TempReg,32,true);
+ Emit2RegOp(X86_OR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePACKH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // packh: rd = rs1[7:0] | (rs2[7:0] << 8)
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVZX8(aHostDest,aHostSrc1);
+ EmitMOVZX8(TempReg,aHostSrc2);
+ EmitShiftRegImm(SHIFT_SHL,TempReg,8,true);
+ Emit2RegOp(X86_OR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePACKW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // packw: rd = sext((rs1[15:0]) | (rs2[15:0] << 16))
+ TempReg:=ClaimHostIntRegister;
+ EmitMOVZX16(aHostDest,aHostSrc1);
+ EmitMOVZX16(TempReg,aHostSrc2);
+ EmitShiftRegImm(SHIFT_SHL,TempReg,16,false);
+ Emit2RegOp(X86_OR,aHostDest,TempReg,false);
+ EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg);
 end;
 {$endif}
 
@@ -77919,6 +78382,13 @@ begin
          case {$ifdef UseExtraShAmt}ShAmt{$else}Immediate{$endif} of
           $00:begin
            // sha256sum0 (Zknh)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA256SUM0,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),2) xor RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),13) xor RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),22))));
            end;
@@ -77927,6 +78397,13 @@ begin
           end;
           $01:begin
            // sha256sum1 (Zknh)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA256SUM1,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),6) xor RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),11) xor RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),25))));
            end;
@@ -77935,6 +78412,13 @@ begin
           end;
           $02:begin
            // sha256sig0 (Zknh)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA256SIG0,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),7) xor RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),18) xor (TPasRISCVUInt32(fState.Registers[rs1]) shr 3))));
            end;
@@ -77943,6 +78427,13 @@ begin
           end;
           $03:begin
            // sha256sig1 (Zknh)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA256SIG1,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),17) xor RORDWord(TPasRISCVUInt32(fState.Registers[rs1]),19) xor (TPasRISCVUInt32(fState.Registers[rs1]) shr 10))));
            end;
@@ -77951,6 +78442,13 @@ begin
           end;
           $04:begin
            // sha512sum0 (Zknh, RV64)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA512SUM0,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=RORQWord(fState.Registers[rs1],28) xor RORQWord(fState.Registers[rs1],34) xor RORQWord(fState.Registers[rs1],39);
            end;
@@ -77959,6 +78457,13 @@ begin
           end;
           $05:begin
            // sha512sum1 (Zknh, RV64)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA512SUM1,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=RORQWord(fState.Registers[rs1],14) xor RORQWord(fState.Registers[rs1],18) xor RORQWord(fState.Registers[rs1],41);
            end;
@@ -77967,6 +78472,13 @@ begin
           end;
           $06:begin
            // sha512sig0 (Zknh, RV64)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA512SIG0,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=RORQWord(fState.Registers[rs1],1) xor RORQWord(fState.Registers[rs1],8) xor (fState.Registers[rs1] shr 7);
            end;
@@ -77975,6 +78487,13 @@ begin
           end;
           $07:begin
            // sha512sig1 (Zknh, RV64)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZknh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSHA512SIG1,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=RORQWord(fState.Registers[rs1],19) xor RORQWord(fState.Registers[rs1],61) xor (fState.Registers[rs1] shr 6);
            end;
@@ -77983,6 +78502,13 @@ begin
           end;
           $08:begin
            // sm3p0 (Zksh)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZksh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSM3P0,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]) xor ROLDWord(TPasRISCVUInt32(fState.Registers[rs1]),9) xor ROLDWord(TPasRISCVUInt32(fState.Registers[rs1]),17))));
            end;
@@ -77991,6 +78517,13 @@ begin
           end;
           $09:begin
            // sm3p1 (Zksh)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZksh)}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSM3P1,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fState.Registers[rs1]) xor ROLDWord(TPasRISCVUInt32(fState.Registers[rs1]),15) xor ROLDWord(TPasRISCVUInt32(fState.Registers[rs1]),23))));
            end;
@@ -78996,6 +79529,13 @@ begin
         end;
         $04:begin
          // pack (Zbkb) - pack lower halves: rd = rs1[31:0] | (rs2[31:0] << 32)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbkb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicPACK,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs1])) or (TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs2])) shl 32);
          end;
@@ -79320,6 +79860,13 @@ begin
         end;
         $04:begin
          // packh (Zbkb) - pack low bytes: rd = rs1[7:0] | (rs2[7:0] << 8)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbkb)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicPACKH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs1])) or (TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])) shl 8);
          end;
@@ -79592,6 +80139,13 @@ begin
           exit;
          end else begin
           // packw (Zbkb) - pack lower 16-bit halves, sign-extended: rd = sext((rs1[15:0] | (rs2[15:0] << 16))[31:0])
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbkb)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicPACKW,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt16(fState.Registers[rs1])) or (TPasRISCVUInt32(TPasRISCVUInt16(fState.Registers[rs2])) shl 16))));
           end;
