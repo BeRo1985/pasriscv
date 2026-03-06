@@ -328,7 +328,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZbb}
   {$define PasRISCVJustInTimeCompilerZbs}
   {$define PasRISCVJustInTimeCompilerZba}
-  {-$define PasRISCVJustInTimeCompilerAMO}
+  {$define PasRISCVJustInTimeCompilerAMO}
   {-$define PasRISCVJustInTimeCompilerAMOBounceGuard}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
@@ -54199,11 +54199,18 @@ var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
  // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; XOR temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
+ AddrRegScratch:=REG_ILL;
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54250,6 +54257,9 @@ begin
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
  end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOAND(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54257,10 +54267,17 @@ var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
+ AddrRegScratch:=REG_ILL;
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54302,6 +54319,9 @@ begin
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
  end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54309,10 +54329,17 @@ var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
+ AddrRegScratch:=REG_ILL;
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54354,6 +54381,9 @@ begin
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
  end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMIN(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54361,11 +54391,18 @@ var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
  // CAS loop with signed min: new = (old < rs2) ? old : rs2
+ AddrRegScratch:=REG_ILL;
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54416,6 +54453,9 @@ begin
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
  end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAX(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54423,11 +54463,18 @@ var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
  // CAS loop with signed max: new = (old > rs2) ? old : rs2
+ AddrRegScratch:=REG_ILL;
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54476,6 +54523,9 @@ begin
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
  end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMINU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54483,11 +54533,18 @@ var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
  // CAS loop with unsigned min
+ AddrRegScratch:=REG_ILL;
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54536,6 +54593,9 @@ begin
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
  end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54543,11 +54603,18 @@ var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
  // CAS loop with unsigned max
+ AddrRegScratch:=REG_ILL;
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54596,6 +54663,9 @@ begin
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
  end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54624,9 +54694,11 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSC(const aHostDest,
 var FailLabelLRSC,FailLabelCycle,FailLabelAddr,DoneLabel,FailTarget:TPasRISCVSizeInt;
     CmpXchgAddr:TPasRISCVUInt8;
     SrcReg:TPasRISCVUInt8;
+    AddrRegScratch:TPasRISCVUInt8;
 begin
 
  FailLabelCycle:=0;
+ AddrRegScratch:=REG_ILL;
 
  // SC: check reservation + cycle limit + address match, attempt CMPXCHG
 
@@ -54670,7 +54742,12 @@ begin
  // CMPXCHG uses RAX implicitly — move conflicting registers out
  CmpXchgAddr:=aHostAddr;
  if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  CmpXchgAddr:=aHostDest;
+  AddrRegScratch:=ClaimHostReg;
+  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
+   AddrRegScratch:=ClaimHostReg;
+   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
+  end;
+  CmpXchgAddr:=AddrRegScratch;
   EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
  end;
  SrcReg:=aHostSrc;
@@ -54708,6 +54785,9 @@ begin
 
  if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
   FreeHostReg(SrcReg);
+ end;
+ if AddrRegScratch<>REG_ILL then begin
+  FreeHostReg(AddrRegScratch);
  end;
 
  // JMP done
