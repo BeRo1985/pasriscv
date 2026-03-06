@@ -8284,7 +8284,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      type TLinkage=(None,Tail,Jmp);
                           TBranchLabel=TPasRISCVUInt32;
                           TRegisterInfo=record
-                           HostReg:TPasRISCVUInt8;
+                           HostRegister:TPasRISCVUInt8;
                            Flags:TPasRISCVUInt8;
                            LastUsed:TPasRISCVUInt32;
                            AUIPCOffset:TPasRISCVInt32;
@@ -8322,22 +8322,22 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           TBlockLinkMap=TPasRISCVHashMap<TBlockMapKey,TPasRISCVInt32>;
                           TBlockLinkFreeList=TPasRISCVDynamicQueue<TPasRISCVInt32>;
                           TLinkEntry=record
-                           DestPhysPC:TPasRISCVUInt64;
+                           DestPhysicalPC:TPasRISCVUInt64;
                            Mode:TMode;
                            VirtualMode:Boolean;
                            PatchPtr:TPasRISCVPtrUInt;
                           end;
                     private
                      // Integer register allocator state
-                     fHostRegMask:TPasRISCVUInt32;
+                     fHostIntRegisterMask:TPasRISCVUInt32;
+                     fHostIntRegisterInfos:TIntRegisterInfos;
                      fABIReclaimMask:TPasRISCVUInt32;
                      fABIReclaimCount:TPasRISCVUInt32;
                      fABIReclaimOrder:array[0..15] of TPasRISCVUInt8;
-                     fIntRegInfos:TIntRegisterInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      // FPU register allocator state
-                     fFPURegMask:TPasRISCVUInt32;
-                     fFPURegInfos:TFPURegisterInfos;
+                     fHostFPURegisterMask:TPasRISCVUInt32;
+                     fHostFPURegisterInfos:TFPURegisterInfos;
 {$endif}
                      // Block cache
                      fJITTLB:TJITTLBEntries;
@@ -8397,9 +8397,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fLinkage:TLinkage;
 
                      // Offset helpers
-                     function GuestIntRegOffset(const aGuestReg:TRegister):TPasRISCVInt32;
+                     function GuestIntRegisterOffset(const aGuestRegister:TRegister):TPasRISCVInt32;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     function GuestFPURegOffset(const aGuestReg:TFPURegister):TPasRISCVInt32;
+                     function GuestFPURegisterOffset(const aGuestRegister:TFPURegister):TPasRISCVInt32;
 {$endif}
                      function GuestPCOffset:TPasRISCVInt32;
                      function GuestCycleOffset:TPasRISCVInt32;
@@ -8416,25 +8416,28 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
 
+                     procedure SaveState;
+                     procedure RollbackLastState;
+
                      // Register allocator
                      procedure ResetRegisterState;
-                     function MapIntRegister(const aGuestReg:TRegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
-                     function ClaimHostReg:TPasRISCVUInt8;
-                     procedure FreeHostReg(const aHostReg:TPasRISCVUInt8);
-                     procedure FreeIntGuestReg(const aGuestReg:TRegister);
-                     procedure SaveAllDirtyIntRegs;
-{$ifdef PasRISCVJustInTimeCompilerSideExit}
-                     procedure ReloadAllMappedIntRegs;
-{$endif}
+                     function MapGuestToHostIntRegister(const aGuestRegister:TRegister;const aFlags:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0):TPasRISCVUInt8;
+                     function ClaimHostIntRegister(const aAvoidRegisterMask:TPasRISCVUInt32=0):TPasRISCVUInt8;
+                     procedure FreeHostIntRegister(const aHostRegister:TPasRISCVUInt8);
+                     procedure FreeGuestIntRegister(const aGuestRegister:TRegister);
+                     procedure SaveAllDirtyIntRegisters;
+                     procedure ReloadAllMappedIntRegisters;
+                     procedure FreeAllHostIntRegisters;
+                     procedure FreeHostIntRegisters(const aHostRegisterMask:TPasRISCVUInt32);
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     function MapFPURegister(const aGuestReg:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
-                     function ClaimFPUReg:TPasRISCVUInt8;
-                     procedure FreeFPUGuestReg(const aGuestReg:TFPURegister);
-                     procedure SaveAllDirtyFPURegs;
-{$ifdef PasRISCVJITFPUFlushAfterEachOp}
-                     procedure FlushAllFPURegs;
+                     function MapGuestToHostFPURegister(const aGuestRegister:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
+                     function ClaimHostFPURegister(const aAvoidRegisterMask:TPasRISCVUInt32=0):TPasRISCVUInt8;
+                     procedure FreeHostFPURegister(const aHostRegister:TPasRISCVUInt8);
+                     procedure FreeGuestFPURegister(const aGuestRegister:TFPURegister);
+                     procedure SaveAllDirtyFPURegisters;
+                     procedure FlushAllFPURegisters;
 {$endif}
-{$endif}
+
                      // Code emission
                      procedure EmitByte(const aValue:TPasRISCVUInt8);
                      procedure EmitWord(const aValue:TPasRISCVUInt16);
@@ -8473,19 +8476,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; virtual; abstract;
 
                      // Backend hooks (virtual, override in target-specific subclass)
-                     procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
-                     procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
-                     procedure EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativePush(const aHostReg:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativePop(const aHostReg:TPasRISCVUInt8); virtual; abstract;
-                     procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); virtual; abstract;
-                     procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
-                     procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
+                     procedure EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
+                     procedure EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
+                     procedure EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativePush(const aHostRegister:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativePop(const aHostRegister:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); virtual; abstract;
+                     procedure EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
+                     procedure EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); virtual; abstract;
-                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); virtual; abstract;
+                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); virtual; abstract;
+                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); virtual; abstract;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); virtual; abstract;
-                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempRegister:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitRestoreRoundingMode; virtual; abstract;
 {$endif}
 
@@ -8507,14 +8510,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitPatchableRET; virtual; abstract;
                      procedure EmitTailBNEZ(const aOffset:TPasRISCVInt32); virtual; abstract;
 {$endif}
-                     procedure EmitDataTLBLookup(const aHostAddrReg:TPasRISCVUInt8;const aGuestBaseReg:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0); virtual; abstract;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); virtual; abstract;
                      function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; virtual; abstract;
-                     function VMPtrReg:TPasRISCVUInt8; virtual; abstract;
-                     function DefaultHostRegMask:TPasRISCVUInt32; virtual; abstract;
-                     function ABIReclaimHostRegMask:TPasRISCVUInt32; virtual; abstract;
+                     function VMPtrRegister:TPasRISCVUInt8; virtual; abstract;
+                     function DefaultHostRegisterMask:TPasRISCVUInt32; virtual; abstract;
+                     function ABIReclaimHostRegisterMask:TPasRISCVUInt32; virtual; abstract;
+                     function AMOHostAvoidRegisterMask:TPasRISCVUInt32; virtual; abstract;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     function DefaultFPURegMask:TPasRISCVUInt32; virtual; abstract;
+                     function DefaultFPURegisterMask:TPasRISCVUInt32; virtual; abstract;
 {$endif}
 
                      // Native emit helpers for intrinsics (virtual abstract, platform-specific)
@@ -8720,9 +8724,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function TLBLookup:Boolean;
                      function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-                     procedure SaveState;
-                     procedure RollbackLastState;
-                     procedure FlushAllIntRegs;
                      function TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; //inline;
                      function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
@@ -9147,26 +9148,26 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
                       // Base overrides
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
-                     procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativePush(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativePop(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
-                     procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativePush(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativePop(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
+                     procedure EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                       // SSE2 encoding helpers
                      procedure EmitSSE2Op(const aPrefix:TPasRISCVInt32;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
                      procedure EmitSSE2MemOp(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
                      procedure EmitSSE2MovGPRToXMM(const aXMM:TPasRISCVUInt8;const aGPR:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitSSE2MovXMMToGPR(const aGPR:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aIs64:Boolean);
-                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
-                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
+                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
+                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); override;
                      procedure EmitNaNBox32(const aXMMReg:TPasRISCVUInt8;const aScratchXMM:TPasRISCVUInt8);
                       // MXCSR rounding mode override for explicit rm != 7 (dynamic)
-                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8); override;
+                     procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempRegister:TPasRISCVUInt8); override;
                      procedure EmitRestoreRoundingMode; override;
 {$endif}
 
@@ -9191,14 +9192,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitPatchableRET; override;
                      procedure EmitTailBNEZ(const aOffset:TPasRISCVInt32); override;
 {$endif}
-                     procedure EmitDataTLBLookup(const aHostAddrReg:TPasRISCVUInt8;const aGuestBaseReg:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8); override;
+                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0); override;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); override;
                      function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; override;
-                     function VMPtrReg:TPasRISCVUInt8; override;
-                     function DefaultHostRegMask:TPasRISCVUInt32; override;
-                     function ABIReclaimHostRegMask:TPasRISCVUInt32; override;
+                     function VMPtrRegister:TPasRISCVUInt8; override;
+                     function DefaultHostRegisterMask:TPasRISCVUInt32; override;
+                     function ABIReclaimHostRegisterMask:TPasRISCVUInt32; override;
+                     function AMOHostAvoidRegisterMask:TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     function DefaultFPURegMask:TPasRISCVUInt32; override;
+                     function DefaultFPURegisterMask:TPasRISCVUInt32; override;
 {$endif}
 
                      // EmitNativeXxx overrides for intrinsics
@@ -9410,24 +9412,25 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     private
                      procedure EmitBlockExit; override;
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
-                     procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativePush(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativePop(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
-                     procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativePush(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativePop(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
+                     procedure EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
-                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
+                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
+                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); override;
 {$endif}
-                     function VMPtrReg:TPasRISCVUInt8; override;
-                     function DefaultHostRegMask:TPasRISCVUInt32; override;
-                     function ABIReclaimHostRegMask:TPasRISCVUInt32; override;
+                     function VMPtrRegister:TPasRISCVUInt8; override;
+                     function DefaultHostRegisterMask:TPasRISCVUInt32; override;
+                     function ABIReclaimHostRegisterMask:TPasRISCVUInt32; override;
+                     function AMOHostAvoidRegisterMask:TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     function DefaultFPURegMask:TPasRISCVUInt32; override;
+                     function DefaultFPURegisterMask:TPasRISCVUInt32; override;
 {$endif}
                     public
                      constructor Create(const aHART:THART); override;
@@ -9440,24 +9443,25 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     private
                      procedure EmitBlockExit; override;
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
-                     procedure EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativePush(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativePop(const aHostReg:TPasRISCVUInt8); override;
-                     procedure EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
-                     procedure EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-                     procedure EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativePush(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativePop(const aHostRegister:TPasRISCVUInt8); override;
+                     procedure EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
+                     procedure EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
+                     procedure EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
-                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
+                     procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
+                     procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUMov(const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8;const aIsDouble:Boolean); override;
 {$endif}
-                     function VMPtrReg:TPasRISCVUInt8; override;
-                     function DefaultHostRegMask:TPasRISCVUInt32; override;
-                     function ABIReclaimHostRegMask:TPasRISCVUInt32; override;
+                     function VMPtrRegister:TPasRISCVUInt8; override;
+                     function DefaultHostRegisterMask:TPasRISCVUInt32; override;
+                     function ABIReclaimHostRegisterMask:TPasRISCVUInt32; override;
+                     function AMOHostAvoidRegisterMask:TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-                     function DefaultFPURegMask:TPasRISCVUInt32; override;
+                     function DefaultFPURegisterMask:TPasRISCVUInt32; override;
 {$endif}
                     public
                      constructor Create(const aHART:THART); override;
@@ -47270,10 +47274,10 @@ begin
 
  FillChar(fJITTLB,SizeOf(fJITTLB),#0);
 
- FillChar(fIntRegInfos,SizeOf(fIntRegInfos),#0);
+ FillChar(fHostIntRegisterInfos,SizeOf(fHostIntRegisterInfos),#0);
 
  {$ifdef PasRISCVJustInTimeCompilerFPU}
- FillChar(fFPURegInfos,SizeOf(fFPURegInfos),#0);
+ FillChar(fHostFPURegisterInfos,SizeOf(fHostFPURegisterInfos),#0);
 {$endif}
 
  fBlockMap:=TBlockMap.Create(0);
@@ -47585,7 +47589,7 @@ begin
  if fLinkEntryCount>=TPasRISCVUInt32(length(fLinkEntries)) then begin
   SetLength(fLinkEntries,TPasRISCVUInt32(length(fLinkEntries))+64);
  end;
- fLinkEntries[fLinkEntryCount].DestPhysPC:=aDestPhysPC;
+ fLinkEntries[fLinkEntryCount].DestPhysicalPC:=aDestPhysPC;
  fLinkEntries[fLinkEntryCount].Mode:=aMode;
  fLinkEntries[fLinkEntryCount].VirtualMode:=aVirtualMode;
  fLinkEntries[fLinkEntryCount].PatchPtr:=aPatchPtr;
@@ -47636,15 +47640,15 @@ begin
 end;
 {$endif}
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.FreeHostReg(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeHostIntRegister(const aHostRegister:TPasRISCVUInt8);
 begin
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl aHostReg);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl aHostRegister);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitInit;
 var GuestReg:TRegister;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-    FPUReg:TFPURegister;
+    FPURegister:TFPURegister;
 {$endif}
 begin
 
@@ -47655,24 +47659,24 @@ begin
  fPCOffset:=0;
  fInstructionCount:=0;
 
- fABIReclaimMask:=ABIReclaimHostRegMask;
+ fABIReclaimMask:=ABIReclaimHostRegisterMask;
  fABIReclaimCount:=0;
  fLRUCounter:=0;
 
- fHostRegMask:=DefaultHostRegMask;
+ fHostIntRegisterMask:=DefaultHostRegisterMask;
  for GuestReg:=Low(TRegister) to High(TRegister) do begin
-  fIntRegInfos[GuestReg].HostReg:=REG_ILL;
-  fIntRegInfos[GuestReg].LastUsed:=0;
-  fIntRegInfos[GuestReg].Flags:=0;
-  fIntRegInfos[GuestReg].AUIPCOffset:=0;
+  fHostIntRegisterInfos[GuestReg].HostRegister:=REG_ILL;
+  fHostIntRegisterInfos[GuestReg].LastUsed:=0;
+  fHostIntRegisterInfos[GuestReg].Flags:=0;
+  fHostIntRegisterInfos[GuestReg].AUIPCOffset:=0;
  end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- fFPURegMask:=DefaultFPURegMask;
- for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
-  fFPURegInfos[FPUReg].HostReg:=REG_ILL;
-  fFPURegInfos[FPUReg].LastUsed:=0;
-  fFPURegInfos[FPUReg].Flags:=0;
+ fHostFPURegisterMask:=DefaultFPURegisterMask;
+ for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+  fHostFPURegisterInfos[FPURegister].HostRegister:=REG_ILL;
+  fHostFPURegisterInfos[FPURegister].LastUsed:=0;
+  fHostFPURegisterInfos[FPURegister].Flags:=0;
  end;
 {$endif}
 end;
@@ -47689,12 +47693,12 @@ var SavedHostRegMask:TPasRISCVUInt32;
     RunStateExitFixup:TPasRISCVUInt32;
 begin
 
- SavedHostRegMask:=fHostRegMask;
+ SavedHostRegMask:=fHostIntRegisterMask;
  SavedABIReclaimMask:=fABIReclaimMask;
  SavedABIReclaimCount:=fABIReclaimCount;
- SavedIntRegInfos:=fIntRegInfos;
+ SavedIntRegInfos:=fHostIntRegisterInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- SavedFPURegInfos:=fFPURegInfos;
+ SavedFPURegInfos:=fHostFPURegisterInfos;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerDebug}
@@ -47704,13 +47708,13 @@ begin
 {$endif}
 
  // 1. Save all dirty guest registers
- SaveAllDirtyIntRegs;
+ SaveAllDirtyIntRegisters;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- SaveAllDirtyFPURegs;
+ SaveAllDirtyFPURegisters;
 {$endif}
 
  // 2. Reset host reg mask
- fHostRegMask:=DefaultHostRegMask;
+ fHostIntRegisterMask:=DefaultHostRegisterMask;
 
  // 3. Update guest PC
  EmitUpdatePC;
@@ -47758,12 +47762,12 @@ begin
  EmitRET;
 
  // 9. Restore saved state for continued compilation
- fHostRegMask:=SavedHostRegMask;
+ fHostIntRegisterMask:=SavedHostRegMask;
  fABIReclaimMask:=SavedABIReclaimMask;
  fABIReclaimCount:=SavedABIReclaimCount;
- fIntRegInfos:=SavedIntRegInfos;
+ fHostIntRegisterInfos:=SavedIntRegInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- fFPURegInfos:=SavedFPURegInfos;
+ fHostFPURegisterInfos:=SavedFPURegInfos;
 {$endif}
 
 end;
@@ -47778,15 +47782,15 @@ begin
  EmitEnd(fLinkage);
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.GuestIntRegOffset(const aGuestReg:TRegister):TPasRISCVInt32;
+function TPasRISCV.THART.TJustInTimeCompiler.GuestIntRegisterOffset(const aGuestRegister:TRegister):TPasRISCVInt32;
 begin
- result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Registers[aGuestReg]));
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Registers[aGuestRegister]));
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-function TPasRISCV.THART.TJustInTimeCompiler.GuestFPURegOffset(const aGuestReg:TFPURegister):TPasRISCVInt32;
+function TPasRISCV.THART.TJustInTimeCompiler.GuestFPURegisterOffset(const aGuestRegister:TFPURegister):TPasRISCVInt32;
 begin
- result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.FPURegisters[aGuestReg]));
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.FPURegisters[aGuestRegister]));
 end;
 {$endif}
 
@@ -47891,17 +47895,17 @@ begin
 {$endif}
 
 end;
+{$endif}
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.ReloadAllMappedIntRegs;
+procedure TPasRISCV.THART.TJustInTimeCompiler.ReloadAllMappedIntRegisters;
 var GuestReg:TRegister;
 begin
- for GuestReg:=TRegister.x1 to TRegister.x31 do begin
-  if fIntRegInfos[GuestReg].HostReg<>REG_ILL then begin
-   EmitNativeLoad(fIntRegInfos[GuestReg].HostReg,VMPtrReg,GuestIntRegOffset(GuestReg),true);
+ for GuestReg:=TRegister.x0 to TRegister.x31 do begin
+  if fHostIntRegisterInfos[GuestReg].HostRegister<>REG_ILL then begin
+   EmitNativeLoad(fHostIntRegisterInfos[GuestReg].HostRegister,VMPtrRegister,GuestIntRegisterOffset(GuestReg),true);
   end;
  end;
 end;
-{$endif}
 
 function TPasRISCV.THART.TJustInTimeCompiler.JITTLBEntryCodePtrOffset:TPasRISCVInt32;
 begin
@@ -47916,32 +47920,32 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.ResetRegisterState;
 var GuestReg:TRegister;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-    FPUReg:TFPURegister;
+    FPURegister:TFPURegister;
 {$endif}
 begin
 
- fABIReclaimMask:=ABIReclaimHostRegMask;
+ fABIReclaimMask:=ABIReclaimHostRegisterMask;
  fABIReclaimCount:=0;
  fLRUCounter:=0;
 
- fHostRegMask:=DefaultHostRegMask;
+ fHostIntRegisterMask:=DefaultHostRegisterMask;
  for GuestReg:=Low(TRegister) to High(TRegister) do begin
-  fIntRegInfos[GuestReg].HostReg:=REG_ILL;
-  fIntRegInfos[GuestReg].Flags:=0;
-  fIntRegInfos[GuestReg].LastUsed:=0;
+  fHostIntRegisterInfos[GuestReg].HostRegister:=REG_ILL;
+  fHostIntRegisterInfos[GuestReg].Flags:=0;
+  fHostIntRegisterInfos[GuestReg].LastUsed:=0;
  end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- fFPURegMask:=DefaultFPURegMask;
- for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
-  fFPURegInfos[FPUReg].HostReg:=REG_ILL;
-  fFPURegInfos[FPUReg].Flags:=0;
-  fFPURegInfos[FPUReg].LastUsed:=0;
+ fHostFPURegisterMask:=DefaultFPURegisterMask;
+ for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+  fHostFPURegisterInfos[FPURegister].HostRegister:=REG_ILL;
+  fHostFPURegisterInfos[FPURegister].Flags:=0;
+  fHostFPURegisterInfos[FPURegister].LastUsed:=0;
  end;
 {$endif}
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.ClaimHostReg:TPasRISCVUInt8;
+function TPasRISCV.THART.TJustInTimeCompiler.ClaimHostIntRegister(const aAvoidRegisterMask:TPasRISCVUInt32=0):TPasRISCVUInt8;
 var Mask:TPasRISCVUInt32;
     BitIndex:TPasRISCVUInt32;
     LRUBest:TPasRISCVUInt32;
@@ -47950,22 +47954,22 @@ var Mask:TPasRISCVUInt32;
 begin
 
  // Tier 1: Free caller-saved register from mask
- if fHostRegMask<>0 then begin
+ Mask:=fHostIntRegisterMask and not aAvoidRegisterMask;
+ if Mask<>0 then begin
   // Find lowest set bit
-  Mask:=fHostRegMask;
   BitIndex:=0;
   while (Mask and 1)=0 do begin
    Mask:=Mask shr 1;
    inc(BitIndex);
   end;
-  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl BitIndex);
+  fHostIntRegisterMask:=fHostIntRegisterMask and not (TPasRISCVUInt32(1) shl BitIndex);
   result:=TPasRISCVUInt8(BitIndex);
   exit;
  end;
 
  // Tier 2: Reclaim callee-saved register (push it first)
- if fABIReclaimMask<>0 then begin
-  Mask:=fABIReclaimMask;
+ Mask:=fABIReclaimMask and not aAvoidRegisterMask;
+ if Mask<>0 then begin
   BitIndex:=0;
   while (Mask and 1)=0 do begin
    Mask:=Mask shr 1;
@@ -47983,18 +47987,18 @@ begin
  LRUBest:=$ffffffff;
  LRUReg:=TRegister.x0;
  for GuestReg:=TRegister.x1 to TRegister.x31 do begin
-  if fIntRegInfos[GuestReg].HostReg<>REG_ILL then begin
-   if (LRUBest=$ffffffff) or (fIntRegInfos[GuestReg].LastUsed<LRUBest) then begin
-    LRUBest:=fIntRegInfos[GuestReg].LastUsed;
-    LRUReg:=GuestReg;
-   end;
+  if (fHostIntRegisterInfos[GuestReg].HostRegister<>REG_ILL) and
+     ((aAvoidRegisterMask and (TPasRISCVUInt32(1) shl fHostIntRegisterInfos[GuestReg].HostRegister))=0) and
+     ((LRUBest=$ffffffff) or (fHostIntRegisterInfos[GuestReg].LastUsed<LRUBest)) then begin
+   LRUBest:=fHostIntRegisterInfos[GuestReg].LastUsed;
+   LRUReg:=GuestReg;
   end;
  end;
 
  if LRUReg<>TRegister.x0 then begin
-  result:=fIntRegInfos[LRUReg].HostReg;
-  FreeIntGuestReg(LRUReg);
-  fHostRegMask:=fHostRegMask and not (TPasRISCVUInt32(1) shl result);
+  result:=fHostIntRegisterInfos[LRUReg].HostRegister;
+  FreeGuestIntRegister(LRUReg);
+  fHostIntRegisterMask:=fHostIntRegisterMask and not (TPasRISCVUInt32(1) shl result);
  end else begin
   // Should not happen — we always have at least some mapped regs
   result:=REG_ILL;
@@ -48002,104 +48006,106 @@ begin
 
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.MapIntRegister(const aGuestReg:TRegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
-var HostReg:TPasRISCVUInt8;
+function TPasRISCV.THART.TJustInTimeCompiler.MapGuestToHostIntRegister(const aGuestRegister:TRegister;const aFlags:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32):TPasRISCVUInt8;
+var HostRegister:TPasRISCVUInt8;
 begin
 
  inc(fLRUCounter);
 
  // Already mapped?
- if fIntRegInfos[aGuestReg].HostReg<>REG_ILL then begin
-  fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
+ if fHostIntRegisterInfos[aGuestRegister].HostRegister<>REG_ILL then begin
+  fHostIntRegisterInfos[aGuestRegister].LastUsed:=fLRUCounter;
   if (aFlags and REG_DST)<>0 then begin
-   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
-   fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
+   fHostIntRegisterInfos[aGuestRegister].Flags:=fHostIntRegisterInfos[aGuestRegister].Flags or REG_DIRTY;
+   fHostIntRegisterInfos[aGuestRegister].Flags:=fHostIntRegisterInfos[aGuestRegister].Flags and not REG_AUIPC;
   end;
-  result:=fIntRegInfos[aGuestReg].HostReg;
+  result:=fHostIntRegisterInfos[aGuestRegister].HostRegister;
   exit;
  end;
 
  // Claim a host register
- HostReg:=ClaimHostReg;
- fIntRegInfos[aGuestReg].HostReg:=HostReg;
- fIntRegInfos[aGuestReg].LastUsed:=fLRUCounter;
- fIntRegInfos[aGuestReg].Flags:=0;
+ HostRegister:=ClaimHostIntRegister(aAvoidRegisterMask);
+ fHostIntRegisterInfos[aGuestRegister].HostRegister:=HostRegister;
+ fHostIntRegisterInfos[aGuestRegister].LastUsed:=fLRUCounter;
+ fHostIntRegisterInfos[aGuestRegister].Flags:=0;
 
  // x0 is always zero
- if aGuestReg=TRegister.x0 then begin
-  EmitNativeZeroReg(HostReg);
-  fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
+ if aGuestRegister=TRegister.x0 then begin
+  EmitNativeZeroReg(HostRegister);
+  fHostIntRegisterInfos[aGuestRegister].Flags:=REG_LOADED;
  end else begin
 
   // If SRC, load from TState
   if (aFlags and REG_SRC)<>0 then begin
-   EmitNativeLoad(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
-   fIntRegInfos[aGuestReg].Flags:=REG_LOADED;
+   EmitNativeLoad(HostRegister,VMPtrRegister,GuestIntRegisterOffset(aGuestRegister),true);
+   fHostIntRegisterInfos[aGuestRegister].Flags:=REG_LOADED;
   end;
 
  end;
 
  if (aFlags and REG_DST)<>0 then begin
-  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags or REG_DIRTY;
-  fIntRegInfos[aGuestReg].Flags:=fIntRegInfos[aGuestReg].Flags and not REG_AUIPC;
+  fHostIntRegisterInfos[aGuestRegister].Flags:=fHostIntRegisterInfos[aGuestRegister].Flags or REG_DIRTY;
+  fHostIntRegisterInfos[aGuestRegister].Flags:=fHostIntRegisterInfos[aGuestRegister].Flags and not REG_AUIPC;
  end;
 
- result:=HostReg;
+ result:=HostRegister;
 
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.FreeIntGuestReg(const aGuestReg:TRegister);
-var HostReg:TPasRISCVUInt8;
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeGuestIntRegister(const aGuestRegister:TRegister);
+var HostRegister:TPasRISCVUInt8;
 begin
 
- HostReg:=fIntRegInfos[aGuestReg].HostReg;
- if HostReg=REG_ILL then begin
+ HostRegister:=fHostIntRegisterInfos[aGuestRegister].HostRegister;
+ if HostRegister=REG_ILL then begin
   exit;
  end;
 
  // Save dirty register back to TState (unless x0)
- if (aGuestReg<>TRegister.x0) and ((fIntRegInfos[aGuestReg].Flags and REG_DIRTY)<>0) then begin
-  EmitNativeStore(HostReg,VMPtrReg,GuestIntRegOffset(aGuestReg),true);
+ if (aGuestRegister<>TRegister.x0) and ((fHostIntRegisterInfos[aGuestRegister].Flags and REG_DIRTY)<>0) then begin
+  EmitNativeStore(HostRegister,VMPtrRegister,GuestIntRegisterOffset(aGuestRegister),true);
  end;
 
  // Release host register back to free mask
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl HostReg);
- fIntRegInfos[aGuestReg].HostReg:=REG_ILL;
- fIntRegInfos[aGuestReg].Flags:=0;
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostRegister);
+ fHostIntRegisterInfos[aGuestRegister].HostRegister:=REG_ILL;
+ fHostIntRegisterInfos[aGuestRegister].Flags:=0;
 
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyIntRegs;
+procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyIntRegisters;
 var GuestReg:TRegister;
 begin
- for GuestReg:=TRegister.x1 to TRegister.x31 do begin
-  if (fIntRegInfos[GuestReg].HostReg<>REG_ILL) and
-     ((fIntRegInfos[GuestReg].Flags and REG_DIRTY)<>0) then begin
-   EmitNativeStore(fIntRegInfos[GuestReg].HostReg,VMPtrReg,GuestIntRegOffset(GuestReg),true);
+ for GuestReg:=TRegister.x0 to TRegister.x31 do begin
+  if (fHostIntRegisterInfos[GuestReg].HostRegister<>REG_ILL) and
+     ((fHostIntRegisterInfos[GuestReg].Flags and REG_DIRTY)<>0) then begin
+   if GuestReg<>TRegister.x0 then begin
+    EmitNativeStore(fHostIntRegisterInfos[GuestReg].HostRegister,VMPtrRegister,GuestIntRegisterOffset(GuestReg),true);
+   end;
    // Clear dirty flag but keep mapping alive
-   fIntRegInfos[GuestReg].Flags:=fIntRegInfos[GuestReg].Flags and not REG_DIRTY;
+   fHostIntRegisterInfos[GuestReg].Flags:=fHostIntRegisterInfos[GuestReg].Flags and not REG_DIRTY;
   end;
  end;
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-function TPasRISCV.THART.TJustInTimeCompiler.ClaimFPUReg:TPasRISCVUInt8;
+function TPasRISCV.THART.TJustInTimeCompiler.ClaimHostFPURegister(const aAvoidRegisterMask:TPasRISCVUInt32=0):TPasRISCVUInt8;
 var Mask:TPasRISCVUInt32;
     BitIndex:TPasRISCVUInt32;
     LRUBest:TPasRISCVUInt32;
     LRUReg:TFPURegister;
-    FPUReg:TFPURegister;
+    FPURegister:TFPURegister;
 begin
 
  // Tier 1: Free XMM from mask
- if fFPURegMask<>0 then begin
-  Mask:=fFPURegMask;
+ Mask:=fHostFPURegisterMask and not aAvoidRegisterMask;
+ if Mask<>0 then begin
   BitIndex:=0;
   while (Mask and 1)=0 do begin
    Mask:=Mask shr 1;
    inc(BitIndex);
   end;
-  fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl BitIndex);
+  fHostFPURegisterMask:=fHostFPURegisterMask and not (TPasRISCVUInt32(1) shl BitIndex);
   result:=TPasRISCVUInt8(BitIndex);
   exit;
  end;
@@ -48107,113 +48113,116 @@ begin
  // Tier 2: LRU eviction (no abireclaim for XMM)
  LRUBest:=$ffffffff;
  LRUReg:=TFPURegister.f0;
- for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
-  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
-   if (LRUBest=$ffffffff) or (fFPURegInfos[FPUReg].LastUsed<LRUBest) then begin
-    LRUBest:=fFPURegInfos[FPUReg].LastUsed;
-    LRUReg:=FPUReg;
-   end;
+ for FPURegister:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if (fHostFPURegisterInfos[FPURegister].HostRegister<>REG_ILL) and
+     ((aAvoidRegisterMask and (TPasRISCVUInt32(1) shl fHostFPURegisterInfos[FPURegister].HostRegister))=0) and
+     ((LRUBest=$ffffffff) or (fHostFPURegisterInfos[FPURegister].LastUsed<LRUBest)) then begin
+   LRUBest:=fHostFPURegisterInfos[FPURegister].LastUsed;
+   LRUReg:=FPURegister;
   end;
  end;
 
  if LRUReg<>TFPURegister.f0 then begin
-  result:=fFPURegInfos[LRUReg].HostReg;
-  FreeFPUGuestReg(LRUReg);
+  result:=fHostFPURegisterInfos[LRUReg].HostRegister;
+  FreeGuestFPURegister(LRUReg);
  end else begin
   // Fallback: evict f0
-  result:=fFPURegInfos[TFPURegister.f0].HostReg;
-  FreeFPUGuestReg(TFPURegister.f0);
+  result:=fHostFPURegisterInfos[TFPURegister.f0].HostRegister;
+  FreeGuestFPURegister(TFPURegister.f0);
  end;
 
- // FreeFPUGuestReg added the bit back to fFPURegMask — clear it since we're claiming it
- fFPURegMask:=fFPURegMask and not (TPasRISCVUInt32(1) shl result);
+ // FreeGuestFPURegister added the bit back to fHostFPURegisterMask — clear it since we're claiming it
+ fHostFPURegisterMask:=fHostFPURegisterMask and not (TPasRISCVUInt32(1) shl result);
 
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.MapFPURegister(const aGuestReg:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
-var HostReg:TPasRISCVUInt8;
+function TPasRISCV.THART.TJustInTimeCompiler.MapGuestToHostFPURegister(const aGuestRegister:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
+var HostRegister:TPasRISCVUInt8;
 begin
 
  inc(fLRUCounter);
 
  // Already mapped?
- if fFPURegInfos[aGuestReg].HostReg<>REG_ILL then begin
-  fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
+ if fHostFPURegisterInfos[aGuestRegister].HostRegister<>REG_ILL then begin
+  fHostFPURegisterInfos[aGuestRegister].LastUsed:=fLRUCounter;
   if (aFlags and REG_DST)<>0 then begin
-   fFPURegInfos[aGuestReg].Flags:=fFPURegInfos[aGuestReg].Flags or REG_DIRTY;
+   fHostFPURegisterInfos[aGuestRegister].Flags:=fHostFPURegisterInfos[aGuestRegister].Flags or REG_DIRTY;
   end;
-  result:=fFPURegInfos[aGuestReg].HostReg;
+  result:=fHostFPURegisterInfos[aGuestRegister].HostRegister;
   exit;
  end;
 
  // Claim an XMM register
- HostReg:=ClaimFPUReg;
- fFPURegInfos[aGuestReg].HostReg:=HostReg;
- fFPURegInfos[aGuestReg].LastUsed:=fLRUCounter;
- fFPURegInfos[aGuestReg].Flags:=0;
+ HostRegister:=ClaimHostFPURegister;
+ fHostFPURegisterInfos[aGuestRegister].HostRegister:=HostRegister;
+ fHostFPURegisterInfos[aGuestRegister].LastUsed:=fLRUCounter;
+ fHostFPURegisterInfos[aGuestRegister].Flags:=0;
 
  // If SRC, load from TState
  if (aFlags and REG_SRC)<>0 then begin
-  EmitFPULoad(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
-  fFPURegInfos[aGuestReg].Flags:=REG_LOADED;
+  EmitFPULoad(HostRegister,VMPtrRegister,GuestFPURegisterOffset(aGuestRegister),true);
+  fHostFPURegisterInfos[aGuestRegister].Flags:=REG_LOADED;
  end;
 
  if (aFlags and REG_DST)<>0 then begin
-  fFPURegInfos[aGuestReg].Flags:=fFPURegInfos[aGuestReg].Flags or REG_DIRTY;
+  fHostFPURegisterInfos[aGuestRegister].Flags:=fHostFPURegisterInfos[aGuestRegister].Flags or REG_DIRTY;
  end;
 
- result:=HostReg;
+ result:=HostRegister;
 
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.FreeFPUGuestReg(const aGuestReg:TFPURegister);
-var HostReg:TPasRISCVUInt8;
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeHostFPURegister(const aHostRegister:TPasRISCVUInt8);
+begin
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl aHostRegister);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeGuestFPURegister(const aGuestRegister:TFPURegister);
+var HostRegister:TPasRISCVUInt8;
 begin
 
- HostReg:=fFPURegInfos[aGuestReg].HostReg;
- if HostReg=REG_ILL then begin
+ HostRegister:=fHostFPURegisterInfos[aGuestRegister].HostRegister;
+ if HostRegister=REG_ILL then begin
   exit;
  end;
 
  // Save dirty register back to TState
- if (fFPURegInfos[aGuestReg].Flags and REG_DIRTY)<>0 then begin
-  EmitFPUStore(HostReg,VMPtrReg,GuestFPURegOffset(aGuestReg),true);
+ if (fHostFPURegisterInfos[aGuestRegister].Flags and REG_DIRTY)<>0 then begin
+  EmitFPUStore(HostRegister,VMPtrRegister,GuestFPURegisterOffset(aGuestRegister),true);
  end;
 
  // Release XMM register back to free mask
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl HostReg);
- fFPURegInfos[aGuestReg].HostReg:=REG_ILL;
- fFPURegInfos[aGuestReg].Flags:=0;
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl HostRegister);
+ fHostFPURegisterInfos[aGuestRegister].HostRegister:=REG_ILL;
+ fHostFPURegisterInfos[aGuestRegister].Flags:=0;
 
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyFPURegs;
-var FPUReg:TFPURegister;
+procedure TPasRISCV.THART.TJustInTimeCompiler.SaveAllDirtyFPURegisters;
+var FPURegister:TFPURegister;
 begin
- for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
-  if (fFPURegInfos[FPUReg].HostReg<>REG_ILL) and
-     ((fFPURegInfos[FPUReg].Flags and REG_DIRTY)<>0) then begin
-   EmitFPUStore(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
-   fFPURegInfos[FPUReg].Flags:=fFPURegInfos[FPUReg].Flags and not REG_DIRTY;
+ for FPURegister:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if (fHostFPURegisterInfos[FPURegister].HostRegister<>REG_ILL) and
+     ((fHostFPURegisterInfos[FPURegister].Flags and REG_DIRTY)<>0) then begin
+   EmitFPUStore(fHostFPURegisterInfos[FPURegister].HostRegister,VMPtrRegister,GuestFPURegisterOffset(FPURegister),true);
+   fHostFPURegisterInfos[FPURegister].Flags:=fHostFPURegisterInfos[FPURegister].Flags and not REG_DIRTY;
   end;
  end;
 end;
 
-{$ifdef PasRISCVJITFPUFlushAfterEachOp}
-procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllFPURegs;
-var FPUReg:TFPURegister;
+procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllFPURegisters;
+var FPURegister:TFPURegister;
 begin
- SaveAllDirtyFPURegs;
- for FPUReg:=TFPURegister.f0 to TFPURegister.f31 do begin
-  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
-   fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl fFPURegInfos[FPUReg].HostReg);
-   fFPURegInfos[FPUReg].HostReg:=REG_ILL;
-   fFPURegInfos[FPUReg].Flags:=0;
-   fFPURegInfos[FPUReg].LastUsed:=0;
+ SaveAllDirtyFPURegisters;
+ for FPURegister:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if fHostFPURegisterInfos[FPURegister].HostRegister<>REG_ILL then begin
+   fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl fHostFPURegisterInfos[FPURegister].HostRegister);
+   fHostFPURegisterInfos[FPURegister].HostRegister:=REG_ILL;
+   fHostFPURegisterInfos[FPURegister].Flags:=0;
+   fHostFPURegisterInfos[FPURegister].LastUsed:=0;
   end;
  end;
 end;
-{$endif}
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.BeginTrace(const aVirtualPC,aPhysicalPC:TPasRISCVUInt64);
 begin
@@ -48301,7 +48310,7 @@ begin
 
  for LinkIndex:=0 to fLinkEntryCount-1 do begin
 
-  Key.PhysicalPC:=fLinkEntries[LinkIndex].DestPhysPC;
+  Key.PhysicalPC:=fLinkEntries[LinkIndex].DestPhysicalPC;
   Key.Mode:=fLinkEntries[LinkIndex].Mode;
   Key.VirtualMode:=fLinkEntries[LinkIndex].VirtualMode;
 
@@ -48538,7 +48547,7 @@ begin
 {$endif}
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-   FlushAllFPURegs;
+   FlushAllFPURegisters;
 {$endif}
    inc(fPCOffset,aInstructionSize);
    inc(fInstructionCount);
@@ -48570,7 +48579,7 @@ begin
 {$endif}
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-   FlushAllFPURegs;
+   FlushAllFPURegisters;
 {$endif}
    inc(fPCOffset,aInstructionSize);
    inc(fInstructionCount);
@@ -48596,7 +48605,7 @@ begin
 {$endif}
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-   FlushAllFPURegs;
+   FlushAllFPURegisters;
 {$endif}
    inc(fPCOffset,aOffset);
    inc(fInstructionCount);
@@ -48616,7 +48625,7 @@ begin
 {$endif}
   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-  FlushAllFPURegs;
+  FlushAllFPURegisters;
 {$endif}
   inc(fInstructionCount);
   fBlockEnds:=true;
@@ -48641,7 +48650,7 @@ begin
    inc(fPCOffset,aFallthroughOffset);
    aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-    FlushAllFPURegs;
+    FlushAllFPURegisters;
 {$endif}
    inc(fPCOffset,aTargetOffset-aFallthroughOffset);
    inc(fInstructionCount);
@@ -48668,15 +48677,31 @@ begin
  end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.FlushAllIntRegs;
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeAllHostIntRegisters;
 var GuestReg:TRegister;
 begin
- SaveAllDirtyIntRegs;
- for GuestReg:=TRegister.x1 to TRegister.x31 do begin
-  if fIntRegInfos[GuestReg].HostReg<>REG_ILL then begin
-   fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl fIntRegInfos[GuestReg].HostReg);
-   fIntRegInfos[GuestReg].HostReg:=REG_ILL;
-   fIntRegInfos[GuestReg].Flags:=0;
+ SaveAllDirtyIntRegisters;
+ for GuestReg:=TRegister.x0 to TRegister.x31 do begin
+  if fHostIntRegisterInfos[GuestReg].HostRegister<>REG_ILL then begin
+   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl fHostIntRegisterInfos[GuestReg].HostRegister);
+   fHostIntRegisterInfos[GuestReg].HostRegister:=REG_ILL;
+   fHostIntRegisterInfos[GuestReg].Flags:=0;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.FreeHostIntRegisters(const aHostRegisterMask:TPasRISCVUInt32);
+var GuestReg:TRegister;
+begin
+ for GuestReg:=TRegister.x0 to TRegister.x31 do begin
+  if (fHostIntRegisterInfos[GuestReg].HostRegister<>REG_ILL) and
+     ((aHostRegisterMask and (TPasRISCVUInt32(1) shl fHostIntRegisterInfos[GuestReg].HostRegister))<>0) then begin
+   if (fHostIntRegisterInfos[GuestReg].Flags and REG_DIRTY)<>0 then begin
+    EmitNativeStore(fHostIntRegisterInfos[GuestReg].HostRegister,VMPtrRegister,GuestIntRegisterOffset(GuestReg),true);
+   end;
+   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl fHostIntRegisterInfos[GuestReg].HostRegister);
+   fHostIntRegisterInfos[GuestReg].HostRegister:=REG_ILL;
+   fHostIntRegisterInfos[GuestReg].Flags:=0;
   end;
  end;
 end;
@@ -48692,9 +48717,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAdd(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48708,9 +48733,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSub(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48723,8 +48748,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddi(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
@@ -48737,8 +48762,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlli(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -48751,8 +48776,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrli(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -48765,8 +48790,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrai(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -48779,8 +48804,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlti(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
@@ -48793,8 +48818,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSltiu(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
@@ -48807,8 +48832,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeXori(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
@@ -48821,8 +48846,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeOri(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
@@ -48835,8 +48860,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAndi(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
@@ -48850,9 +48875,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSll(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48866,9 +48891,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrl(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48882,9 +48907,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSra(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48898,9 +48923,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlt(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48914,9 +48939,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSltu(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48930,9 +48955,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeXor(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48946,9 +48971,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeOr(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48962,9 +48987,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAnd(HostRD,HostRS1,HostRS2);
 end;
 
@@ -48977,8 +49002,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddiW(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
 end;
 
@@ -48991,8 +49016,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlliW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49005,8 +49030,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrliW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49019,8 +49044,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSraiW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49034,9 +49059,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49050,9 +49075,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSubW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49066,9 +49091,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSllW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49082,9 +49107,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrlW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49098,9 +49123,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSraW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49114,9 +49139,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMul(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49130,9 +49155,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulH(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49146,9 +49171,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulHU(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49162,9 +49187,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulHSU(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49178,9 +49203,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDiv(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49194,9 +49219,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDivU(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49210,9 +49235,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRem(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49226,9 +49251,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRemU(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49242,9 +49267,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49258,9 +49283,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDivW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49274,9 +49299,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDivUW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49290,9 +49315,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRemW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49306,9 +49331,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRemUW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49322,8 +49347,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCLZ(HostRD,HostRS1);
 end;
 
@@ -49336,8 +49361,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCTZ(HostRD,HostRS1);
 end;
 
@@ -49350,8 +49375,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCPOP(HostRD,HostRS1);
 end;
 
@@ -49364,8 +49389,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCLZW(HostRD,HostRS1);
 end;
 
@@ -49378,8 +49403,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCTZW(HostRD,HostRS1);
 end;
 
@@ -49392,8 +49417,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCPOPW(HostRD,HostRS1);
 end;
 
@@ -49407,9 +49432,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMIN(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49423,9 +49448,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMINU(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49439,9 +49464,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMAX(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49455,9 +49480,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMAXU(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49471,9 +49496,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeANDN(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49487,9 +49512,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeORN(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49503,9 +49528,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeXNOR(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49519,9 +49544,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeROL(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49535,9 +49560,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeROR(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49551,9 +49576,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeROLW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49567,9 +49592,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRORW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49582,8 +49607,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRORI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49596,8 +49621,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRORIW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49610,8 +49635,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSEXTB(HostRD,HostRS1);
 end;
 
@@ -49624,8 +49649,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSEXTH(HostRD,HostRS1);
 end;
 
@@ -49638,8 +49663,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeZEXTH(HostRD,HostRS1);
 end;
 
@@ -49652,8 +49677,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeREV8(HostRD,HostRS1);
 end;
 
@@ -49666,8 +49691,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeORCB(HostRD,HostRS1);
 end;
 {$endif}
@@ -49683,9 +49708,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBSET(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49699,9 +49724,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBCLR(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49715,9 +49740,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBEXT(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49731,9 +49756,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBINV(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49746,8 +49771,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBSETI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49760,8 +49785,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBCLRI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49774,8 +49799,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBEXTI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 
@@ -49788,8 +49813,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBINVI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 {$endif}
@@ -49805,9 +49830,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH1ADD(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49821,9 +49846,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH2ADD(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49837,9 +49862,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH3ADD(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49853,9 +49878,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH1ADDUW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49869,9 +49894,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH2ADDUW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49885,9 +49910,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH3ADDUW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49901,9 +49926,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeADDUW(HostRD,HostRS1,HostRS2);
 end;
 
@@ -49916,8 +49941,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSLLIUW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
 end;
 {$endif}
@@ -49930,7 +49955,7 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSetReg32s(HostRD,TPasRISCVInt32(aParameter1));
 end;
 
@@ -49944,13 +49969,13 @@ begin
   exit;
  end;
  Imm:=TPasRISCVInt32(aParameter1)+fPCOffset;
- HostRD:=MapIntRegister(RD,REG_DST);
- EmitNativeLD(HostRD,VMPtrReg,GuestPCOffset);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeLD(HostRD,VMPtrRegister,GuestPCOffset);
  if Imm<>0 then begin
   EmitNativeAddi(HostRD,HostRD,Imm);
  end;
- fIntRegInfos[RD].Flags:=fIntRegInfos[RD].Flags or REG_AUIPC;
- fIntRegInfos[RD].AUIPCOffset:=Imm;
+ fHostIntRegisterInfos[RD].Flags:=fHostIntRegisterInfos[RD].Flags or REG_AUIPC;
+ fHostIntRegisterInfos[RD].AUIPCOffset:=Imm;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -49962,8 +49987,8 @@ begin
  RD:=TRegister(aParameter0);
  if RD<>TRegister.Zero then begin
   LinkImm:=fPCOffset+TPasRISCVInt32(aParameter1);
-  HostRD:=MapIntRegister(RD,REG_DST);
-  EmitNativeLD(HostRD,VMPtrReg,GuestPCOffset);
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeLD(HostRD,VMPtrRegister,GuestPCOffset);
   if LinkImm<>0 then begin
    EmitNativeAddi(HostRD,HostRD,LinkImm);
   end;
@@ -49981,30 +50006,30 @@ begin
  RS1:=TRegister(aParameter1);
  Immediate:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
  InstrSize:=aParameter3;
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostTemp:=ClaimHostReg;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostTemp:=ClaimHostIntRegister;
  // Compute jump target: rs1 + imm
  EmitNativeAddi(HostTemp,HostRS1,Immediate);
  // Link address: PC + pc_off + isize
  if RD<>TRegister.Zero then begin
   LinkImm:=fPCOffset+TPasRISCVInt32(InstrSize);
-  HostRD:=MapIntRegister(RD,REG_DST);
-  EmitNativeLD(HostRD,VMPtrReg,GuestPCOffset);
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeLD(HostRD,VMPtrRegister,GuestPCOffset);
   if LinkImm<>0 then begin
    EmitNativeAddi(HostRD,HostRD,LinkImm);
   end;
  end;
  // AUIPC optimization: if RS1 was loaded by AUIPC, target PC offset is known
- if (fIntRegInfos[RS1].Flags and REG_AUIPC)<>0 then begin
-  fPCOffset:=fIntRegInfos[RS1].AUIPCOffset+Immediate;
+ if (fHostIntRegisterInfos[RS1].Flags and REG_AUIPC)<>0 then begin
+  fPCOffset:=fHostIntRegisterInfos[RS1].AUIPCOffset+Immediate;
   fLinkage:=TLinkage.Jmp;
  end else begin
   fPCOffset:=0;
   fLinkage:=TLinkage.Tail;
   // Store computed jump target to guest PC
-  EmitNativeSD(HostTemp,VMPtrReg,GuestPCOffset);
+  EmitNativeSD(HostTemp,VMPtrRegister,GuestPCOffset);
  end;
- FreeHostReg(HostTemp);
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50014,8 +50039,8 @@ var RS1,RS2:TRegister;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
@@ -50034,8 +50059,8 @@ var RS1,RS2:TRegister;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
@@ -50054,8 +50079,8 @@ var RS1,RS2:TRegister;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
@@ -50074,8 +50099,8 @@ var RS1,RS2:TRegister;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
@@ -50094,8 +50119,8 @@ var RS1,RS2:TRegister;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
@@ -50114,8 +50139,8 @@ var RS1,RS2:TRegister;
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostRS2:=MapIntRegister(RS2,REG_SRC);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2,BRANCH_NEW,false);
  EmitEnd(TLinkage.Jmp);
@@ -50135,13 +50160,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,1);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST);
   EmitNativeLB(HostDest,HostAddr,0);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50152,13 +50177,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,2);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST);
   EmitNativeLH(HostDest,HostAddr,0);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50169,13 +50194,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,4);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST);
   EmitNativeLW(HostDest,HostAddr,0);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50186,13 +50211,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,8);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST);
   EmitNativeLD(HostDest,HostAddr,0);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLBU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50203,13 +50228,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,1);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST);
   EmitNativeLBU(HostDest,HostAddr,0);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50220,13 +50245,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,2);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST);
   EmitNativeLHU(HostDest,HostAddr,0);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50237,13 +50262,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,4);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST);
   EmitNativeLWU(HostDest,HostAddr,0);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50254,11 +50279,11 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,1);
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
  EmitNativeSB(HostSrc,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50269,11 +50294,11 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,2);
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
  EmitNativeSH(HostSrc,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50284,11 +50309,11 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,4);
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
  EmitNativeSW(HostSrc,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50299,11 +50324,11 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,8);
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
  EmitNativeSD(HostSrc,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerAMO}
@@ -50313,270 +50338,313 @@ procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADD(const aInstruction
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOADD(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOSWAP(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOXOR(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOAND(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOOR(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOMIN(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOMAX(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOMINU(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
-  HostDest:=MapIntRegister(RD,REG_DST);
+  HostDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
-  HostDest:=ClaimHostReg;
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  end;
  EmitNativeAMOMAXU(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
-  FreeHostReg(HostDest);
+  FreeHostIntRegister(HostDest);
  end;
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostGuestAddr,ActualDest:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
 {$if defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
  SaveState;
 {$ifend}
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,4 shl ord(not Is32));
- HostGuestAddr:=MapIntRegister(RS1,REG_SRC);
- HostDest:=ClaimHostReg;
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostGuestAddr:=MapGuestToHostIntRegister(RS1,REG_SRC,CurrentAMOHostRegAvoidMask);
+ HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  EmitNativeLR(HostDest,HostAddr,HostGuestAddr,Is32);
  if RD<>TRegister.Zero then begin
-  ActualDest:=MapIntRegister(RD,REG_DST);
+  ActualDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
   EmitNativeAddi(ActualDest,HostDest,0);
  end;
- FreeHostReg(HostDest);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostDest);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc,HostGuestAddr,ActualDest:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
 begin
 {$if defined(PasRISCVJustInTimeCompilerAMOBounceGuard)}
  SaveState;
 {$ifend}
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  Is32:=aParameter3<>0;
- HostAddr:=ClaimHostReg;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32));
- HostSrc:=MapIntRegister(RS2,REG_SRC);
- HostGuestAddr:=MapIntRegister(RS1,REG_SRC);
- HostDest:=ClaimHostReg;
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ HostGuestAddr:=MapGuestToHostIntRegister(RS1,REG_SRC,CurrentAMOHostRegAvoidMask);
+ HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
  EmitNativeSC(HostDest,HostAddr,HostSrc,HostGuestAddr,Is32,fHART.fMachine.fLRSCMaximumCycles);
  if RD<>TRegister.Zero then begin
-  ActualDest:=MapIntRegister(RD,REG_DST);
+  ActualDest:=MapGuestToHostIntRegister(RD,REG_DST,CurrentAMOHostRegAvoidMask);
   EmitNativeAddi(ActualDest,HostDest,0);
  end;
- FreeHostReg(HostDest);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostDest);
+ FreeHostIntRegister(HostAddr);
 end;
 
 {$endif}
-
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50588,11 +50656,11 @@ begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,4);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFLW(HostFRD,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50604,11 +50672,11 @@ begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_R,8);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFLD(HostFRD,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50620,11 +50688,11 @@ begin
  FRS2:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,4);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  EmitNativeFSW(HostFRS2,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50636,11 +50704,11 @@ begin
  FRS2:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostReg;
+ HostAddr:=ClaimHostIntRegister;
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,8);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  EmitNativeFSD(HostFRS2,HostAddr,0);
- FreeHostReg(HostAddr);
+ FreeHostIntRegister(HostAddr);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -50651,14 +50719,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFAddS(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50674,14 +50742,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFSubS(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50697,14 +50765,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFMulS(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50720,14 +50788,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFDivS(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50742,13 +50810,13 @@ var FRD,FRS1:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFSqrtS(HostFRD,HostFRS1);
  if RM<=4 then begin
@@ -50764,14 +50832,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFAddD(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50787,14 +50855,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFSubD(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50810,14 +50878,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFMulD(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50833,14 +50901,14 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFDivD(HostFRD,HostFRS1,HostFRS2);
  if RM<=4 then begin
@@ -50855,13 +50923,13 @@ var FRD,FRS1:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFSqrtD(HostFRD,HostFRS1);
  if RM<=4 then begin
@@ -50876,9 +50944,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjS(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50889,9 +50957,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjNS(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50902,9 +50970,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjXS(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50915,9 +50983,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjD(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50928,9 +50996,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjND(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50941,9 +51009,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjXD(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50954,9 +51022,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMinS(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50967,9 +51035,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMaxS(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50980,9 +51048,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMinD(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -50993,9 +51061,9 @@ begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMaxD(HostFRD,HostFRS1,HostFRS2);
 end;
 
@@ -51006,13 +51074,13 @@ var FRD,FRS1:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtSD(HostFRD,HostFRS1);
  if RM<=4 then begin
@@ -51027,13 +51095,13 @@ var FRD,FRS1:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtDS(HostFRD,HostFRS1);
  if RM<=4 then begin
@@ -51052,9 +51120,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFEqS(HostRD,HostFRS1,HostFRS2);
 end;
 
@@ -51069,9 +51137,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLtS(HostRD,HostFRS1,HostFRS2);
 end;
 
@@ -51086,9 +51154,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLeS(HostRD,HostFRS1,HostFRS2);
 end;
 
@@ -51103,9 +51171,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFEqD(HostRD,HostFRS1,HostFRS2);
 end;
 
@@ -51120,9 +51188,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLtD(HostRD,HostFRS1,HostFRS2);
 end;
 
@@ -51137,9 +51205,9 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLeD(HostRD,HostFRS1,HostFRS2);
 end;
 
@@ -51154,13 +51222,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtWS(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51179,13 +51247,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtWUS(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51204,13 +51272,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtLS(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51229,13 +51297,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtLUS(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51251,13 +51319,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtSW(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51273,13 +51341,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtSWU(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51295,13 +51363,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtSL(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51317,13 +51385,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtSLU(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51342,13 +51410,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtWD(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51367,13 +51435,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtWUD(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51392,13 +51460,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtLD(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51417,13 +51485,13 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if (RM<=4) and (RM<>1) then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtLUD(HostRD,HostFRS1,RM=1);
  if (RM<=4) and (RM<>1) then begin
@@ -51439,13 +51507,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtDW(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51461,13 +51529,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtDWU(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51483,13 +51551,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtDL(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51505,13 +51573,13 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
  EmitNativeFCvtDLU(HostFRD,HostRS1);
  if RM<=4 then begin
@@ -51529,8 +51597,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFMvXW(HostRD,HostFRS1);
 end;
 
@@ -51541,8 +51609,8 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMvWX(HostFRD,HostRS1);
 end;
 
@@ -51556,8 +51624,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFMvXD(HostRD,HostFRS1);
 end;
 
@@ -51568,8 +51636,8 @@ var FRD:TFPURegister;
 begin
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
- HostRS1:=MapIntRegister(RS1,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMvDX(HostFRD,HostRS1);
 end;
 
@@ -51583,8 +51651,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFClassS(HostRD,HostFRS1);
 end;
 
@@ -51598,8 +51666,8 @@ begin
  if RD=TRegister.Zero then begin
   exit;
  end;
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostRD:=MapIntRegister(RD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFClassD(HostRD,HostFRS1);
 end;
 {$endif}
@@ -51658,7 +51726,7 @@ begin
  inherited Destroy;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.VMPtrReg:TPasRISCVUInt8;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.VMPtrRegister:TPasRISCVUInt8;
 begin
  // First argument register holds pointer to TState
 {$ifdef Windows}
@@ -51668,7 +51736,7 @@ begin
 {$endif}
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.DefaultHostRegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.DefaultHostRegisterMask:TPasRISCVUInt32;
 begin
  // Caller-saved GPRs (immediately usable, no push needed)
  // Exclude RSP (4), RBP (5), and the VM pointer register
@@ -51693,7 +51761,7 @@ begin
 {$endif}
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.ABIReclaimHostRegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.ABIReclaimHostRegisterMask:TPasRISCVUInt32;
 begin
  // Callee-saved GPRs (must push before use, pop at block end)
 {$ifdef Windows}
@@ -51715,8 +51783,14 @@ begin
 {$endif}
 end;
 
+function TPasRISCV.THART.TJustInTimeCompilerX8664.AMOHostAvoidRegisterMask:TPasRISCVUInt32;
+begin
+ // CMPXCHG implicitly uses RAX, so avoid it for AMO register allocation
+ result:=TPasRISCVUInt32(1) shl ord(TX64Register.rRAX);
+end;
+
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-function TPasRISCV.THART.TJustInTimeCompilerX8664.DefaultFPURegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerX8664.DefaultFPURegisterMask:TPasRISCVUInt32;
 begin
 {$ifdef Windows}
  // Win64: XMM0-XMM5 are caller-saved (6 regs)
@@ -52614,66 +52688,66 @@ begin
 end;
 {$endif}
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
  // mov reg, [base+offset]
- EmitMemOp(X86_MOV_M_R,aHostReg,aBaseReg,aOffset,aIs64);
+ EmitMemOp(X86_MOV_M_R,aHostRegister,aBaseRegister,aOffset,aIs64);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
  // mov [base+offset], reg
- EmitMemOp(X86_MOV_R_M,aHostReg,aBaseReg,aOffset,aIs64);
+ EmitMemOp(X86_MOV_R_M,aHostRegister,aBaseRegister,aOffset,aIs64);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8);
 begin
  // xor reg32, reg32 (clears full 64-bit register)
- Emit2RegOp(X86_XOR,aHostReg,aHostReg,false);
+ Emit2RegOp(X86_XOR,aHostRegister,aHostRegister,false);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePush(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePush(const aHostRegister:TPasRISCVUInt8);
 begin
  // push reg
- if aHostReg>=8 then begin
+ if aHostRegister>=8 then begin
   EmitByte(X64_REX_B);
  end;
- EmitByte(X86_PUSH+(aHostReg and 7));
+ EmitByte(X86_PUSH+(aHostRegister and 7));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePop(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePop(const aHostRegister:TPasRISCVUInt8);
 begin
  // pop reg
- if aHostReg>=8 then begin
+ if aHostRegister>=8 then begin
   EmitByte(X64_REX_B);
  end;
- EmitByte(X86_POP+(aHostReg and 7));
+ EmitByte(X86_POP+(aHostRegister and 7));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean);
 begin
  // add [base+offset], imm
  if (aValue>=Low(TPasRISCVInt8)) and (aValue<=High(TPasRISCVInt8)) then begin
-  EmitMemImmOp(ALU_ADD,aBaseReg,aOffset,TPasRISCVInt32(aValue),aIs64);
+  EmitMemImmOp(ALU_ADD,aBaseRegister,aOffset,TPasRISCVInt32(aValue),aIs64);
  end else if (aValue>=Low(TPasRISCVInt32)) and (aValue<=High(TPasRISCVInt32)) then begin
-  EmitMemImmOp(ALU_ADD,aBaseReg,aOffset,TPasRISCVInt32(aValue),aIs64);
+  EmitMemImmOp(ALU_ADD,aBaseRegister,aOffset,TPasRISCVInt32(aValue),aIs64);
  end else begin
   // Value too large for immediate — load into temp register and add
   EmitMOVRegImm64(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt64(aValue));
-  EmitMemOp(X86_ADD,TPasRISCVUInt8(ord(TX64Register.rRAX)),aBaseReg,aOffset,aIs64);
+  EmitMemOp(X86_ADD,TPasRISCVUInt8(ord(TX64Register.rRAX)),aBaseRegister,aOffset,aIs64);
  end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
 begin
  // sub [base+offset], imm
- EmitMemImmOp(ALU_SUB,aBaseReg,aOffset,aValue,aIs64);
+ EmitMemImmOp(ALU_SUB,aBaseRegister,aOffset,aValue,aIs64);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
 begin
  // cmp [base+offset], imm
- EmitMemImmOp(ALU_CMP,aBaseReg,aOffset,aValue,aIs64);
+ EmitMemImmOp(ALU_CMP,aBaseRegister,aOffset,aValue,aIs64);
 end;
 
 function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32;
@@ -52681,11 +52755,11 @@ var ScratchReg:TPasRISCVUInt8;
 begin
  ScratchReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
  // mov rax, qword [vm+CycleOffset] — load 64 bits of old cycle value
- EmitNativeLoad(ScratchReg,VMPtrReg,GuestCycleOffset,true);
+ EmitNativeLoad(ScratchReg,VMPtrRegister,GuestCycleOffset,true);
  // lea rdx, [rax+count] — calculate new cycle value
  EmitLEA(TPasRISCVUInt8(ord(TX64Register.rRDX)),ScratchReg,TPasRISCVInt32(aCount));
  // mov qword [vm+CycleOffset], rdx — store new cycle value
- EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrReg,GuestCycleOffset,true);
+ EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrRegister,GuestCycleOffset,true);
  // xor eax, edx — detect changed bits (old ^ new)
  Emit2RegOp(X86_XOR,ScratchReg,TPasRISCVUInt8(ord(TX64Register.rRDX)),false);
  // shr eax, 16 — isolate bits 16+ (sets ZF if no 16-bit boundary crossed)
@@ -52742,25 +52816,25 @@ begin
  EmitByte(X86_SSE_MOVD_FROM_XMM);
  EmitModRM(3,aXMM,aGPR);
 end;
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
  if aIsDouble then begin
   // movsd xmm, [base+offset] — F2 0F 10
-  EmitSSE2MemOp($f2,$10,aXMMReg,aBaseReg,aOffset);
+  EmitSSE2MemOp($f2,$10,aXMMReg,aBaseRegister,aOffset);
  end else begin
   // movss xmm, [base+offset] — F3 0F 10
-  EmitSSE2MemOp($f3,$10,aXMMReg,aBaseReg,aOffset);
+  EmitSSE2MemOp($f3,$10,aXMMReg,aBaseRegister,aOffset);
  end;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
  if aIsDouble then begin
   // movsd [base+offset], xmm — F2 0F 11
-  EmitSSE2MemOp($f2,$11,aXMMReg,aBaseReg,aOffset);
+  EmitSSE2MemOp($f2,$11,aXMMReg,aBaseRegister,aOffset);
  end else begin
   // movss [base+offset], xmm — F3 0F 11
-  EmitSSE2MemOp($f3,$11,aXMMReg,aBaseReg,aOffset);
+  EmitSSE2MemOp($f3,$11,aXMMReg,aBaseRegister,aOffset);
  end;
 end;
 
@@ -52797,7 +52871,7 @@ begin
  EmitSSE2Op($66,$56,aXMMReg,aScratchXMM);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempRegister:TPasRISCVUInt8);
 const RVRMToMXCSR:array[0..4] of TPasRISCVUInt32=(
        $0000, // 0: RNE → MXCSR 00
        $6000, // 1: RTZ → MXCSR 11
@@ -52814,15 +52888,15 @@ begin
  EmitByte($1c); // ModRM: 00 011 100 (reg=3, rm=RSP → SIB)
  EmitByte($24); // SIB: 00 100 100 (RSP base, no index)
  // MOV tmp, [rsp]
- EmitMemOp(X86_MOV_M_R,aTempReg,TPasRISCVUInt8(ord(TX64Register.rRSP)),0,false);
+ EmitMemOp(X86_MOV_M_R,aTempRegister,TPasRISCVUInt8(ord(TX64Register.rRSP)),0,false);
  // AND tmp, ~$6000 (clear RC bits 14:13)
- EmitImmOp(ALU_AND,aTempReg,TPasRISCVInt32(not TPasRISCVInt32($6000)),false);
+ EmitImmOp(ALU_AND,aTempRegister,TPasRISCVInt32(not TPasRISCVInt32($6000)),false);
  // OR tmp, <new RC bits>
  if RVRMToMXCSR[aRM]<>0 then begin
-  EmitImmOp(ALU_OR,aTempReg,TPasRISCVInt32(RVRMToMXCSR[aRM]),false);
+  EmitImmOp(ALU_OR,aTempRegister,TPasRISCVInt32(RVRMToMXCSR[aRM]),false);
  end;
  // MOV [rsp+4], tmp
- EmitMemOp(X86_MOV_R_M,aTempReg,TPasRISCVUInt8(ord(TX64Register.rRSP)),4,false);
+ EmitMemOp(X86_MOV_R_M,aTempRegister,TPasRISCVUInt8(ord(TX64Register.rRSP)),4,false);
  // LDMXCSR [rsp+4] — load modified MXCSR: 0f ae /2 [rsp+4]
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
@@ -52878,9 +52952,9 @@ begin
  EmitMOVRegReg(aTempReg2,aTempReg1,true);
  EmitImmOp(ALU_AND,aTempReg2,TLB_MASK,true);
  EmitShiftRegImm(SHIFT_SHL,aTempReg2,TLB_ENTRY_SHIFT,true);
- // aTempReg2 += [VMPtrReg + GuestJITTLBPtrOffset] — entry pointer
+ // aTempReg2 += [VMPtrRegister + GuestJITTLBPtrOffset] — entry pointer
  // x86: ADD r64, [base+disp] = opcode $03 with memory operand
- EmitMemOp(X86_ADD_M_R,aTempReg2,VMPtrReg,GuestJITTLBPtrOffset,true);
+ EmitMemOp(X86_ADD_M_R,aTempReg2,VMPtrRegister,GuestJITTLBPtrOffset,true);
  // Compare tag: CMP [aTempReg2 + TagOffset], aTempReg1
  // x86: CMP r/m64, r64 = opcode $39
  EmitMemOp(X86_CMP,aTempReg1,aTempReg2,TagOffset,true);
@@ -52897,7 +52971,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitUpdatePC;
 begin
  if fPCOffset<>0 then begin
-  EmitNativeMemAddImm(VMPtrReg,GuestPCOffset,TPasRISCVInt64(fPCOffset),true);
+  EmitNativeMemAddImm(VMPtrRegister,GuestPCOffset,TPasRISCVInt64(fPCOffset),true);
  end;
 end;
 
@@ -52915,16 +52989,16 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitRunStateCheck;
 var ScratchReg:TPasRISCVUInt8;
 begin
  ScratchReg:=TPasRISCVUInt8(TX64Register.rRAX);
- EmitNativeLoad(ScratchReg,VMPtrReg,GuestRunStatePtrOffset,true);
+ EmitNativeLoad(ScratchReg,VMPtrRegister,GuestRunStatePtrOffset,true);
  EmitNativeLoad(ScratchReg,ScratchReg,0,false);
  EmitImmOp(ALU_AND,ScratchReg,TPasRISCVInt32(fSignalMask),false);
  EmitImmOp(ALU_CMP,ScratchReg,TPasRISCVInt32(RUNSTATE_RUNNING),false);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDataTLBLookup(const aHostAddrReg:TPasRISCVUInt8;const aGuestBaseReg:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32);
 // Inline data TLB check with fallback to interpreter
-// aHostAddrReg = output: host pointer to accessed memory
-// aGuestBaseReg = RISC-V register holding virtual base address
+// aHostAddrRegister = output: host pointer to accessed memory
+// aGuestBaseRegister = RISC-V register holding virtual base address
 // aOffset = immediate offset to add to base
 // aTLBFieldOffset = offset of Read/Write tag field within TLB entry (0=Read, 8=Write)
 // aAlignment = access alignment (1, 2, 4, 8)
@@ -52942,17 +53016,20 @@ var HostVirtualAddress,HostVPN,HostIndex:TPasRISCVUInt8;
     SavedIntRegInfos:TIntRegisterInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
     SavedFPURegInfos:TFPURegisterInfos;
-    FPUReg:TFPURegister;
+    FPURegister:TFPURegister;
 {$endif}
     SideExitBailoutFixup:TPasRISCVUInt32;
     SideExitDoneFixup:TPasRISCVUInt32;
     HelperReg:TPasRISCVUInt8;
 {$endif}
 begin
- HostVirtualAddress:=ClaimHostReg;
- HostVPN:=ClaimHostReg;
- HostIndex:=ClaimHostReg;
- HostBase:=MapIntRegister(aGuestBaseReg,REG_SRC);
+ if aAvoidRegisterMask<>0 then begin
+  FreeHostIntRegisters(aAvoidRegisterMask);
+ end;
+ HostVirtualAddress:=ClaimHostIntRegister(aAvoidRegisterMask);
+ HostVPN:=ClaimHostIntRegister(aAvoidRegisterMask);
+ HostIndex:=ClaimHostIntRegister(aAvoidRegisterMask);
+ HostBase:=MapGuestToHostIntRegister(aGuestBaseRegister,REG_SRC,aAvoidRegisterMask);
  // hvaddr = base + offset
  EmitNativeAddi(HostVirtualAddress,HostBase,aOffset);
  // vpn = hvaddr >> PAGE_SHIFT
@@ -52961,22 +53038,22 @@ begin
  EmitNativeAndi(HostIndex,HostVPN,TLB_MASK);
  // idx <<= TLB_ENTRY_SHIFT (byte offset into TLB array, 32-bit shift suffices)
  EmitShiftRegImm(SHIFT_SHL,HostIndex,TLB_ENTRY_SHIFT,false);
- // idx += [VMPtrReg + GuestJITTLBPtrOffset] (add TLB base pointer)
- EmitMemOp(X86_ADD_M_R,HostIndex,VMPtrReg,GuestJITTLBPtrOffset,true);
- // aHostAddrReg = [idx + aTLBFieldOffset] (load tag from TLB entry)
- EmitNativeLoad(aHostAddrReg,HostIndex,aTLBFieldOffset,true);
+ // idx += [VMPtrRegister + GuestJITTLBPtrOffset] (add TLB base pointer)
+ EmitMemOp(X86_ADD_M_R,HostIndex,VMPtrRegister,GuestJITTLBPtrOffset,true);
+ // aHostAddrRegister = [idx + aTLBFieldOffset] (load tag from TLB entry)
+ EmitNativeLoad(aHostAddrRegister,HostIndex,aTLBFieldOffset,true);
  if aAlignment>1 then begin
-  // TLB miss check: aHostAddrReg = tag ^ vpn
-  Emit2RegOp(X86_XOR,aHostAddrReg,HostVPN,true);
+  // TLB miss check: aHostAddrRegister = tag ^ vpn
+  Emit2RegOp(X86_XOR,aHostAddrRegister,HostVPN,true);
   // Page crossing check: HostVPN = ((hvaddr + size - 1) ^ hvaddr) >> 12
   EmitNativeAddi(HostVPN,HostVirtualAddress,aAlignment-1);
   Emit2RegOp(X86_XOR,HostVPN,HostVirtualAddress,true);
   EmitShiftRegImm(SHIFT_SHR,HostVPN,PAGE_SHIFT,true);
   // Combine: any bit set = TLB miss or page crossing
-  Emit2RegOp(X86_OR,HostVPN,aHostAddrReg,true);
+  Emit2RegOp(X86_OR,HostVPN,aHostAddrRegister,true);
  end else begin
   // Byte access: no page crossing possible, just check TLB
-  Emit2RegOp(X86_XOR,HostVPN,aHostAddrReg,true);
+  Emit2RegOp(X86_XOR,HostVPN,aHostAddrRegister,true);
  end;
  // BEQ (vpn==0 means match): TEST + JE
  EmitTEST(HostVPN,HostVPN,true);
@@ -52990,20 +53067,20 @@ begin
 {$endif}
 
  // Save compile-time register allocator state (will be restored after emitting miss path)
- SavedHostRegMask:=fHostRegMask;
+ SavedHostRegMask:=fHostIntRegisterMask;
  SavedABIReclaimMask:=fABIReclaimMask;
  SavedABIReclaimCount:=fABIReclaimCount;
- SavedIntRegInfos:=fIntRegInfos;
+ SavedIntRegInfos:=fHostIntRegisterInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- SavedFPURegInfos:=fFPURegInfos;
+ SavedFPURegInfos:=fHostFPURegisterInfos;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  // Save dirty mapped FPU regs to TState before helper call (XMMs are caller-saved)
- for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
-  if (fFPURegInfos[FPUReg].HostReg<>REG_ILL) and
-     ((fFPURegInfos[FPUReg].Flags and REG_DIRTY)<>0) then begin
-   EmitFPUStore(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
+ for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+  if (fHostFPURegisterInfos[FPURegister].HostRegister<>REG_ILL) and
+     ((fHostFPURegisterInfos[FPURegister].Flags and REG_DIRTY)<>0) then begin
+   EmitFPUStore(fHostFPURegisterInfos[FPURegister].HostRegister,VMPtrRegister,GuestFPURegisterOffset(FPURegister),true);
   end;
  end;
 {$endif}
@@ -53029,27 +53106,27 @@ begin
  // Set up call arguments
  // IMPORTANT: copy HostVirtualAddress FIRST — it might be in any caller-saved reg including RAX
 {$ifdef Windows}
- // Win64 ABI: RCX=arg1, RDX=arg2, R8=arg3, R9=arg4; VMPtrReg=RCX
+ // Win64 ABI: RCX=arg1, RDX=arg2, R8=arg3, R9=arg4; VMPtrRegister=RCX
  EmitMOVRegReg(TPasRISCVUInt8(ord(TX64Register.rRDX)),HostVirtualAddress,true);
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rR8)),TPasRISCVUInt32(aTLBFieldOffset));
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rR9)),TPasRISCVUInt32(aAlignment));
  // Win64: Allocate 32 bytes shadow space
  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-32);
- // Load helper function pointer into RAX (from state, before clobbering VMPtrReg)
+ // Load helper function pointer into RAX (from state, before clobbering VMPtrRegister)
  HelperReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
- EmitNativeLoad(HelperReg,VMPtrReg,GuestJITDataTLBFillPtrOffset,true);
- // Load JITHART into RCX (arg1) — clobbers VMPtrReg
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),VMPtrReg,GuestJITHARTOffset,true);
+ EmitNativeLoad(HelperReg,VMPtrRegister,GuestJITDataTLBFillPtrOffset,true);
+ // Load JITHART into RCX (arg1) — clobbers VMPtrRegister
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),VMPtrRegister,GuestJITHARTOffset,true);
 {$else}
- // SysV ABI: RDI=arg1, RSI=arg2, RDX=arg3, RCX=arg4; VMPtrReg=RDI
+ // SysV ABI: RDI=arg1, RSI=arg2, RDX=arg3, RCX=arg4; VMPtrRegister=RDI
  EmitMOVRegReg(TPasRISCVUInt8(ord(TX64Register.rRSI)),HostVirtualAddress,true);
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRDX)),TPasRISCVUInt32(aTLBFieldOffset));
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRCX)),TPasRISCVUInt32(aAlignment));
- // Load helper function pointer into RAX (from state, before clobbering VMPtrReg)
+ // Load helper function pointer into RAX (from state, before clobbering VMPtrRegister)
  HelperReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
- EmitNativeLoad(HelperReg,VMPtrReg,GuestJITDataTLBFillPtrOffset,true);
- // Load JITHART into RDI (arg1) — clobbers VMPtrReg
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrReg,GuestJITHARTOffset,true);
+ EmitNativeLoad(HelperReg,VMPtrRegister,GuestJITDataTLBFillPtrOffset,true);
+ // Load JITHART into RDI (arg1) — clobbers VMPtrRegister
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrRegister,GuestJITHARTOffset,true);
 {$endif}
 
  // Call the helper function (in RAX)
@@ -53066,13 +53143,13 @@ begin
  end;
 
  // Store helper result (RAX) into TState scratch field before restoring regs
- // Peek VMPtrReg from stack (SysV: RDI is 5th push = RSP+4*8; Win64: RCX is 8th push = RSP+1*8)
+ // Peek VMPtrRegister from stack (SysV: RDI is 5th push = RSP+4*8; Win64: RCX is 8th push = RSP+1*8)
 {$ifdef Windows}
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),TPasRISCVUInt8(ord(TX64Register.rRSP)),1*8,true);
 {$else}
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),TPasRISCVUInt8(ord(TX64Register.rRSP)),4*8,true);
 {$endif}
- EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrReg,GuestJITScratchOffset,true);
+ EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrRegister,GuestJITScratchOffset,true);
 
  // Pop all caller-saved registers (reverse order)
  EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rR11)));
@@ -53087,45 +53164,45 @@ begin
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  // Reload all mapped FPU regs from TState (XMMs were clobbered by helper call)
- for FPUReg:=Low(TFPURegister) to High(TFPURegister) do begin
-  if fFPURegInfos[FPUReg].HostReg<>REG_ILL then begin
-   EmitFPULoad(fFPURegInfos[FPUReg].HostReg,VMPtrReg,GuestFPURegOffset(FPUReg),true);
+ for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
+  if fHostFPURegisterInfos[FPURegister].HostRegister<>REG_ILL then begin
+   EmitFPULoad(fHostFPURegisterInfos[FPURegister].HostRegister,VMPtrRegister,GuestFPURegisterOffset(FPURegister),true);
   end;
  end;
 {$endif}
 
- // Load helper result from TState scratch into aHostAddrReg
- EmitNativeLoad(aHostAddrReg,VMPtrReg,GuestJITScratchOffset,true);
+ // Load helper result from TState scratch into aHostAddrRegister
+ EmitNativeLoad(aHostAddrRegister,VMPtrRegister,GuestJITScratchOffset,true);
 
  // Test result (return value = host address, 0 = failure) and branch
- EmitTEST(aHostAddrReg,aHostAddrReg,true);
+ EmitTEST(aHostAddrRegister,aHostAddrRegister,true);
  EmitJccRel32(CC_E,0);
  SideExitBailoutFixup:=fTemporaryCodeSize-4;
 
- // Success: aHostAddrReg has host address, all regs restored. JMP to .done (skip the hit-path address computation)
+ // Success: aHostAddrRegister has host address, all regs restored. JMP to .done (skip the hit-path address computation)
  EmitJmpRel32(0);
  SideExitDoneFixup:=fTemporaryCodeSize-4;
 
  // .bailout: Save registers and then exit and fall back to interpreter
  PatchJmpRel32(SideExitBailoutFixup);
- SaveAllDirtyIntRegs;
+ SaveAllDirtyIntRegisters;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- SaveAllDirtyFPURegs;
+ SaveAllDirtyFPURegisters;
 {$endif}
 
  // Set JITSkipExecution := true so interpreter doesn't re-enter JIT for this instruction
  // Use HostVPN (claimed, not mapped) to avoid clobbering a dirty guest-mapped register
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
- EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
+ EmitNativeStore(HostVPN,VMPtrRegister,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
 
  // Restore compile-time allocator state for continued compilation after the miss path
- fHostRegMask:=SavedHostRegMask;
+ fHostIntRegisterMask:=SavedHostRegMask;
  fABIReclaimMask:=SavedABIReclaimMask;
  fABIReclaimCount:=SavedABIReclaimCount;
- fIntRegInfos:=SavedIntRegInfos;
+ fHostIntRegisterInfos:=SavedIntRegInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- fFPURegInfos:=SavedFPURegInfos;
+ fHostFPURegisterInfos:=SavedFPURegInfos;
 {$endif}
 
  // .hit: TLB check passed (JE from TEST above)
@@ -53135,9 +53212,9 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
  // Load physical pointer from TLB entry
- EmitNativeLoad(aHostAddrReg,HostIndex,TLB_RELMEM_OFFSET,true);
+ EmitNativeLoad(aHostAddrRegister,HostIndex,TLB_RELMEM_OFFSET,true);
  // Final host address = ptr + hvaddr
- Emit2RegOp(X86_ADD,aHostAddrReg,HostVirtualAddress,true);
+ Emit2RegOp(X86_ADD,aHostAddrRegister,HostVirtualAddress,true);
 
  // .done: Merge point for side-exit success and TLB hit paths
  PatchJmpRel32(SideExitDoneFixup);
@@ -53148,7 +53225,7 @@ begin
  TakenLabel:=EmitBranchEntry(CC_E,BRANCH_NEW);
  // Set JITSkipExecution:=true on TLB miss bailout
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
- EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
+ EmitNativeStore(HostVPN,VMPtrRegister,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
  EmitBranchTarget(TakenLabel);
 {$else}
@@ -53156,18 +53233,18 @@ begin
  TakenLabel:=fTemporaryCodeSize;
  // Set JITSkipExecution:=true on TLB miss bailout
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
- EmitNativeStore(HostVPN,VMPtrReg,GuestJITSkipExecutionOffset,false);
+ EmitNativeStore(HostVPN,VMPtrRegister,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
  PatchBranchLabel(TakenLabel);
 {$endif}
  // Load physical pointer from TLB entry
- EmitNativeLoad(aHostAddrReg,HostIndex,TLB_RELMEM_OFFSET,true);
+ EmitNativeLoad(aHostAddrRegister,HostIndex,TLB_RELMEM_OFFSET,true);
  // Final host address = ptr + hvaddr
- Emit2RegOp(X86_ADD,aHostAddrReg,HostVirtualAddress,true);
+ Emit2RegOp(X86_ADD,aHostAddrRegister,HostVirtualAddress,true);
 {$endif}
- FreeHostReg(HostIndex);
- FreeHostReg(HostVPN);
- FreeHostReg(HostVirtualAddress);
+ FreeHostIntRegister(HostIndex);
+ FreeHostIntRegister(HostVPN);
+ FreeHostIntRegister(HostVirtualAddress);
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
@@ -53205,7 +53282,7 @@ begin
  HashReg:=TPasRISCVUInt8(TX64Register.rRAX);
 
  // mov rdx, [vm+PCOffset]
- EmitNativeLoad(PCReg,VMPtrReg,GuestPCOffset,true);
+ EmitNativeLoad(PCReg,VMPtrRegister,GuestPCOffset,true);
 
  // Combined hash: (PC << (ENTRY_SHIFT-1)) & (MASK << ENTRY_SHIFT)
  // mov eax, edx
@@ -53218,7 +53295,7 @@ begin
  EmitImmOp(ALU_AND,HashReg,TPasRISCVInt32(JIT_TLB_MASK shl JIT_TLB_ENTRY_SHIFT),false);
 
  // add rax, [vm+TLBPtrOffset]
- EmitMemOp(X86_ADD_M_R,HashReg,VMPtrReg,GuestJITBlockTLBPtrOffset,true);
+ EmitMemOp(X86_ADD_M_R,HashReg,VMPtrRegister,GuestJITBlockTLBPtrOffset,true);
 
  // cmp [rax], rdx
  EmitMemOp(X86_CMP,PCReg,HashReg,0,true);
@@ -53673,7 +53750,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeANDN(const aHostDes
 var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs1 & ~rs2
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  EmitMOVRegReg(TempReg1,aHostSrc2,true);
  // NOT temp
  EmitREX(true,2,0,TempReg1);
@@ -53683,14 +53760,14 @@ begin
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
  end;
  Emit2RegOp(X86_AND,aHostDest,TempReg1,true); // AND rd, temp
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeORN(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs1 | ~rs2
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  EmitMOVRegReg(TempReg1,aHostSrc2,true);
  // NOT temp
  EmitREX(true,2,0,TempReg1);
@@ -53700,7 +53777,7 @@ begin
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
  end;
  Emit2RegOp(X86_OR,aHostDest,TempReg1,true); // OR rd, temp
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeXNOR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -53807,13 +53884,13 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeORCB(const aHostDes
 const XMM01Mask=(TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1);
 var TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- if (fFPURegMask and XMM01Mask)<>XMM01Mask then begin
+ if (fHostFPURegisterMask and XMM01Mask)<>XMM01Mask then begin
   // orc.b: for each byte, if any bit set => 0xff, else 0x00
   // Same algorithm as BitwiseOrCombine:
   // t = (((val | 0x8080...) - 0x0101...) | val) & 0x8080...
   // t >>= 7; result = (t << 8) - t
-  TempReg1:=ClaimHostReg;
-  TempReg2:=ClaimHostReg;
+  TempReg1:=ClaimHostIntRegister;
+  TempReg2:=ClaimHostIntRegister;
   // TempReg1 = aHostSrc | 0x8080808080808080
   EmitMOVRegReg(TempReg1,aHostSrc,true);
   EmitNativeSetReg64(TempReg2,TPasRISCVUInt64($8080808080808080));
@@ -53832,8 +53909,8 @@ begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
   EmitShiftRegImm(SHIFT_SHL,aHostDest,8,true);
   Emit2RegOp($29,aHostDest,TempReg1,true); // aHostDest -= TempReg1
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
  end else begin
   // Inline SSE2 approach: movq xmm0,src; xorps xmm1,xmm1; pcmpeqb xmm0,xmm1; pcmpeqb xmm0,xmm1; movq dst,xmm0
   // Save xmm0+xmm1 on stack (may be mapped FPU regs)
@@ -53864,14 +53941,14 @@ var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs1 | (1 << (rs2 & 63)) — BTS rd, rs2
  if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
-  TempReg1:=ClaimHostReg;
+  TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc2,true);
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
   EmitREX(true,TempReg1,0,aHostDest);
   EmitByte($0f);
   EmitByte($ab);
   EmitModRM(3,TempReg1 and 7,aHostDest and 7);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
  end else begin
   if aHostDest<>aHostSrc1 then begin
    EmitMOVRegReg(aHostDest,aHostSrc1,true);
@@ -53888,14 +53965,14 @@ var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs1 & ~(1 << (rs2 & 63)) — BTR rd, rs2
  if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
-  TempReg1:=ClaimHostReg;
+  TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc2,true);
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
   EmitREX(true,TempReg1,0,aHostDest);
   EmitByte($0f);
   EmitByte($b3);
   EmitModRM(3,TempReg1 and 7,aHostDest and 7);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
  end else begin
   if aHostDest<>aHostSrc1 then begin
    EmitMOVRegReg(aHostDest,aHostSrc1,true);
@@ -53923,14 +54000,14 @@ var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs1 ^ (1 << (rs2 & 63)) — BTC rd, rs2
  if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
-  TempReg1:=ClaimHostReg;
+  TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc2,true);
   EmitMOVRegReg(aHostDest,aHostSrc1,true);
   EmitREX(true,TempReg1,0,aHostDest);
   EmitByte($0f);
   EmitByte($bb);
   EmitModRM(3,TempReg1 and 7,aHostDest and 7);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
  end else begin
   if aHostDest<>aHostSrc1 then begin
    EmitMOVRegReg(aHostDest,aHostSrc1,true);
@@ -54011,14 +54088,14 @@ begin
    EmitSIB(1,aHostSrc1 and 7,aHostSrc2 and 7);
   end;
  end else begin
-  TempReg1:=ClaimHostReg;
+  TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc1,true);
   EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
   Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
   if aHostDest<>TempReg1 then begin
    EmitMOVRegReg(aHostDest,TempReg1,true);
   end;
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
  end;
 end;
 
@@ -54038,14 +54115,14 @@ begin
    EmitSIB(2,aHostSrc1 and 7,aHostSrc2 and 7);
   end;
  end else begin
-  TempReg1:=ClaimHostReg;
+  TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc1,true);
   EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
   Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
   if aHostDest<>TempReg1 then begin
    EmitMOVRegReg(aHostDest,TempReg1,true);
   end;
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
  end;
 end;
 
@@ -54065,14 +54142,14 @@ begin
    EmitSIB(3,aHostSrc1 and 7,aHostSrc2 and 7);
   end;
  end else begin
-  TempReg1:=ClaimHostReg;
+  TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc1,true);
   EmitShiftRegImm(SHIFT_SHL,TempReg1,3,true);
   Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
   if aHostDest<>TempReg1 then begin
    EmitMOVRegReg(aHostDest,TempReg1,true);
   end;
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
  end;
 end;
 
@@ -54080,55 +54157,55 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH1ADDUW(const aHos
 var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs2 + (zext32(rs1) << 1)
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  EmitMOVRegReg(TempReg1,aHostSrc1,false); // zero-extend 32->64
  EmitShiftRegImm(SHIFT_SHL,TempReg1,1,true);
  Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH2ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs2 + (zext32(rs1) << 2)
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  EmitMOVRegReg(TempReg1,aHostSrc1,false);
  EmitShiftRegImm(SHIFT_SHL,TempReg1,2,true);
  Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH3ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs2 + (zext32(rs1) << 3)
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  EmitMOVRegReg(TempReg1,aHostSrc1,false);
  EmitShiftRegImm(SHIFT_SHL,TempReg1,3,true);
  Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true);
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
  // rd = rs2 + zext32(rs1)
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  EmitMOVRegReg(TempReg1,aHostSrc1,false); // zero-extend 32->64
  Emit2RegOp(X86_ADD,TempReg1,aHostSrc2,true); // ADD
  if aHostDest<>TempReg1 then begin
   EmitMOVRegReg(aHostDest,TempReg1,true);
  end;
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
@@ -54153,7 +54230,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOADD(const aHostD
 var HostTemp:TPasRISCVUInt8;
 begin
  // LOCK XADD [addr], temp — atomically: old=[addr]; [addr]+=temp; temp=old
- HostTemp:=ClaimHostReg;
+ HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
  // LOCK prefix
  EmitByte($f0);
@@ -54170,14 +54247,14 @@ begin
  end else begin
   EmitMOVRegReg(aHostDest,HostTemp,true);
  end;
- FreeHostReg(HostTemp);
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOSWAP(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
 begin
  // XCHG [addr], temp — implicitly locked, atomically swaps
- HostTemp:=ClaimHostReg;
+ HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
  // 87 /r — XCHG r/m, r (implicitly locked)
  if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
@@ -54191,240 +54268,111 @@ begin
  end else begin
   EmitMOVRegReg(aHostDest,HostTemp,true);
  end;
- FreeHostReg(HostTemp);
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOXOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
  // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; XOR temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
- AddrRegScratch:=REG_ILL;
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- HostTemp:=ClaimHostReg;
- if HostTemp=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  HostTemp:=ClaimHostReg;
-  FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
- end;
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
  // Load current value into RAX
- EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),CmpXchgAddr,0,not aIs32);
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
  // Copy RAX to temp, apply XOR
  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
- Emit2RegOp(X86_XOR,HostTemp,SrcReg,not aIs32);
+ Emit2RegOp(X86_XOR,HostTemp,aHostSrc,not aIs32);
  // LOCK CMPXCHG [addr], temp
  EmitByte($f0);
- if (not aIs32) or (HostTemp>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,HostTemp,0,CmpXchgAddr);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(HostTemp,CmpXchgAddr,0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
  // JNE retry
  EmitByte($75);
  EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
- // RAX = old value, extract via HostTemp to handle aHostDest=RAX
+ // RAX = old value
  if aIs32 then begin
-  EmitMOVSXD(HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
  end else begin
-  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
  end;
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
- EmitMOVRegReg(aHostDest,HostTemp,true);
- FreeHostReg(HostTemp);
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOAND(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
- AddrRegScratch:=REG_ILL;
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- HostTemp:=ClaimHostReg;
- if HostTemp=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  HostTemp:=ClaimHostReg;
-  FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
- end;
- EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),CmpXchgAddr,0,not aIs32);
+ // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; AND temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
- Emit2RegOp(X86_AND,HostTemp,SrcReg,not aIs32);
+ Emit2RegOp(X86_AND,HostTemp,aHostSrc,not aIs32);
  EmitByte($f0);
- if (not aIs32) or (HostTemp>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,HostTemp,0,CmpXchgAddr);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(HostTemp,CmpXchgAddr,0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
  EmitByte($75);
  EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
  if aIs32 then begin
-  EmitMOVSXD(HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
  end else begin
-  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
  end;
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
- EmitMOVRegReg(aHostDest,HostTemp,true);
- FreeHostReg(HostTemp);
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOOR(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
- AddrRegScratch:=REG_ILL;
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- HostTemp:=ClaimHostReg;
- if HostTemp=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  HostTemp:=ClaimHostReg;
-  FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
- end;
- EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),CmpXchgAddr,0,not aIs32);
+ // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; OR temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
- Emit2RegOp(X86_OR,HostTemp,SrcReg,not aIs32);
+ Emit2RegOp(X86_OR,HostTemp,aHostSrc,not aIs32);
  EmitByte($f0);
- if (not aIs32) or (HostTemp>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,HostTemp,0,CmpXchgAddr);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(HostTemp,CmpXchgAddr,0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
  EmitByte($75);
  EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
  if aIs32 then begin
-  EmitMOVSXD(HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
  end else begin
-  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
  end;
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
- EmitMOVRegReg(aHostDest,HostTemp,true);
- FreeHostReg(HostTemp);
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMIN(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
+ // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; MINop temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
  // CAS loop with signed min: new = (old < rs2) ? old : rs2
- AddrRegScratch:=REG_ILL;
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- HostTemp:=ClaimHostReg;
- if HostTemp=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  HostTemp:=ClaimHostReg;
-  FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
- end;
- EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),CmpXchgAddr,0,not aIs32);
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
- EmitMOVRegReg(HostTemp,SrcReg,not aIs32);
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
  // CMP RAX, rs2 — if RAX < rs2 (signed), keep RAX (old), else use rs2
- Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),SrcReg,not aIs32);
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
  // CMOVLE temp, RAX — if old <= rs2, temp=old (temp already = rs2)
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
@@ -54434,68 +54382,34 @@ begin
  EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
  // LOCK CMPXCHG
  EmitByte($f0);
- if (not aIs32) or (HostTemp>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,HostTemp,0,CmpXchgAddr);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(HostTemp,CmpXchgAddr,0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
  EmitByte($75);
  EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
  if aIs32 then begin
-  EmitMOVSXD(HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
  end else begin
-  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
  end;
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
- EmitMOVRegReg(aHostDest,HostTemp,true);
- FreeHostReg(HostTemp);
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAX(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
+ // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; MAXop temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
  // CAS loop with signed max: new = (old > rs2) ? old : rs2
- AddrRegScratch:=REG_ILL;
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- HostTemp:=ClaimHostReg;
- if HostTemp=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  HostTemp:=ClaimHostReg;
-  FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
- end;
- EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),CmpXchgAddr,0,not aIs32);
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
- EmitMOVRegReg(HostTemp,SrcReg,not aIs32);
- Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),SrcReg,not aIs32);
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
  // CMOVGE temp, RAX — if old >= rs2, temp=old
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
@@ -54504,68 +54418,34 @@ begin
  EmitByte($4d); // CMOVGE
  EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($f0);
- if (not aIs32) or (HostTemp>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,HostTemp,0,CmpXchgAddr);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(HostTemp,CmpXchgAddr,0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
  EmitByte($75);
  EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
  if aIs32 then begin
-  EmitMOVSXD(HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
  end else begin
-  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
  end;
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
- EmitMOVRegReg(aHostDest,HostTemp,true);
- FreeHostReg(HostTemp);
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMINU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
- // CAS loop with unsigned min
- AddrRegScratch:=REG_ILL;
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- HostTemp:=ClaimHostReg;
- if HostTemp=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  HostTemp:=ClaimHostReg;
-  FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
- end;
- EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),CmpXchgAddr,0,not aIs32);
+ // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; MINop temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
+ // CAS loop with unsigned min: new = (old < rs2) ? old : rs2
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
- EmitMOVRegReg(HostTemp,SrcReg,not aIs32);
- Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),SrcReg,not aIs32);
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
  // CMOVBE temp, RAX — if old <= rs2 (unsigned), temp=old
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
@@ -54574,68 +54454,34 @@ begin
  EmitByte($46); // CMOVBE
  EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($f0);
- if (not aIs32) or (HostTemp>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,HostTemp,0,CmpXchgAddr);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(HostTemp,CmpXchgAddr,0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
  EmitByte($75);
  EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
  if aIs32 then begin
-  EmitMOVSXD(HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
  end else begin
-  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
  end;
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
- EmitMOVRegReg(aHostDest,HostTemp,true);
- FreeHostReg(HostTemp);
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
     RetryOffset:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
- // CAS loop with unsigned max
- AddrRegScratch:=REG_ILL;
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- HostTemp:=ClaimHostReg;
- if HostTemp=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  HostTemp:=ClaimHostReg;
-  FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
- end;
- EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),CmpXchgAddr,0,not aIs32);
+ // CAS loop: retry: MOV RAX,[addr]; MOV temp,RAX; MAXop temp,rs2; LOCK CMPXCHG [addr],temp; JNE retry
+ // CAS loop with unsigned max: new = (old > rs2) ? old : rs2
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+ HostTemp:=ClaimHostIntRegister(AMOHostAvoidRegisterMask);
+ EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
- EmitMOVRegReg(HostTemp,SrcReg,not aIs32);
- Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),SrcReg,not aIs32);
+ EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
+ Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
  // CMOVAE temp, RAX — if old >= rs2 (unsigned), temp=old
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
@@ -54644,28 +54490,20 @@ begin
  EmitByte($43); // CMOVAE
  EmitModRM(3,HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($f0);
- if (not aIs32) or (HostTemp>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,HostTemp,0,CmpXchgAddr);
+ if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(HostTemp,CmpXchgAddr,0);
+ EmitMemOperand(HostTemp,aHostAddr,0);
  EmitByte($75);
  EmitByte(TPasRISCVUInt8(RetryOffset-(fTemporaryCodeSize+1)));
  if aIs32 then begin
-  EmitMOVSXD(HostTemp,TPasRISCVUInt8(TX64Register.rRAX));
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
  end else begin
-  EmitMOVRegReg(HostTemp,TPasRISCVUInt8(TX64Register.rRAX),true);
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
  end;
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
- EmitMOVRegReg(aHostDest,HostTemp,true);
- FreeHostReg(HostTemp);
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
+ FreeHostIntRegister(HostTemp);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean);
@@ -54679,31 +54517,29 @@ begin
   EmitMemOp(X86_MOV_M_R,aHostDest,aHostAddr,0,true);
  end;
  // Store loaded value as LRSCCAS
- EmitNativeStore(aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCAS)),true);
+ EmitNativeStore(aHostDest,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCAS)),true);
  // Store guest address as LRSCAddress
- EmitNativeStore(aHostGuestAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCAddress)),true);
+ EmitNativeStore(aHostGuestAddr,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCAddress)),true);
  // Store current Cycle as LRSCCycle (reuse aHostAddr as temp since TLB lookup is done)
- EmitNativeLoad(aHostAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle)),true);
- EmitNativeStore(aHostAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCycle)),true);
+ EmitNativeLoad(aHostAddr,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle)),true);
+ EmitNativeStore(aHostAddr,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCycle)),true);
  // Set LRSC flag to 1
- EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
  EmitDWord(1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64);
 var FailLabelLRSC,FailLabelCycle,FailLabelAddr,DoneLabel,FailTarget:TPasRISCVSizeInt;
-    CmpXchgAddr:TPasRISCVUInt8;
-    SrcReg:TPasRISCVUInt8;
-    AddrRegScratch:TPasRISCVUInt8;
 begin
 
+ // Note: It is assumed here that RAX is free to use due to AMOHostAvoidRegisterMask, already by the caller.
+
  FailLabelCycle:=0;
- AddrRegScratch:=REG_ILL;
 
  // SC: check reservation + cycle limit + address match, attempt CMPXCHG
 
  // Check fState.LRSC
- EmitNativeLoad(aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ EmitNativeLoad(aHostDest,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
  Emit2RegOp(X86_TEST,aHostDest,aHostDest,false);
 
  // JZ fail
@@ -54714,16 +54550,14 @@ begin
  // Check cycle limit (if aLRSCMaximumCycles > 0)
  if aLRSCMaximumCycles>0 then begin
   // dest = Cycle - LRSCCycle
-  EmitNativeLoad(aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle)),true);
-  EmitMemOp(X86_SUB_MR,aHostDest,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCycle)),true);
+  EmitNativeLoad(aHostDest,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle)),true);
+  EmitMemOp(X86_SUB_MR,aHostDest,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCycle)),true);
   // CMP dest, aLRSCMaximumCycles
   if aLRSCMaximumCycles<=TPasRISCVUInt64($7fffffff) then begin
    EmitImmOp(ALU_CMP,aHostDest,TPasRISCVInt32(aLRSCMaximumCycles),true);
   end else begin
-   EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
    EmitMOVRegImm64(TPasRISCVUInt8(TX64Register.rRAX),aLRSCMaximumCycles);
    Emit2RegOp(X86_CMP,aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
-   EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
   end;
   // JAE fail
   EmitByte($73);
@@ -54732,63 +54566,32 @@ begin
  end;
 
  // Check LRSCAddress = guest rs1
- EmitMemOp(X86_CMP,aHostGuestAddr,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCAddress)),true);
+ EmitMemOp(X86_CMP,aHostGuestAddr,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCAddress)),true);
 
  // JNE fail
  EmitByte($75);
  FailLabelAddr:=fTemporaryCodeSize;
  EmitByte(0);
 
- // CMPXCHG uses RAX implicitly — move conflicting registers out
- CmpXchgAddr:=aHostAddr;
- if aHostAddr=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  AddrRegScratch:=ClaimHostReg;
-  if AddrRegScratch=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   AddrRegScratch:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  CmpXchgAddr:=AddrRegScratch;
-  EmitMOVRegReg(CmpXchgAddr,aHostAddr,true);
- end;
- SrcReg:=aHostSrc;
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  SrcReg:=ClaimHostReg;
-  if SrcReg=TPasRISCVUInt8(TX64Register.rRAX) then begin
-   SrcReg:=ClaimHostReg;
-   FreeHostReg(TPasRISCVUInt8(TX64Register.rRAX));
-  end;
-  EmitMOVRegReg(SrcReg,aHostSrc,true);
- end;
-
  // All checks passed — attempt CMPXCHG
- EmitNativePush(TPasRISCVUInt8(TX64Register.rRAX));
- EmitNativeLoad(TPasRISCVUInt8(TX64Register.rRAX),VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCAS)),true);
+ EmitNativeLoad(TPasRISCVUInt8(TX64Register.rRAX),VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCAS)),true);
 
  // LOCK CMPXCHG [addr], src
  EmitByte($f0);
- if (not aIs32) or (SrcReg>=8) or (CmpXchgAddr>=8) then begin
-  EmitREX(not aIs32,SrcReg,0,CmpXchgAddr);
+ if (not aIs32) or (aHostSrc>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,aHostSrc,0,aHostAddr);
  end;
  EmitByte($0f);
  EmitByte($b1);
- EmitMemOperand(SrcReg,CmpXchgAddr,0);
-
- EmitNativePop(TPasRISCVUInt8(TX64Register.rRAX));
+ EmitMemOperand(aHostSrc,aHostAddr,0);
 
  // SETNE dest (0=success, 1=fail)
  EmitSETCC(CC_NE,aHostDest);
  EmitMOVZX8(aHostDest,aHostDest);
 
  // Clear reservation
- EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
  EmitDWord(0);
-
- if aHostSrc=TPasRISCVUInt8(TX64Register.rRAX) then begin
-  FreeHostReg(SrcReg);
- end;
- if AddrRegScratch<>REG_ILL then begin
-  FreeHostReg(AddrRegScratch);
- end;
 
  // JMP done
  EmitByte($eb);
@@ -54798,7 +54601,7 @@ begin
  // fail:
  FailTarget:=fTemporaryCodeSize;
  EmitMOVRegImm32(aHostDest,1);
- EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrReg,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
+ EmitMemOp(X86_MOV_RM_IMM32,0,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSC)),false);
  EmitDWord(0);
 
  // done:
@@ -55003,9 +54806,9 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLW(const aHostFPUD
 var ScratchXMM:TPasRISCVUInt8;
 begin
  EmitFPULoad(aHostFPUDest,aHostAddr,aOffset,false);
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLD(const aHostFPUDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
@@ -55026,7 +54829,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFAddS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f3,$58,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
@@ -55038,7 +54841,7 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFAddD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55050,18 +54853,18 @@ begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$58,aHostDest,aHostSrc2);
  end else begin
-  ScratchXMM:=ClaimFPUReg;
+  ScratchXMM:=ClaimHostFPURegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$58,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSubS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f3,$5c,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
@@ -55073,7 +54876,7 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSubD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55085,18 +54888,18 @@ begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$5c,aHostDest,aHostSrc2);
  end else begin
-  ScratchXMM:=ClaimFPUReg;
+  ScratchXMM:=ClaimHostFPURegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$5c,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMulS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f3,$59,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
@@ -55108,7 +54911,7 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMulD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55120,18 +54923,18 @@ begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$59,aHostDest,aHostSrc2);
  end else begin
-  ScratchXMM:=ClaimFPUReg;
+  ScratchXMM:=ClaimHostFPURegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$59,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFDivS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  if aHostDest=aHostSrc1 then begin
   EmitSSE2Op($f3,$5e,aHostDest,aHostSrc2);
  end else if aHostDest<>aHostSrc2 then begin
@@ -55143,7 +54946,7 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFDivD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55155,11 +54958,11 @@ begin
   EmitFPUMov(aHostDest,aHostSrc1,true);
   EmitSSE2Op($f2,$5e,aHostDest,aHostSrc2);
  end else begin
-  ScratchXMM:=ClaimFPUReg;
+  ScratchXMM:=ClaimHostFPURegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,true);
   EmitSSE2Op($f2,$5e,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
  end;
 end;
 
@@ -55167,9 +54970,9 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSqrtS(const aHostD
 var ScratchXMM:TPasRISCVUInt8;
 begin
  EmitSSE2Op($f3,$51,aHostDest,aHostSrc);
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSqrtD(const aHostDest,aHostSrc:TPasRISCVUInt8);
@@ -55181,26 +54984,26 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSgnjS(const aHostD
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,false);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,false);
  EmitImmOp(ALU_AND,TempReg1,TPasRISCVInt32($7fffffff),false);
  EmitImmOp(ALU_AND,TempReg2,TPasRISCVInt32(TPasRISCVUInt32($80000000)),false);
  Emit2RegOp(X86_OR,TempReg1,TempReg2,false);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,false);
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSgnjD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,true);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,true);
  // BTR TempReg1, 63 — clear bit 63
@@ -55214,16 +55017,16 @@ begin
  EmitShiftRegImm(SHIFT_SHL,TempReg2,63,true);
  Emit2RegOp(X86_OR,TempReg1,TempReg2,true);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,true);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSgnjNS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,false);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,false);
  EmitImmOp(ALU_AND,TempReg1,TPasRISCVInt32($7fffffff),false);
@@ -55231,18 +55034,18 @@ begin
  EmitImmOp(ALU_AND,TempReg2,TPasRISCVInt32(TPasRISCVUInt32($80000000)),false);
  Emit2RegOp(X86_OR,TempReg1,TempReg2,false);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,false);
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSgnjND(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,true);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,true);
  // BTR TempReg1, 63 — clear bit 63
@@ -55257,41 +55060,41 @@ begin
  EmitShiftRegImm(SHIFT_SHL,TempReg2,63,true);
  Emit2RegOp(X86_OR,TempReg1,TempReg2,true);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,true);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSgnjXS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,false);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,false);
  EmitImmOp(ALU_AND,TempReg2,TPasRISCVInt32(TPasRISCVUInt32($80000000)),false);
  Emit2RegOp(X86_XOR,TempReg1,TempReg2,false);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,false);
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSgnjXD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1,TempReg2:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,true);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,true);
  EmitShiftRegImm(SHIFT_SHR,TempReg2,63,true);
  EmitShiftRegImm(SHIFT_SHL,TempReg2,63,true);
  Emit2RegOp(X86_XOR,TempReg1,TempReg2,true);
  EmitSSE2MovGPRToXMM(aHostDest,TempReg1,true);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55299,8 +55102,8 @@ var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
     NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
- ScratchXMM:=ClaimFPUReg;
- TempReg1:=ClaimHostReg;
+ ScratchXMM:=ClaimHostFPURegister;
+ TempReg1:=ClaimHostIntRegister;
  // UCOMISS rs1, rs2
  if (aHostSrc1>=8) or (aHostSrc2>=8) then begin
   EmitREX(false,aHostSrc1,0,aHostSrc2);
@@ -55360,8 +55163,8 @@ begin
  PatchJmpRel32(RS1OKDoneFixup);
  PatchJmpRel32(RS2OKDoneFixup);
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55369,8 +55172,8 @@ var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
     NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
- ScratchXMM:=ClaimFPUReg;
- TempReg1:=ClaimHostReg;
+ ScratchXMM:=ClaimHostFPURegister;
+ TempReg1:=ClaimHostIntRegister;
  // UCOMISD rs1, rs2
  EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc2);
  // JP .nan_case
@@ -55414,8 +55217,8 @@ begin
  PatchJmpRel32(NormalDoneFixup);
  PatchJmpRel32(RS1OKDoneFixup);
  PatchJmpRel32(RS2OKDoneFixup);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMaxS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55423,8 +55226,8 @@ var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
     NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
- ScratchXMM:=ClaimFPUReg;
- TempReg1:=ClaimHostReg;
+ ScratchXMM:=ClaimHostFPURegister;
+ TempReg1:=ClaimHostIntRegister;
  // UCOMISS rs1, rs2
  if (aHostSrc1>=8) or (aHostSrc2>=8) then begin
   EmitREX(false,aHostSrc1,0,aHostSrc2);
@@ -55484,8 +55287,8 @@ begin
  PatchJmpRel32(RS1OKDoneFixup);
  PatchJmpRel32(RS2OKDoneFixup);
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMaxD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -55493,8 +55296,8 @@ var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
     NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
- ScratchXMM:=ClaimFPUReg;
- TempReg1:=ClaimHostReg;
+ ScratchXMM:=ClaimHostFPURegister;
+ TempReg1:=ClaimHostIntRegister;
  // UCOMISD rs1, rs2
  EmitSSE2Op($66,$2e,aHostSrc1,aHostSrc2);
  // JP .nan_case
@@ -55538,18 +55341,18 @@ begin
  PatchJmpRel32(NormalDoneFixup);
  PatchJmpRel32(RS1OKDoneFixup);
  PatchJmpRel32(RS2OKDoneFixup);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSD(const aHostDest,aHostSrc:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  // CVTSD2SS xmm_rd, xmm_rs1
  EmitSSE2Op($f2,$5a,aHostDest,aHostSrc);
  EmitNaNBox32(aHostDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDS(const aHostDest,aHostSrc:TPasRISCVUInt8);
@@ -55661,7 +55464,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWS(const aHostI
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // CVTTSS2SI gpr32, xmm (rounding per aTruncate flag, 32-bit result)
  EmitByte(X86_PREFIX_F3);
  if (aHostIntDest>=8) or (aHostFPUSrc>=8) then begin
@@ -55708,14 +55511,14 @@ begin
  PatchJmpRel32(OverflowFixup);
  // Sign-extend 32 to 64
  EmitMOVSXD(aHostIntDest,aHostIntDest);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     NegFixup,FastFixup,OverflowFixup,NaNFixup,ZeroFixup,MaxFixup:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // CVTTSS2SI gpr64, xmm (signed 64-bit to capture full uint32 range)
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
@@ -55768,14 +55571,14 @@ begin
  PatchJmpRel32(MaxFixup);
  // Sign-extend 32 to 64 (RISC-V RV64: FCVT.WU result is sign-extended)
  EmitMOVSXD(aHostIntDest,aHostIntDest);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // CVTTSS2SI gpr64, xmm (rounding per aTruncate flag, 64-bit result)
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
@@ -55819,7 +55622,7 @@ begin
  PatchJmpRel32(DoneFixup1);
  PatchJmpRel32(DoneFixup2);
  PatchJmpRel32(OverflowFixup);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
@@ -55827,9 +55630,9 @@ var TempReg1:TPasRISCVUInt8;
     ScratchXMM1,ScratchXMM2:TPasRISCVUInt8;
     NaNFixup,LargeFixup,ZeroFixup,SmallDoneFixup,LargeDoneFixup,OverflowFixup,MaxDoneFixup:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
- ScratchXMM1:=ClaimFPUReg;
- ScratchXMM2:=ClaimFPUReg;
+ TempReg1:=ClaimHostIntRegister;
+ ScratchXMM1:=ClaimHostFPURegister;
+ ScratchXMM2:=ClaimHostFPURegister;
  // NaN check: UCOMISS frs1, frs1
  if aHostFPUSrc>=8 then begin
   EmitREX(false,aHostFPUSrc,0,aHostFPUSrc);
@@ -55902,16 +55705,16 @@ begin
  PatchJmpRel32(SmallDoneFixup);
  PatchJmpRel32(LargeDoneFixup);
  PatchJmpRel32(MaxDoneFixup);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM1);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // CVTTSD2SI gpr32, xmm (rounding per aTruncate flag, 32-bit result)
  EmitByte(X86_PREFIX_F2);
  if (aHostIntDest>=8) or (aHostFPUSrc>=8) then begin
@@ -55954,14 +55757,14 @@ begin
  PatchJmpRel32(OverflowFixup);
  // Sign-extend 32 to 64
  EmitMOVSXD(aHostIntDest,aHostIntDest);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     NegFixup,FastFixup,OverflowFixup,NaNFixup,ZeroFixup,MaxFixup:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // CVTTSD2SI gpr64, xmm (signed 64-bit to capture full uint32 range)
  EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
@@ -56010,14 +55813,14 @@ begin
  PatchJmpRel32(MaxFixup);
  // Sign-extend 32 to 64 (RISC-V RV64: FCVT.WU result is sign-extended)
  EmitMOVSXD(aHostIntDest,aHostIntDest);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
 var TempReg1:TPasRISCVUInt8;
     DoneFixup1,NaNFixup,OverflowFixup,DoneFixup2:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // CVTTSD2SI gpr64, xmm (rounding per aTruncate flag, 64-bit result)
  EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostIntDest,0,aHostFPUSrc);
@@ -56057,7 +55860,7 @@ begin
  PatchJmpRel32(DoneFixup1);
  PatchJmpRel32(DoneFixup2);
  PatchJmpRel32(OverflowFixup);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtLUD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
@@ -56065,9 +55868,9 @@ var TempReg1:TPasRISCVUInt8;
     ScratchXMM1,ScratchXMM2:TPasRISCVUInt8;
     NaNFixup,LargeFixup,ZeroFixup,SmallDoneFixup,LargeDoneFixup,OverflowFixup,MaxDoneFixup:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
- ScratchXMM1:=ClaimFPUReg;
- ScratchXMM2:=ClaimFPUReg;
+ TempReg1:=ClaimHostIntRegister;
+ ScratchXMM1:=ClaimHostFPURegister;
+ ScratchXMM2:=ClaimHostFPURegister;
  // NaN check: UCOMISD frs1, frs1
  EmitSSE2Op($66,$2e,aHostFPUSrc,aHostFPUSrc);
  EmitJccRel32(CC_P,0);
@@ -56130,17 +55933,17 @@ begin
  PatchJmpRel32(SmallDoneFixup);
  PatchJmpRel32(LargeDoneFixup);
  PatchJmpRel32(MaxDoneFixup);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM1);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSW(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- ScratchXMM:=ClaimFPUReg;
+ TempReg1:=ClaimHostIntRegister;
+ ScratchXMM:=ClaimHostFPURegister;
  // Sign-extend 32 to 64 into scratch to ensure proper signed value
  EmitMOVSXD(TempReg1,aHostIntSrc);
  // CVTSI2SS xmm, gpr32 (signed int32 to single)
@@ -56153,16 +55956,16 @@ begin
  EmitModRM(3,aHostFPUDest,TempReg1);
  // NaN-box single-precision result
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSWU(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
- ScratchXMM:=ClaimFPUReg;
+ TempReg1:=ClaimHostIntRegister;
+ ScratchXMM:=ClaimHostFPURegister;
  // Zero-extend 32 to 64: 32-bit MOV clears upper 32 bits
  EmitMOVRegReg(TempReg1,aHostIntSrc,false);
  // CVTSI2SS xmm, gpr64 (use REX.W so unsigned 32-bit value is positive signed 64-bit)
@@ -56173,14 +55976,14 @@ begin
  EmitModRM(3,aHostFPUDest,TempReg1);
  // NaN-box single-precision result
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSL(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  // CVTSI2SS xmm, gpr64 (signed int64 to single, REX.W)
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostFPUDest,0,aHostIntSrc);
@@ -56189,7 +55992,7 @@ begin
  EmitModRM(3,aHostFPUDest,aHostIntSrc);
  // NaN-box single-precision result
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSLU(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
@@ -56197,9 +56000,9 @@ var TempReg1,TempReg2:TPasRISCVUInt8;
     ScratchXMM:TPasRISCVUInt8;
     LargeFixup,DoneFixup:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
- ScratchXMM:=ClaimFPUReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
+ ScratchXMM:=ClaimHostFPURegister;
  // Check if value >= 2^63 (bit 63 set)
  EmitTEST(aHostIntSrc,aHostIntSrc,true);
  EmitJccRel32(CC_S,0);
@@ -56231,15 +56034,15 @@ begin
  PatchJmpRel32(DoneFixup);
  // NaN-box single-precision result
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDW(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // Sign-extend 32 to 64 into scratch to ensure proper signed value
  EmitMOVSXD(TempReg1,aHostIntSrc);
  // CVTSI2SD xmm, gpr32 (signed int32 to double)
@@ -56251,13 +56054,13 @@ begin
  EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,TempReg1);
  // No NaN-boxing for double-precision
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDWU(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // Zero-extend 32 to 64: 32-bit MOV clears upper 32 bits
  EmitMOVRegReg(TempReg1,aHostIntSrc,false);
  // CVTSI2SD xmm, gpr64 (use REX.W so unsigned 32-bit value is positive signed 64-bit)
@@ -56267,7 +56070,7 @@ begin
  EmitByte(X86_SSE_CVTSI);
  EmitModRM(3,aHostFPUDest,TempReg1);
  // No NaN-boxing for double-precision
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDL(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8);
@@ -56285,8 +56088,8 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDLU(const aHost
 var TempReg1,TempReg2:TPasRISCVUInt8;
     LargeFixup,DoneFixup:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  // Check if value >= 2^63 (bit 63 set)
  EmitTEST(aHostIntSrc,aHostIntSrc,true);
  EmitJccRel32(CC_S,0);
@@ -56316,8 +56119,8 @@ begin
  EmitSSE2Op($f2,$58,aHostFPUDest,aHostFPUDest);
  // .done: (no NaN-boxing for double-precision)
  PatchJmpRel32(DoneFixup);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMvXW(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -56330,9 +56133,9 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMvWX(const aHostFP
 var ScratchXMM:TPasRISCVUInt8;
 begin
  EmitSSE2MovGPRToXMM(aHostFPUDest,aHostIntSrc,false);
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(aHostFPUDest,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMvXD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -56351,7 +56154,7 @@ var TempReg1:TPasRISCVUInt8;
     NegNormFixup,NegSubFixup,NegZeroFixup,NegInfFixup,QNaNFixup,
     Done1,Done2,Done3,Done4,Done5,Done6,Done7,Done8,Done9:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
  // MOVD TempReg1, xmm (raw float32 bits)
  EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,false);
  // abs = TempReg1 & $7fffffff
@@ -56438,7 +56241,7 @@ begin
  PatchJmpRel32(Done7);
  PatchJmpRel32(Done8);
  PatchJmpRel32(Done9);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFClassD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -56447,8 +56250,8 @@ var TempReg1,TempReg2:TPasRISCVUInt8;
     NegNormFixup,NegSubFixup,NegZeroFixup,NegInfFixup,QNaNFixup,
     Done1,Done2,Done3,Done4,Done5,Done6,Done7,Done8,Done9:TPasRISCVUInt32;
 begin
- TempReg1:=ClaimHostReg;
- TempReg2:=ClaimHostReg;
+ TempReg1:=ClaimHostIntRegister;
+ TempReg2:=ClaimHostIntRegister;
  // MOVQ TempReg1, xmm (raw float64 bits)
  EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,true);
  // abs = clear sign bit via shift trick
@@ -56539,8 +56342,8 @@ begin
  PatchJmpRel32(Done7);
  PatchJmpRel32(Done8);
  PatchJmpRel32(Done9);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg1);
- fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl TempReg2);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg1);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl TempReg2);
 end;
 {$endif}
 
@@ -56564,21 +56367,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMADD231SS: dst = vvvv*rm + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -56600,23 +56403,23 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,false);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = frs1*frs2 + frs3
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,false);
  EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
  EmitSSE2Op($f3,$58,ScratchXMM2,HostFRS3); // add
  EmitFPUMov(HostFRD,ScratchXMM2,false);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -56638,21 +56441,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMSUB231SS: dst = vvvv*rm - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -56674,23 +56477,23 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,false);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = frs1*frs2 - frs3
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,false);
  EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
  EmitSSE2Op($f3,$5c,ScratchXMM2,HostFRS3); // sub
  EmitFPUMov(HostFRD,ScratchXMM2,false);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -56712,21 +56515,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMSUB231SS: dst = -(vvvv*rm) - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -56748,25 +56551,25 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,false);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = -(frs1*frs2) - frs3
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,false);
  EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
  EmitSSE2Op($f3,$58,ScratchXMM2,HostFRS3); // add
  // negate: frd = 0 - scratch
  EmitSSE2Op($66,$ef,HostFRD,HostFRD); // PXOR frd,frd (zero)
  EmitSSE2Op($f3,$5c,HostFRD,ScratchXMM2); // sub: frd = 0 - result
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -56788,21 +56591,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMADD231SS: dst = -(vvvv*rm) + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -56824,23 +56627,23 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,false);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = -(frs1*frs2) + frs3 = frs3 - frs1*frs2
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,false);
  EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
  EmitFPUMov(HostFRD,HostFRS3,false);
  EmitSSE2Op($f3,$5c,HostFRD,ScratchXMM2); // frd = frs3 - mul
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
- ScratchXMM:=ClaimFPUReg;
+ ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -56863,21 +56666,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMADD231SD: dst = vvvv*rm + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -56899,16 +56702,16 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = frs1*frs2 + frs3
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,true);
  EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
  EmitSSE2Op($f2,$58,ScratchXMM2,HostFRS3); // add
  EmitFPUMov(HostFRD,ScratchXMM2,true);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
@@ -56935,21 +56738,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFMSUB231SD: dst = vvvv*rm - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -56971,16 +56774,16 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = frs1*frs2 - frs3
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,true);
  EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
  EmitSSE2Op($f2,$5c,ScratchXMM2,HostFRS3); // sub
  EmitFPUMov(HostFRD,ScratchXMM2,true);
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
@@ -57007,21 +56810,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMSUB231SD: dst = -(vvvv*rm) - dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -57043,18 +56846,18 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = -(frs1*frs2) - frs3
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,true);
  EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
  EmitSSE2Op($f2,$58,ScratchXMM2,HostFRS3); // add
  // negate: frd = 0 - scratch
  EmitSSE2Op($66,$ef,HostFRD,HostFRD); // PXOR frd,frd (zero)
  EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // sub: frd = 0 - result
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
@@ -57081,21 +56884,21 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  FRS3:=TFPURegister(aParameter3);
- HostFRS1:=MapFPURegister(FRS1,REG_SRC);
- HostFRS2:=MapFPURegister(FRS2,REG_SRC);
- HostFRS3:=MapFPURegister(FRS3,REG_SRC);
- HostFRD:=MapFPURegister(FRD,REG_DST);
+ HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
+ HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
+ HostFRS3:=MapGuestToHostFPURegister(FRS3,REG_SRC);
+ HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  RM:=(aInstruction shr 12) and 7;
  if RM<=4 then begin
-  RMTmp:=ClaimHostReg;
+  RMTmp:=ClaimHostIntRegister;
   EmitSaveAndSetRoundingMode(RM,RMTmp);
-  fHostRegMask:=fHostRegMask or (TPasRISCVUInt32(1) shl RMTmp);
+  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  // VFNMADD231SD: dst = -(vvvv*rm) + dst
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
-  FMADst:=ClaimFPUReg;
+  FMADst:=ClaimHostFPURegister;
  end else begin
   FMADst:=HostFRD;
  end;
@@ -57117,16 +56920,16 @@ begin
  EmitModRM(3,FMADst,HostFRS2);
  if FMADst<>HostFRD then begin
   EmitFPUMov(HostFRD,FMADst,true);
-  fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl FMADst);
+  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
  // emulated: frd = -(frs1*frs2) + frs3 = frs3 - frs1*frs2
- ScratchXMM2:=ClaimFPUReg;
+ ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,true);
  EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
  EmitFPUMov(HostFRD,HostFRS3,true);
  EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // frd = frs3 - mul
- fFPURegMask:=fFPURegMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
@@ -57134,8 +56937,6 @@ begin
 end;
 
 {$endif}
-
-
 
 {$elseif defined(PasRISCVJustInTimeCompilerTargetAArch64)}
 
@@ -57151,35 +56952,35 @@ begin
  inherited Destroy;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativePush(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativePush(const aHostRegister:TPasRISCVUInt8);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativePop(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativePop(const aHostRegister:TPasRISCVUInt8);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
@@ -57189,11 +56990,11 @@ begin
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
 end;
 
@@ -57206,23 +57007,28 @@ procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitBlockExit;
 begin
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerAArch64.VMPtrReg:TPasRISCVUInt8;
+function TPasRISCV.THART.TJustInTimeCompilerAArch64.VMPtrRegister:TPasRISCVUInt8;
 begin
  result:=0;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerAArch64.DefaultHostRegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerAArch64.DefaultHostRegisterMask:TPasRISCVUInt32;
 begin
  result:=0;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerAArch64.ABIReclaimHostRegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerAArch64.ABIReclaimHostRegisterMask:TPasRISCVUInt32;
+begin
+ result:=0;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerAArch64.AMOHostAvoidRegisterMask:TPasRISCVUInt32;
 begin
  result:=0;
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-function TPasRISCV.THART.TJustInTimeCompilerAArch64.DefaultFPURegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerAArch64.DefaultFPURegisterMask:TPasRISCVUInt32;
 begin
  result:=0;
 end;
@@ -57243,35 +57049,35 @@ begin
  inherited Destroy;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeLoad(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeStore(const aHostReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeZeroReg(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativePush(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativePush(const aHostRegister:TPasRISCVUInt8);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativePop(const aHostReg:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativePop(const aHostRegister:TPasRISCVUInt8);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeMemAddImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeMemSubImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeMemCmpImm(const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean);
 begin
 end;
 
@@ -57281,11 +57087,11 @@ begin
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseReg:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
 end;
 
@@ -57298,23 +57104,28 @@ procedure TPasRISCV.THART.TJustInTimeCompilerRISCV64.EmitBlockExit;
 begin
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerRISCV64.VMPtrReg:TPasRISCVUInt8;
+function TPasRISCV.THART.TJustInTimeCompilerRISCV64.VMPtrRegister:TPasRISCVUInt8;
 begin
  result:=0;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerRISCV64.DefaultHostRegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerRISCV64.DefaultHostRegisterMask:TPasRISCVUInt32;
 begin
  result:=0;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerRISCV64.ABIReclaimHostRegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerRISCV64.ABIReclaimHostRegisterMask:TPasRISCVUInt32;
+begin
+ result:=0;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerRISCV64.AMOHostAvoidRegisterMask:TPasRISCVUInt32;
 begin
  result:=0;
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
-function TPasRISCV.THART.TJustInTimeCompilerRISCV64.DefaultFPURegMask:TPasRISCVUInt32;
+function TPasRISCV.THART.TJustInTimeCompilerRISCV64.DefaultFPURegisterMask:TPasRISCVUInt32;
 begin
  result:=0;
 end;
