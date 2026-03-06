@@ -307,6 +307,8 @@ unit PasRISCV;
 
 {$define VirtIOGPUFastTransfer} // Avoid O(n^2) page walking in HandleTransferToHost2D by tracking page position across rows
 
+{$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
+
 {$undef UseAtomicMemAccessForTLBFastPath}
 
 {$define UseAtomicMemCopyRelaxedForSlowPath}
@@ -59870,9 +59872,19 @@ end;
 procedure TPasRISCV.THART.FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
 var VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVJustInTimeCompiler}
+{$ifdef SmartJITTLBFlush}
+    HadExecute:Boolean;
+{$endif}
+{$endif}
 begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+{$ifdef PasRISCVJustInTimeCompiler}
+{$ifdef SmartJITTLBFlush}
+ HadExecute:=DirectAccessTLBEntry^.Execute=VPN;
+{$endif}
+{$endif}
 {$ifdef CombinedDirectAccessTLBCache}
  DirectAccessTLBEntry^.Read:=VPN-1;
  DirectAccessTLBEntry^.Write:=VPN-1;
@@ -59890,9 +59902,15 @@ begin
  end;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
+{$ifdef SmartJITTLBFlush}
+ if HadExecute and assigned(fJustInTimeCompiler) then begin
+  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
+ end;
+{$else}
  if assigned(fJustInTimeCompiler) then begin
   FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
  end;
+{$endif}
 {$endif}
  if aInterrupt then begin
   TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
