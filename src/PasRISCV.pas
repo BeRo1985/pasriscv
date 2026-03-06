@@ -39408,6 +39408,7 @@ begin
  fFrameBuffer:=aMachine.fFrameBufferDevice;
  fFrameBuffer.fAutomaticRefresh:=true;
  fFrameBuffer.fSwapColorChannels:=true;
+ fFrameBuffer.fCursorCompositing:=true;
  fFrameBuffer.fIgnoreDirty:=false;
 
  fGPUConfig.EventsRead:=0;
