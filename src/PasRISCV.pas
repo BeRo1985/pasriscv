@@ -313,6 +313,8 @@ unit PasRISCV;
 
 {$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
 
+{-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
+
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
 {$ifdef SmartJITTLBFlush}
  {-$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
@@ -6432,6 +6434,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fRecvBuffer:TPasRISCVUInt8DynamicArray;
               fSendBuffer:TPasRISCVUInt8DynamicArray;
               fInitDone:Boolean;
+{$ifdef PasRISCVDebugVirtIOFSIOStats}
+              fStatReadBytes:TPasRISCVUInt64;
+              fStatReadCount:TPasRISCVUInt64;
+              fStatWriteBytes:TPasRISCVUInt64;
+              fStatWriteCount:TPasRISCVUInt64;
+              fStatLastReportTime:TPasRISCVUInt64;
+{$endif}
               function AllocNodeID:TPasRISCVUInt64;
               function AllocFH:TPasRISCVUInt64;
               function FindNode(const aNodeID:TPasRISCVUInt64):TNodeEntry;
@@ -37525,6 +37534,14 @@ begin
 
  fInitDone:=false;
 
+{$ifdef PasRISCVDebugVirtIOFSIOStats}
+ fStatReadBytes:=0;
+ fStatReadCount:=0;
+ fStatWriteBytes:=0;
+ fStatWriteCount:=0;
+ fStatLastReportTime:=GetTickCount64;
+{$endif}
+
  fRecvBuffer:=nil;
 {$ifdef VirtIOFSFastIO}
  SetLength(fRecvBuffer,1048576+FUSE_IN_HEADER_SIZE);
@@ -38106,6 +38123,22 @@ begin
     FreeMem(Buf);
    end;
 {$endif}
+{$ifdef PasRISCVDebugVirtIOFSIOStats}
+   inc(fStatReadCount);
+   if BytesRead>0 then begin
+    inc(fStatReadBytes,BytesRead);
+   end;
+   if fStatLastReportTime=0 then begin
+    fStatLastReportTime:=GetTickCount64;
+   end else if (GetTickCount64-fStatLastReportTime)>=5000 then begin
+    writeln('VirtIOFS IO: reads=',fStatReadCount,' readBytes=',fStatReadBytes,' (',fStatReadBytes div ((GetTickCount64-fStatLastReportTime+1) div 1000 + 1) div 1024,'KB/s) writes=',fStatWriteCount,' writeBytes=',fStatWriteBytes,' lastReadSize=',ReadIn.Size);
+    fStatReadBytes:=0;
+    fStatReadCount:=0;
+    fStatWriteBytes:=0;
+    fStatWriteCount:=0;
+    fStatLastReportTime:=GetTickCount64;
+   end;
+{$endif}
   end else begin
    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
   end;
@@ -38153,6 +38186,12 @@ begin
    finally
     FreeMem(Buf);
    end;
+{$ifdef PasRISCVDebugVirtIOFSIOStats}
+   inc(fStatWriteCount);
+   if BytesWritten>0 then begin
+    inc(fStatWriteBytes,BytesWritten);
+   end;
+{$endif}
   end else begin
    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
   end;
