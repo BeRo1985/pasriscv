@@ -313,6 +313,8 @@ unit PasRISCV;
 
 {$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
 
+{$define VirtIOFSDAX} // VirtIO FS: DAX (Direct Access) shared memory window for bypassing FUSE round-trips
+
 {-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
 
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
@@ -4913,6 +4915,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fConfigSpaceSize:TPasRISCVUInt32;
               fConfigSpace:TConfigSpace;
               fDriverOK:Boolean;
+              fSHMSelector:TPasRISCVUInt32;
+              fSHMBase:TPasRISCVUInt64;
+              fSHMSize:TPasRISCVUInt64;
              public
               constructor Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64;const aKind:TVirtIODevice.TKind); reintroduce;
               destructor Destroy; override;
@@ -6052,6 +6057,23 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property OnDisconnect:TOnVSockDisconnect read fOnDisconnect write fOnDisconnect;
               property OnReceive:TOnVSockReceive read fOnReceive write fOnReceive;
             end;
+{$ifdef VirtIOFSDAX}
+            { TVirtIOFSDAXDevice }
+            TVirtIOFSDAXDevice=class(TBusDevice)
+             private
+              fData:TPasRISCVUInt8DynamicArray;
+              fDataSize:TPasRISCVUInt64;
+             public
+              constructor Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64); override;
+              destructor Destroy; override;
+              function GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer; override;
+              function Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64; override;
+              procedure Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64); override;
+             public
+              property Data:TPasRISCVUInt8DynamicArray read fData;
+              property DataSize:TPasRISCVUInt64 read fDataSize;
+            end;
+{$endif}
             { TVirtIOFSDevice }
             TVirtIOFSDevice=class(TVirtIODevice)
              public
@@ -6105,6 +6127,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     FUSE_READDIRPLUS=44;
                     FUSE_RENAME2=45;
                     FUSE_LSEEK=46;
+                    FUSE_SETUPMAPPING=48;
+                    FUSE_REMOVEMAPPING=49;
                     // FUSE init flags
                     FUSE_ASYNC_READ=TPasRISCVUInt32(1) shl 0;
                     FUSE_POSIX_LOCKS=TPasRISCVUInt32(1) shl 1;
@@ -6124,6 +6148,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     FUSE_NO_OPENDIR_SUPPORT=TPasRISCVUInt32(1) shl 24;
                     FUSE_EXPLICIT_INVAL_DATA=TPasRISCVUInt32(1) shl 25;
                     FUSE_SUBMOUNTS=TPasRISCVUInt32(1) shl 27;
+                    FUSE_MAP_ALIGNMENT=TPasRISCVUInt32(1) shl 26;
+                    FUSE_SETUPMAPPING_FLAG_WRITE=TPasRISCVUInt64(1) shl 0;
+                    FUSE_SETUPMAPPING_FLAG_READ=TPasRISCVUInt64(1) shl 1;
                     // FUSE attr/entry validity timeouts
 {$ifdef VirtIOFSFastIO}
                     FUSE_ATTR_TIMEOUT=86400;
@@ -6263,6 +6290,23 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     Padding:TPasRISCVUInt32;
                    end;
                    PFUSEWriteOut=^TFUSEWriteOut;
+                   TFUSESetupMappingIn=packed record
+                    FH:TPasRISCVUInt64;
+                    FOffset:TPasRISCVUInt64;
+                    Len:TPasRISCVUInt64;
+                    Flags:TPasRISCVUInt64;
+                    MOffset:TPasRISCVUInt64;
+                   end;
+                   PFUSESetupMappingIn=^TFUSESetupMappingIn;
+                   TFUSERemoveMappingIn=packed record
+                    Count:TPasRISCVUInt32;
+                   end;
+                   PFUSERemoveMappingIn=^TFUSERemoveMappingIn;
+                   TFUSERemoveMappingOne=packed record
+                    MOffset:TPasRISCVUInt64;
+                    Len:TPasRISCVUInt64;
+                   end;
+                   PFUSERemoveMappingOne=^TFUSERemoveMappingOne;
                    TFUSEReleaseIn=packed record
                     FH:TPasRISCVUInt64;
                     Flags:TPasRISCVUInt32;
@@ -6434,6 +6478,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fRecvBuffer:TPasRISCVUInt8DynamicArray;
               fSendBuffer:TPasRISCVUInt8DynamicArray;
               fInitDone:Boolean;
+{$ifdef VirtIOFSDAX}
+              fDAXData:TPasRISCVUInt8DynamicArray;
+              fDAXBase:TPasRISCVUInt64;
+              fDAXSize:TPasRISCVUInt64;
+              fDAXDevice:TBusDevice;
+{$endif}
 {$ifdef PasRISCVDebugVirtIOFSIOStats}
               fStatReadBytes:TPasRISCVUInt64;
               fStatReadCount:TPasRISCVUInt64;
@@ -6474,6 +6524,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure HandleSymLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleReadLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleMkNod(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+{$ifdef VirtIOFSDAX}
+              procedure HandleSetupMapping(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+              procedure HandleRemoveMapping(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+{$endif}
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               destructor Destroy; override;
@@ -10339,6 +10393,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIOFSSize:TPasRISCVUInt64;
               fVirtIOFSIRQ:TPasRISCVUInt64;
               fVirtIOFSMountTag:TPasRISCVRawByteString;
+              fVirtIOFSDAXBase:TPasRISCVUInt64;
+              fVirtIOFSDAXSize:TPasRISCVUInt64;
 
               fVirtIOCryptoBase:TPasRISCVUInt64;
               fVirtIOCryptoSize:TPasRISCVUInt64;
@@ -10515,6 +10571,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIOFSSize:TPasRISCVUInt64 read fVirtIOFSSize write fVirtIOFSSize;
               property VirtIOFSIRQ:TPasRISCVUInt64 read fVirtIOFSIRQ write fVirtIOFSIRQ;
               property VirtIOFSMountTag:TPasRISCVRawByteString read fVirtIOFSMountTag write fVirtIOFSMountTag;
+              property VirtIOFSDAXBase:TPasRISCVUInt64 read fVirtIOFSDAXBase write fVirtIOFSDAXBase;
+              property VirtIOFSDAXSize:TPasRISCVUInt64 read fVirtIOFSDAXSize write fVirtIOFSDAXSize;
 
               property VirtIOCryptoBase:TPasRISCVUInt64 read fVirtIOCryptoBase write fVirtIOCryptoBase;
               property VirtIOCryptoSize:TPasRISCVUInt64 read fVirtIOCryptoSize write fVirtIOCryptoSize;
@@ -33399,6 +33457,9 @@ begin
  fIntStatus:=0;
  fStatus:=0;
  fDriverOK:=false;
+ fSHMSelector:=0;
+ fSHMBase:=0;
+ fSHMSize:=0;
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
                   //TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   0;
@@ -34423,13 +34484,30 @@ begin
      end;
      VIRTIO_MMIO_SHM_LEN_LOW,
      VIRTIO_MMIO_SHM_LEN_HIGH:begin
-      // Return ~0 to indicate no shared memory region present
-      result:=$ffffffff;
+      if (fSHMSelector=0) and (fSHMSize>0) then begin
+       if aOffset=VIRTIO_MMIO_SHM_LEN_LOW then begin
+        result:=TPasRISCVUInt32(fSHMSize and $ffffffff);
+       end else begin
+        result:=TPasRISCVUInt32(fSHMSize shr 32);
+       end;
+      end else begin
+       result:=$ffffffff;
+      end;
      end;
-     VIRTIO_MMIO_SHM_SEL,
+     VIRTIO_MMIO_SHM_SEL:begin
+      result:=fSHMSelector;
+     end;
      VIRTIO_MMIO_SHM_BASE_LOW,
      VIRTIO_MMIO_SHM_BASE_HIGH:begin
-      result:=0;
+      if (fSHMSelector=0) and (fSHMSize>0) then begin
+       if aOffset=VIRTIO_MMIO_SHM_BASE_LOW then begin
+        result:=TPasRISCVUInt32(fSHMBase and $ffffffff);
+       end else begin
+        result:=TPasRISCVUInt32(fSHMBase shr 32);
+       end;
+      end else begin
+       result:=0;
+      end;
      end;
      else begin
       result:=0;
@@ -34518,7 +34596,7 @@ begin
       UpdateIRQ;
      end;
      VIRTIO_MMIO_SHM_SEL:begin
-      // no-op: SHM regions not supported
+      fSHMSelector:=TPasRISCVUInt32(aValue);
      end;
     end;
    end;
@@ -37475,6 +37553,86 @@ begin
  inherited Destroy;
 end;
 
+{$ifdef VirtIOFSDAX}
+{ TPasRISCV.TVirtIOFSDAXDevice }
+
+constructor TPasRISCV.TVirtIOFSDAXDevice.Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64);
+begin
+ inherited Create(aMachine,aBase,aSize);
+ fDataSize:=aSize;
+ fData:=nil;
+ SetLength(fData,fDataSize);
+ FillChar(fData[0],fDataSize,#0);
+end;
+
+destructor TPasRISCV.TVirtIOFSDAXDevice.Destroy;
+begin
+ fData:=nil;
+ inherited Destroy;
+end;
+
+function TPasRISCV.TVirtIOFSDAXDevice.GetDeviceDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
+var Offset:TPasRISCVUInt64;
+begin
+ if (aAddress>=fBase) and ((aAddress-fBase+aSize)<=fDataSize) then begin
+  Offset:=aAddress-fBase;
+  result:=@fData[Offset];
+ end else begin
+  result:=nil;
+ end;
+end;
+
+function TPasRISCV.TVirtIOFSDAXDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+var Offset:TPasRISCVUInt64;
+begin
+ Offset:=aAddress-fBase;
+ if (Offset+aSize)<=fDataSize then begin
+  case aSize of
+   1:begin
+    result:=fData[Offset];
+   end;
+   2:begin
+    result:=fData[Offset] or (TPasRISCVUInt64(fData[Offset+1]) shl 8);
+   end;
+   4:begin
+    result:=fData[Offset] or (TPasRISCVUInt64(fData[Offset+1]) shl 8) or (TPasRISCVUInt64(fData[Offset+2]) shl 16) or (TPasRISCVUInt64(fData[Offset+3]) shl 24);
+   end;
+   8:begin
+    result:=PPasRISCVUInt64(@fData[Offset])^;
+   end;
+   else begin
+    result:=0;
+   end;
+  end;
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDAXDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+var Offset:TPasRISCVUInt64;
+begin
+ Offset:=aAddress-fBase;
+ if (Offset+aSize)<=fDataSize then begin
+  case aSize of
+   1:begin
+    fData[Offset]:=aValue and $ff;
+   end;
+   2:begin
+    fData[Offset]:=aValue and $ff;
+    fData[Offset+1]:=(aValue shr 8) and $ff;
+   end;
+   4:begin
+    PPasRISCVUInt32(@fData[Offset])^:=TPasRISCVUInt32(aValue);
+   end;
+   8:begin
+    PPasRISCVUInt64(@fData[Offset])^:=aValue;
+   end;
+  end;
+ end;
+end;
+{$endif}
+
 { TPasRISCV.TVirtIOFSDevice }
 
 constructor TPasRISCV.TVirtIOFSDevice.Create(const aMachine:TPasRISCV);
@@ -37558,6 +37716,15 @@ begin
 
  fLock:=TPasMPCriticalSection.Create;
 
+{$ifdef VirtIOFSDAX}
+ fDAXBase:=aMachine.fConfiguration.fVirtIOFSDAXBase;
+ fDAXSize:=aMachine.fConfiguration.fVirtIOFSDAXSize;
+ fDAXDevice:=TVirtIOFSDAXDevice.Create(aMachine,fDAXBase,fDAXSize);
+ fDAXData:=TVirtIOFSDAXDevice(fDAXDevice).fData;
+ fSHMBase:=fDAXBase;
+ fSHMSize:=fDAXSize;
+{$endif}
+
 end;
 
 destructor TPasRISCV.TVirtIOFSDevice.Destroy;
@@ -37583,6 +37750,10 @@ begin
  FreeAndNil(fLock);
  fRecvBuffer:=nil;
  fSendBuffer:=nil;
+{$ifdef VirtIOFSDAX}
+ FreeAndNil(fDAXDevice);
+ fDAXData:=nil;
+{$endif}
  inherited Destroy;
 end;
 
@@ -37765,6 +37936,9 @@ begin
 {$ifdef VirtIOFSFastIO}
                                    FUSE_WRITEBACK_CACHE or
 {$endif}
+{$ifdef VirtIOFSDAX}
+                                   FUSE_MAP_ALIGNMENT or
+{$endif}
                                    FUSE_SUBMOUNTS);
   InitOut.MaxBackground:=16;
   InitOut.CongestionThreshold:=12;
@@ -37776,6 +37950,9 @@ begin
   InitOut.MaxWrite:=65536;
   InitOut.TimeGran:=1;
   InitOut.MaxPages:=(65536+4095) div 4096;
+{$endif}
+{$ifdef VirtIOFSDAX}
+  InitOut.MapAlignment:=21;
 {$endif}
   fInitDone:=true;
 {$ifdef PasRISCVDebugVirtIOFS}
@@ -39162,6 +39339,70 @@ begin
  end;
 end;
 
+{$ifdef VirtIOFSDAX}
+procedure TPasRISCV.TVirtIOFSDevice.HandleSetupMapping(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var SetupIn:TFUSESetupMappingIn;
+    FHEntry:TFHEntry;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
+    BytesRead:TPasRISCVInt64;
+begin
+ if CopyMemoryFromQueue(@SetupIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSESetupMappingIn)) then begin
+  if (SetupIn.MOffset+SetupIn.Len)<=fDAXSize then begin
+   fLock.Acquire;
+   try
+    FHEntry:=fFHEntries[SetupIn.FH];
+   finally
+    fLock.Release;
+   end;
+   if assigned(FHEntry) then begin
+    LocalFH:=FHEntry.fFileHandle;
+    if assigned(fFileSystem) then begin
+     BytesRead:=fFileSystem.ReadFile(LocalFH,SetupIn.FOffset,@fDAXData[SetupIn.MOffset],TPasRISCVUInt32(SetupIn.Len));
+     if BytesRead>=0 then begin
+      if TPasRISCVUInt64(BytesRead)<SetupIn.Len then begin
+       FillChar(fDAXData[SetupIn.MOffset+TPasRISCVUInt64(BytesRead)],SetupIn.Len-TPasRISCVUInt64(BytesRead),0);
+      end;
+      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+     end else begin
+      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+     end;
+    end else begin
+     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+    end;
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
+   end;
+  end else begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
+  end;
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIOFSDevice.HandleRemoveMapping(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+var RemoveIn:TFUSERemoveMappingIn;
+    RemoveOne:TFUSERemoveMappingOne;
+    Index:TPasRISCVUInt32;
+    Offset:TPasRISCVUInt64;
+begin
+ if CopyMemoryFromQueue(@RemoveIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSERemoveMappingIn)) then begin
+  Offset:=FUSE_IN_HEADER_SIZE+SizeOf(TFUSERemoveMappingIn);
+  for Index:=0 to RemoveIn.Count-1 do begin
+   if CopyMemoryFromQueue(@RemoveOne,aQueueIndex,aDescriptorIndex,Offset,SizeOf(TFUSERemoveMappingOne)) then begin
+    if (RemoveOne.MOffset+RemoveOne.Len)<=fDAXSize then begin
+     FillChar(fDAXData[RemoveOne.MOffset],RemoveOne.Len,0);
+    end;
+   end;
+   inc(Offset,SizeOf(TFUSERemoveMappingOne));
+  end;
+  SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
+ end else begin
+  SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+ end;
+end;
+{$endif}
+
 function TPasRISCV.TVirtIOFSDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
 var Header:TFUSEInHeader;
 begin
@@ -39301,6 +39542,14 @@ begin
   FUSE_MKNOD:begin
    HandleMkNod(aQueueIndex,aDescriptorIndex,@Header);
   end;
+{$ifdef VirtIOFSDAX}
+  FUSE_SETUPMAPPING:begin
+   HandleSetupMapping(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+  FUSE_REMOVEMAPPING:begin
+   HandleRemoveMapping(aQueueIndex,aDescriptorIndex,@Header);
+  end;
+{$endif}
   FUSE_DESTROY:begin
    fInitDone:=false;
    SendReply(aQueueIndex,aDescriptorIndex,Header.Unique,nil,0);
@@ -91994,6 +92243,8 @@ begin
  fVirtIOFSSize:=TPasRISCV.TVirtIOFSDevice.DefaultSize;
  fVirtIOFSIRQ:=TPasRISCV.TVirtIOFSDevice.DefaultIRQ;
  fVirtIOFSMountTag:='extern';
+ fVirtIOFSDAXBase:=TPasRISCVUInt64($20000000);
+ fVirtIOFSDAXSize:=TPasRISCVUInt64($10000000);
 
  fVirtIOCryptoBase:=TPasRISCV.TVirtIOCryptoDevice.DefaultBaseAddress;
  fVirtIOCryptoSize:=TPasRISCV.TVirtIOCryptoDevice.DefaultSize;
@@ -92168,6 +92419,8 @@ begin
  fVirtIOFSSize:=aConfiguration.fVirtIOFSSize;
  fVirtIOFSIRQ:=aConfiguration.fVirtIOFSIRQ;
  fVirtIOFSMountTag:=aConfiguration.fVirtIOFSMountTag;
+ fVirtIOFSDAXBase:=aConfiguration.fVirtIOFSDAXBase;
+ fVirtIOFSDAXSize:=aConfiguration.fVirtIOFSDAXSize;
 
  fVirtIOCryptoBase:=aConfiguration.fVirtIOCryptoBase;
  fVirtIOCryptoSize:=aConfiguration.fVirtIOCryptoSize;
@@ -92602,6 +92855,11 @@ begin
  fBus.AddBusDevice(fVirtIOVSockDevice);
 
  fBus.AddBusDevice(fVirtIOFSDevice);
+{$ifdef VirtIOFSDAX}
+ if assigned(fVirtIOFSDevice.fDAXDevice) then begin
+  fBus.AddBusDevice(fVirtIOFSDevice.fDAXDevice);
+ end;
+{$endif}
 
  fBus.AddBusDevice(fVirtIOCryptoDevice);
 
