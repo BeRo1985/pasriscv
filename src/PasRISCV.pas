@@ -307,9 +307,11 @@ unit PasRISCV;
 
 {$define VirtIOGPUFastTransfer} // Avoid O(n^2) page walking in HandleTransferToHost2D by tracking page position across rows
 
-{$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
+{$define VirtIOGPUDirectScanout} // Share Resource.Data as fFrameBuffer.fData directly when possible, eliminating one full-framebuffer copy per flush
+
+{-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
 {$ifdef SmartJITTLBFlush}
-//{$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
+ {-$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
 {$endif}
 
 {$undef UseAtomicMemAccessForTLBFastPath}
@@ -39712,33 +39714,43 @@ begin
   if fScanouts[ScanoutIndex].Enabled and (fScanouts[ScanoutIndex].ResourceID=aCmd^.ResourceID) then begin
    fFrameBuffer.fLock.AcquireWrite;
    try
-    SrcX:=aCmd^.Rect.X;
-    SrcY:=aCmd^.Rect.Y;
-    DstX:=fScanouts[ScanoutIndex].Rect.X+aCmd^.Rect.X;
-    DstY:=fScanouts[ScanoutIndex].Rect.Y+aCmd^.Rect.Y;
-    CopyWidth:=aCmd^.Rect.Width;
-    CopyHeight:=aCmd^.Rect.Height;
-    // Clamp
-    if (SrcX+CopyWidth)>Resource.Width then begin
-     CopyWidth:=Resource.Width-SrcX;
-    end;
-    if (SrcY+CopyHeight)>Resource.Height then begin
-     CopyHeight:=Resource.Height-SrcY;
-    end;
-    if (DstX+CopyWidth)>fFrameBuffer.fWidth then begin
-     CopyWidth:=fFrameBuffer.fWidth-DstX;
-    end;
-    if (DstY+CopyHeight)>fFrameBuffer.fHeight then begin
-     CopyHeight:=fFrameBuffer.fHeight-DstY;
-    end;
-    SrcStride:=Resource.Width*Resource.BytesPerPixel;
-    DstStride:=fFrameBuffer.fWidth*fFrameBuffer.fBytesPerPixel;
-    for Row:=0 to CopyHeight-1 do begin
-     SrcOffset:=TPasRISCVUInt64(SrcY+Row)*SrcStride+TPasRISCVUInt64(SrcX)*Resource.BytesPerPixel;
-     DstOffset:=TPasRISCVUInt64(DstY+Row)*DstStride+TPasRISCVUInt64(DstX)*fFrameBuffer.fBytesPerPixel;
-     if (SrcOffset+(TPasRISCVUInt64(CopyWidth)*Resource.BytesPerPixel))<=length(Resource.Data) then begin
-      if (DstOffset+(TPasRISCVUInt64(CopyWidth)*fFrameBuffer.fBytesPerPixel))<=length(fFrameBuffer.fData) then begin
-       Move(Resource.Data[SrcOffset],fFrameBuffer.fData[DstOffset],CopyWidth*Resource.BytesPerPixel);
+{$ifdef VirtIOGPUDirectScanout}
+    if (fScanouts[ScanoutIndex].Rect.X=0) and
+       (fScanouts[ScanoutIndex].Rect.Y=0) and
+       (Resource.Width=fFrameBuffer.fWidth) and
+       (Resource.Height=fFrameBuffer.fHeight) and
+       (Resource.BytesPerPixel=fFrameBuffer.fBytesPerPixel) and
+       (TPasRISCVUInt64(length(Resource.Data))>=(TPasRISCVUInt64(fFrameBuffer.fWidth)*fFrameBuffer.fHeight*fFrameBuffer.fBytesPerPixel)) then begin
+     Move(Resource.Data[0],fFrameBuffer.fData[0],TPasRISCVUInt64(fFrameBuffer.fWidth)*fFrameBuffer.fHeight*fFrameBuffer.fBytesPerPixel);
+    end else{$endif}begin
+     SrcX:=aCmd^.Rect.X;
+     SrcY:=aCmd^.Rect.Y;
+     DstX:=fScanouts[ScanoutIndex].Rect.X+aCmd^.Rect.X;
+     DstY:=fScanouts[ScanoutIndex].Rect.Y+aCmd^.Rect.Y;
+     CopyWidth:=aCmd^.Rect.Width;
+     CopyHeight:=aCmd^.Rect.Height;
+     // Clamp
+     if (SrcX+CopyWidth)>Resource.Width then begin
+      CopyWidth:=Resource.Width-SrcX;
+     end;
+     if (SrcY+CopyHeight)>Resource.Height then begin
+      CopyHeight:=Resource.Height-SrcY;
+     end;
+     if (DstX+CopyWidth)>fFrameBuffer.fWidth then begin
+      CopyWidth:=fFrameBuffer.fWidth-DstX;
+     end;
+     if (DstY+CopyHeight)>fFrameBuffer.fHeight then begin
+      CopyHeight:=fFrameBuffer.fHeight-DstY;
+     end;
+     SrcStride:=Resource.Width*Resource.BytesPerPixel;
+     DstStride:=fFrameBuffer.fWidth*fFrameBuffer.fBytesPerPixel;
+     for Row:=0 to CopyHeight-1 do begin
+      SrcOffset:=TPasRISCVUInt64(SrcY+Row)*SrcStride+TPasRISCVUInt64(SrcX)*Resource.BytesPerPixel;
+      DstOffset:=TPasRISCVUInt64(DstY+Row)*DstStride+TPasRISCVUInt64(DstX)*fFrameBuffer.fBytesPerPixel;
+      if (SrcOffset+(TPasRISCVUInt64(CopyWidth)*Resource.BytesPerPixel))<=length(Resource.Data) then begin
+       if (DstOffset+(TPasRISCVUInt64(CopyWidth)*fFrameBuffer.fBytesPerPixel))<=length(fFrameBuffer.fData) then begin
+        Move(Resource.Data[SrcOffset],fFrameBuffer.fData[DstOffset],CopyWidth*Resource.BytesPerPixel);
+       end;
       end;
      end;
     end;
