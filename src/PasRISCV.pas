@@ -317,6 +317,8 @@ unit PasRISCV;
 
 {$define VirtIOBatchNotify} // VirtIO: batch interrupt delivery - single interrupt after processing all pending descriptors
 
+{$define JITMMIOFastPath} // JIT: handle MMIO loads directly in TLB fill helper instead of bailing out to interpreter
+
 {-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
 
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
@@ -8193,6 +8195,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerSideExit}
                      JITDataTLBFillPtr:Pointer;
                      JITScratch:TPasRISCVPtrUInt;
+{$ifdef JITMMIOFastPath}
+                     JITMMIOScratch:TPasRISCVUInt64;
+{$endif}
 {$endif}
 {$endif}
                    end;
@@ -8515,6 +8520,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerSideExit}
                      function GuestJITDataTLBFillPtrOffset:TPasRISCVInt32;
                      function GuestJITScratchOffset:TPasRISCVInt32;
+{$ifdef JITMMIOFastPath}
+                     function GuestJITMMIOScratchOffset:TPasRISCVInt32;
+{$endif}
                      class function JITDataTLBFillHelper(aHART:Pointer;aVirtualAddress:TPasRISCVUInt64;aTLBFieldOffset:TPasRISCVUInt64;aAlignment:TPasRISCVUInt64):TPasRISCVPtrUInt; static;
 {$endif}
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
@@ -48659,10 +48667,20 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITScratch));
 end;
 
+{$ifdef JITMMIOFastPath}
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITMMIOScratchOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITMMIOScratch));
+end;
+{$endif}
+
 class function TPasRISCV.THART.TJustInTimeCompiler.JITDataTLBFillHelper(aHART:Pointer;aVirtualAddress:TPasRISCVUInt64;aTLBFieldOffset:TPasRISCVUInt64;aAlignment:TPasRISCVUInt64):TPasRISCVPtrUInt;
 var HART:THART;
     VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef JITMMIOFastPath}
+    PhysicalAddress:TPasRISCVUInt64;
+{$endif}
 begin
 
  HART:=THART(aHART);
@@ -48674,11 +48692,19 @@ begin
  end;
 
  // Do page walk to fill the data TLB
+{$ifdef JITMMIOFastPath}
+ if aTLBFieldOffset=TLB_W then begin
+  PhysicalAddress:=HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[]);
+ end else begin
+  PhysicalAddress:=HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
+ end;
+{$else}
  if aTLBFieldOffset=TLB_W then begin
   HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[]);
  end else begin
   HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
  end;
+{$endif}
 
  // If AddressTranslate raised an exception, clear it and bail out.
  // The interpreter will re-execute the instruction and handle the exception properly with correct PC.
@@ -48698,7 +48724,18 @@ begin
   end;
  end else begin
   if DirectAccessTLBEntry^.Read<>VPN then begin
+{$ifdef JITMMIOFastPath}
+   // MMIO load: perform the read directly and return pointer to scratch buffer
+   HART.fState.JITMMIOScratch:=HART.fBus.Load(HART,PhysicalAddress,aAlignment);
+   if HART.fState.ExceptionValue<>TExceptionValue.None then begin
+    HART.fState.ExceptionValue:=TExceptionValue.None;
+    result:=0;
+    exit;
+   end;
+   result:=TPasRISCVPtrUInt(@HART.fState.JITMMIOScratch);
+{$else}
    result:=0;
+{$endif}
    exit;
   end;
  end;
