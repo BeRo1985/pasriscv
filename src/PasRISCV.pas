@@ -323,6 +323,8 @@ unit PasRISCV;
 
 {-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
 
+{-$define NVMeSyncProcessing} // NVMe: process commands synchronously in doorbell handler (no job manager dispatch), skip fStreamLock
+
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
 {$ifdef SmartJITTLBFlush}
  {-$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
@@ -28096,6 +28098,14 @@ begin
     Size:=0;
     Buffer:=GetPRPRegion(aCommand,Size);
     if assigned(Buffer) then begin
+{$ifdef NVMeSyncProcessing}
+     fStream.Seek(Pos,soBeginning);
+     if Opcode=NVM_WRITE then begin
+      Temporary:=fStream.Write(Buffer^,Size);
+     end else begin
+      Temporary:=fStream.Read(Buffer^,Size);
+     end;
+{$else}
      fStreamLock.Acquire;
      try
       fStream.Seek(Pos,soBeginning);
@@ -28107,6 +28117,7 @@ begin
      finally
       fStreamLock.Release;
      end;
+{$endif}
      if Temporary<>Size then begin
       CompleteCommand(aCommand,SC_DATA_ERR);
       exit;
@@ -28119,6 +28130,13 @@ begin
    CompleteCommand(aCommand,SC_SUCCESS);
   end;
   NVM_FLUSH:begin
+{$ifdef NVMeSyncProcessing}
+   if FlushStream(fStream) then begin
+    CompleteCommand(aCommand,SC_SUCCESS);
+   end else begin
+    CompleteCommand(aCommand,SC_DATA_ERR);
+   end;
+{$else}
    fStreamLock.Acquire;
    try
     if FlushStream(fStream) then begin
@@ -28129,6 +28147,7 @@ begin
    finally
     fStreamLock.Release;
    end;
+{$endif}
   end;
   NVM_DTSM:begin
    if (PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW11] and 4)<>0 then begin
@@ -28142,6 +28161,18 @@ begin
        Pos:=TPasRISCVUInt64(PPasRISCVUInt32(@PPasRISCVUInt8Array(Buffer)^[Temporary+4])^) shl NVME_LBA_SHIFT;
        ToDo:=PPasRISCVUInt64(@PPasRISCVUInt8Array(Buffer)^[Temporary+8])^ shl NVME_LBA_SHIFT;
        if ToDo>0 then begin
+{$ifdef NVMeSyncProcessing}
+        fStream.Seek(Pos,soBeginning);
+        while ToDo>0 do begin
+         if ToDo<SizeOf(TZeroBuffer) then begin
+          Size:=ToDo;
+         end else begin
+          Size:=SizeOf(TZeroBuffer);
+         end;
+         fStream.Write(ZeroBuffer[0],Size);
+         dec(ToDo,Size);
+        end;
+{$else}
         fStreamLock.Acquire;
         try
          fStream.Seek(Pos,soBeginning);
@@ -28157,6 +28188,7 @@ begin
         finally
          fStreamLock.Release;
         end;
+{$endif}
        end;
        inc(Temporary,16);
       end;
@@ -28226,6 +28258,9 @@ begin
   Command.SubmissionQueueID:=aSubmissionQueueID;
   Command.SubmissionQueueHead:=QueueHead;
   TPasMPInterlocked.Increment(fThreads);
+{$ifdef NVMeSyncProcessing}
+  ProcessCommand(Command);
+{$else}
   if aSubmissionQueueID<>0 then begin
    if not fBus.fMachine.fJobManager.EnqueueNVMeDeviceCommand(self,Command) then begin
     ProcessCommand(Command);
@@ -28233,6 +28268,7 @@ begin
   end else begin
    ProcessCommand(Command);
   end;
+{$endif}
  end;
 
 end;
@@ -28274,10 +28310,14 @@ begin
      TPasMPMemoryBarrier.ReadWrite;
      Queue^.Tail:=aValue;
      TPasMPMemoryBarrier.ReadDependency;
+{$ifdef NVMeSyncProcessing}
+     ProcessQueue(SubmissionQueueID,aValue,false);
+{$else}
 //   ProcessQueue(SubmissionQueueID,aValue,false);
      if not fBus.fMachine.fJobManager.EnqueueNVMeDeviceQueue(self,SubmissionQueueID,aValue) then begin
       ProcessQueue(SubmissionQueueID,aValue,false);
      end;
+{$endif}
     end;
    end;
   end;
