@@ -49353,7 +49353,7 @@ begin
     end;
    end;
 {$endif}
-// dec(fHART.fState.Cycle);
+   dec(fHART.fState.Cycle);
 {$ifdef PasRISCVJustInTimeCompilerBlockChaining}
    LastCycles:=fHART.fState.Cycle;
 {$endif}
@@ -49423,7 +49423,7 @@ begin
    end;
   end;
 {$endif}
-//dec(fHART.fState.Cycle);
+  dec(fHART.fState.Cycle);
   TBlockCallback(Pointer(CodePtr))(@fHART.fState);
 {$ifdef PasRISCVJustInTimeCompilerDebug}
   if fDebugJITCounter<40 then begin
