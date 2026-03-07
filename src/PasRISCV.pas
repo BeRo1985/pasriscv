@@ -308,6 +308,9 @@ unit PasRISCV;
 {$define VirtIOGPUFastTransfer} // Avoid O(n^2) page walking in HandleTransferToHost2D by tracking page position across rows
 
 {$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
+{$ifdef SmartJITTLBFlush}
+//{$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
+{$endif}
 
 {$undef UseAtomicMemAccessForTLBFastPath}
 
@@ -48691,8 +48694,11 @@ begin
 
  // JTLB fast path
  VirtualPC:=fHART.fState.PC;
+{$ifdef SmartJITTLBFlush}
+ VPN:=VirtualPC shr PAGE_SHIFT;
+{$endif}
  JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
- if JITTLBEntry^.VirtualPC=VirtualPC then begin
+ if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and (fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} then begin
   BlockCallback:=JITTLBEntry^.Block;
   if assigned(BlockCallback) then begin
 {$ifdef PasRISCVJustInTimeCompilerDebug}
@@ -48732,8 +48738,11 @@ begin
    // such as cross-page branches or blocks that were invalidated and recompiled independently.   
    for ChainIndex:=1 to 10 do begin
     VirtualPC:=fHART.fState.PC;
+{$ifdef SmartJITTLBFlush}
+    VPN:=VirtualPC shr PAGE_SHIFT;
+{$endif}
     JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
-    if (JITTLBEntry^.VirtualPC=VirtualPC) and
+    if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and (fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
        ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
        (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
      JITTLBEntry^.Block(@fHART.fState);
@@ -59872,19 +59881,15 @@ end;
 procedure TPasRISCV.THART.FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
 var VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
-{$ifdef PasRISCVJustInTimeCompiler}
-{$ifdef SmartJITTLBFlush}
+{$if defined(PasRISCVJustInTimeCompiler) and defined(SmartJITTLBFlush)}
     HadExecute:Boolean;
-{$endif}
-{$endif}
+{$ifend}
 begin
  VPN:=aAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:=@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-{$ifdef PasRISCVJustInTimeCompiler}
-{$ifdef SmartJITTLBFlush}
+{$if defined(PasRISCVJustInTimeCompiler) and defined(SmartJITTLBFlush)}
  HadExecute:=DirectAccessTLBEntry^.Execute=VPN;
-{$endif}
-{$endif}
+{$ifend}
 {$ifdef CombinedDirectAccessTLBCache}
  DirectAccessTLBEntry^.Read:=VPN-1;
  DirectAccessTLBEntry^.Write:=VPN-1;
@@ -59903,16 +59908,20 @@ begin
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
 {$ifdef SmartJITTLBFlush}
+{$ifdef SmartJITTLBFlushForceClear}
  if HadExecute and assigned(fJustInTimeCompiler) then begin
   FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
  end;
+{$else}
+ // JTLB flush not needed - Execute TLB check in JTLB fast path guards against stale entries
+{$endif}
 {$else}
  if assigned(fJustInTimeCompiler) then begin
   FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
  end;
 {$endif}
 {$endif}
- if aInterrupt then begin
+ if aInterrupt{$if defined(PasRISCVJustInTimeCompiler) and defined(SmartJITTLBFlush)} and HadExecute{$ifend} then begin
   TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
  end;
 end;
