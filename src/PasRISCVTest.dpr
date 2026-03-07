@@ -131,24 +131,30 @@ begin
 
   Configuration.MemorySize:=TPasRISCVUInt64(2048) shl 20; // 2GB
 
-  if ParamStr(1)='image' then begin
-   // Image
-   if ParamStr(2)='kernel' then begin
-    // With other external kernel
+  if ParamStr(1)='benchmark' then begin
+   Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_jump.bin');
+   Configuration.LoadKernelFromFile(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'..')+'benchmarks')+'bench.bin');
+   Configuration.BootArguments:='root=/dev/mem rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+  end else begin
+   if ParamStr(1)='image' then begin
+    // Image
+    if ParamStr(2)='kernel' then begin
+     // With other external kernel
+     Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_jump.bin');
+     Configuration.LoadKernelFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'kernel.bin');
+    end else begin
+     // With image-embedded kernel
+     Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_payload.bin');
+    end;
+    Configuration.BootArguments:='root=/dev/vda1 rw noquiet rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+ // Configuration.BootArguments:='root=LABEL=rootfs rw noquiet rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+ // Configuration.BootArguments:='root=/dev/vda1 rw earlyprintk console=$LINUXUART$ earlycon=sbi';
+   end else begin
+    // Buildroot
     Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_jump.bin');
     Configuration.LoadKernelFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'kernel.bin');
-   end else begin
-    // With image-embedded kernel
-    Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_payload.bin');
+    Configuration.BootArguments:='root=/dev/mem rw earlyprintk console=$LINUXUART$ earlycon=sbi';
    end;
-   Configuration.BootArguments:='root=/dev/vda1 rw noquiet rw earlyprintk console=$LINUXUART$ earlycon=sbi';
-// Configuration.BootArguments:='root=LABEL=rootfs rw noquiet rw earlyprintk console=$LINUXUART$ earlycon=sbi';
-// Configuration.BootArguments:='root=/dev/vda1 rw earlyprintk console=$LINUXUART$ earlycon=sbi';
-  end else begin
-   // Buildroot
-   Configuration.LoadBIOSFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'fw_jump.bin');
-   Configuration.LoadKernelFromFile(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'kernel.bin');
-   Configuration.BootArguments:='root=/dev/mem rw earlyprintk console=$LINUXUART$ earlycon=sbi';
   end;
 
   MachineInstance:=TMachineInstance.Create;
