@@ -315,6 +315,8 @@ unit PasRISCV;
 
 {$define VirtIOFSDAX} // VirtIO FS: DAX (Direct Access) shared memory window for bypassing FUSE round-trips
 
+{$define VirtIOBatchNotify} // VirtIO: batch interrupt delivery - single interrupt after processing all pending descriptors
+
 {-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
 
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
@@ -4942,6 +4944,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function CopyMemoryToQueue(const aQueueIndex,aDescriptorIndex,aOffset:TPasRISCVUInt64;const aBuf:Pointer;const aCount:TPasRISCVUInt64):Boolean;
               function ConsumeDescriptor(const aQueueIndex,aDescriptorIndex,aDescriptorLength:TPasRISCVUInt64):Boolean;
               function UsedRingSync(const aQueueIndex:TPasRISCVUInt64):Boolean;
+{$ifdef VirtIOBatchNotify}
+              function UsedRingPublish(const aQueueIndex:TPasRISCVUInt64):Boolean;
+              procedure UsedRingNotify(const aQueueIndex:TPasRISCVUInt64);
+{$endif}
               function GetDescriptors(out aReadSize,aWriteSize:TPasRISCVUInt64;const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64):Boolean;
               function AdvanceShadowAvailableIndex(const aQueueIndex:TPasRISCVUInt64):Boolean;
               procedure ProcessQueue(const aQueueIndex:TPasRISCVUInt64;const aAvailableIndex:TPasRISCVInt64);
@@ -33461,7 +33467,7 @@ begin
  fSHMBase:=0;
  fSHMSize:=0;
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  //TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   0;
  fDriverFeatures:=0;
  fActiveFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
@@ -34064,6 +34070,48 @@ begin
 
 end;
 
+{$ifdef VirtIOBatchNotify}
+function TPasRISCV.TVirtIODevice.UsedRingPublish(const aQueueIndex:TPasRISCVUInt64):Boolean;
+var Queue:PQueue;
+    VirtQAvailPtr:Pointer;
+    NewValue,OldValue:TPasRISCVUInt32;
+begin
+ result:=false;
+ Queue:=@fQueues[aQueueIndex];
+ VirtQAvailPtr:=GetGlobalDirectMemoryAccessPointer(Queue^.UsedAddress,SizeOf(TPasRISCVUInt32),true,nil);
+ if assigned(VirtQAvailPtr) then begin
+  repeat
+   OldValue:=PPasRISCVUInt32(VirtQAvailPtr)^;
+   NewValue:=(OldValue and $ffff) or (TPasRISCVUInt32(Queue^.ShadowUsedIndex) shl 16);
+  until TPasMPInterlocked.CompareExchange(PPasRISCVUInt32(VirtQAvailPtr)^,NewValue,OldValue)=OldValue;
+ end else begin
+  Write16(Queue^.UsedAddress+2,Queue^.ShadowUsedIndex);
+ end;
+ TPasMPMemoryBarrier.ReadWrite;
+ result:=true;
+end;
+
+procedure TPasRISCV.TVirtIODevice.UsedRingNotify(const aQueueIndex:TPasRISCVUInt64);
+var Queue:PQueue;
+    Flags:TPasRISCVUInt16;
+    UseEventIndex:Boolean;
+begin
+ Queue:=@fQueues[aQueueIndex];
+{$ifdef VirtIOReadAvailRingFlags}
+ if not Read16(Queue^.AvailableAddress,Flags) then begin
+  exit;
+ end;
+{$else}
+ Flags:=0;
+{$endif}
+ UseEventIndex:=(fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
+ if (UseEventIndex and TPasMPInterlocked.CompareExchange(Queue^.UsedRingEvent,TPasMPBool32(false),TPasMPBool32(true))) or
+    ((not UseEventIndex) and ((Flags and VIRTQ_AVAIL_F_NO_INTERRUPT)=0)) then begin
+  NotifyQueueUsed;
+ end;
+end;
+{$endif}
+
 function TPasRISCV.TVirtIODevice.GetDescriptors(out aReadSize,aWriteSize:TPasRISCVUInt64;const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64):Boolean;
 var Queue:PQueue;
     QueueDescriptor:PQueueDescriptor;
@@ -34152,6 +34200,9 @@ var Queue:PQueue;
     AvailableIndex,DescriptorIndex:TPasRISCVUInt16;
     ReadSize,WriteSize:TPasRISCVUInt64;
     OK,Done:Boolean;
+{$ifdef VirtIOBatchNotify}
+    BatchCount:TPasRISCVUInt32;
+{$endif}
 begin
  if fDriverOK then begin
   Queue:=@fQueues[aQueueIndex];
@@ -34167,6 +34218,9 @@ begin
        OK:=Read16(Queue^.AvailableAddress+2,AvailableIndex);
       end;
       if OK then begin
+{$ifdef VirtIOBatchNotify}
+       BatchCount:=0;
+{$endif}
        while Queue^.ShadowAvailableIndex<>AvailableIndex do begin
         if Read16((Queue^.AvailableAddress+4)+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
          if GetDescriptors(ReadSize,WriteSize,aQueueIndex,DescriptorIndex) then begin
@@ -34175,6 +34229,9 @@ begin
             if (fStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)<>0 then begin
              break;
             end else begin
+{$ifdef VirtIOBatchNotify}
+             inc(BatchCount);
+{$endif}
              continue;
             end;
            end;
@@ -34186,6 +34243,11 @@ begin
         NotifyDeviceNeedsReset;
         break;
        end;
+{$ifdef VirtIOBatchNotify}
+       if BatchCount>0 then begin
+        UsedRingNotify(aQueueIndex);
+       end;
+{$endif}
        if aAvailableIndex<0 then begin
         // Re-check for new descriptors that arrived while we held the lock
         if Read16(Queue^.AvailableAddress+2,AvailableIndex) and
@@ -34892,7 +34954,7 @@ begin
  end;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-//                TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
 //                TPasRISCV.TVirtIODevice.VIRTIO_F_IN_ORDER or
                   VIRTIO_BLK_F_SIZE_MAX or
                   VIRTIO_BLK_F_SEG_MAX or
@@ -35299,7 +35361,7 @@ begin
  fQueues[0].ManualRecv:=true;
  fConfigSpaceSize:=256;
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  //TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   0;
 end;
 
@@ -35664,7 +35726,7 @@ begin
  Move(fSoundConfig,fConfigSpace[0],SizeOf(TVirtIOSoundConfig));
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  //TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   0;
 
  fQueues[VIRTIO_SND_VQ_CONTROL].ManualRecv:=false;
@@ -36667,7 +36729,7 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  //TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
 //                TPasRISCV.TVirtIODevice.VIRTIO_F_IN_ORDER or
                   (1 shl 0);
 
@@ -37646,9 +37708,12 @@ begin
 
  fFileSystem:=nil;
 
+ fUseQueueDescriptorCaching:=true;
+
  fDeviceID:=DeviceID;
 
- fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
+ fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX;
 
  // Queue 0 = hiprio, Queue 1 = request
  fQueues[VIRTIO_FS_QUEUE_HIPRIO].ManualRecv:=false;
@@ -37890,7 +37955,11 @@ begin
  end;
  if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],TotalSize) and
          ConsumeDescriptor(aQueueIndex,aDescriptorIndex,TotalSize) and
+{$ifdef VirtIOBatchNotify}
+         UsedRingPublish(aQueueIndex)) then begin
+{$else}
          UsedRingSync(aQueueIndex)) then begin
+{$endif}
   NotifyDeviceNeedsReset;
  end;
 end;
@@ -37910,7 +37979,11 @@ begin
  OutHeader.Unique:=aUnique;
  if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@OutHeader,FUSE_OUT_HEADER_SIZE) and
          ConsumeDescriptor(aQueueIndex,aDescriptorIndex,FUSE_OUT_HEADER_SIZE) and
+{$ifdef VirtIOBatchNotify}
+         UsedRingPublish(aQueueIndex)) then begin
+{$else}
          UsedRingSync(aQueueIndex)) then begin
+{$endif}
   NotifyDeviceNeedsReset;
  end;
 end;
@@ -39576,7 +39649,7 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  //TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   VIRTIO_NET_F_MAC {or VIRTIO_NET_F_STATUS};
 
  fQueues[0].ManualRecv:=true;
@@ -39789,7 +39862,8 @@ begin
 
  fDeviceID:=DeviceID;
 
- fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
+ fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX;
 
  fQueues[0].ManualRecv:=false;
  fQueues[0].Asynchronous:=false;
@@ -39891,6 +39965,7 @@ begin
  Move(fGPUConfig,fConfigSpace[0],SizeOf(TVirtIOGPUConfig));
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   VIRTIO_GPU_F_EDID or
                   0;
 
@@ -40629,6 +40704,7 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   VIRTIO_CRYPTO_F_REVISION_1 or
                   VIRTIO_CRYPTO_F_CIPHER_STATELESS_MODE or
                   VIRTIO_CRYPTO_F_HASH_STATELESS_MODE or
@@ -42318,7 +42394,8 @@ begin
 
  fDeviceID:=DeviceID;
 
- fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
+ fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX;
 
  fQueues[0].ManualRecv:=false;
  fQueues[0].Asynchronous:=false;
@@ -42509,6 +42586,7 @@ begin
  fDeviceID:=VSOCK_DEVICE_ID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
+                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
                   VIRTIO_VSOCK_F_STREAM or
                   VIRTIO_VSOCK_F_SEQPACKET;
 
