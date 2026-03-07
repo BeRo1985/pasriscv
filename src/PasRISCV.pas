@@ -311,6 +311,8 @@ unit PasRISCV;
 
 {$define VirtIOFastDMA} // Fast path for VirtIO DMA: single Move for contiguous guest RAM instead of page-by-page copy
 
+{$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
+
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
 {$ifdef SmartJITTLBFlush}
  {-$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
@@ -6121,8 +6123,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     FUSE_EXPLICIT_INVAL_DATA=TPasRISCVUInt32(1) shl 25;
                     FUSE_SUBMOUNTS=TPasRISCVUInt32(1) shl 27;
                     // FUSE attr/entry validity timeouts
+{$ifdef VirtIOFSFastIO}
+                    FUSE_ATTR_TIMEOUT=86400;
+                    FUSE_ENTRY_TIMEOUT=86400;
+{$else}
                     FUSE_ATTR_TIMEOUT=1;
                     FUSE_ENTRY_TIMEOUT=1;
+{$endif}
                     // FUSE open response flags
                     FOPEN_DIRECT_IO=TPasRISCVUInt32(1) shl 0;
                     FOPEN_KEEP_CACHE=TPasRISCVUInt32(1) shl 1;
@@ -37519,10 +37526,18 @@ begin
  fInitDone:=false;
 
  fRecvBuffer:=nil;
+{$ifdef VirtIOFSFastIO}
+ SetLength(fRecvBuffer,1048576+FUSE_IN_HEADER_SIZE);
+{$else}
  SetLength(fRecvBuffer,65536);
+{$endif}
 
  fSendBuffer:=nil;
+{$ifdef VirtIOFSFastIO}
+ SetLength(fSendBuffer,1048576+FUSE_OUT_HEADER_SIZE);
+{$else}
  SetLength(fSendBuffer,65536+FUSE_OUT_HEADER_SIZE);
+{$endif}
 
  fLock:=TPasMPCriticalSection.Create;
 
@@ -37677,7 +37692,13 @@ begin
  OutHeader.Unique:=aUnique;
  Move(OutHeader,fSendBuffer[0],FUSE_OUT_HEADER_SIZE);
  if assigned(aPayload) and (aPayloadSize>0) then begin
+{$ifdef VirtIOFSFastIO}
+  if aPayload<>@fSendBuffer[FUSE_OUT_HEADER_SIZE] then begin
+   Move(aPayload^,fSendBuffer[FUSE_OUT_HEADER_SIZE],aPayloadSize);
+  end;
+{$else}
   Move(aPayload^,fSendBuffer[FUSE_OUT_HEADER_SIZE],aPayloadSize);
+{$endif}
  end;
  if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],TotalSize) and
          ConsumeDescriptor(aQueueIndex,aDescriptorIndex,TotalSize) and
@@ -37724,12 +37745,21 @@ begin
                                    FUSE_ASYNC_READ or
                                    FUSE_PARALLEL_DIROPS or
                                    FUSE_MAX_PAGES or
+{$ifdef VirtIOFSFastIO}
+                                   FUSE_WRITEBACK_CACHE or
+{$endif}
                                    FUSE_SUBMOUNTS);
   InitOut.MaxBackground:=16;
   InitOut.CongestionThreshold:=12;
+{$ifdef VirtIOFSFastIO}
+  InitOut.MaxWrite:=1048576;
+  InitOut.TimeGran:=1;
+  InitOut.MaxPages:=(1048576+4095) div 4096;
+{$else}
   InitOut.MaxWrite:=65536;
   InitOut.TimeGran:=1;
   InitOut.MaxPages:=(65536+4095) div 4096;
+{$endif}
   fInitDone:=true;
 {$ifdef PasRISCVDebugVirtIOFS}
   writeln('VirtIOFS: INIT done, major=',InitOut.Major,' minor=',InitOut.Minor,' flags=$',IntToHex(InitOut.Flags,8),' maxWrite=',InitOut.MaxWrite,' maxPages=',InitOut.MaxPages,' fs=',assigned(fFileSystem));
@@ -38038,7 +38068,9 @@ var ReadIn:TFUSEReadIn;
     FHEntry:TFHEntry;
     LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
     FHFound:Boolean;
+{$ifndef VirtIOFSFastIO}
     Buf:Pointer;
+{$endif}
     BytesRead:TPasRISCVInt64;
 begin
  if CopyMemoryFromQueue(@ReadIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEReadIn)) then begin
@@ -38054,6 +38086,14 @@ begin
    fLock.Release;
   end;
   if FHFound and assigned(fFileSystem) then begin
+{$ifdef VirtIOFSFastIO}
+   BytesRead:=fFileSystem.ReadFile(LocalFH,ReadIn.Offset,@fSendBuffer[FUSE_OUT_HEADER_SIZE],ReadIn.Size);
+   if BytesRead>=0 then begin
+    SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@fSendBuffer[FUSE_OUT_HEADER_SIZE],BytesRead);
+   end else begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVInt32(BytesRead));
+   end;
+{$else}
    GetMem(Buf,ReadIn.Size);
    try
     BytesRead:=fFileSystem.ReadFile(LocalFH,ReadIn.Offset,Buf,ReadIn.Size);
@@ -38065,6 +38105,7 @@ begin
    finally
     FreeMem(Buf);
    end;
+{$endif}
   end else begin
    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
   end;
