@@ -309,6 +309,8 @@ unit PasRISCV;
 
 {$define VirtIOGPUDirectScanout} // Share Resource.Data as fFrameBuffer.fData directly when possible, eliminating one full-framebuffer copy per flush
 
+{$define VirtIOFastDMA} // Fast path for VirtIO DMA: single Move for contiguous guest RAM instead of page-by-page copy
+
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission (like RVVM)
 {$ifdef SmartJITTLBFlush}
  {-$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
@@ -33492,11 +33494,24 @@ end;
 
 function TPasRISCV.TVirtIODevice.Read16(const aPhysicalAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt16):Boolean;
 var p:Pointer;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
  result:=false;
  if (aPhysicalAddress and 1)<>0 then begin
   aValue:=0;
  end else begin
+{$ifdef VirtIOFastDMA}
+  if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+   MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+   if (MemOffset+SizeOf(TPasRISCVUInt16))<=fMachine.fMemoryDevice.fSize then begin
+    aValue:=PPasRISCVUInt16(@PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset])^;
+    result:=true;
+    exit;
+   end;
+  end;
+{$endif}
   p:=GetGlobalDirectMemoryAccessPointer(aPhysicalAddress,SizeOf(TPasRISCVUInt16),false,nil);
   if assigned(p) then begin
    aValue:=PPasRISCVUInt16(p)^;
@@ -33509,9 +33524,25 @@ end;
 
 function TPasRISCV.TVirtIODevice.Write16(const aPhysicalAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt16):Boolean;
 var p:Pointer;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
  result:=false;
  if (aPhysicalAddress and 1)=0 then begin
+{$ifdef VirtIOFastDMA}
+  if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+   MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+   if (MemOffset+SizeOf(TPasRISCVUInt16))<=fMachine.fMemoryDevice.fSize then begin
+    PPasRISCVUInt16(@PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset])^:=aValue;
+{$ifdef PasRISCVJustInTimeCompiler}
+    fMachine.JITMarkDirtyMemory(aPhysicalAddress,SizeOf(TPasRISCVUInt16));
+{$endif}
+    result:=true;
+    exit;
+   end;
+  end;
+{$endif}
   p:=GetGlobalDirectMemoryAccessPointer(aPhysicalAddress,SizeOf(TPasRISCVUInt16),true,nil);
   if assigned(p) then begin
    PPasRISCVUInt16(p)^:=aValue;
@@ -33522,11 +33553,24 @@ end;
 
 function TPasRISCV.TVirtIODevice.Read32(const aPhysicalAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt32):Boolean;
 var p:Pointer;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
  result:=false;
  if (aPhysicalAddress and 3)<>0 then begin
   aValue:=0;
  end else begin
+{$ifdef VirtIOFastDMA}
+  if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+   MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+   if (MemOffset+SizeOf(TPasRISCVUInt32))<=fMachine.fMemoryDevice.fSize then begin
+    aValue:=PPasRISCVUInt32(@PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset])^;
+    result:=true;
+    exit;
+   end;
+  end;
+{$endif}
   p:=GetGlobalDirectMemoryAccessPointer(aPhysicalAddress,SizeOf(TPasRISCVUInt32),false,nil);
   if assigned(p) then begin
    aValue:=PPasRISCVUInt32(p)^;
@@ -33539,9 +33583,25 @@ end;
 
 function TPasRISCV.TVirtIODevice.Write32(const aPhysicalAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt32):Boolean;
 var p:Pointer;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
  result:=false;
  if (aPhysicalAddress and 3)=0 then begin
+{$ifdef VirtIOFastDMA}
+  if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+   MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+   if (MemOffset+SizeOf(TPasRISCVUInt32))<=fMachine.fMemoryDevice.fSize then begin
+    PPasRISCVUInt32(@PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset])^:=aValue;
+{$ifdef PasRISCVJustInTimeCompiler}
+    fMachine.JITMarkDirtyMemory(aPhysicalAddress,SizeOf(TPasRISCVUInt32));
+{$endif}
+    result:=true;
+    exit;
+   end;
+  end;
+{$endif}
   p:=GetGlobalDirectMemoryAccessPointer(aPhysicalAddress,SizeOf(TPasRISCVUInt32),true,nil);
   if assigned(p) then begin
    PPasRISCVUInt32(p)^:=aValue;
@@ -33552,11 +33612,24 @@ end;
 
 function TPasRISCV.TVirtIODevice.Read64(const aPhysicalAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64):Boolean;
 var p:Pointer;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
  result:=false;
  if (aPhysicalAddress and 7)<>0 then begin
   aValue:=0;
  end else begin
+{$ifdef VirtIOFastDMA}
+  if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+   MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+   if (MemOffset+SizeOf(TPasRISCVUInt64))<=fMachine.fMemoryDevice.fSize then begin
+    aValue:=PPasRISCVUInt64(@PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset])^;
+    result:=true;
+    exit;
+   end;
+  end;
+{$endif}
   p:=GetGlobalDirectMemoryAccessPointer(aPhysicalAddress,SizeOf(TPasRISCVUInt64),false,nil);
   if assigned(p) then begin
    aValue:=PPasRISCVUInt64(p)^;
@@ -33569,9 +33642,25 @@ end;
 
 function TPasRISCV.TVirtIODevice.Write64(const aPhysicalAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64):Boolean;
 var p:Pointer;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
  result:=false;
  if (aPhysicalAddress and 7)=0 then begin
+{$ifdef VirtIOFastDMA}
+  if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+   MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+   if (MemOffset+SizeOf(TPasRISCVUInt64))<=fMachine.fMemoryDevice.fSize then begin
+    PPasRISCVUInt64(@PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset])^:=aValue;
+{$ifdef PasRISCVJustInTimeCompiler}
+    fMachine.JITMarkDirtyMemory(aPhysicalAddress,SizeOf(TPasRISCVUInt64));
+{$endif}
+    result:=true;
+    exit;
+   end;
+  end;
+{$endif}
   p:=GetGlobalDirectMemoryAccessPointer(aPhysicalAddress,SizeOf(TPasRISCVUInt64),true,nil);
   if assigned(p) then begin
    PPasRISCVUInt64(p)^:=aValue;
@@ -33584,7 +33673,20 @@ function TPasRISCV.TVirtIODevice.CopyMemoryFromRAM(const aBuf:Pointer;const aPhy
 var p,Buf:PPasRISCVUInt8;
     Len,Count:TPasRISCVUInt64;
     PhysicalAddress:TPasRISCVUInt64;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
+{$ifdef VirtIOFastDMA}
+ if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+  MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+  if (MemOffset+aCount)<=fMachine.fMemoryDevice.fSize then begin
+   Move(PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset],aBuf^,aCount);
+   result:=true;
+   exit;
+  end;
+ end;
+{$endif}
  Count:=aCount;
  PhysicalAddress:=aPhysicalAddress;
  Buf:=aBuf;
@@ -33611,7 +33713,23 @@ function TPasRISCV.TVirtIODevice.CopyMemoryToRAM(const aPhysicalAddress:TPasRISC
 var p,Buf:PPasRISCVUInt8;
     Len,Count:TPasRISCVUInt64;
     PhysicalAddress:TPasRISCVUInt64;
+{$ifdef VirtIOFastDMA}
+    MemOffset:TPasRISCVUInt64;
+{$endif}
 begin
+{$ifdef VirtIOFastDMA}
+ if aPhysicalAddress>=fMachine.fMemoryDevice.fBase then begin
+  MemOffset:=aPhysicalAddress-fMachine.fMemoryDevice.fBase;
+  if (MemOffset+aCount)<=fMachine.fMemoryDevice.fSize then begin
+   Move(aBuf^,PPasRISCVUInt8Array(fMachine.fMemoryDevice.fData)^[MemOffset],aCount);
+{$ifdef PasRISCVJustInTimeCompiler}
+   fMachine.JITMarkDirtyMemory(aPhysicalAddress,aCount);
+{$endif}
+   result:=true;
+   exit;
+  end;
+ end;
+{$endif}
  Count:=aCount;
  PhysicalAddress:=aPhysicalAddress;
  Buf:=aBuf;
