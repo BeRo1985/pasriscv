@@ -313,6 +313,8 @@ unit PasRISCV;
 
 {$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
 
+{-$define VirtIOFSDirectIO} // VirtIO FS: FOPEN_DIRECT_IO bypasses guest page cache, enables app-sized FUSE reads (1MB with dd bs=1M)
+
 {$define VirtIOFSDAX} // VirtIO FS: DAX (Direct Access) shared memory window for bypassing FUSE round-trips
 
 {$define VirtIOBatchNotify} // VirtIO: batch interrupt delivery - single interrupt after processing all pending descriptors
@@ -38278,7 +38280,15 @@ begin
     end;
     FillChar(OpenOut,SizeOf(TFUSEOpenOut),#0);
     OpenOut.FH:=FHID;
+{$ifdef VirtIOFSDirectIO}
+    if aIsDir then begin
+     OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
+    end else begin
+     OpenOut.OpenFlags:=FOPEN_DIRECT_IO;
+    end;
+{$else}
     OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
+{$endif}
 {$ifdef PasRISCVDebugVirtIOFS}
     if aIsDir then begin
      writeln('VirtIOFS: OPENDIR OK fhID=',FHID,' fh=',FH);
@@ -38709,7 +38719,11 @@ begin
       FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
       FillChar(OpenOut,SizeOf(TFUSEOpenOut),#0);
       OpenOut.FH:=FHID;
+{$ifdef VirtIOFSDirectIO}
+      OpenOut.OpenFlags:=FOPEN_DIRECT_IO;
+{$else}
       OpenOut.OpenFlags:=FOPEN_KEEP_CACHE;
+{$endif}
       Move(EntryOut,ReplyBuf[0],SizeOf(TFUSEEntryOut));
       Move(OpenOut,ReplyBuf[SizeOf(TFUSEEntryOut)],SizeOf(TFUSEOpenOut));
       SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@ReplyBuf[0],SizeOf(TFUSEEntryOut)+SizeOf(TFUSEOpenOut));
