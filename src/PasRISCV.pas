@@ -8405,6 +8405,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fStatTotalInstructions:TPasRISCVUInt64;
                      fStatLinksPatched:TPasRISCVUInt64;
                      fStatLastReport:TPasRISCVUInt64;
+                     fStatFlushTLBFull:TPasRISCVUInt64;
+                     fStatFlushTLBPage:TPasRISCVUInt64;
+                     fStatFlushTLBPageExecute:TPasRISCVUInt64;
                      fPCOffset:TPasRISCVInt32;
                      fInstructionCount:TPasRISCVUInt32;
                      fLRUCounter:TPasRISCVUInt32;
@@ -59871,6 +59874,9 @@ begin
 {$ifdef PasRISCVJustInTimeCompiler}
  if assigned(fJustInTimeCompiler) then begin
   FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
+{$ifdef PasRISCVJustInTimeCompilerStats}
+  inc(fJustInTimeCompiler.fStatFlushTLBFull);
+{$endif}
  end;
 {$endif}
  if aInterrupt then begin
@@ -59918,6 +59924,16 @@ begin
 {$else}
  if assigned(fJustInTimeCompiler) then begin
   FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
+ end;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerStats}
+ if assigned(fJustInTimeCompiler) then begin
+  inc(fJustInTimeCompiler.fStatFlushTLBPage);
+{$ifdef SmartJITTLBFlush}
+  if HadExecute then begin
+   inc(fJustInTimeCompiler.fStatFlushTLBPageExecute);
+  end;
+{$endif}
  end;
 {$endif}
 {$endif}
@@ -87619,7 +87635,10 @@ begin
     ' insns=',fJustInTimeCompiler.fStatTotalInstructions,
     ' links=',fJustInTimeCompiler.fStatLinksPatched,
     ' avg=',fJustInTimeCompiler.fStatTotalInstructions div (fJustInTimeCompiler.fStatBlocksCompiled+1),
-    ' bufsz=',fJustInTimeCompiler.fCodeBufferUsed);
+    ' bufsz=',fJustInTimeCompiler.fCodeBufferUsed,
+    ' flushFull=',fJustInTimeCompiler.fStatFlushTLBFull,
+    ' flushPage=',fJustInTimeCompiler.fStatFlushTLBPage,
+    ' flushPageExec=',fJustInTimeCompiler.fStatFlushTLBPageExecute);
   end;//}
 {$endif}
 {$endif}
