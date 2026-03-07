@@ -8622,7 +8622,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitPatchableRET; virtual; abstract;
                      procedure EmitTailBNEZ(const aOffset:TPasRISCVInt32); virtual; abstract;
 {$endif}
-                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0); virtual; abstract;
+                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0;const aStoreHostRegister:TPasRISCVUInt8=$ff); virtual; abstract;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); virtual; abstract;
                      function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; virtual; abstract;
                      function VMPtrRegister:TPasRISCVUInt8; virtual; abstract;
@@ -9415,7 +9415,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitPatchableRET; override;
                      procedure EmitTailBNEZ(const aOffset:TPasRISCVInt32); override;
 {$endif}
-                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0); override;
+                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0;const aStoreHostRegister:TPasRISCVUInt8=$ff); override;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); override;
                      function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; override;
                      function VMPtrRegister:TPasRISCVUInt8; override;
@@ -48719,7 +48719,18 @@ begin
  DirectAccessTLBEntry:=@HART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if aTLBFieldOffset=TLB_W then begin
   if DirectAccessTLBEntry^.Write<>VPN then begin
+{$ifdef JITMMIOFastPath}
+   // MMIO store: value already pre-stored in JITMMIOScratch by JIT side-exit path
+   HART.fBus.Store(HART,PhysicalAddress,HART.fState.JITMMIOScratch,aAlignment);
+   if HART.fState.ExceptionValue<>TExceptionValue.None then begin
+    HART.fState.ExceptionValue:=TExceptionValue.None;
+    result:=0;
+    exit;
+   end;
+   result:=TPasRISCVPtrUInt(@HART.fState.JITMMIOScratch);
+{$else}
    result:=0;
+{$endif}
    exit;
   end;
  end else begin
@@ -51377,9 +51388,9 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostIntRegister;
- EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,1);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostAddr:=ClaimHostIntRegister;
+ EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,1,0,HostSrc);
  EmitNativeSB(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
 end;
@@ -51392,9 +51403,9 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostIntRegister;
- EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,2);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostAddr:=ClaimHostIntRegister;
+ EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,2,0,HostSrc);
  EmitNativeSH(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
 end;
@@ -51407,9 +51418,9 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostIntRegister;
- EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,4);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostAddr:=ClaimHostIntRegister;
+ EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,4,0,HostSrc);
  EmitNativeSW(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
 end;
@@ -51422,9 +51433,9 @@ begin
  RS2:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  Offset:=TPasRISCVInt32(TPasRISCVInt64(aParameter2));
- HostAddr:=ClaimHostIntRegister;
- EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,8);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostAddr:=ClaimHostIntRegister;
+ EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,8,0,HostSrc);
  EmitNativeSD(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
 end;
@@ -54567,7 +54578,7 @@ begin
  EmitImmOp(ALU_CMP,ScratchReg,TPasRISCVInt32(RUNSTATE_RUNNING),false);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32;const aStoreHostRegister:TPasRISCVUInt8);
 // Inline data TLB check with fallback to interpreter
 // aHostAddrRegister = output: host pointer to accessed memory
 // aGuestBaseRegister = RISC-V register holding virtual base address
@@ -54645,6 +54656,14 @@ begin
  SavedIntRegInfos:=fHostIntRegisterInfos;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  SavedFPURegInfos:=fHostFPURegisterInfos;
+{$endif}
+
+{$ifdef JITMMIOFastPath}
+ // Pre-store value for MMIO stores: write store source register to JITMMIOScratch
+ // so JITDataTLBFillHelper can call Bus.Store directly without bailing out
+ if aStoreHostRegister<>$ff then begin
+  EmitNativeStore(aStoreHostRegister,VMPtrRegister,GuestJITMMIOScratchOffset,true);
+ end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
