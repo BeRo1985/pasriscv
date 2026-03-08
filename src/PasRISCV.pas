@@ -55764,13 +55764,16 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
     CSRAddress:TPasRISCVUInt32;
-    HostRD,TempReg:TPasRISCVUInt8;
+    HostRD:TPasRISCVUInt8;
 begin
+
  RD:=TRegister(aParameter0);
- CSRAddress:=TPasRISCVUInt32(aParameter1);
  if RD=TRegister.Zero then begin
   exit;
  end;
+
+ CSRAddress:=TPasRISCVUInt32(aParameter1);
+
  case CSRAddress of
 
   TPasRISCVUInt32(TCSR.TAddress.TIME):begin
