@@ -333,7 +333,7 @@ unit PasRISCV;
 
 {$define PerModeTLB} // Separate Data TLBs per privilege mode — eliminates FlushTLB memset on mode switch
 {$ifdef PerModeTLB}
- {$define PerModeTLBExtendedArray} // Extended array with mode offset (vs separate arrays per mode)
+ {$undef PerModeTLBExtendedArray} // Extended array with mode offset (vs separate arrays per mode)
 {$endif}
 
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission
@@ -49540,7 +49540,7 @@ begin
 
  // Slow path: translate virtual PC to physical via direct-access TLB
  VPN:=VirtualPC shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@ffHART.fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fHART.fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if DirectAccessTLBEntry^.Execute<>VPN then begin
   result:=false;
   exit;
