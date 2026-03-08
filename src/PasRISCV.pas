@@ -329,7 +329,7 @@ unit PasRISCV;
 
 {$define FastTrapPath} // Trap: skip CheckTimers/EventTick when outer loop re-enters after ExecuteException
 
-{$define JITInlineRDTIME} // JIT: inline rdtime (csrrs rd, TIME, x0) as a direct helper call instead of block-breaking CSR dispatch
+{$define JITInlineCSRRead} // JIT: inline pure CSR reads (csrrs/csrrc rd, CSR, x0) as direct TState loads without block break
 
 {-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission
 {$ifdef SmartJITTLBFlush}
@@ -8209,7 +8209,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITMMIOScratch:TPasRISCVUInt64;
 {$endif}
 {$endif}
-{$ifdef JITInlineRDTIME}
+{$ifdef JITInlineCSRRead}
                      JITRDTIMEHelperPtr:Pointer;
 {$endif}
 {$endif}
@@ -8542,9 +8542,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                      class function JITDataTLBFillHelper(aHART:Pointer;aVirtualAddress:TPasRISCVUInt64;aTLBFieldOffset:TPasRISCVUInt64;aAlignment:TPasRISCVUInt64):TPasRISCVPtrUInt; static;
 {$endif}
-{$ifdef JITInlineRDTIME}
+{$ifdef JITInlineCSRRead}
                      function GuestJITRdtimeHelperPtrOffset:TPasRISCVInt32;
                      class function JITRDTIMEHelper(aHART:Pointer):TPasRISCVUInt64; static;
+                     function GuestCSRDataOffset(const aCSRAddress:TPasRISCVUInt32):TPasRISCVInt32;
 {$endif}
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
@@ -8608,6 +8609,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitBlockExit; virtual;
                      procedure FlushICache(const aAddr:Pointer;const aSize:TPasRISCVUInt32); virtual;
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; virtual; abstract;
+{$ifdef JITInlineCSRRead}
+                     procedure EmitCycleUpdateAndReset; virtual; abstract;
+{$endif}
 
                      // Backend hooks (virtual, override in target-specific subclass)
                      procedure EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); virtual; abstract;
@@ -8911,6 +8915,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure FlushAllBlocks;
                      procedure InvalidatePage(const aPhysicalAddress:TPasRISCVUInt64);
 
+                     // CSR
+                     function IsCSRCompatible(const aAddress:TPasRISCVUInt64;const aWrite:Boolean):Boolean;
+
                      // Tracing methods
                      function TLBLookup:Boolean;
                      function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
@@ -9020,8 +9027,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      procedure IntrinsicBREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
 {$endif}
-{$ifdef JITInlineRDTIME}
-                     procedure IntrinsicRDTIME(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+{$ifdef JITInlineCSRRead}
+                     procedure IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZknh}
                      procedure IntrinsicSHA256SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
@@ -9396,6 +9403,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
                       // Base overrides
                      function EmitCycleUpdateAndCheck(const aCount:TPasRISCVUInt32):TPasRISCVUInt32; override;
+{$ifdef JITInlineCSRRead}
+                     procedure EmitCycleUpdateAndReset; override;
+{$endif}
                      procedure EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeStore(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeZeroReg(const aHostRegister:TPasRISCVUInt8); override;
@@ -9613,8 +9623,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      procedure EmitNativeBREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
 {$endif}
-{$ifdef JITInlineRDTIME}
-                     procedure IntrinsicRDTIME(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+{$ifdef JITInlineCSRRead}
+                     procedure IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZknh}
                      procedure EmitNativeSHA256SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
@@ -48752,7 +48762,7 @@ begin
 end;
 {$endif}
 
-{$ifdef JITInlineRDTIME}
+{$ifdef JITInlineCSRRead}
 function TPasRISCV.THART.TJustInTimeCompiler.GuestJITRdtimeHelperPtrOffset:TPasRISCVInt32;
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITRDTIMEHelperPtr));
@@ -48761,6 +48771,11 @@ end;
 class function TPasRISCV.THART.TJustInTimeCompiler.JITRDTIMEHelper(aHART:Pointer):TPasRISCVUInt64;
 begin
  result:=THART(aHART).fMachine.fACLINTDevice.GetTime;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCSRDataOffset(const aCSRAddress:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CSR.fData[aCSRAddress]));
 end;
 {$endif}
 
@@ -49393,6 +49408,32 @@ begin
  TPasMPInterlocked.BitwiseOr(fDirtyPageBitmap[Offset],TPasMPUInt32(Bit));
  TPasMPInterlocked.BitwiseAnd(fJITedPageBitmap[Offset],TPasMPUInt32(not Bit));
  FlushJITTLB;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IsCSRCompatible(const aAddress:TPasRISCVUInt64;const aWrite:Boolean):Boolean;
+begin
+ if aWrite then begin
+  result:=false;
+ end else begin
+  case aAddress of
+   TPasRISCVUInt32(TCSR.TAddress.TIME),
+   TPasRISCVUInt32(TCSR.TAddress.CYCLE),
+   TPasRISCVUInt32(TCSR.TAddress.MCYCLE),
+   TPasRISCVUInt32(TCSR.TAddress.INSTRET),
+   TPasRISCVUInt32(TCSR.TAddress.MINSTRET),
+   TPasRISCVUInt32(TCSR.TAddress.MISA),
+   TPasRISCVUInt32(TCSR.TAddress.TDATA1),
+   TPasRISCVUInt32(TCSR.TAddress.MVENDORID),
+   TPasRISCVUInt32(TCSR.TAddress.MARCHID),
+   TPasRISCVUInt32(TCSR.TAddress.MIMPID),
+   TPasRISCVUInt32(TCSR.TAddress.MHARTID):begin
+    result:=true;
+   end;
+   else begin
+    result:=false;
+   end;
+  end;
+ end;
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.TLBLookup:Boolean;
@@ -50720,8 +50761,8 @@ begin
 end;
 {$endif}
 
-{$ifdef JITInlineRDTIME}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRDTIME(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+{$ifdef JITInlineCSRRead}
+procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 begin
 end;
 {$endif}
@@ -54466,6 +54507,17 @@ begin
  result:=fTemporaryCodeSize-4;
 end;
 
+{$ifdef JITInlineCSRRead}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCycleUpdateAndReset;
+begin
+ if fInstructionCount<>0 then begin
+  // add qword [vm+CycleOffset], fInstructionCount
+  EmitNativeMemAddImm(VMPtrRegister,GuestCycleOffset,TPasRISCVInt64(fInstructionCount),true);
+  fInstructionCount:=0;
+ end;
+end;
+{$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2Op(const aPrefix:TPasRISCVInt32;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
 begin
@@ -55708,45 +55760,69 @@ begin
 end;
 {$endif}
 
-{$ifdef JITInlineRDTIME}
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicRDTIME(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+{$ifdef JITInlineCSRRead}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
 var RD:TRegister;
+    CSRAddress:TPasRISCVUInt32;
+    HostRD,TempReg:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
+ CSRAddress:=TPasRISCVUInt32(aParameter1);
  if RD=TRegister.Zero then begin
   exit;
  end;
- FreeAllHostIntRegisters;
+ case CSRAddress of
+
+  TPasRISCVUInt32(TCSR.TAddress.TIME):begin
+   FreeAllHostIntRegisters;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeAllHostFPURegisters;
+   FreeAllHostFPURegisters;
 {$endif}
- // Push VMPtrRegister to preserve TState pointer across helper call
- EmitNativePush(VMPtrRegister);
- // Load helper function pointer from TState into RAX (before clobbering VMPtrRegister)
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrRegister,GuestJITRdtimeHelperPtrOffset,true);
- // Load JITHART into first argument register (clobbers VMPtrRegister)
+   // Push VMPtrRegister to preserve TState pointer across helper call
+   EmitNativePush(VMPtrRegister);
+   // Load helper function pointer from TState into RAX (before clobbering VMPtrRegister)
+   EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrRegister,GuestJITRdtimeHelperPtrOffset,true);
+   // Load JITHART into first argument register (clobbers VMPtrRegister)
 {$ifdef Windows}
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),VMPtrRegister,GuestJITHARTOffset,true);
+   EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),VMPtrRegister,GuestJITHARTOffset,true);
 {$else}
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrRegister,GuestJITHARTOffset,true);
+   EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrRegister,GuestJITHARTOffset,true);
 {$endif}
- // Stack alignment: entry CALL(+8) + fABIReclaimCount pushes + 1 VMPtrRegister push
- if (fABIReclaimCount and 1)<>0 then begin
-  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-8);
- end;
+   // Stack alignment: entry CALL(+8) + fABIReclaimCount pushes + 1 VMPtrRegister push
+   if (fABIReclaimCount and 1)<>0 then begin
+    EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-8);
+   end;
 {$ifdef Windows}
- EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-32);
+   EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-32);
 {$endif}
- EmitCallReg(TPasRISCVUInt8(ord(TX64Register.rRAX)));
+   EmitCallReg(TPasRISCVUInt8(ord(TX64Register.rRAX)));
 {$ifdef Windows}
- EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),32);
+   EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),32);
 {$endif}
- if (fABIReclaimCount and 1)<>0 then begin
-  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),8);
+   if (fABIReclaimCount and 1)<>0 then begin
+    EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),8);
+   end;
+   EmitNativePop(VMPtrRegister);
+   // Store result (RAX) to guest register RD in TState
+   EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrRegister,GuestIntRegisterOffset(RD),true);
+  end;
+
+  TPasRISCVUInt32(TCSR.TAddress.CYCLE),
+  TPasRISCVUInt32(TCSR.TAddress.MCYCLE),
+  TPasRISCVUInt32(TCSR.TAddress.INSTRET),
+  TPasRISCVUInt32(TCSR.TAddress.MINSTRET):begin
+   EmitCycleUpdateAndReset;
+   HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+   EmitNativeLoad(HostRD,VMPtrRegister,GuestCycleOffset,true);
+  end;
+
+  else begin
+   HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+   EmitNativeLoad(HostRD,VMPtrRegister,GuestCSRDataOffset(CSRAddress),true);
+  end;
+
  end;
- EmitNativePop(VMPtrRegister);
- // Store result (RAX) to guest register RD in TState
- EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrRegister,GuestIntRegisterOffset(RD),true);
+
 end;
 {$endif}
 
@@ -60218,7 +60294,7 @@ begin
 {$ifdef PasRISCVJustInTimeCompilerSideExit}
   fState.JITDataTLBFillPtr:=@TJustInTimeCompiler.JITDataTLBFillHelper;
 {$endif}
-{$ifdef JITInlineRDTIME}
+{$ifdef JITInlineCSRRead}
   fState.JITRDTIMEHelperPtr:=@TJustInTimeCompiler.JITRDTIMEHelper;
 {$endif}
   fJustInTimeCompiler.ClearBlocks;
@@ -81874,10 +81950,11 @@ begin
        // csrrs
        Address:=aInstruction shr 20;
        rs1:=TRegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and defined(JITInlineRDTIME)}
-       if (Address=TPasRISCVUInt32(TCSR.TAddress.TIME)) and (rs1=TRegister.Zero) and
+{$if defined(PasRISCVJustInTimeCompiler) and defined(JITInlineCSRRead)}
+       if (rs1=TRegister.Zero) and
           assigned(fJustInTimeCompiler) and
-          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicRDTIME,aInstruction,ord(TRegister((aInstruction shr 7) and $1f)),0,0,0,4) then begin
+          fJustInTimeCompiler.IsCSRCompatible(Address,false) and
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCSRRead,aInstruction,ord(TRegister((aInstruction shr 7) and $1f)),Address,0,0,4) then begin
         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
@@ -81890,6 +81967,15 @@ begin
        // csrrc
        Address:=aInstruction shr 20;
        rs1:=TRegister((aInstruction shr 15) and $1f);
+{$if defined(PasRISCVJustInTimeCompiler) and defined(JITInlineCSRRead)}
+       if (rs1=TRegister.Zero) and
+          assigned(fJustInTimeCompiler) and
+          fJustInTimeCompiler.IsCSRCompatible(Address,false) and
+          fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCSRRead,aInstruction,ord(TRegister((aInstruction shr 7) and $1f)),Address,0,0,4) then begin
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+        exit;
+       end;
+{$ifend}
        fCSRHandlerMap[Address](fState.PC,aInstruction,Address,fState.Registers[rs1],TCSROperation.ClearBits);
        result:=4;
        exit;
