@@ -54678,18 +54678,31 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitInlineTLBLookup(const aAd
 //         aSlowPathFixup = offset of jne rel32 displacement to patch on miss
 // Uses:   aTempReg1 = scratch (VPN for tag comparison)
 //         aTempReg2 = scratch then result host pointer
+{$ifdef CombinedDirectAccessTLBCache}
 // TLB entry layout (CombinedDirectAccessTLBCache):
 //   offset 0:  Read  (TPasRISCVUInt64) = VPN if valid for read
 //   offset 8:  Write (TPasRISCVUInt64) = VPN if valid for write
 //   offset 16: Execute (TPasRISCVUInt64) = VPN if valid for execute
 //   offset 24: RelativeMemory (TPasRISCVPtrUInt)
 //   Total: 32 bytes per entry
+{$else}
+// TLB entry layout (non-CombinedDirectAccessTLBCache):
+//   offset 0:  Read  (TPasRISCVUInt64) = VPN if valid for read
+//   offset 8:  Write (TPasRISCVUInt64) = VPN if valid for write
+//   offset 16: Execute (TPasRISCVUInt64) = VPN if valid for execute
+//   offset 24: RelativeMemoryRead (TPasRISCVPtrUInt)
+//   offset 32: RelativeMemoryWrite (TPasRISCVPtrUInt)
+//   offset 40: RelativeMemoryExecute (TPasRISCVPtrUInt)
+//   Total: 48 bytes per entry
+{$endif}
 // VPN = address >> 12; TLB index = VPN & 255
 // Tag comparison: TLBEntry.Read (or .Write) == VPN
 const TLB_READ_OFFSET=0;
       TLB_WRITE_OFFSET=8;
+{$ifdef CombinedDirectAccessTLBCache}
       TLB_RELMEM_OFFSET=24;
       TLB_ENTRY_SHIFT=5; // 32 bytes = 1 shl 5
+{$endif}
       PAGE_SHIFT=12;
       TLB_MASK=255; // DIRECT_ACCESS_TLB_MASK
 var TagOffset:TPasRISCVInt32;
@@ -54702,10 +54715,21 @@ begin
  // aTempReg1 = aAddrReg >> PAGE_SHIFT (VPN — kept alive for tag comparison)
  EmitMOVRegReg(aTempReg1,aAddrReg,true);
  EmitShiftRegImm(SHIFT_SHR,aTempReg1,PAGE_SHIFT,true);
- // aTempReg2 = (VPN & TLB_MASK) << TLB_ENTRY_SHIFT = byte offset in TLB array
+ // With CombinedDirectAccessTLBCache: aTempReg2 = (VPN & TLB_MASK) << TLB_ENTRY_SHIFT = byte offset in TLB array
+ // Without CombinedDirectAccessTLBCache: aTempReg2 = (VPN & TLB_MASK) * sizeof(TDirectAccessTLBEntry) = byte offset in TLB array
  EmitMOVRegReg(aTempReg2,aTempReg1,true);
  EmitImmOp(ALU_AND,aTempReg2,TLB_MASK,true);
+{$ifdef CombinedDirectAccessTLBCache}
  EmitShiftRegImm(SHIFT_SHL,aTempReg2,TLB_ENTRY_SHIFT,true);
+{$else}
+ // Entry size = 48 = 3 * 16. Compute idx * 48, using aTempReg1 as scratch then recomputing VPN.
+ EmitMOVRegReg(aTempReg1,aTempReg2,true);
+ EmitShiftRegImm(SHIFT_SHL,aTempReg2,1,true);
+ Emit2RegOp(X86_ADD,aTempReg2,aTempReg1,true);
+ EmitShiftRegImm(SHIFT_SHL,aTempReg2,4,true);
+ EmitMOVRegReg(aTempReg1,aAddrReg,true);
+ EmitShiftRegImm(SHIFT_SHR,aTempReg1,PAGE_SHIFT,true);
+{$endif}
  // aTempReg2 += [VMPtrRegister + GuestJITTLBPtrOffset] — entry pointer
  // x86: ADD r64, [base+disp] = opcode $03 with memory operand
  EmitMemOp(X86_ADD_M_R,aTempReg2,VMPtrRegister,GuestJITTLBPtrOffset,true);
@@ -54716,8 +54740,13 @@ begin
  EmitJccRel32(CC_NE,0);
  aSlowPathFixup:=fTemporaryCodeSize-4;
  // TLB hit: load RelativeMemory from entry
+{$ifdef CombinedDirectAccessTLBCache}
  // aTempReg2 = [aTempReg2 + TLB_RELMEM_OFFSET]
  EmitNativeLoad(aTempReg2,aTempReg2,TLB_RELMEM_OFFSET,true);
+{$else}
+ // aTempReg2 = [aTempReg2 + RelativeMemory offset]
+ EmitNativeLoad(aTempReg2,aTempReg2,24+TagOffset,true);
+{$endif}
  // aTempReg2 += aAddrReg — final host pointer
  Emit2RegOp(X86_ADD,aTempReg2,aAddrReg,true);
 end;
@@ -54756,12 +54785,17 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDataTLBLookup(const aHost
 // aOffset = immediate offset to add to base
 // aTLBFieldOffset = offset of Read/Write tag field within TLB entry (0=Read, 8=Write)
 // aAlignment = access alignment (1, 2, 4, 8)
-const TLB_RELMEM_OFFSET=24; // offset of RelativeMemory in TDirectAccessTLBEntry
-      TLB_ENTRY_SHIFT=5;    // sizeof(TDirectAccessTLBEntry) = 32 = 1 shl 5
-      PAGE_SHIFT=12;
+const PAGE_SHIFT=12;
       TLB_MASK=255;          // DIRECT_ACCESS_TLB_MASK
+{$ifdef CombinedDirectAccessTLBCache}
+      TLB_RELMEM_OFFSET=24; // offset of RelativeMemory in TDirectAccessTLBEntry
+      TLB_ENTRY_SHIFT=5;    // sizeof(TDirectAccessTLBEntry) = 32 = 1 shl 5
+{$endif}
 var HostVirtualAddress,HostVPN,HostIndex:TPasRISCVUInt8;
     HostBase:TPasRISCVUInt8;
+{$ifndef CombinedDirectAccessTLBCache}
+    ScratchMul:TPasRISCVUInt8;
+{$endif}
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 {$ifdef PasRISCVJustInTimeCompilerSideExit}
     SavedHostRegMask:TPasRISCVUInt32;
@@ -54790,8 +54824,18 @@ begin
  EmitNativeSrli(HostVPN,HostVirtualAddress,PAGE_SHIFT);
  // idx = vpn & TLB_MASK
  EmitNativeAndi(HostIndex,HostVPN,TLB_MASK);
+{$ifdef CombinedDirectAccessTLBCache}
  // idx <<= TLB_ENTRY_SHIFT (byte offset into TLB array, 32-bit shift suffices)
  EmitShiftRegImm(SHIFT_SHL,HostIndex,TLB_ENTRY_SHIFT,false);
+{$else}
+ // Entry size = 48 = 3 * 16. idx * 48 via (idx * 3) << 4.
+ ScratchMul:=ClaimHostIntRegister(aAvoidRegisterMask);
+ EmitMOVRegReg(ScratchMul,HostIndex,false);
+ EmitShiftRegImm(SHIFT_SHL,HostIndex,1,false);
+ Emit2RegOp(X86_ADD,HostIndex,ScratchMul,false);
+ EmitShiftRegImm(SHIFT_SHL,HostIndex,4,false);
+ FreeHostIntRegister(ScratchMul);
+{$endif}
  // idx += [VMPtrRegister + GuestJITTLBPtrOffset] (add TLB base pointer)
  EmitMemOp(X86_ADD_M_R,HostIndex,VMPtrRegister,GuestJITTLBPtrOffset,true);
  // aHostAddrRegister = [idx + aTLBFieldOffset] (load tag from TLB entry)
@@ -54974,7 +55018,7 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
  // Load physical pointer from TLB entry
- EmitNativeLoad(aHostAddrRegister,HostIndex,TLB_RELMEM_OFFSET,true);
+ EmitNativeLoad(aHostAddrRegister,HostIndex,{$ifdef CombinedDirectAccessTLBCache}TLB_RELMEM_OFFSET{$else}24+aTLBFieldOffset{$endif},true);
  // Final host address = ptr + hvaddr
  Emit2RegOp(X86_ADD,aHostAddrRegister,HostVirtualAddress,true);
 
@@ -55000,7 +55044,7 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
  // Load physical pointer from TLB entry
- EmitNativeLoad(aHostAddrRegister,HostIndex,TLB_RELMEM_OFFSET,true);
+ EmitNativeLoad(aHostAddrRegister,HostIndex,{$ifdef CombinedDirectAccessTLBCache}TLB_RELMEM_OFFSET{$else}24+aTLBFieldOffset{$endif},true);
  // Final host address = ptr + hvaddr
  Emit2RegOp(X86_ADD,aHostAddrRegister,HostVirtualAddress,true);
 {$endif}
