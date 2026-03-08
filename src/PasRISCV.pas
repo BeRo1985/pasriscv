@@ -8348,6 +8348,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                          end;
                          PDirectAccessTLBEntry=^TDirectAccessTLBEntry;
                          TDirectAccessTLBEntries=array[0..DIRECT_ACCESS_TLB_ENTRIES-1] of TDirectAccessTLBEntry;
+                         PDirectAccessTLBEntries=^TDirectAccessTLBEntries;
                          TPNArray=array[0..4] of TPasRISCVUInt64;
                      const ModeLevels:array[TMMUMode] of TPasRISCVUInt64=(0,0,0,0,0,0,0,0,3,4,5,0,0,0,0,0);
                    end;
@@ -9865,6 +9866,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fDirectAccessTLBCacheModeBase:TPasRISCVUInt64;
 {$else}
               fDirectAccessTLBCacheModes:array[TMode.User..TMode.Machine] of TMMU.TDirectAccessTLBEntries;
+              fDirectAccessTLBCache:TMMU.PDirectAccessTLBEntries;
 {$endif}
 {$else}
               fDirectAccessTLBCache:TMMU.TDirectAccessTLBEntries;
@@ -48834,7 +48836,7 @@ begin
 
  // TLB should now be filled — read back the host address
  VPN:=aVirtualAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@HART.fDirectAccessTLBCache[HART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@HART.fDirectAccessTLBCacheModes[HART.fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@HART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@HART.fDirectAccessTLBCache[HART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@HART.fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@HART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if aTLBFieldOffset=TLB_W then begin
   if DirectAccessTLBEntry^.Write<>VPN then begin
 {$ifdef JITMMIOFastPath}
@@ -49478,7 +49480,7 @@ begin
  VPN:=VirtualPC shr PAGE_SHIFT;
 {$endif}
  JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
- if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fHART.fDirectAccessTLBCacheModes[fHART.fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} then begin
+ if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}ffHART.fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} then begin
   BlockCallback:=JITTLBEntry^.Block;
   if assigned(BlockCallback) then begin
 {$ifdef PasRISCVJustInTimeCompilerDebug}
@@ -49522,7 +49524,7 @@ begin
     VPN:=VirtualPC shr PAGE_SHIFT;
 {$endif}
     JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
-    if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fHART.fDirectAccessTLBCacheModes[fHART.fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} and
+    if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}ffHART.fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} and
        ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
        (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
      JITTLBEntry^.Block(@fHART.fState);
@@ -49538,7 +49540,7 @@ begin
 
  // Slow path: translate virtual PC to physical via direct-access TLB
  VPN:=VirtualPC shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fHART.fDirectAccessTLBCacheModes[fHART.fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fHART.fDirectAccessTLBCache[fHART.fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@ffHART.fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fHART.fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if DirectAccessTLBEntry^.Execute<>VPN then begin
   result:=false;
   exit;
@@ -60238,7 +60240,7 @@ begin
 {$ifdef PerModeTLBExtendedArray}
    fState.JITTLBPtr:=@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase];
 {$else}
-   fState.JITTLBPtr:=@fDirectAccessTLBCacheModes[fState.Mode][0];
+   fState.JITTLBPtr:=@fDirectAccessTLBCache^[0];
 {$endif}
 {$else}
    fState.JITTLBPtr:=@fDirectAccessTLBCache[0];
@@ -60293,6 +60295,8 @@ begin
  fState.Mode:=TPasRISCV.THART.TMode.Machine;
 {$if defined(PerModeTLB) and defined(PerModeTLBExtendedArray)}
  fDirectAccessTLBCacheModeBase:=TPasRISCVUInt64(ord(TPasRISCV.THART.TMode.Machine))*TMMU.DIRECT_ACCESS_TLB_ENTRIES;
+{$elseif defined(PerModeTLB)}
+ fDirectAccessTLBCache:=@fDirectAccessTLBCacheModes[TPasRISCV.THART.TMode.Machine];
 {$ifend}
  fState.Registers[TRegister.Zero]:=0;
  fState.Registers[TRegister.SP]:=fMachine.fStartStackPointer-(fHARTID shl 16);
@@ -60318,7 +60322,7 @@ begin
 {$ifdef PerModeTLBExtendedArray}
   fState.JITTLBPtr:=@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase];
 {$else}
-  fState.JITTLBPtr:=@fDirectAccessTLBCacheModes[fState.Mode][0];
+  fState.JITTLBPtr:=@fDirectAccessTLBCache^[0];
 {$endif}
 {$else}
   fState.JITTLBPtr:=@fDirectAccessTLBCache[0];
@@ -60364,13 +60368,15 @@ begin
   // Per-mode TLB: no data TLB flush needed, just update mode base and JIT pointers
 {$ifdef PerModeTLBExtendedArray}
   fDirectAccessTLBCacheModeBase:=TPasRISCVUInt64(ord(aMode))*TMMU.DIRECT_ACCESS_TLB_ENTRIES;
+{$else}
+  fDirectAccessTLBCache:=@fDirectAccessTLBCacheModes[aMode];
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
   if assigned(fJustInTimeCompiler) then begin
 {$ifdef PerModeTLBExtendedArray}
    fState.JITTLBPtr:=@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase];
 {$else}
-   fState.JITTLBPtr:=@fDirectAccessTLBCacheModes[aMode][0];
+   fState.JITTLBPtr:=@fDirectAccessTLBCache^[0];
 {$endif}
    FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
   end;
@@ -60797,7 +60803,7 @@ begin
  VPN:=aAddress shr PAGE_SHIFT;
 {$ifdef PerModeTLB}
 {$if defined(PasRISCVJustInTimeCompiler) and defined(SmartJITTLBFlush)}
- HadExecute:={$ifdef PerModeTLBExtendedArray}fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN;
+ HadExecute:={$ifdef PerModeTLBExtendedArray}fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN;
 {$ifend}
  for ModeIndex:=TMode.User to TMode.Machine do begin
 {$ifdef PerModeTLBExtendedArray}
@@ -60878,7 +60884,7 @@ var VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
  VPN:=aVirtualAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
 {$ifdef CombinedDirectAccessTLBCache}
  case aAccessType of
   TMMU.TAccessType.LoadInstruction,
@@ -61315,7 +61321,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if DirectAccessTLBEntry^.Read=VPN then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   result:=AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -61349,7 +61355,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if DirectAccessTLBEntry^.Read=VPN then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
@@ -61391,7 +61397,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if DirectAccessTLBEntry^.Read=VPN then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=AtomicMemLoadRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -61432,7 +61438,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if DirectAccessTLBEntry^.Write=VPN then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
@@ -61467,7 +61473,7 @@ begin
  Value:=fState.Registers[aRegister];
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if DirectAccessTLBEntry^.Write=VPN then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
@@ -61499,7 +61505,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   result:=AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -61540,7 +61546,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
@@ -61592,7 +61598,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=AtomicMemLoadRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -61643,7 +61649,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
@@ -61685,7 +61691,7 @@ begin
  Value:=fState.Registers[aRegister];
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+1)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
@@ -61724,7 +61730,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   result:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -61762,7 +61768,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress))))));
@@ -61811,7 +61817,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -61860,7 +61866,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=AtomicMemLoadRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -61908,7 +61914,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
@@ -61947,7 +61953,7 @@ begin
  Value:=fState.Registers[aRegister];
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
@@ -61986,7 +61992,7 @@ begin
  Value:=fState.FPURegisters[aRegister].ui32;
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
@@ -62022,7 +62028,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   result:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -62060,7 +62066,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=TPasRISCVUInt64(TPasRISCVInt64(AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))));
@@ -62109,7 +62115,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -62158,7 +62164,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   Value:=AtomicMemLoadRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)));
@@ -62206,7 +62212,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
@@ -62245,7 +62251,7 @@ begin
  Value:=fState.Registers[aRegister];
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
@@ -62284,7 +62290,7 @@ begin
  Value:=fState.FPURegisters[aRegister].ui64;
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+7)<PAGE_SIZE) then begin
 {$ifdef UseAtomicMemAccessForTLBFastPath}
   AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
@@ -62320,7 +62326,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if aReadOnly then begin
   if (DirectAccessTLBEntry^.Read=VPN) and (((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE) then begin
    result:=Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress));
@@ -62382,7 +62388,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE) then begin
   if assigned(aBounce) then begin
    case aSize of
@@ -63811,7 +63817,7 @@ var VPN,TranslatedAddress:TPasRISCVUInt64;
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+ DirectAccessTLBEntry:={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
  if (DirectAccessTLBEntry^.Execute=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
 {$ifdef Use16BitSplittedInstructionFetches}
 {$ifdef UseAtomicMemAccessForTLBFastPath}
@@ -88536,7 +88542,7 @@ begin
     VPN:=InstructionAddress shr PAGE_SHIFT;
 {$endif}
     JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
-    if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} then begin
+    if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} then begin
      JITTLBEntry^.Block(@fState);
 {$ifdef PasRISCVJustInTimeCompilerBlockChaining}
      for ChainIndex:=1 to 10 do begin
@@ -88545,7 +88551,7 @@ begin
       VPN:=InstructionAddress shr PAGE_SHIFT;
 {$endif}
       JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
-      if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fDirectAccessTLBCacheModes[fState.Mode][VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} and
+      if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+(VPN and TMMU.DIRECT_ACCESS_TLB_MASK)].Execute{$else}fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}{$else}fDirectAccessTLBCache[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute{$endif}=VPN){$endif} and
          ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
          (((fState.Cycle xor LastCycles) shr 16)=0) then begin
        JITTLBEntry^.Block(@fState);
@@ -88566,7 +88572,7 @@ begin
 
    end else if FetchInstruction(InstructionAddress,Instruction) then begin
 
-    PDirectAccessTLBEntry(InstructionPointer):={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+((InstructionAddress shr PAGE_SHIFT) and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCacheModes[fState.Mode][(InstructionAddress shr PAGE_SHIFT) and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[(InstructionAddress shr PAGE_SHIFT) and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
+    PDirectAccessTLBEntry(InstructionPointer):={$ifdef PerModeTLB}{$ifdef PerModeTLBExtendedArray}@fDirectAccessTLBCache[fDirectAccessTLBCacheModeBase+((InstructionAddress shr PAGE_SHIFT) and TMMU.DIRECT_ACCESS_TLB_MASK)]{$else}@fDirectAccessTLBCache^[(InstructionAddress shr PAGE_SHIFT) and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif}{$else}@fDirectAccessTLBCache[(InstructionAddress shr PAGE_SHIFT) and TMMU.DIRECT_ACCESS_TLB_MASK]{$endif};
     PageAddress:=PDirectAccessTLBEntry(InstructionPointer)^.Execute shl PAGE_SHIFT;
     InstructionPointer:={$ifdef CombinedDirectAccessTLBCache}PDirectAccessTLBEntry(InstructionPointer)^.RelativeMemory{$else}PDirectAccessTLBEntry(InstructionPointer)^.RelativeMemoryExecute{$endif};
 
