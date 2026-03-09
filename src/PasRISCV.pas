@@ -8219,6 +8219,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITRunStatePtr:Pointer; // = @fMachine.fRunState, set once in THART.Create
                      JITTLBPtr:Pointer; // = @fDirectAccessTLBCache[ModeBase], updated on SetMode with PerModeTLB
                      JITBlockTLBPtr:Pointer; // = @fJustInTimeCompiler.fJITTLB[0], set once in THART.Create
+{$ifdef JITTLBTag}
+                     JITTLBTag:TPasRISCVUInt64; // current tag for native JIT block TLB lookup
+{$endif}
                      JITHART:THART;
                      JITSkipExecution:TPasMPBool32;
 {$ifdef PasRISCVJustInTimeCompilerSideExit}
@@ -8401,7 +8404,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            JIT_TLB_SIZE=4096;
 {$endif}
                            JIT_TLB_MASK=JIT_TLB_SIZE-1;
-                           JIT_TLB_ENTRY_SHIFT=4;
+{$ifdef JITTLBTag}
+                           JIT_TLB_ENTRY_SHIFT=5; // 2^5 = 32 bytes per entry (VirtualPC + Tag + Block + padding)
+{$else}
+                           JIT_TLB_ENTRY_SHIFT=4; // 2^4 = 16 bytes per entry (VirtualPC + Block)
+{$endif}
                            JIT_CODE_BUFFER_SIZE=64*1024*1024;
                            JIT_MAX_BLOCK_SIZE=4096;
                            JIT_TEMPORARY_CODE_INITIAL_SIZE=1024*1024;
@@ -8438,17 +8445,23 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                           TBlockCallback=procedure(const aStatePointer:Pointer); register;
                           TIntrinsicMethod=procedure(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64) of object;
-                          TJITTLBEntry=record
-                           VirtualPC:TPasRISCVUInt64;
-{$ifdef JITTLBTag}
-                           Tag:TPasRISCVUInt64;
-{$endif}
+                          TJITTLBEntry=packed record
                            case TPasRISCVUInt8 of
                             0:(
-                             Block:TBlockCallback;
+                             VirtualPC:TPasRISCVUInt64;
+{$ifdef JITTLBTag}
+                             Tag:TPasRISCVUInt64;
+{$endif}
+                             case TPasRISCVUInt8 of
+                              0:(
+                               Block:TBlockCallback;
+                              );
+                              1:(
+                               BlockPointer:Pointer; // needed for Delphi, which have problems with @ with method pointers
+                              );
                             );
                             1:(
-                             BlockPointer:Pointer; // needed for Delphi, which have problems with @ with method pointers 
+                             Dummy:array[0..{$ifdef JITTLBTag}32{$else}16{$endif}-1] of TPasRISCVUInt8; // aligned power-of-two-size for JIT code side
                             );
                           end;
                           PJITTLBEntry=^TJITTLBEntry;
@@ -8583,6 +8596,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestCSRDataOffset(const aCSRAddress:TPasRISCVUInt32):TPasRISCVInt32;
 {$endif}
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
+{$ifdef JITTLBTag}
+                     function JITTLBEntryTagOffset:TPasRISCVInt32;
+                     function GuestJITTLBTagOffset:TPasRISCVInt32;
+{$endif}
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
 
                      procedure SaveState;
@@ -48424,6 +48441,7 @@ begin
 
 {$ifdef JITTLBTag}
  fJITTLBGeneration:=1;
+ fHART.fState.JITTLBTag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
 {$endif}
 
  FillChar(fHostIntRegisterInfos,SizeOf(fHostIntRegisterInfos),#0);
@@ -48734,6 +48752,7 @@ procedure TPasRISCV.THART.TJustInTimeCompiler.FlushJITTLB;
 begin
 {$ifdef JITTLBTag}
  inc(fJITTLBGeneration);
+ fHART.fState.JITTLBTag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
 {$else}
  FillChar(fJITTLB,SizeOf(TJITTLBEntries),#0);
 {$endif}
@@ -49135,6 +49154,18 @@ function TPasRISCV.THART.TJustInTimeCompiler.JITTLBEntryCodePtrOffset:TPasRISCVI
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PJITTLBEntry(nil)^.BlockPointer));
 end;
+
+{$ifdef JITTLBTag}
+function TPasRISCV.THART.TJustInTimeCompiler.JITTLBEntryTagOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PJITTLBEntry(nil)^.Tag));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITTLBTagOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITTLBTag));
+end;
+{$endif}
 
 function TPasRISCV.THART.TJustInTimeCompiler.JITBlockCodePtrOffset:TPasRISCVInt32;
 begin
@@ -49733,6 +49764,7 @@ begin
  VirtualPC:=fHART.fState.PC;
 {$ifdef JITTLBTag}
  Tag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+ fHART.fState.JITTLBTag:=Tag;
 {$endif}
 {$ifdef SmartJITTLBFlush}
  VPN:=VirtualPC shr PAGE_SHIFT;
@@ -49816,12 +49848,9 @@ begin
   JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
   JITTLBEntry^.VirtualPC:=VirtualPC;
 {$ifdef JITTLBTag}
-  JITTLBEntry^.Tag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
-{$endif}
-  JITTLBEntry^.Block:=TBlockCallback(Pointer(CodePtr));
-{$ifdef JITTLBTag}
   JITTLBEntry^.Tag:=Tag;
 {$endif}
+  JITTLBEntry^.Block:=TBlockCallback(Pointer(CodePtr));
 {$ifdef PasRISCVJustInTimeCompilerDebug}
   if fDebugJITCounter<40 then begin
    SavedPC:=fHART.fState.PC;
@@ -55361,10 +55390,17 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitLookupBlock;
 var PCReg:TPasRISCVUInt8;
     HashReg:TPasRISCVUInt8;
     MissFixup:TPasRISCVUInt32;
+{$ifdef JITTLBTag}
+    TagReg:TPasRISCVUInt8;
+    TagMissFixup:TPasRISCVUInt32;
+{$endif}
 begin
 
  PCReg:=TPasRISCVUInt8(TX64Register.rRDX);
  HashReg:=TPasRISCVUInt8(TX64Register.rRAX);
+{$ifdef JITTLBTag}
+ TagReg:=TPasRISCVUInt8(TX64Register.rR8); // caller-saved, not used by VMPtr/PC/Hash
+{$endif}
 
  // mov rdx, [vm+PCOffset]
  EmitNativeLoad(PCReg,VMPtrRegister,GuestPCOffset,true);
@@ -55373,27 +55409,42 @@ begin
  // mov eax, edx
  EmitMOVRegReg(HashReg,PCReg,false);
 
- // shl eax, 3
+ // shl eax, ENTRY_SHIFT-1
  EmitShiftRegImm(SHIFT_SHL,HashReg,JIT_TLB_ENTRY_SHIFT-1,false);
 
- // and eax, $fff0
+ // and eax, MASK << ENTRY_SHIFT
  EmitImmOp(ALU_AND,HashReg,TPasRISCVInt32(JIT_TLB_MASK shl JIT_TLB_ENTRY_SHIFT),false);
 
  // add rax, [vm+TLBPtrOffset]
  EmitMemOp(X86_ADD_M_R,HashReg,VMPtrRegister,GuestJITBlockTLBPtrOffset,true);
 
- // cmp [rax], rdx
+ // cmp [rax], rdx (VirtualPC check)
  EmitMemOp(X86_CMP,PCReg,HashReg,0,true);
 
  // jne .miss
  EmitJccRel32(CC_NE,0);
  MissFixup:=fTemporaryCodeSize-4;
 
- // jmp [rax+8]
+{$ifdef JITTLBTag}
+ // mov r8, [vm+JITTLBTagOffset] (load expected tag from TState)
+ EmitNativeLoad(TagReg,VMPtrRegister,GuestJITTLBTagOffset,true);
+
+ // cmp [rax+TagOffset], r8 (entry.Tag == expected?)
+ EmitMemOp(X86_CMP,TagReg,HashReg,JITTLBEntryTagOffset,true);
+
+ // jne .miss
+ EmitJccRel32(CC_NE,0);
+ TagMissFixup:=fTemporaryCodeSize-4;
+{$endif}
+
+ // jmp [rax+CodePtrOffset]
  EmitJmpMemIndirect(HashReg,JITTLBEntryCodePtrOffset);
 
  // .miss:
  PatchJmpRel32(MissFixup);
+{$ifdef JITTLBTag}
+ PatchJmpRel32(TagMissFixup);
+{$endif}
 
  // ret
  EmitRET;
@@ -88860,6 +88911,7 @@ begin
     JITCodeExecuted:=false;
 {$ifdef JITTLBTag}
     Tag:={$ifdef PerModeTLB}(fJustInTimeCompiler.fJITTLBGeneration shl 3) or (ord(fState.Mode) shl 1) or (ord(fState.VirtualMode) and 1){$else}fJustInTimeCompiler.fJITTLBGeneration{$endif};
+    fState.JITTLBTag:=Tag;
 {$endif}
     for ChainIndex:=0 to {$ifdef PasRISCVJustInTimeCompilerBlockChaining}10{$else}0{$endif} do begin
      InstructionAddress:=fState.PC;
