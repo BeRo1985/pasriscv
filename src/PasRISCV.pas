@@ -8603,7 +8603,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
 
 {$ifdef JITTLBTag}
-                     function GetJITTLBTag:TPasRISCVUInt64; inline;
+                     function GetJITTLBTag(const aMode:TPasRISCVInt32=-1):TPasRISCVUInt64; inline;
                      procedure UpdateJITTLBTag; inline;
 {$endif}
 
@@ -48515,9 +48515,9 @@ begin
 end;
 
 {$ifdef JITTLBTag}
-function TPasRISCV.THART.TJustInTimeCompiler.GetJITTLBTag:TPasRISCVUInt64;
+function TPasRISCV.THART.TJustInTimeCompiler.GetJITTLBTag(const aMode:TPasRISCVINt32):TPasRISCVUInt64;
 begin
- result:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+ result:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (IfThen(aMode<0,ord(fHART.fState.Mode),aMode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.UpdateJITTLBTag;
@@ -49634,7 +49634,7 @@ begin
  JITTLBEntry:=@fJITTLB[TLBIndex];
  JITTLBEntry^.VirtualPC:=fBlockVirtualPC;
 {$ifdef JITTLBTag}
- JITTLBEntry^.Tag:=GetJITTLBTag;
+ JITTLBEntry^.Tag:=GetJITTLBTag(ord(fCurrentMode));
 {$endif}
  fJITTLB[TLBIndex].Block:=TBlockCallback(CodeDest);
 
