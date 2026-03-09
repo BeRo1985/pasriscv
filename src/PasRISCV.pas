@@ -319,9 +319,11 @@ unit PasRISCV;
 
 {-$define VirtIOFSDAX} // VirtIO FS: DAX (Direct Access) shared memory window for bypassing FUSE round-trips
 
+{$define VirtIOProcessQueueFullDrainInlinedNotifications} // VirtIO: inline SetNotification logic directly in ProcessQueue for zero call overhead. Without this: uses separate SetNotification method.
+
 {-$define VirtIOBatchNotify} // VirtIO: batch interrupt delivery - single interrupt after processing all pending descriptors
 
-{-$define VirtIOEventIndex} // VirtIO: EVENT_IDX notification suppression (vring_need_event per QEMU/spec)
+{$define VirtIOEventIndex} // VirtIO: EVENT_IDX notification suppression (vring_need_event per QEMU/spec)
 
 {-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
 
@@ -2856,7 +2858,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               case fJobType:TJobType of
                TJobType.VirtIODeviceQueue:(
                 fVirtIODeviceQueue:TPasRISCVUInt32;
-                fVirtIODeviceAvailableIndex:TPasRISCVInt32;
                );
                TJobType.NVMeDeviceQueue:(
                 fNVMeDeviceQueue:TPasRISCVUInt32;
@@ -2896,7 +2897,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure Shutdown;
               procedure WaitForWakeUp;
               procedure WakeUpAllWorkerThreads;
-              function EnqueueVirtIODeviceQueue(const aVirtIODevice:TVirtIODevice;const aVirtIODeviceQueue:TPasRISCVUInt32;const aVirtIODeviceAvailableIndex:TPasRISCVInt32):Boolean;
+              function EnqueueVirtIODeviceQueue(const aVirtIODevice:TVirtIODevice;const aVirtIODeviceQueue:TPasRISCVUInt32):Boolean;
               function EnqueueNVMeDeviceQueue(const aNVMeDevice:TNVMeDevice;const aNVMeDeviceQueue,aNVMeDeviceQueueValue:TPasRISCVUInt32):Boolean;
               function EnqueueNVMeDeviceCommand(const aNVMeDevice:TNVMeDevice;const aNVMeDeviceCommand:TNVMeDeviceCommand):Boolean;
               function EnqueueNVMeDeviceCommands(const aNVMeDevice:TNVMeDevice;const aNVMeDeviceCommands:TNVMeDeviceCommandDynamicArray;const aCount:TPasRISCVSizeInt):Boolean;
@@ -4357,7 +4358,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     // CM_CHIP_039=$04000000 (bit 26) = CMI8738 version 39
                     // CM_CHIP_039_6CH=$01000000 (bit 24) = 6-channel support
                     // CM_CHIP_8768=$20000000 (bit 29) = CMI8768, must NOT be set!
-                    CM_CHIP_VERSION=$04; // CM_CHIP_039 bit only → chip_version=39
+                    CM_CHIP_VERSION=$04; // CM_CHIP_039 bit only => chip_version=39
                     // Sample rates by index
                     CM_RATES:array[0..7] of TPasRISCVUInt32=
                      (
@@ -4978,8 +4979,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
               function GetDescriptors(out aReadSize,aWriteSize:TPasRISCVUInt64;const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64):Boolean;
               function AdvanceShadowAvailableIndex(const aQueueIndex:TPasRISCVUInt64):Boolean;
-              procedure ProcessQueue(const aQueueIndex:TPasRISCVUInt64;const aAvailableIndex:TPasRISCVInt64);
-              procedure QueueNotify(const aQueueIndex:TPasRISCVUInt64);
+{$if not defined(VirtIOProcessQueueFullDrainInlinedNotifications)}
+              procedure SetNotification(const aQueueIndex:TPasRISCVUInt64;const aEnable:Boolean);
+{$ifend}
+              procedure ProcessQueue(const aQueueIndex:TPasRISCVUInt64);
+              procedure QueueNotify(const aValue:TPasRISCVUInt64);
               procedure UpdateIRQ;
               procedure SetIRQ(const aValue:TPasRISCVUInt32);
               procedure NotifyQueueUsed;
@@ -26420,7 +26424,7 @@ var IRQ:TPasRISCVUInt32;
     MSIControl:TPasRISCVUInt32;
 begin
 
- // Priority chain: MSI-X → MSI → INTx
+ // Priority chain: MSI-X => MSI => INTx
 
  if fBus.fMachine.fAIA then begin
   // 1) Try MSI-X first
@@ -27289,7 +27293,7 @@ begin
      case Item.fJobType of
 
       TPasRISCV.TJobQueueItem.TJobType.VirtIODeviceQueue:begin
-       TPasRISCV.TVirtIODevice(Item.fObject).ProcessQueue(Item.fVirtIODeviceQueue,Item.fVirtIODeviceAvailableIndex);
+       TPasRISCV.TVirtIODevice(Item.fObject).ProcessQueue(Item.fVirtIODeviceQueue);
       end;
 
       TPasRISCV.TJobQueueItem.TJobType.NVMeDeviceQueue:begin
@@ -27438,14 +27442,13 @@ begin
  end;
 end;
 
-function TPasRISCV.TJobManager.EnqueueVirtIODeviceQueue(const aVirtIODevice:TVirtIODevice;const aVirtIODeviceQueue:TPasRISCVUInt32;const aVirtIODeviceAvailableIndex:TPasRISCVInt32):Boolean;
+function TPasRISCV.TJobManager.EnqueueVirtIODeviceQueue(const aVirtIODevice:TVirtIODevice;const aVirtIODeviceQueue:TPasRISCVUInt32):Boolean;
 var Item:TJobQueueItem;
 begin
 
  Item.fJobType:=TPasRISCV.TJobQueueItem.TJobType.VirtIODeviceQueue;
  Item.fObject:=aVirtIODevice;
  Item.fVirtIODeviceQueue:=aVirtIODeviceQueue;
- Item.fVirtIODeviceAvailableIndex:=aVirtIODeviceAvailableIndex;
 
  fQueue.Enqueue(Item);
 
@@ -34370,11 +34373,59 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TVirtIODevice.ProcessQueue(const aQueueIndex:TPasRISCVUInt64;const aAvailableIndex:TPasRISCVInt64);
+{$if not defined(VirtIOProcessQueueFullDrainInlinedNotifications)}
+procedure TPasRISCV.TVirtIODevice.SetNotification(const aQueueIndex:TPasRISCVUInt64;const aEnable:Boolean);
+// Mirrors QEMU virtio_queue_split_set_notification.
+// Controls whether the guest driver should send notifications (kicks) to the device.
+// EVENT_IDX: writes avail_event = current avail->idx for both enable and disable.
+// Legacy: sets/clears VRING_USED_F_NO_NOTIFY in used.flags.
+// On enable: issues smp_mb() to ensure flag/event is visible before caller rechecks avail->idx.
+var Queue:PQueue;
+    AvailableIndex,UsedFlags:TPasRISCVUInt16;
+begin
+
+ Queue:=@fQueues[aQueueIndex];
+
+ if (fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0 then begin
+
+  // EVENT_IDX: write avail_event = current avail->idx (QEMU: vring_set_avail_event(vq, vring_avail_idx(vq)))
+  if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
+   Write16((Queue^.UsedAddress+4)+(Queue^.Size shl 3),AvailableIndex);
+  end;
+
+ end else if aEnable then begin
+
+  // Clear VRING_USED_F_NO_NOTIFY (QEMU: vring_used_flags_unset_bit(vq, VRING_USED_F_NO_NOTIFY))
+  if Read16(Queue^.UsedAddress,UsedFlags) then begin
+   Write16(Queue^.UsedAddress,UsedFlags and not VIRTQ_USED_F_NO_NOTIFY);
+  end;
+
+ end else begin
+
+  // Set VRING_USED_F_NO_NOTIFY (QEMU: vring_used_flags_set_bit(vq, VRING_USED_F_NO_NOTIFY))
+  if Read16(Queue^.UsedAddress,UsedFlags) then begin
+   Write16(Queue^.UsedAddress,UsedFlags or VIRTQ_USED_F_NO_NOTIFY);
+  end;
+
+ end;
+
+ if aEnable then begin
+  // Expose avail event/used flags before caller checks the avail idx (QEMU: smp_mb())
+  TPasMPMemoryBarrier.ReadWrite;
+ end;
+
+end;
+{$ifend}
+
+procedure TPasRISCV.TVirtIODevice.ProcessQueue(const aQueueIndex:TPasRISCVUInt64);
 var Queue:PQueue;
     AvailableIndex,DescriptorIndex:TPasRISCVUInt16;
     ReadSize,WriteSize:TPasRISCVUInt64;
     OK,Done:Boolean;
+{$if defined(VirtIOProcessQueueFullDrainInlinedNotifications)}
+    UseEventIndex:Boolean;
+    UsedFlags:TPasRISCVUInt16;
+{$ifend}
 {$ifdef VirtIOBatchNotify}
     BatchCount:TPasRISCVUInt32;
 {$endif}
@@ -34382,20 +34433,48 @@ begin
  if fDriverOK then begin
   Queue:=@fQueues[aQueueIndex];
   if not Queue^.ManualRecv then begin
-   repeat
-    Done:=true;
-    if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(Queue^.Lock) then begin
-     try
-      if aAvailableIndex>=0 then begin
-       AvailableIndex:=aAvailableIndex;
-       OK:=true;
+
+   // QEMU-style full drain: acquire lock once, disable_notify => drain => enable_notify => barrier => recheck.
+   // Guarantees all available descriptors are processed before releasing the lock,
+   // including those added by other HARTs during processing.
+
+   if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(Queue^.Lock) then begin
+
+    try
+
+{$ifdef VirtIOProcessQueueFullDrainInlinedNotifications}
+     UseEventIndex:=(fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
+{$endif}
+
+     repeat
+
+      Done:=true;
+
+      // Suppress guest kicks while draining (QEMU: virtio_queue_set_notification(vq, 0))
+{$ifdef VirtIOProcessQueueFullDrainInlinedNotifications}
+      if UseEventIndex then begin
+       // EVENT_IDX: write avail_event = current avail->idx, telling guest we've seen everything
+       if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
+        Write16((Queue^.UsedAddress+4)+(Queue^.Size shl 3),AvailableIndex);
+       end;
       end else begin
-       OK:=Read16(Queue^.AvailableAddress+2,AvailableIndex);
+       // Legacy: set VRING_USED_F_NO_NOTIFY in used.flags
+       if Read16(Queue^.UsedAddress,UsedFlags) then begin
+        Write16(Queue^.UsedAddress,UsedFlags or VIRTQ_USED_F_NO_NOTIFY);
+       end;
       end;
+{$else}
+      SetNotification(aQueueIndex,false);
+{$endif}
+
+      // Read avail->idx fresh from guest memory
+      OK:=Read16(Queue^.AvailableAddress+2,AvailableIndex);
       if OK then begin
+
 {$ifdef VirtIOBatchNotify}
        BatchCount:=0;
 {$endif}
+
        while Queue^.ShadowAvailableIndex<>AvailableIndex do begin
         if Read16((Queue^.AvailableAddress+4)+((Queue^.ShadowAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
          if GetDescriptors(ReadSize,WriteSize,aQueueIndex,DescriptorIndex) then begin
@@ -34418,43 +34497,102 @@ begin
         NotifyDeviceNeedsReset;
         break;
        end;
+
 {$ifdef VirtIOBatchNotify}
        if BatchCount>0 then begin
         UsedRingNotify(aQueueIndex);
        end;
 {$endif}
-       if aAvailableIndex<0 then begin
-        // Re-check for new descriptors that arrived while we held the lock
-        if Read16(Queue^.AvailableAddress+2,AvailableIndex) and
-           (Queue^.ShadowAvailableIndex<>AvailableIndex) then begin
-         // Retry, since there are now new descriptors to process  
-         Done:=false;
+
+      end;
+
+      // Unconditional recheck: re-read avail->idx fresh from guest memory to catch
+      // descriptors added by other HARTs during processing. This closes the lost-work
+      // race where another HART's TryAcquireWrite failed and its kick was dropped.
+      if (fStatus and VIRTIO_STATUS_DEVICE_NEEDS_RESET)=0 then begin
+
+       // Re-enable guest kicks (QEMU: virtio_queue_set_notification(vq, 1))
+
+{$ifdef VirtIOProcessQueueFullDrainInlinedNotifications}
+
+       if UseEventIndex then begin
+        // EVENT_IDX: write avail_event = ShadowAvailableIndex (kick me for anything new)
+        Write16((Queue^.UsedAddress+4)+(Queue^.Size shl 3),Queue^.ShadowAvailableIndex);
+       end else begin
+        // Legacy: clear VRING_USED_F_NO_NOTIFY in used.flags
+        if Read16(Queue^.UsedAddress,UsedFlags) then begin
+         Write16(Queue^.UsedAddress,UsedFlags and not VIRTQ_USED_F_NO_NOTIFY);
+        end;
+       end;
+
+       // Memory barrier: notification enable must be visible before recheck
+       // (QEMU: smp_mb() after virtio_queue_set_notification(vq, 1))
+       TPasMPMemoryBarrier.ReadWrite;
+
+{$else}
+
+       // SetNotification(true) includes smp_mb() before we recheck avail->idx.
+       SetNotification(aQueueIndex,true);
+
+{$endif}
+
+       // Re-read avail->idx fresh from guest memory to catch descriptors added by
+       // other HARTs while we held the lock and were processing.
+       if Read16(Queue^.AvailableAddress+2,AvailableIndex) and
+          (Queue^.ShadowAvailableIndex<>AvailableIndex) then begin
+        Done:=false;
+       end;
+
+      end;
+
+     until Done;
+
+    finally
+
+     try
+
+{$ifdef VirtIOProcessQueueFullDrainInlinedNotifications}
+      // Ensure NO_NOTIFY is cleared when releasing (e.g. after DEVICE_NEEDS_RESET exit)
+      if not UseEventIndex then begin
+       if Read16(Queue^.UsedAddress,UsedFlags) then begin
+        if (UsedFlags and VIRTQ_USED_F_NO_NOTIFY)<>0 then begin
+         Write16(Queue^.UsedAddress,UsedFlags and not VIRTQ_USED_F_NO_NOTIFY);
         end;
        end;
       end;
+{$else}
+      // Ensure notifications are re-enabled when releasing (e.g. after DEVICE_NEEDS_RESET exit)
+      SetNotification(aQueueIndex,true);
+{$endif}
+
      finally
       TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(Queue^.Lock);
      end;
+
     end;
-   until Done;
+
+   end;
+
   end;
+
  end;
+
 end;
 
-procedure TPasRISCV.TVirtIODevice.QueueNotify(const aQueueIndex:TPasRISCVUInt64);
+procedure TPasRISCV.TVirtIODevice.QueueNotify(const aValue:TPasRISCVUInt64);
 var Queue:PQueue;
-    AvailableIndex:TPasRISCVUInt16;
+    QueueIndex:TPasRISCVUInt16;
 begin
  if fDriverOK then begin
-  Queue:=@fQueues[aQueueIndex];
-  if not Queue^.ManualRecv then begin
-   if Read16(Queue^.AvailableAddress+2,AvailableIndex) then begin
-    if Queue^.Asynchronous then begin
-     if not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,aQueueIndex,AvailableIndex) then begin
-      ProcessQueue(aQueueIndex,AvailableIndex);
-     end;
-    end else begin
-     ProcessQueue(aQueueIndex,AvailableIndex);
+  QueueIndex:=aValue and $ffff;
+  if QueueIndex<MAXIMUM_COUNT_QUEUES then begin
+   Queue:=@fQueues[QueueIndex];
+   if not Queue^.ManualRecv then begin
+    if (fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_NOTIFICATION_DATA)<>0 then begin
+     Queue^.ShadowAvailableIndex:=(aValue shr 16) and $ffff;
+    end;
+    if (Queue^.Asynchronous and not fMachine.fJobManager.EnqueueVirtIODeviceQueue(self,QueueIndex)) or not Queue^.Asynchronous then begin
+     ProcessQueue(QueueIndex);
     end;
    end;
   end;
@@ -34824,9 +34962,7 @@ begin
       end;
      end;
      VIRTIO_MMIO_QUEUE_NOTIFY:begin
-      if aValue<MAXIMUM_COUNT_QUEUES then begin
-       QueueNotify(aValue);
-      end;
+      QueueNotify(aValue);
      end;
      VIRTIO_MMIO_INTERRUPT_ACK:begin
       TPasMPInterlocked.BitwiseAnd(fIntStatus,not TPasMPUInt32(aValue));
@@ -35064,9 +35200,7 @@ begin
    ConfigWrite(Offset,aValue,aSize);
   end;
   VIRTIO_PCI_NOTIFY_OFFSET shr 12:begin
-   if aValue<MAXIMUM_COUNT_QUEUES then begin
-    QueueNotify(aValue);
-   end;
+   QueueNotify(aValue);
   end;
   else begin
   end;
@@ -54246,7 +54380,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCDQ(const aIs64:Boolean);
 begin
- // cdq (32-bit) or cqo (64-bit): sign-extend EAX→EDX:EAX or RAX→RDX:RAX
+ // cdq (32-bit) or cqo (64-bit): sign-extend EAX => EDX:EAX or RAX => RDX:RAX
  if aIs64 then begin
   EmitREX(true,0,0,0);
  end;
@@ -54768,11 +54902,11 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempRegister:TPasRISCVUInt8);
 const RVRMToMXCSR:array[0..4] of TPasRISCVUInt32=(
-       $0000, // 0: RNE → MXCSR 00
-       $6000, // 1: RTZ → MXCSR 11
-       $2000, // 2: RDN → MXCSR 01
-       $4000, // 3: RUP → MXCSR 10
-       $0000  // 4: RMM → MXCSR 00 (best approximation)
+       $0000, // 0: RNE => MXCSR 00
+       $6000, // 1: RTZ => MXCSR 11
+       $2000, // 2: RDN => MXCSR 01
+       $4000, // 3: RUP => MXCSR 10
+       $0000  // 4: RMM => MXCSR 00 (best approximation)
       );
 begin
  // sub rsp, 8 (allocate for two MXCSR slots)
@@ -54780,7 +54914,7 @@ begin
  // STMXCSR [rsp], save original MXCSR: 0f ae /3 [rsp]
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
- EmitByte($1c); // ModRM: 00 011 100 (reg=3, rm=RSP → SIB)
+ EmitByte($1c); // ModRM: 00 011 100 (reg=3, rm=RSP => SIB)
  EmitByte($24); // SIB: 00 100 100 (RSP base, no index)
  // MOV tmp, [rsp]
  EmitMemOp(X86_MOV_M_R,aTempRegister,TPasRISCVUInt8(ord(TX64Register.rRSP)),0,false);
@@ -54795,7 +54929,7 @@ begin
  // LDMXCSR [rsp+4], load modified MXCSR: 0f ae /2 [rsp+4]
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
- EmitByte($54); // ModRM: 01 010 100 (reg=2, rm=RSP → SIB, disp8)
+ EmitByte($54); // ModRM: 01 010 100 (reg=2, rm=RSP => SIB, disp8)
  EmitByte($24); // SIB: 00 100 100
  EmitByte($04); // disp8 = 4
 end;
@@ -54805,7 +54939,7 @@ begin
  // LDMXCSR [rsp], restore original MXCSR: 0f ae /2 [rsp]
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
- EmitByte($14); // ModRM: 00 010 100 (reg=2, rm=RSP → SIB)
+ EmitByte($14); // ModRM: 00 010 100 (reg=2, rm=RSP => SIB)
  EmitByte($24); // SIB: 00 100 100
  // add rsp, 8
  EmitImmOp(ALU_ADD,TPasRISCVUInt8(ord(TX64Register.rRSP)),8,true);
@@ -57476,7 +57610,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLW(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOVSXD r64, [addr+off], opcode 63 with REX.W (sign-extend 32→64)
+ // MOVSXD r64, [addr+off], opcode 63 with REX.W (sign-extend 32 => 64)
  EmitMemOp(X86_MOVSXD,aHostDest,aHostAddr,aOffset,true);
 end;
 
@@ -58406,12 +58540,12 @@ begin
  EmitTEST(TempReg1,TempReg1,false);
  EmitJccRel32(CC_S,0);
  ZeroFixup:=fTemporaryCodeSize-4;
- // Positive float caused int64 overflow → uint32max
+ // Positive float caused int64 overflow => uint32max
  PatchJmpRel32(NaNFixup);
  EmitMOVRegImm32(aHostIntDest,$ffffffff);
  EmitJmpRel32(0);
  MaxFixup:=fTemporaryCodeSize-4;
- // .zero: negative float → 0
+ // .zero: negative float => 0
  PatchJmpRel32(ZeroFixup);
  EmitNativeZeroReg(aHostIntDest);
  // .done:
@@ -58532,7 +58666,7 @@ begin
   EmitByte(X86_SSE_CVT2SI);
  end;
  EmitModRM(3,aHostIntDest,ScratchXMM2);
- // Check for overflow (still indefinite → value > UINT64_MAX)
+ // Check for overflow (still indefinite => value > UINT64_MAX)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
  Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
  EmitJccRel32(CC_E,0);
@@ -58541,13 +58675,13 @@ begin
  Emit2RegOp(X86_ADD,aHostIntDest,TempReg1,true);
  EmitJmpRel32(0);
  LargeDoneFixup:=fTemporaryCodeSize-4;
- // .max: NaN or overflow → UINT64_MAX
+ // .max: NaN or overflow => UINT64_MAX
  PatchJmpRel32(NaNFixup);
  PatchJmpRel32(OverflowFixup);
  EmitMOVRegImm64(aHostIntDest,TPasRISCVUInt64($ffffffffffffffff));
  EmitJmpRel32(0);
  MaxDoneFixup:=fTemporaryCodeSize-4;
- // .zero: negative → 0
+ // .zero: negative => 0
  PatchJmpRel32(ZeroFixup);
  EmitNativeZeroReg(aHostIntDest);
  // .done:
@@ -58648,12 +58782,12 @@ begin
  EmitTEST(TempReg1,TempReg1,true);
  EmitJccRel32(CC_S,0);
  ZeroFixup:=fTemporaryCodeSize-4;
- // Positive float caused int64 overflow → uint32max
+ // Positive float caused int64 overflow => uint32max
  PatchJmpRel32(NaNFixup);
  EmitMOVRegImm32(aHostIntDest,$ffffffff);
  EmitJmpRel32(0);
  MaxFixup:=fTemporaryCodeSize-4;
- // .zero: negative float → 0
+ // .zero: negative float => 0
  PatchJmpRel32(ZeroFixup);
  EmitNativeZeroReg(aHostIntDest);
  // .done:
@@ -58760,7 +58894,7 @@ begin
   EmitByte(X86_SSE_CVT2SI);
  end;
  EmitModRM(3,aHostIntDest,ScratchXMM2);
- // Check for overflow (still indefinite → value > UINT64_MAX)
+ // Check for overflow (still indefinite => value > UINT64_MAX)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
  Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
  EmitJccRel32(CC_E,0);
@@ -58769,13 +58903,13 @@ begin
  Emit2RegOp(X86_ADD,aHostIntDest,TempReg1,true);
  EmitJmpRel32(0);
  LargeDoneFixup:=fTemporaryCodeSize-4;
- // .max: NaN or overflow → UINT64_MAX
+ // .max: NaN or overflow => UINT64_MAX
  PatchJmpRel32(NaNFixup);
  PatchJmpRel32(OverflowFixup);
  EmitMOVRegImm64(aHostIntDest,TPasRISCVUInt64($ffffffffffffffff));
  EmitJmpRel32(0);
  MaxDoneFixup:=fTemporaryCodeSize-4;
- // .zero: negative → 0
+ // .zero: negative => 0
  PatchJmpRel32(ZeroFixup);
  EmitNativeZeroReg(aHostIntDest);
  // .done:
@@ -60664,7 +60798,7 @@ begin
 end;
 
 function TPasRISCV.THART.GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
-// G-stage address translation: Guest Physical Address → Host Physical Address using hgatp
+// G-stage address translation: Guest Physical Address => Host Physical Address using hgatp
 // aIsImplicit: true when translating PTE addresses during VS-stage page walk
 var HGATP,PageTable,PageTableEntry,BitOffset,PageTableOffset,
     VirtualMask,PhysicalMask,PageTableEntryShift,
@@ -78397,7 +78531,7 @@ begin
 {$ifdef Zicfiss}
          // Check for Zicfiss compressed instructions
          if ord(rd)=1 then begin
-          // C.MOP.1 → C.SSPUSH x1 (when xSSE active)
+          // C.MOP.1 => C.SSPUSH x1 (when xSSE active)
           // Determine xSSE
           Address:=0;
           case fState.Mode of
@@ -78432,7 +78566,7 @@ begin
           result:=2;
           exit;
          end else if ord(rd)=5 then begin
-          // C.MOP.5 → C.SSPOPCHK x5 (when xSSE active)
+          // C.MOP.5 => C.SSPOPCHK x5 (when xSSE active)
           Address:=0;
           case fState.Mode of
            THART.TMode.Supervisor:begin
@@ -82094,7 +82228,7 @@ begin
 
               // Check hstatus.SPV: should we return to virtual mode?
               if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV))<>0 then begin
-               // Return to VS/VU mode: swap HS→VS CSRs
+               // Return to VS/VU mode: swap HS => VS CSRs
                // Clear SPV first
                fState.CSR.fData[TCSR.TAddress.HSTATUS]:=fState.CSR.fData[TCSR.TAddress.HSTATUS] and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV);
                SetVirtualMode(true);
@@ -82550,7 +82684,7 @@ begin
           // MOP.RR.7 base: bits[31:25]=1100111, funct3=100, opcode=1110011
           // Full mask: opcode+funct3+funct7+rs1+rd = $FE0FF07F
           if ((aInstruction and $FE0FF07F)=$CE004073) then begin
-           // MOP.RR.7 with rs1=x0, rd=x0 → potential SSPUSH
+           // MOP.RR.7 with rs1=x0, rd=x0 => potential SSPUSH
            rs2:=TRegister((aInstruction shr 20) and $1f);
            if (Address<>0) and ((rs2=TRegister.RA) or (rs2=TRegister.T0)) then begin
             // SSPUSH x1 or SSPUSH x5
@@ -82581,14 +82715,14 @@ begin
               exit;
              end;
              if Temporary<>fState.Registers[rs1] then begin
-              // Shadow stack mismatch → software-check exception (code=3: shadow stack fault)
+              // Shadow stack mismatch => software-check exception (code=3: shadow stack fault)
               SetException(TExceptionValue.SoftwareCheck,3,fState.PC);
               result:=4;
               exit;
              end;
              fState.CSR.fData[TCSR.TAddress.SSP]:=fState.CSR.fData[TCSR.TAddress.SSP]+8;
             end;
-            // else: SSE not active → Zimop NOP
+            // else: SSE not active => Zimop NOP
             result:=4;
             exit;
            end else if (rs1=TRegister.Zero) and (rd<>TRegister.Zero) then begin
@@ -88029,7 +88163,7 @@ begin
     Privilege:=TMode.User;
    end;}
 
-   // If in virtual mode, check hideleg for further delegation M→HS→VS
+   // If in virtual mode, check hideleg for further delegation M => HS => VS
    if WasVirtual then begin
     HIDELEG_Val:=fState.CSR.fData[TCSR.TAddress.HIDELEG];
     IRQs:=PendingIRQs and not HIDELEG_Val;
@@ -88178,7 +88312,7 @@ begin
  MStatus:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
 
  if fState.VirtualMode then begin
-  // V=1 → V=0: save VS state, restore HS state
+  // V=1 => V=0: save VS state, restore HS state
   // Save current (VS) mstatus bits to vsstatus
   fState.CSR.fData[TCSR.TAddress.VSSTATUS]:=MStatus and TCSR.TMask.MSTATUS_SWAP_MASK;
   // Restore HS mstatus bits
@@ -88222,7 +88356,7 @@ begin
   end;
 
  end else begin
-  // V=0 → V=1: save HS state, restore VS state
+  // V=0 => V=1: save HS state, restore VS state
   // Save current (HS) mstatus bits to HSMode backing store
   fState.HSMode_MSTATUS:=MStatus and TCSR.TMask.MSTATUS_SWAP_MASK;
   // Restore VS mstatus bits
@@ -88312,12 +88446,12 @@ begin
  ExceptionBit:=TPasRISCVUInt64(1) shl TPasRISCVUInt32(fState.ExceptionValue);
 
  // Determine target privilege level
- // Step 1: Check if delegated M→S via medeleg
+ // Step 1: Check if delegated M => S via medeleg
  if (THART.TMode.Machine>Mode) and ((fState.CSR.fData[TCSR.TAddress.MEDELEG] and ExceptionBit)<>0) then begin
 //if (THART.TMode.Hypervisor>Mode) and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and ExceptionBit)<>0) then begin
   // Delegated to S-mode
   Privilege:=THART.TMode.Supervisor;
-  // Step 2: If virtual mode, check if further delegated HS→VS via hedeleg
+  // Step 2: If virtual mode, check if further delegated HS => VS via hedeleg
   DelegateToVS:=WasVirtual and ((fState.CSR.fData[TCSR.TAddress.HEDELEG] and ExceptionBit)<>0);
  end else begin
   Privilege:=THART.TMode.Machine;
@@ -88352,7 +88486,7 @@ begin
    end else begin
     // Trap to HS-mode
     if WasVirtual then begin
-     // Coming from virtual mode: swap VS→HS CSRs, set hstatus.SPV/SPVP
+     // Coming from virtual mode: swap VS => HS CSRs, set hstatus.SPV/SPVP
      SetVirtualMode(false);
      HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
      HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV)) or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV); // SPV=1
@@ -94640,7 +94774,7 @@ begin
      InterruptMap:=nil;
      try
       if fAIA then begin
-       // APLIC: #interrupt-cells=2 → 7 cells per entry (3 addr + 1 pin + 1 phandle + 2 irq cells)
+       // APLIC: #interrupt-cells=2 => 7 cells per entry (3 addr + 1 pin + 1 phandle + 2 irq cells)
        SetLength(InterruptMap,TPCI.PCI_BUS_IRQS*TPCI.PCI_BUS_IRQS*7);
        Index:=0;
        for DeviceID:=0 to TPCI.PCI_BUS_IRQS-1 do begin
@@ -94665,7 +94799,7 @@ begin
         end;
        end;
       end else begin
-       // PLIC: #interrupt-cells=1 → 6 cells per entry (3 addr + 1 pin + 1 phandle + 1 irq cell)
+       // PLIC: #interrupt-cells=1 => 6 cells per entry (3 addr + 1 pin + 1 phandle + 1 irq cell)
        SetLength(InterruptMap,TPCI.PCI_BUS_IRQS*TPCI.PCI_BUS_IRQS*6);
        Index:=0;
        for DeviceID:=0 to TPCI.PCI_BUS_IRQS-1 do begin
