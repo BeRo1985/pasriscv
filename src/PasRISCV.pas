@@ -297,7 +297,7 @@ unit PasRISCV;
 
 {$define NewPCI}
 
-{$define AIAIPrio} // AIA iprio: full interrupt priority byte lookup for *topi CSRs — comment out to use simplified default-priority model
+{$define AIAIPrio} // AIA iprio: full interrupt priority byte lookup for *topi CSRs, comment out to use simplified default-priority model
 
 {$define GStageQEMUParity}
 
@@ -311,38 +311,48 @@ unit PasRISCV;
 
 {$define VirtIOGPUDirectScanout} // Share Resource.Data as fFrameBuffer.fData directly when possible, eliminating one full-framebuffer copy per flush
 
-{$define VirtIOFastDMA} // Fast path for VirtIO DMA: single Move for contiguous guest RAM instead of page-by-page copy
+{-$define VirtIOFastDMA} // Fast path for VirtIO DMA: single Move for contiguous guest RAM instead of page-by-page copy
 
-{$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
+{-$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
 
 {-$define VirtIOFSDirectIO} // VirtIO FS: FOPEN_DIRECT_IO bypasses guest page cache, enables app-sized FUSE reads (1MB with dd bs=1M)
 
-{$define VirtIOFSDAX} // VirtIO FS: DAX (Direct Access) shared memory window for bypassing FUSE round-trips
+{-$define VirtIOFSDAX} // VirtIO FS: DAX (Direct Access) shared memory window for bypassing FUSE round-trips
 
-{$define VirtIOBatchNotify} // VirtIO: batch interrupt delivery - single interrupt after processing all pending descriptors
+{-$define VirtIOBatchNotify} // VirtIO: batch interrupt delivery - single interrupt after processing all pending descriptors
 
-{$define JITMMIOFastPath} // JIT: handle MMIO loads directly in TLB fill helper instead of bailing out to interpreter
+{-$define VirtIOEventIndex} // VirtIO: EVENT_IDX notification suppression (vring_need_event per QEMU/spec)
 
 {-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
 
+{-$define JITMMIOFastPath} // JIT: handle MMIO loads directly in TLB fill helper instead of bailing out to interpreter
+
 {$define ReducedJITTLBSize} // JIT: reduce JTLB from 4096 to 256 entries, FlushTLB from 64KB to 4KB memset
 
-{$define FastTrapPath} // Trap: skip CheckTimers/EventTick when outer loop re-enters after ExecuteException
+{-$define FastTrapPath} // Trap: skip CheckTimers/EventTick when outer loop re-enters after ExecuteException
 
-{$define JITInlineCSRRead} // JIT: inline pure CSR reads (csrrs/csrrc rd, CSR, x0) as direct TState loads without block break
+{-$define JITInlineCSRRead} // JIT: inline pure CSR reads (csrrs/csrrc rd, CSR, x0) as direct TState loads without block break
 
-{$define PerModeTLB} // Separate Data TLBs per privilege mode — eliminates FlushTLB memset on mode switch
+{$define PerModeTLB} // Separate Data TLBs per privilege mode, eliminates FlushTLB memset on mode switch
 
-{-$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission
+{$define JITTLBTag} // Tag JIT TLB entries with mode and generation, eliminates JIT TLB flush on mode switch
+
+{$define NoPageFaultJITTLBFlush} // Don't flush JIT TLB on page faults — data TLB still flushed, JIT TLB unaffected by data page faults. Like RVVM.
+
+{$define SmartSATPFlush} // Only flush TLB on SATP write when MMU mode toggles (Bare<->Sv39/48/57) or root page changes, not on every write.
+
+{$define SmartJITTLBFlush} // Only flush JIT block TLB on per-page sfence.vma when the page had execute permission
 {$ifdef SmartJITTLBFlush}
  {-$define SmartJITTLBFlushForceClear} // Force-clear JTLB on per-page sfence.vma when HadExecute, even with Execute TLB fast path check
 {$endif}
+
+{$undef MRETSRETCheckInterrupts}
 
 {$undef UseAtomicMemAccessForTLBFastPath}
 
 {$define UseAtomicMemCopyRelaxedForSlowPath}
 
-//{$define I2CDebug} // Enable I2C debug output — remove/comment out when not needed
+//{$define I2CDebug} // Enable I2C debug output, remove/comment out when not needed
 
 //{$define PasRISCVCPUFileDumpDebug}
 
@@ -363,7 +373,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZbb}
   {$define PasRISCVJustInTimeCompilerZbs}
   {$define PasRISCVJustInTimeCompilerZba}
-  {$define PasRISCVJustInTimeCompilerAMO}
+  {-$define PasRISCVJustInTimeCompilerAMO}
   {-$define PasRISCVJustInTimeCompilerAMOBounceGuard}
   {$define PasRISCVJustInTimeCompilerZcb}
   {$define PasRISCVJustInTimeCompilerZihintpause}
@@ -4346,7 +4356,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     // Chip detection bits for CM_REG_INT_HLDCLR upper byte (CM_CHIP_MASK2)
                     // CM_CHIP_039=$04000000 (bit 26) = CMI8738 version 39
                     // CM_CHIP_039_6CH=$01000000 (bit 24) = 6-channel support
-                    // CM_CHIP_8768=$20000000 (bit 29) = CMI8768 — must NOT be set!
+                    // CM_CHIP_8768=$20000000 (bit 29) = CMI8768, must NOT be set!
                     CM_CHIP_VERSION=$04; // CM_CHIP_039 bit only → chip_version=39
                     // Sample rates by index
                     CM_RATES:array[0..7] of TPasRISCVUInt32=
@@ -4892,6 +4902,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      UsedRingEvent:TPasMPBool32;
                      ShadowAvailableIndex:TPasRISCVUInt16;
                      ShadowUsedIndex:TPasRISCVUInt16;
+{$ifdef VirtIOEventIndex}
+                     SignalledUsed:TPasRISCVUInt16;
+                     SignalledUsedValid:Boolean;
+{$endif}
                      DescriptorAddress:TPasRISCVUInt64;
                      AvailableAddress:TPasRISCVUInt64;
                      UsedAddress:TPasRISCVUInt64;
@@ -7608,7 +7622,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      Supervisor=1, // Also used for HS-mode (V=0) and VS-mode (V=1) in the H-extension.
                                    // The H-extension does not introduce a separate Hypervisor privilege level;
                                    // instead, HS-mode and VS-mode are distinguished by the VirtualMode (V) bit.
-                     Hypervisor=2, // Reserved/unused in the H-extension — kept for encoding compatibility only.
+                     Hypervisor=2, // Reserved/unused in the H-extension, kept for encoding compatibility only.
                      Machine=3
                     );
                    TExceptionValue=
@@ -7996,7 +8010,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                             const MSTATUS=TPasRISCVUInt64($cf007fffaa){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}) or (TPasRISCVUInt64(1) shl 41{MPELP}){$endif}; // includes MPV (39), GVA (38)
                                   SSTATUS=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif};
                                   HSTATUS_MASK_BASE=TPasRISCVUInt64($007003e0); // SPV, SPVP, HU, GVA, VSBE, VTVM, VTW, VTSR (no VSXL: hardwired to 2, no VGEIN: AIA-only)
-                                  HSTATUS_MASK_AIA=TPasRISCVUInt64($0003f000); // VGEIN bits (17:12) — only writable when AIA is active
+                                  HSTATUS_MASK_AIA=TPasRISCVUInt64($0003f000); // VGEIN bits (17:12), only writable when AIA is active
                                   GEILEN=1; // number of guest interrupt files per HART
                                   MSTATUS_SWAP_MASK=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif}; // Bits swapped between HS and VS
                             type TStatus=class
@@ -8422,6 +8436,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           TIntrinsicMethod=procedure(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64) of object;
                           TJITTLBEntry=record
                            VirtualPC:TPasRISCVUInt64;
+{$ifdef JITTLBTag}
+                           Tag:TPasRISCVUInt64;
+{$endif}
                            case TPasRISCVUInt8 of
                             0:(
                              Block:TBlockCallback;
@@ -8466,6 +8483,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                      // Block cache
                      fJITTLB:TJITTLBEntries;
+{$ifdef JITTLBTag}
+                     fJITTLBGeneration:TPasRISCVUInt64;
+{$endif}
                      fBlockMap:TBlockMap;
                      // Block-to-block linking
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
@@ -8510,9 +8530,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fStatTotalInstructions:TPasRISCVUInt64;
                      fStatLinksPatched:TPasRISCVUInt64;
                      fStatLastReport:TPasRISCVUInt64;
+                     fStatLastReportTime:TPasRISCVUInt64;
                      fStatFlushTLBFull:TPasRISCVUInt64;
                      fStatFlushTLBPage:TPasRISCVUInt64;
                      fStatFlushTLBPageExecute:TPasRISCVUInt64;
+                     fStatDataTLBFills:TPasRISCVUInt64;
+                     fStatDataTLBFillPageCrossings:TPasRISCVUInt64;
+                     fStatMMIOAccesses:TPasRISCVUInt64;
+                     fStatModeChanges:TPasRISCVUInt64;
+                     fStatOuterLoopIterations:TPasRISCVUInt64;
+                     fStatTLBSlowHits:TPasRISCVUInt64;
                      fPCOffset:TPasRISCVInt32;
                      fInstructionCount:TPasRISCVUInt32;
                      fLRUCounter:TPasRISCVUInt32;
@@ -8632,7 +8659,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitRestoreRoundingMode; virtual; abstract;
 {$endif}
 
-                     // Epilog helpers (virtual abstract — overridden per platform)
+                     // Epilog helpers (virtual abstract, overridden per platform)
                      procedure EmitRET; virtual; abstract;
                      procedure EmitUpdatePC; virtual; abstract;
                      procedure EmitRestoreABIRegs; virtual; abstract;
@@ -9884,7 +9911,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure UpdateMMU;
               function CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
               function AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
-              procedure FlushTLB(const aInterrupt:Boolean);
+              procedure FlushTLB(const aInterrupt:Boolean;const aSkipJITTLB:Boolean=false);
               procedure FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
               procedure TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
               procedure TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
@@ -11577,7 +11604,7 @@ end;
 
 // Consolidated atomic memcpy for SMP correctness.
 // Uses naturally-aligned typed accesses for sizes 1/2/4/8 when both src and dst are aligned,
-// falling back to byte-by-byte copy otherwise (which is still correct — just not single-access atomic).
+// falling back to byte-by-byte copy otherwise (which is still correct, just not single-access atomic).
 procedure AtomicMemCopyRelaxed(const aSrc,aDst:Pointer;const aSize:TPasRISCVUInt64); {$ifdef CAN_INLINE}inline;{$endif}
 var Index:TPasRISCVUInt64;
 begin
@@ -12164,7 +12191,7 @@ var a80,b80,c80,r80:{$ifdef HAS_TYPE_EXTENDED}Extended{$else}TPasRISCVDouble{$en
 begin
 {$ifdef HAS_TYPE_EXTENDED}
  // Perform fma via extended precision (80-bit): exact for double inputs
- // if extended has >= 2*53+1 = 107 mantissa bits — x87 extended has only 64,
+ // if extended has >= 2*53+1 = 107 mantissa bits, x87 extended has only 64,
  // which is not enough. So this is still not perfectly fused for double, but
  // it is the best we can do without hardware FMA.
  a80:=aA;
@@ -22854,7 +22881,7 @@ begin
   Get32;
   result:=0;
  end else {$if (defined(fpc) and declared(BSRDWord)) or declared(CLZDWord)}if (aRange and (aRange-1))<>0 then{$ifend}begin
-  // For non-power-of-two ranges: Debiased Integer Multiplication — Lemire's Method
+  // For non-power-of-two ranges: Debiased Integer Multiplication, Lemire's Method
   x:=Get32;
   m:=TPasRISCVUInt64(x);
   m:=m*TPasRISCVUInt64(aRange);
@@ -22877,7 +22904,7 @@ begin
   result:=m shr 32;
 {$if (defined(fpc) and declared(BSRDWord)) or declared(CLZDWord)}
  end else begin
-  // For power-of-two ranges: Bitmask with Rejection (Unbiased) — Apple's Method
+  // For power-of-two ranges: Bitmask with Rejection (Unbiased), Apple's Method
   m:=TPasRISCVUInt32($ffffffff);
   t:=aRange-1;
 {$if defined(fpc) and declared(BSRDWord)}
@@ -26002,8 +26029,8 @@ begin
  if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
   // Two chained atomic ORs.
-  // 1) Set fRaised bit — if it was already set, skip (dedup on raised).
-  // 2) If raised was new (0->1), set fPending bit — if it was already set, skip (dedup on pending).
+  // 1) Set fRaised bit, if it was already set, skip (dedup on raised).
+  // 2) If raised was new (0->1), set fPending bit, if it was already set, skip (dedup on pending).
   // 3) If pending was also new (0->1), notify the HART.
   // This avoids going through SendIRQ and keeps the same structure.
   if ((TPasMPInterlocked.ExchangeBitwiseOr(fRaised[aIRQ shr 5],Mask) and Mask)=0) and 
@@ -26423,7 +26450,7 @@ begin
   MSIControl:=TPasMPInterlocked.Read(fMSIControl);
   if (MSIControl and $10000)<>0 then begin // MSI Enable bit (bit 16)
 
-   // MSI is enabled — bus mastering required for actual delivery, otherwise silently drop
+   // MSI is enabled, bus mastering required for actual delivery, otherwise silently drop
    if (TPasMPInterlocked.Read(fCommand) and TPCI.PCI_CMD_BUS_MASTER)=0 then begin
     exit; // MSI enabled but no bus mastering: drop the IRQ (don't fall through to INTx)
    end;
@@ -26500,7 +26527,7 @@ begin
    exit;
   end;
 
-  // Try MSI lower — MSI is edge-triggered, nothing to lower
+  // Try MSI lower, MSI is edge-triggered, nothing to lower
   if (TPasMPInterlocked.Read(fMSIControl) and $10000)<>0 then begin
    exit; // MSI enabled: edge-triggered, no lower needed
   end;
@@ -27099,12 +27126,12 @@ begin
    end;
    else begin
 {$ifdef NewPCI}
-    // Handle MSI/MSI-X capability register writes — only when AIA is active
+    // Handle MSI/MSI-X capability register writes, only when AIA is active
     if BusAddress<>0 then begin
      CapabilityID:=(Register-TPCI.PCI_CAP_LIST_OFF) shr 2;
      if fMachine.fAIA then begin
       case CapabilityID of
-       20:begin // $d0: MSI Control — only MSI Enable (bit 16) and MME (bits 22:20) writable
+       20:begin // $d0: MSI Control, only MSI Enable (bit 16) and MME (bits 22:20) writable
         TPasMPInterlocked.Write(Func.fMSIControl,
                                 (TPCI.PCIExpressCapabilities[20] and TPasRISCVUInt32(not $710000)) or (TPasRISCVUInt32(aValue) and $710000));
        end;
@@ -27129,8 +27156,8 @@ begin
          end;
         end;
        end;
-       // 25 ($e4): MSI Pending — read-only, writes ignored
-       26:begin // $e8: MSI-X Control — only Enable (bit 31) and Function Mask (bit 30) writable
+       // 25 ($e4): MSI Pending, read-only, writes ignored
+       26:begin // $e8: MSI-X Control, only Enable (bit 31) and Function Mask (bit 30) writable
         if Func.fMSIXBAR<>0 then begin
          Old:=TPasMPInterlocked.Exchange(Func.fMSIXControl,TPasRISCVUInt32(aValue) and TPCI.PCI_MSIX_VALID);
          // When Function Mask transitions from 1->0 (unmasking), replay pending IRQs
@@ -27140,8 +27167,8 @@ begin
         end;
        end;
        else begin
-        // 27 ($ec): Table Offset/BIR — read-only, writes ignored
-        // 28 ($f0): PBA Offset/BIR — read-only, writes ignored
+        // 27 ($ec): Table Offset/BIR, read-only, writes ignored
+        // 28 ($f0): PBA Offset/BIR, read-only, writes ignored
        end;
       end;
      end; // fAIA
@@ -28957,11 +28984,11 @@ begin
    end;
   end;
   MMIO_VGA_BASE..(MMIO_VGA_BASE+MMIO_VGA_SIZE)-1:begin
-   // VGA registers — return safe defaults
+   // VGA registers, return safe defaults
    result:=0;
   end;
   MMIO_EDID_BASE..(MMIO_EDID_BASE+MMIO_EDID_SIZE)-1:begin
-   // EDID data — not implemented, return zeros
+   // EDID data, not implemented, return zeros
    result:=0;
   end;
   else begin
@@ -29016,7 +29043,7 @@ begin
     end;
    end;
   end;
-  // VGA registers at $400, QEMU ext at $600, EDID at $000 — writes ignored for now
+  // VGA registers at $400, QEMU ext at $600, EDID at $000, writes ignored for now
  end;
 end;
 
@@ -29353,7 +29380,7 @@ begin
   SEQ_DATA:begin
    fSEQRegs[fSEQIndex]:=Value8;
    if fSEQIndex=$07 then begin
-    // Format register changed — update mode
+    // Format register changed, update mode
     UpdateDerivedState;
    end;
   end;
@@ -29368,7 +29395,7 @@ begin
      UpdateDerivedState;
     end;
     $0c,$0d,$1d:begin
-     // Start address — update and signal new frame
+     // Start address, update and signal new frame
      UpdateDerivedState;
      fFrameBuffer.fDirty:=true;
 {    fFrameBuffer.UpdateOutputData;
@@ -33556,7 +33583,7 @@ begin
  fSHMBase:=0;
  fSHMSize:=0;
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
                   0;
  fDriverFeatures:=0;
  fActiveFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1;
@@ -33571,6 +33598,10 @@ begin
   Queue^.UsedRingEvent:=false;
   Queue^.ShadowAvailableIndex:=0;
   Queue^.ShadowUsedIndex:=0;
+{$ifdef VirtIOEventIndex}
+  Queue^.SignalledUsed:=0;
+  Queue^.SignalledUsedValid:=false;
+{$endif}
   Queue^.DescriptorAddress:=0;
   Queue^.AvailableAddress:=0;
   Queue^.UsedAddress:=0;
@@ -33619,6 +33650,10 @@ begin
   Queue^.ShadowAvailableIndex:=0;
   Queue^.ShadowUsedIndex:=0;
   Queue^.UsedRingEvent:=false;
+{$ifdef VirtIOEventIndex}
+  Queue^.SignalledUsed:=0;
+  Queue^.SignalledUsedValid:=false;
+{$endif}
   Queue^.DescriptorAddress:=0;
   Queue^.AvailableAddress:=0;
   Queue^.UsedAddress:=0;
@@ -34083,6 +34118,9 @@ begin
 
  TPasMPMemoryBarrier.ReadWrite;
 
+{$ifdef VirtIOEventIndex}
+ // EVENT_IDX notification check moved to UsedRingSync (VirtIO spec: read used_event AFTER publishing used->idx)
+{$else}
  if (fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0 then begin
   if Read16((Queue^.AvailableAddress+4)+(Queue^.Size shl 1),UsedIndex) then begin
    if Queue^.ShadowUsedIndex=UsedIndex then begin
@@ -34092,6 +34130,7 @@ begin
    exit;
   end;
  end;
+{$endif}
 
  inc(Queue^.ShadowUsedIndex);
 
@@ -34105,6 +34144,9 @@ var Queue:PQueue;
     NewValue,OldValue:TPasRISCVUInt32;
     Flags:TPasRISCVUInt16;
     UseEventIndex:Boolean;
+{$ifdef VirtIOEventIndex}
+    UsedEventIdx,OldUsedIdx,NewUsedIdx:TPasRISCVUInt16;
+{$endif}
 begin
 
  result:=false;
@@ -34147,11 +34189,32 @@ begin
 
  TPasMPMemoryBarrier.ReadWrite;
 
+{$ifdef VirtIOEventIndex}
+ UseEventIndex:=(fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
+ if UseEventIndex then begin
+  // VirtIO spec 2.7.7.2: read used_event from avail->ring[num] AFTER publishing used->idx (barrier above)
+  if Read16((Queue^.AvailableAddress+4)+(Queue^.Size shl 1),UsedEventIdx) then begin
+   NewUsedIdx:=Queue^.ShadowUsedIndex;
+   OldUsedIdx:=Queue^.SignalledUsed;
+   if (not Queue^.SignalledUsedValid) or
+      (TPasRISCVUInt16(NewUsedIdx-UsedEventIdx-1)<TPasRISCVUInt16(NewUsedIdx-OldUsedIdx)) then begin
+    Queue^.SignalledUsed:=NewUsedIdx;
+    Queue^.SignalledUsedValid:=true;
+    NotifyQueueUsed;
+   end;
+  end;
+ end else begin
+  if (Flags and VIRTQ_AVAIL_F_NO_INTERRUPT)=0 then begin
+   NotifyQueueUsed;
+  end;
+ end;
+{$else}
  UseEventIndex:=(fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
  if (UseEventIndex and TPasMPInterlocked.CompareExchange(Queue^.UsedRingEvent,TPasMPBool32(false),TPasMPBool32(true))) or
     ((not UseEventIndex) and ((Flags and VIRTQ_AVAIL_F_NO_INTERRUPT)=0)) then begin
   NotifyQueueUsed;
  end;
+{$endif}
 
  result:=true;
 
@@ -34184,6 +34247,9 @@ procedure TPasRISCV.TVirtIODevice.UsedRingNotify(const aQueueIndex:TPasRISCVUInt
 var Queue:PQueue;
     Flags:TPasRISCVUInt16;
     UseEventIndex:Boolean;
+{$ifdef VirtIOEventIndex}
+    UsedEventIdx,OldUsedIdx,NewUsedIdx:TPasRISCVUInt16;
+{$endif}
 begin
  Queue:=@fQueues[aQueueIndex];
 {$ifdef VirtIOReadAvailRingFlags}
@@ -34193,11 +34259,31 @@ begin
 {$else}
  Flags:=0;
 {$endif}
+{$ifdef VirtIOEventIndex}
+ UseEventIndex:=(fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
+ if UseEventIndex then begin
+  if Read16((Queue^.AvailableAddress+4)+(Queue^.Size shl 1),UsedEventIdx) then begin
+   NewUsedIdx:=Queue^.ShadowUsedIndex;
+   OldUsedIdx:=Queue^.SignalledUsed;
+   if (not Queue^.SignalledUsedValid) or
+      (TPasRISCVUInt16(NewUsedIdx-UsedEventIdx-1)<TPasRISCVUInt16(NewUsedIdx-OldUsedIdx)) then begin
+    Queue^.SignalledUsed:=NewUsedIdx;
+    Queue^.SignalledUsedValid:=true;
+    NotifyQueueUsed;
+   end;
+  end;
+ end else begin
+  if (Flags and VIRTQ_AVAIL_F_NO_INTERRUPT)=0 then begin
+   NotifyQueueUsed;
+  end;
+ end;
+{$else}
  UseEventIndex:=(fActiveFeatures and TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX)<>0;
  if (UseEventIndex and TPasMPInterlocked.CompareExchange(Queue^.UsedRingEvent,TPasMPBool32(false),TPasMPBool32(true))) or
     ((not UseEventIndex) and ((Flags and VIRTQ_AVAIL_F_NO_INTERRUPT)=0)) then begin
   NotifyQueueUsed;
  end;
+{$endif}
 end;
 {$endif}
 
@@ -35043,7 +35129,7 @@ begin
  end;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
 //                TPasRISCV.TVirtIODevice.VIRTIO_F_IN_ORDER or
                   VIRTIO_BLK_F_SIZE_MAX or
                   VIRTIO_BLK_F_SEG_MAX or
@@ -35450,7 +35536,7 @@ begin
  fQueues[0].ManualRecv:=true;
  fConfigSpaceSize:=256;
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
                   0;
 end;
 
@@ -35815,7 +35901,7 @@ begin
  Move(fSoundConfig,fConfigSpace[0],SizeOf(TVirtIOSoundConfig));
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
                   0;
 
  fQueues[VIRTIO_SND_VQ_CONTROL].ManualRecv:=false;
@@ -36818,7 +36904,7 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
 //                TPasRISCV.TVirtIODevice.VIRTIO_F_IN_ORDER or
                   (1 shl 0);
 
@@ -37802,7 +37888,8 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX;
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
+                  0;
 
  // Queue 0 = hiprio, Queue 1 = request
  fQueues[VIRTIO_FS_QUEUE_HIPRIO].ManualRecv:=false;
@@ -39750,7 +39837,7 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
                   VIRTIO_NET_F_MAC {or VIRTIO_NET_F_STATUS};
 
  fQueues[0].ManualRecv:=true;
@@ -39964,7 +40051,8 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX;
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
+                  0;
 
  fQueues[0].ManualRecv:=false;
  fQueues[0].Asynchronous:=false;
@@ -40066,7 +40154,7 @@ begin
  Move(fGPUConfig,fConfigSpace[0],SizeOf(TVirtIOGPUConfig));
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
                   VIRTIO_GPU_F_EDID or
                   0;
 
@@ -40657,7 +40745,7 @@ begin
   fFrameBuffer.SetCursorVisible(false);
  end;
  fFrameBuffer.fDirty:=true;
- // Cursor queue has no write descriptors per VirtIO spec — consume with length 0
+ // Cursor queue has no write descriptors per VirtIO spec, consume with length 0
  if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
          UsedRingSync(aQueueIndex)) then begin
   NotifyDeviceNeedsReset;
@@ -40668,7 +40756,7 @@ procedure TPasRISCV.TVirtIOGPUDevice.HandleMoveCursor(const aQueueIndex,aDescrip
 begin
  fFrameBuffer.SetCursorPosition(aCmd^.Pos.X,aCmd^.Pos.Y);
  fFrameBuffer.fDirty:=true;
- // Cursor queue has no write descriptors per VirtIO spec — consume with length 0
+ // Cursor queue has no write descriptors per VirtIO spec, consume with length 0
  if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
          UsedRingSync(aQueueIndex)) then begin
   NotifyDeviceNeedsReset;
@@ -40761,7 +40849,7 @@ begin
      if aReadSize>=SizeOf(TVirtIOGPUUpdateCursor) then begin
       HandleUpdateCursor(aQueueIndex,aDescriptorIndex,PVirtIOGPUUpdateCursor(@fRecvBuffer[0]));
      end else begin
-      // Cursor queue has no write descriptors — just consume
+      // Cursor queue has no write descriptors, just consume
       if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
               UsedRingSync(aQueueIndex)) then begin
        NotifyDeviceNeedsReset;
@@ -40772,7 +40860,7 @@ begin
      if aReadSize>=SizeOf(TVirtIOGPUUpdateCursor) then begin
       HandleMoveCursor(aQueueIndex,aDescriptorIndex,PVirtIOGPUUpdateCursor(@fRecvBuffer[0]));
      end else begin
-      // Cursor queue has no write descriptors — just consume
+      // Cursor queue has no write descriptors, just consume
       if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
               UsedRingSync(aQueueIndex)) then begin
        NotifyDeviceNeedsReset;
@@ -40780,7 +40868,7 @@ begin
      end;
     end;
     else begin
-     // Unknown cursor command — just consume without response
+     // Unknown cursor command, just consume without response
      if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
              UsedRingSync(aQueueIndex)) then begin
       NotifyDeviceNeedsReset;
@@ -40805,7 +40893,7 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
                   VIRTIO_CRYPTO_F_REVISION_1 or
                   VIRTIO_CRYPTO_F_CIPHER_STATELESS_MODE or
                   VIRTIO_CRYPTO_F_HASH_STATELESS_MODE or
@@ -42496,7 +42584,8 @@ begin
  fDeviceID:=DeviceID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX;
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
+                  0;
 
  fQueues[0].ManualRecv:=false;
  fQueues[0].Asynchronous:=false;
@@ -42610,7 +42699,7 @@ begin
     NowTime:={$if declared(NowUTC)}NowUTC{$else}Now{$ifend};
     UnixEpoch:=EncodeDate(1970,1,1);
     case ClockID of
-     0:begin // UTC — nanoseconds since Unix epoch
+     0:begin // UTC, nanoseconds since Unix epoch
       NanoSeconds:=Round(((NowTime-UnixEpoch)*86400.0)*1000000000.0);
       fSendBuffer[0]:=VIRTIO_RTC_S_OK;
       fSendBuffer[8]:=TPasRISCVUInt8(NanoSeconds);
@@ -42622,7 +42711,7 @@ begin
       fSendBuffer[14]:=TPasRISCVUInt8(NanoSeconds shr 48);
       fSendBuffer[15]:=TPasRISCVUInt8(NanoSeconds shr 56);
      end;
-     1:begin // TAI — UTC + 37 leap seconds (as of 2017, still valid)
+     1:begin // TAI, UTC + 37 leap seconds (as of 2017, still valid)
       NanoSeconds:=Round(((NowTime-UnixEpoch)*86400.0)*1000000000.0)+(TPasRISCVUInt64(37)*1000000000);
       fSendBuffer[0]:=VIRTIO_RTC_S_OK;
       fSendBuffer[8]:=TPasRISCVUInt8(NanoSeconds);
@@ -42634,7 +42723,7 @@ begin
       fSendBuffer[14]:=TPasRISCVUInt8(NanoSeconds shr 48);
       fSendBuffer[15]:=TPasRISCVUInt8(NanoSeconds shr 56);
      end;
-     2:begin // MONOTONIC — nanoseconds since device reset
+     2:begin // MONOTONIC, nanoseconds since device reset
       NanoSeconds:=Round(((NowTime-fMonotonicEpoch)*86400.0)*1000000000.0);
       fSendBuffer[0]:=VIRTIO_RTC_S_OK;
       fSendBuffer[8]:=TPasRISCVUInt8(NanoSeconds);
@@ -42687,7 +42776,7 @@ begin
  fDeviceID:=VSOCK_DEVICE_ID;
 
  fDeviceFeatures:=TPasRISCV.TVirtIODevice.VIRTIO_F_VERSION_1 or
-                  TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or
+                  {$ifdef VirtIOEventIndex}TPasRISCV.TVirtIODevice.VIRTIO_F_EVENT_IDX or{$endif}
                   VIRTIO_VSOCK_F_STREAM or
                   VIRTIO_VSOCK_F_SEQPACKET;
 
@@ -44281,7 +44370,7 @@ begin
       DstOffset:=TPasRISCVUInt64(CurY+Row)*Stride+TPasRISCVUInt64(CurX+Col)*4;
       DstPixel:=PPasRISCVUInt8Array(@PPasRISCVUInt8Array(fComposited)^[DstOffset]);
       if Alpha=255 then begin
-       // Opaque — direct copy
+       // Opaque, direct copy
        DstPixel^[0]:=SrcPixel^[0];
        DstPixel^[1]:=SrcPixel^[1];
        DstPixel^[2]:=SrcPixel^[2];
@@ -44315,7 +44404,7 @@ begin
  end;
  case fBytesPerPixel of
   4:begin
-   // BGRA8888/RGBA8888 — copy with optional channel swap
+   // BGRA8888/RGBA8888, copy with optional channel swap
    if length(aSrc)>=(PixelCount*4) then begin
     if fSwapColorChannels xor fFormatSwapColorChannels then begin
      SrcPtr:=@aSrc[0];
@@ -45350,7 +45439,7 @@ begin
 {$endif}
  fWriteState:=0;
  if not aIsWrite then begin
-  // Read start — refresh time registers
+  // Read start, refresh time registers
   UpdateRegisters;
  end;
  result:=true;
@@ -45769,7 +45858,7 @@ begin
      TriggerIRQ:=true;
     end;
 
-    // Transfer complete — clear TIP and dispatch interrupt
+    // Transfer complete, clear TIP and dispatch interrupt
     fStatus:=fStatus and not SR_TIP;
 
     if TriggerIRQ then begin
@@ -45880,7 +45969,7 @@ procedure TPasRISCV.TDesignWareI2CDevice.ProcessDataCmd(const aValue:TPasRISCVUI
 var I2CBusDevice:TI2CBusDevice;
     ReadByte:TPasRISCVUInt8;
 begin
- // RESTART flag — end current transaction, start new one
+ // RESTART flag, end current transaction, start new one
  if (aValue and IC_DATA_CMD_RESTART)<>0 then begin
   if fTransactionActive then begin
    I2CBusDevice:=GetBusDevice(fSelectedAddress);
@@ -45948,7 +46037,7 @@ begin
   end;
  end;
 
- // STOP flag — end transaction
+ // STOP flag, end transaction
  if (aValue and IC_DATA_CMD_STOP)<>0 then begin
   if fTransactionActive then begin
    I2CBusDevice:=GetBusDevice(fSelectedAddress);
@@ -46193,7 +46282,7 @@ begin
    end;
    DW_IC_ENABLE:begin
     if ((aValue and 1)=0) and ((fEnable and 1)<>0) then begin
-     // Disabling controller — abort any active transaction
+     // Disabling controller, abort any active transaction
      if fTransactionActive then begin
       I2CBusDevice:=GetBusDevice(fSelectedAddress);
       if assigned(I2CBusDevice) then begin
@@ -46212,10 +46301,10 @@ begin
     end;
     fEnable:=TPasRISCVUInt32(aValue) and 1;
     if (fEnable and 1)<>0 then begin
-     // Enabling controller — TX_EMPTY is immediately true
+     // Enabling controller, TX_EMPTY is immediately true
      fRawIntrStat:=fRawIntrStat or IC_INTR_TX_EMPTY;
     end else begin
-     // Disabling controller — clear TX_EMPTY
+     // Disabling controller, clear TX_EMPTY
      fRawIntrStat:=fRawIntrStat and not IC_INTR_TX_EMPTY;
     end;
     UpdateInterrupts;
@@ -46236,7 +46325,7 @@ begin
     fHSSpkLen:=TPasRISCVUInt8(aValue);
    end;
    // Read-only registers: INTR_STAT, RAW_INTR_STAT, STATUS, TXFLR, RXFLR,
-   // TX_ABRT_SOURCE, ENABLE_STATUS, COMP_* — ignore writes
+   // TX_ABRT_SOURCE, ENABLE_STATUS, COMP_*, ignore writes
   end;
  finally
   fLock.Release;
@@ -48160,6 +48249,9 @@ end;
 
 constructor TPasRISCV.THART.TJustInTimeCompiler.Create(const aHART:THART);
 var DirtyBitmapSize:TPasRISCVUInt32;
+{$ifdef JITTLBTag}
+    ModeIndex:THART.TMode;
+{$endif}
 begin
 
  inherited Create;
@@ -48192,7 +48284,11 @@ begin
  SetLength(fTemporaryCode,JIT_TEMPORARY_CODE_INITIAL_SIZE);
  fTemporaryCodeSize:=0;
 
- FillChar(fJITTLB,SizeOf(fJITTLB),#0);
+ FillChar(fJITTLB,SizeOf(TJITTLBEntries),#0);
+
+{$ifdef JITTLBTag}
+ fJITTLBGeneration:=1;
+{$endif}
 
  FillChar(fHostIntRegisterInfos,SizeOf(fHostIntRegisterInfos),#0);
 
@@ -48500,7 +48596,11 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.FlushJITTLB;
 begin
- FillChar(fJITTLB,SizeOf(fJITTLB),#0);
+{$ifdef JITTLBTag}
+ inc(fJITTLBGeneration);
+{$else}
+ FillChar(fJITTLB,SizeOf(TJITTLBEntries),#0);
+{$endif}
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
@@ -48795,8 +48895,19 @@ begin
 
  HART:=THART(aHART);
 
+{$ifdef PasRISCVJustInTimeCompilerStats}
+ if assigned(HART.fJustInTimeCompiler) then begin
+  inc(HART.fJustInTimeCompiler.fStatDataTLBFills);
+ end;
+{$endif}
+
  // Page crossing check: cannot handle inline, fall back to interpreter
  if (aAlignment>1) and (((aVirtualAddress and PAGE_MASK)+(aAlignment-1))>=PAGE_SIZE) then begin
+{$ifdef PasRISCVJustInTimeCompilerStats}
+  if assigned(HART.fJustInTimeCompiler) then begin
+   inc(HART.fJustInTimeCompiler.fStatDataTLBFillPageCrossings);
+  end;
+{$endif}
   result:=0;
   exit;
  end;
@@ -48824,13 +48935,18 @@ begin
   exit;
  end;
 
- // TLB should now be filled — read back the host address
+ // TLB should now be filled, read back the host address
  VPN:=aVirtualAddress shr PAGE_SHIFT;
  DirectAccessTLBEntry:={$ifdef PerModeTLB}@HART.fDirectAccessTLBCache^{$else}@HART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if aTLBFieldOffset=TLB_W then begin
   if DirectAccessTLBEntry^.Write<>VPN then begin
 {$ifdef JITMMIOFastPath}
    // MMIO store: value already pre-stored in JITMMIOScratch by JIT side-exit path
+{$ifdef PasRISCVJustInTimeCompilerStats}
+   if assigned(HART.fJustInTimeCompiler) then begin
+    inc(HART.fJustInTimeCompiler.fStatMMIOAccesses);
+   end;
+{$endif}
    HART.fBus.Store(HART,PhysicalAddress,HART.fState.JITMMIOScratch,aAlignment);
    if HART.fState.ExceptionValue<>TExceptionValue.None then begin
     HART.fState.ExceptionValue:=TExceptionValue.None;
@@ -48847,6 +48963,11 @@ begin
   if DirectAccessTLBEntry^.Read<>VPN then begin
 {$ifdef JITMMIOFastPath}
    // MMIO load: perform the read directly and return pointer to scratch buffer
+{$ifdef PasRISCVJustInTimeCompilerStats}
+   if assigned(HART.fJustInTimeCompiler) then begin
+    inc(HART.fJustInTimeCompiler.fStatMMIOAccesses);
+   end;
+{$endif}
    HART.fState.JITMMIOScratch:=HART.fBus.Load(HART,PhysicalAddress,aAlignment);
    if HART.fState.ExceptionValue<>TExceptionValue.None then begin
     HART.fState.ExceptionValue:=TExceptionValue.None;
@@ -48950,7 +49071,7 @@ begin
   exit;
  end;
 
- // Tier 3: LRU eviction — find guest reg with oldest LastUsed
+ // Tier 3: LRU eviction, find guest reg with oldest LastUsed
  LRUBest:=$ffffffff;
  LRUReg:=TRegister.x0;
  for GuestReg:=TRegister.x1 to TRegister.x31 do begin
@@ -48967,7 +49088,7 @@ begin
   FreeGuestIntRegister(LRUReg);
   fHostIntRegisterMask:=fHostIntRegisterMask and not (TPasRISCVUInt32(1) shl result);
  end else begin
-  // Should not happen — we always have at least some mapped regs
+  // Should not happen, we always have at least some mapped regs
   result:=REG_ILL;
  end;
 
@@ -49143,7 +49264,7 @@ begin
   FreeGuestFPURegister(TFPURegister.f0);
  end;
 
- // FreeGuestFPURegister added the bit back to fHostFPURegisterMask — clear it since we're claiming it
+ // FreeGuestFPURegister added the bit back to fHostFPURegisterMask, clear it since we're claiming it
  fHostFPURegisterMask:=fHostFPURegisterMask and not (TPasRISCVUInt32(1) shl result);
 
 end;
@@ -49273,6 +49394,7 @@ procedure TPasRISCV.THART.TJustInTimeCompiler.EndTrace;
 var CodeDest:Pointer;
     TLBIndex:TPasRISCVUInt32;
     Key:TBlockMapKey;
+    JITTLBEntry:PJITTLBEntry;
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
     LinkIndex,PoolIndex,Index,Count:TPasRISCVInt32;
 {$endif}
@@ -49325,7 +49447,11 @@ begin
 
  // Populate JTLB
  TLBIndex:=(fBlockVirtualPC shr 1) and JIT_TLB_MASK;
- fJITTLB[TLBIndex].VirtualPC:=fBlockVirtualPC;
+ JITTLBEntry:=@fJITTLB[TLBIndex];
+ JITTLBEntry^.VirtualPC:=fBlockVirtualPC;
+{$ifdef JITTLBTag}
+ JITTLBEntry^.Tag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fCurrentMode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+{$endif}
  fJITTLB[TLBIndex].Block:=TBlockCallback(CodeDest);
 
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
@@ -49443,6 +49569,9 @@ end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.TLBLookup:Boolean;
 var VirtualPC:TPasRISCVUInt64;
+{$ifdef JITTLBTag}
+    Tag:TPasRISCVUInt64;
+{$endif}
     JITTLBEntry:PJITTLBEntry;
     PhysicalPC:TPasRISCVUInt64;
     VPN:TPasRISCVUInt64;
@@ -49466,11 +49595,14 @@ begin
 
  // JTLB fast path
  VirtualPC:=fHART.fState.PC;
+{$ifdef JITTLBTag}
+ Tag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+{$endif}
 {$ifdef SmartJITTLBFlush}
  VPN:=VirtualPC shr PAGE_SHIFT;
 {$endif}
  JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
- if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fHART.fDirectAccessTLBCache^{$else}fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} then begin
+ if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fHART.fDirectAccessTLBCache^{$else}fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} then begin
   BlockCallback:=JITTLBEntry^.Block;
   if assigned(BlockCallback) then begin
 {$ifdef PasRISCVJustInTimeCompilerDebug}
@@ -49514,7 +49646,7 @@ begin
     VPN:=VirtualPC shr PAGE_SHIFT;
 {$endif}
     JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
-    if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fHART.fDirectAccessTLBCache^{$else}fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
+    if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fHART.fDirectAccessTLBCache^{$else}fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
        ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
        (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
      JITTLBEntry^.Block(@fHART.fState);
@@ -49540,9 +49672,18 @@ begin
  // Look up in block map
  CodePtr:=FindBlockCodePtr(PhysicalPC,fHART.fState.Mode,fHART.fState.VirtualMode);
  if CodePtr<>0 then begin
+{$ifdef PasRISCVJustInTimeCompilerStats}
+  inc(fStatTLBSlowHits);
+{$endif}
   JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
   JITTLBEntry^.VirtualPC:=VirtualPC;
+{$ifdef JITTLBTag}
+  JITTLBEntry^.Tag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+{$endif}
   JITTLBEntry^.Block:=TBlockCallback(Pointer(CodePtr));
+{$ifdef JITTLBTag}
+  JITTLBEntry^.Tag:=Tag;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerDebug}
   if fDebugJITCounter<40 then begin
    SavedPC:=fHART.fState.PC;
@@ -49571,7 +49712,7 @@ begin
   exit;
  end;
 
- // Miss — start new trace
+ // Miss, start new trace
 {$ifdef PasRISCVJustInTimeCompilerDebug}
  if fDebugJITCounter<40 then begin
   writeln('JIT MISS: PC=',LowerCase(IntToHex(VirtPC,16)),' PhysPC=',LowerCase(IntToHex(PhysPC,16)));
@@ -53655,7 +53796,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitImmOp(const aSubOp:TPasRISCVUInt8;const aDst:TPasRISCVUInt8;const aImm:TPasRISCVInt32;const aIs64:Boolean);
 begin
- // ALU reg, imm — uses /subop encoding
+ // ALU reg, imm, uses /subop encoding
  if aIs64 or (aDst>=8) then begin
   EmitREX(aIs64,0,0,aDst);
  end;
@@ -53708,7 +53849,7 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMemOperand(const aReg:TPa
 begin
  // Encode [base+offset] addressing mode
  if (aOffset=0) and ((aBase and 7)<>ord(TX64Register.rRBP)) then begin
-  // [base] — no displacement (except RBP/R13 which needs disp8=0)
+  // [base], no displacement (except RBP/R13 which needs disp8=0)
   EmitModRM(0,aReg,aBase);
   if (aBase and 7)=ord(TX64Register.rRSP) then begin
    EmitSIB(0,ord(TX64Register.rRSP),aBase); // RSP/R12 needs SIB
@@ -53778,7 +53919,7 @@ begin
  if aImm=0 then begin
   EmitNativeZeroReg(aDst);
  end else begin
-  // mov reg32, imm32 — B8+rd (no REX.W = zero-extend)
+  // mov reg32, imm32, B8+rd (no REX.W = zero-extend)
   if aDst>=8 then begin
    EmitByte(X64_REX_B);
   end;
@@ -53795,7 +53936,7 @@ begin
   // 32-bit move zero-extends to 64-bit
   EmitMOVRegImm32(aDst,TPasRISCVUInt32(aImm));
  end else begin
-  // movabs reg, imm64 — REX.W + B8+rd + imm64
+  // movabs reg, imm64, REX.W + B8+rd + imm64
   EmitREX(true,0,0,aDst);
   EmitByte(X86_MOV_IMM+(aDst and 7));
   EmitQWord(aImm);
@@ -53804,7 +53945,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMOVSXD(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8);
 begin
- // movsxd r64, r32 — REX.W 63 /r
+ // movsxd r64, r32, REX.W 63 /r
  EmitREX(true,aDst,0,aSrc);
  EmitByte(X86_MOVSXD);
  EmitModRM(3,aDst,aSrc);
@@ -53812,7 +53953,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMOVZX8(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8);
 begin
- // movzx r32, r8 — 0F B6 /r (zero-extends to 64-bit)
+ // movzx r32, r8, 0F B6 /r (zero-extends to 64-bit)
  // REX needed for aSrc>=4 to access SPL/BPL/SIL/DIL instead of AH/CH/DH/BH
  if (aDst>=8) or (aSrc>=4) then begin
   EmitREX(false,aDst,0,aSrc);
@@ -53824,7 +53965,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMOVSX8(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8);
 begin
- // movsx r64, r8 — REX.W 0F BE /r
+ // movsx r64, r8, REX.W 0F BE /r
  EmitREX(true,aDst,0,aSrc);
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXB);
@@ -53833,7 +53974,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMOVZX16(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8);
 begin
- // movzx r32, r16 — 0F B7 /r
+ // movzx r32, r16, 0F B7 /r
  if (aDst>=8) or (aSrc>=8) then begin
   EmitREX(false,aDst,0,aSrc);
  end;
@@ -53844,7 +53985,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMOVSX16(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8);
 begin
- // movsx r64, r16 — REX.W 0F BF /r
+ // movsx r64, r16, REX.W 0F BF /r
  EmitREX(true,aDst,0,aSrc);
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXW);
@@ -53853,7 +53994,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNEG(const aReg:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // neg reg — F7 /3
+ // neg reg, F7 /3
  if aIs64 or (aReg>=8) then begin
   EmitREX(aIs64,0,0,aReg);
  end;
@@ -53863,7 +54004,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNOT(const aReg:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // not reg — F7 /2
+ // not reg, F7 /2
  if aIs64 or (aReg>=8) then begin
   EmitREX(aIs64,0,0,aReg);
  end;
@@ -53873,7 +54014,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitXCHG(const aReg1,aReg2:TPasRISCVUInt8);
 begin
- // xchg reg1, reg2 — 87 /r (64-bit)
+ // xchg reg1, reg2, 87 /r (64-bit)
  EmitREX(true,aReg1,0,aReg2);
  EmitByte(X86_XCHG);
  EmitModRM(3,aReg1,aReg2);
@@ -53886,13 +54027,13 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitTEST(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // test dst, src — 85 /r
+ // test dst, src, 85 /r
  Emit2RegOp(X86_TEST,aDst,aSrc,aIs64);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitTESTImm(const aDst:TPasRISCVUInt8;const aImm:TPasRISCVInt32;const aIs64:Boolean);
 begin
- // test dst, imm32 — F7 /0 imm32
+ // test dst, imm32, F7 /0 imm32
  if aIs64 or (aDst>=8) then begin
   EmitREX(aIs64,0,0,aDst);
  end;
@@ -54007,7 +54148,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSETCC(const aCondition:TPasRISCVUInt8;const aDst:TPasRISCVUInt8);
 begin
- // setcc r8 — 0F 90+cc /0 rm
+ // setcc r8, 0F 90+cc /0 rm
  // REX needed for aDst>=4 to access SPL/BPL/SIL/DIL instead of AH/CH/DH/BH
  if aDst>=4 then begin
   EmitREX(false,0,0,aDst);
@@ -54019,7 +54160,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCMOVCC(const aCondition:TPasRISCVUInt8;const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // cmovcc dst, src — 0F 40+cc /r
+ // cmovcc dst, src, 0F 40+cc /r
  if aIs64 or (aDst>=8) or (aSrc>=8) then begin
   EmitREX(aIs64,aDst,0,aSrc);
  end;
@@ -54030,14 +54171,14 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitLEA(const aDst:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // lea dst, [base+offset] — 8D /r
+ // lea dst, [base+offset], 8D /r
  EmitMemOp(X86_LEA,aDst,aBase,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitLEASIB(const aDst:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aIndex:TPasRISCVUInt8;const aIs64:Boolean);
 var Mod_:TPasRISCVUInt8;
 begin
- // lea dst, [base+index*1] — 8D /r with SIB
+ // lea dst, [base+index*1], 8D /r with SIB
  EmitREX(aIs64,aDst,aIndex,aBase);
  EmitByte(X86_LEA);
  Mod_:=0;
@@ -54054,7 +54195,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitIMUL2(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // imul dst, src — 0F AF /r
+ // imul dst, src, 0F AF /r
  if aIs64 or (aDst>=8) or (aSrc>=8) then begin
   EmitREX(aIs64,aDst,0,aSrc);
  end;
@@ -54065,7 +54206,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitMUL1(const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // mul src — F7 /4 (unsigned: RDX:RAX = RAX * src)
+ // mul src, F7 /4 (unsigned: RDX:RAX = RAX * src)
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
@@ -54075,7 +54216,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitIMUL1(const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // imul src — F7 /5 (signed: RDX:RAX = RAX * src)
+ // imul src, F7 /5 (signed: RDX:RAX = RAX * src)
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
@@ -54085,7 +54226,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDIV1(const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // div src — F7 /6 (unsigned: RAX=RDX:RAX/src, RDX=RDX:RAX mod src)
+ // div src, F7 /6 (unsigned: RAX=RDX:RAX/src, RDX=RDX:RAX mod src)
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
@@ -54095,7 +54236,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitIDIV1(const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // idiv src — F7 /7 (signed: RAX=RDX:RAX/src, RDX=RDX:RAX mod src)
+ // idiv src, F7 /7 (signed: RAX=RDX:RAX/src, RDX=RDX:RAX mod src)
  if aIs64 or (aSrc>=8) then begin
   EmitREX(aIs64,0,0,aSrc);
  end;
@@ -54144,11 +54285,11 @@ begin
   EmitMOVRegReg(HostRAX,aHostSrc1,aIs64);
  end;
  case aOpcode of
-  6:begin // DIV — zero RDX
+  6:begin // DIV, zero RDX
    EmitNativeZeroReg(HostRDX);
    EmitDIV1(S2Reg,aIs64);
   end;
-  7:begin // IDIV — sign-extend
+  7:begin // IDIV, sign-extend
    EmitCDQ(aIs64);
    EmitIDIV1(S2Reg,aIs64);
   end;
@@ -54270,7 +54411,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJccRel32(const aCondition:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // jcc rel32 — 0F 80+cc rel32
+ // jcc rel32, 0F 80+cc rel32
  EmitByte(X86_FAR_BRANCH);
  EmitByte($80+aCondition);
  EmitDWord(TPasRISCVUInt32(aOffset));
@@ -54278,21 +54419,21 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJmpRel32(const aOffset:TPasRISCVInt32);
 begin
- // jmp rel32 — E9 rel32
+ // jmp rel32, E9 rel32
  EmitByte(X86_JMP_REL32);
  EmitDWord(TPasRISCVUInt32(aOffset));
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJmpRel8(const aOffset:TPasRISCVInt8);
 begin
- // jmp rel8 — EB rel8
+ // jmp rel8, EB rel8
  EmitByte(X86_JMP_REL8);
  EmitByte(TPasRISCVUInt8(aOffset));
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJmpMemIndirect(const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // jmp [base+offset] — FF /4 [base+offset]
+ // jmp [base+offset], FF /4 [base+offset]
  if aBase>=8 then begin
   EmitREX(false,0,0,aBase);
  end;
@@ -54302,7 +54443,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCallReg(const aReg:TPasRISCVUInt8);
 begin
- // call reg — FF /2 (mod=11)
+ // call reg, FF /2 (mod=11)
  if aReg>=8 then begin
   EmitREX(false,0,0,aReg);
  end;
@@ -54312,7 +54453,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitJmpReg(const aReg:TPasRISCVUInt8);
 begin
- // jmp reg — FF /4 (mod=11)
+ // jmp reg, FF /4 (mod=11)
  if aReg>=8 then begin
   EmitREX(false,0,0,aReg);
  end;
@@ -54475,7 +54616,7 @@ begin
  end else if (aValue>=Low(TPasRISCVInt32)) and (aValue<=High(TPasRISCVInt32)) then begin
   EmitMemImmOp(ALU_ADD,aBaseRegister,aOffset,TPasRISCVInt32(aValue),aIs64);
  end else begin
-  // Value too large for immediate — load into temp register and add
+  // Value too large for immediate, load into temp register and add
   EmitMOVRegImm64(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt64(aValue));
   EmitMemOp(X86_ADD,TPasRISCVUInt8(ord(TX64Register.rRAX)),aBaseRegister,aOffset,aIs64);
  end;
@@ -54497,17 +54638,17 @@ function TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCycleUpdateAndCheck(const 
 var ScratchReg:TPasRISCVUInt8;
 begin
  ScratchReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
- // mov rax, qword [vm+CycleOffset] — load 64 bits of old cycle value
+ // mov rax, qword [vm+CycleOffset], load 64 bits of old cycle value
  EmitNativeLoad(ScratchReg,VMPtrRegister,GuestCycleOffset,true);
- // lea rdx, [rax+count] — calculate new cycle value
+ // lea rdx, [rax+count], calculate new cycle value
  EmitLEA(TPasRISCVUInt8(ord(TX64Register.rRDX)),ScratchReg,TPasRISCVInt32(aCount));
- // mov qword [vm+CycleOffset], rdx — store new cycle value
+ // mov qword [vm+CycleOffset], rdx, store new cycle value
  EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrRegister,GuestCycleOffset,true);
- // xor eax, edx — detect changed bits (old ^ new)
+ // xor eax, edx, detect changed bits (old ^ new)
  Emit2RegOp(X86_XOR,ScratchReg,TPasRISCVUInt8(ord(TX64Register.rRDX)),false);
- // shr eax, 16 — isolate bits 16+ (sets ZF if no 16-bit boundary crossed)
+ // shr eax, 16, isolate bits 16+ (sets ZF if no 16-bit boundary crossed)
  EmitShiftRegImm(SHIFT_SHR,ScratchReg,16,false);
- // jnz .exit — any bit 16+ changed means ~65536 cycles elapsed
+ // jnz .exit, any bit 16+ changed means ~65536 cycles elapsed
  EmitJccRel32(CC_NE,0);
  result:=fTemporaryCodeSize-4;
 end;
@@ -54553,7 +54694,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2MovGPRToXMM(const aXMM:TPasRISCVUInt8;const aGPR:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // movd/movq xmm, gpr — 66 [REX.W] 0F 6E /r
+ // movd/movq xmm, gpr, 66 [REX.W] 0F 6E /r
  EmitByte(X86_PREFIX_66);
  EmitREX(aIs64,aXMM,0,aGPR);
  EmitByte(X86_FAR_BRANCH);
@@ -54563,7 +54704,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2MovXMMToGPR(const aGPR:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aIs64:Boolean);
 begin
- // movd/movq gpr, xmm — 66 [REX.W] 0F 7E /r
+ // movd/movq gpr, xmm, 66 [REX.W] 0F 7E /r
  EmitByte(X86_PREFIX_66);
  EmitREX(aIs64,aXMM,0,aGPR);
  EmitByte(X86_FAR_BRANCH);
@@ -54573,10 +54714,10 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
  if aIsDouble then begin
-  // movsd xmm, [base+offset] — F2 0F 10
+  // movsd xmm, [base+offset], F2 0F 10
   EmitSSE2MemOp($f2,$10,aXMMReg,aBaseRegister,aOffset);
  end else begin
-  // movss xmm, [base+offset] — F3 0F 10
+  // movss xmm, [base+offset], F3 0F 10
   EmitSSE2MemOp($f3,$10,aXMMReg,aBaseRegister,aOffset);
  end;
 end;
@@ -54584,10 +54725,10 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
  if aIsDouble then begin
-  // movsd [base+offset], xmm — F2 0F 11
+  // movsd [base+offset], xmm, F2 0F 11
   EmitSSE2MemOp($f2,$11,aXMMReg,aBaseRegister,aOffset);
  end else begin
-  // movss [base+offset], xmm — F3 0F 11
+  // movss [base+offset], xmm, F3 0F 11
   EmitSSE2MemOp($f3,$11,aXMMReg,aBaseRegister,aOffset);
  end;
 end;
@@ -54596,10 +54737,10 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPUMov(const aDstXMM:TPas
 begin
  if aDstXMM<>aSrcXMM then begin
   if aIsDouble then begin
-   // movsd dst, src — F2 0F 10 (reg-to-reg form)
+   // movsd dst, src, F2 0F 10 (reg-to-reg form)
    EmitSSE2Op($f2,$10,aDstXMM,aSrcXMM);
   end else begin
-   // movss dst, src — F3 0F 10 (reg-to-reg form)
+   // movss dst, src, F3 0F 10 (reg-to-reg form)
    EmitSSE2Op($f3,$10,aDstXMM,aSrcXMM);
   end;
  end;
@@ -54610,9 +54751,9 @@ begin
  // NaN-box single-precision result: set bits [63:32] to all 1s
  // After movss/addss/etc., bits [127:32] are zero. We need bits [63:32] = $FFFFFFFF.
  // Strategy: PCMPEQD scratch,scratch (all 1s) + PSLLQ scratch,32 + ORPD dst,scratch
- // PCMPEQD scratch, scratch — 66 0F 76 /r
+ // PCMPEQD scratch, scratch, 66 0F 76 /r
  EmitSSE2Op($66,$76,aScratchXMM,aScratchXMM);
- // PSLLQ scratch, 32 — 66 0F 73 /6 ib
+ // PSLLQ scratch, 32, 66 0F 73 /6 ib
  EmitByte(X86_PREFIX_66);
  if aScratchXMM>=8 then begin
   EmitByte(X64_REX_B);
@@ -54621,7 +54762,7 @@ begin
  EmitByte(X86_SSE_PSLLQ);
  EmitByte($f0 or (aScratchXMM and 7)); // ModRM: 11 110 reg
  EmitByte(32);
- // ORPD dst, scratch — 66 0F 56 /r
+ // ORPD dst, scratch, 66 0F 56 /r
  EmitSSE2Op($66,$56,aXMMReg,aScratchXMM);
 end;
 
@@ -54636,7 +54777,7 @@ const RVRMToMXCSR:array[0..4] of TPasRISCVUInt32=(
 begin
  // sub rsp, 8 (allocate for two MXCSR slots)
  EmitImmOp(ALU_SUB,TPasRISCVUInt8(ord(TX64Register.rRSP)),8,true);
- // STMXCSR [rsp] — save original MXCSR: 0f ae /3 [rsp]
+ // STMXCSR [rsp], save original MXCSR: 0f ae /3 [rsp]
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
  EmitByte($1c); // ModRM: 00 011 100 (reg=3, rm=RSP → SIB)
@@ -54651,7 +54792,7 @@ begin
  end;
  // MOV [rsp+4], tmp
  EmitMemOp(X86_MOV_R_M,aTempRegister,TPasRISCVUInt8(ord(TX64Register.rRSP)),4,false);
- // LDMXCSR [rsp+4] — load modified MXCSR: 0f ae /2 [rsp+4]
+ // LDMXCSR [rsp+4], load modified MXCSR: 0f ae /2 [rsp+4]
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
  EmitByte($54); // ModRM: 01 010 100 (reg=2, rm=RSP → SIB, disp8)
@@ -54661,7 +54802,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitRestoreRoundingMode;
 begin
- // LDMXCSR [rsp] — restore original MXCSR: 0f ae /2 [rsp]
+ // LDMXCSR [rsp], restore original MXCSR: 0f ae /2 [rsp]
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
  EmitByte($14); // ModRM: 00 010 100 (reg=2, rm=RSP → SIB)
@@ -54712,7 +54853,7 @@ begin
  end else begin
   TagOffset:=TLB_READ_OFFSET;
  end;
- // aTempReg1 = aAddrReg >> PAGE_SHIFT (VPN — kept alive for tag comparison)
+ // aTempReg1 = aAddrReg >> PAGE_SHIFT (VPN, kept alive for tag comparison)
  EmitMOVRegReg(aTempReg1,aAddrReg,true);
  EmitShiftRegImm(SHIFT_SHR,aTempReg1,PAGE_SHIFT,true);
  // With CombinedDirectAccessTLBCache: aTempReg2 = (VPN & TLB_MASK) << TLB_ENTRY_SHIFT = byte offset in TLB array
@@ -54730,13 +54871,13 @@ begin
  EmitMOVRegReg(aTempReg1,aAddrReg,true);
  EmitShiftRegImm(SHIFT_SHR,aTempReg1,PAGE_SHIFT,true);
 {$endif}
- // aTempReg2 += [VMPtrRegister + GuestJITTLBPtrOffset] — entry pointer
+ // aTempReg2 += [VMPtrRegister + GuestJITTLBPtrOffset], entry pointer
  // x86: ADD r64, [base+disp] = opcode $03 with memory operand
  EmitMemOp(X86_ADD_M_R,aTempReg2,VMPtrRegister,GuestJITTLBPtrOffset,true);
  // Compare tag: CMP [aTempReg2 + TagOffset], aTempReg1
  // x86: CMP r/m64, r64 = opcode $39
  EmitMemOp(X86_CMP,aTempReg1,aTempReg2,TagOffset,true);
- // JNE slow_path (TLB miss — VPN mismatch)
+ // JNE slow_path (TLB miss, VPN mismatch)
  EmitJccRel32(CC_NE,0);
  aSlowPathFixup:=fTemporaryCodeSize-4;
  // TLB hit: load RelativeMemory from entry
@@ -54747,7 +54888,7 @@ begin
  // aTempReg2 = [aTempReg2 + RelativeMemory offset]
  EmitNativeLoad(aTempReg2,aTempReg2,24+TagOffset,true);
 {$endif}
- // aTempReg2 += aAddrReg — final host pointer
+ // aTempReg2 += aAddrReg, final host pointer
  Emit2RegOp(X86_ADD,aTempReg2,aAddrReg,true);
 end;
 
@@ -54910,7 +55051,7 @@ begin
  end;
 
  // Set up call arguments
- // IMPORTANT: copy HostVirtualAddress FIRST — it might be in any caller-saved reg including RAX
+ // IMPORTANT: copy HostVirtualAddress FIRST, it might be in any caller-saved reg including RAX
 {$ifdef Windows}
  // Win64 ABI: RCX=arg1, RDX=arg2, R8=arg3, R9=arg4; VMPtrRegister=RCX
  EmitMOVRegReg(TPasRISCVUInt8(ord(TX64Register.rRDX)),HostVirtualAddress,true);
@@ -54921,7 +55062,7 @@ begin
  // Load helper function pointer into RAX (from state, before clobbering VMPtrRegister)
  HelperReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
  EmitNativeLoad(HelperReg,VMPtrRegister,GuestJITDataTLBFillPtrOffset,true);
- // Load JITHART into RCX (arg1) — clobbers VMPtrRegister
+ // Load JITHART into RCX (arg1), clobbers VMPtrRegister
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),VMPtrRegister,GuestJITHARTOffset,true);
 {$else}
  // SysV ABI: RDI=arg1, RSI=arg2, RDX=arg3, RCX=arg4; VMPtrRegister=RDI
@@ -54931,7 +55072,7 @@ begin
  // Load helper function pointer into RAX (from state, before clobbering VMPtrRegister)
  HelperReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
  EmitNativeLoad(HelperReg,VMPtrRegister,GuestJITDataTLBFillPtrOffset,true);
- // Load JITHART into RDI (arg1) — clobbers VMPtrRegister
+ // Load JITHART into RDI (arg1), clobbers VMPtrRegister
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrRegister,GuestJITHARTOffset,true);
 {$endif}
 
@@ -55725,7 +55866,7 @@ begin
   EmitSSE2MemOp(X86_PREFIX_F3,$7f,1,TPasRISCVUInt8(ord(TX64Register.rRSP)),16); // movdqu [rsp+16],xmm1
   // movq xmm0, aHostSrc
   EmitSSE2MovGPRToXMM(0,aHostSrc,true);
-  // xorps xmm1, xmm1 (0f 57 c9 — no prefix)
+  // xorps xmm1, xmm1 (0f 57 c9, no prefix)
   EmitSSE2Op(-1,$57,1,1);
   // pcmpeqb xmm0, xmm1 (66 0f 74 c1)
   EmitSSE2Op(X86_PREFIX_66,$74,0,1);
@@ -55762,7 +55903,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFenceACQREL;
 begin
  // On x86-64 TSO, LoadLoad/LoadStore/StoreStore ordering is already guaranteed by hardware.
- // No instruction needed — the JIT trace just continues through the fence.
+ // No instruction needed, the JIT trace just continues through the fence.
 end;
 {$endif}
 
@@ -56089,7 +56230,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBSET(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- // rd = rs1 | (1 << (rs2 & 63)) — BTS rd, rs2
+ // rd = rs1 | (1 << (rs2 & 63)), BTS rd, rs2
  if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
   TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc2,true);
@@ -56113,7 +56254,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBCLR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- // rd = rs1 & ~(1 << (rs2 & 63)) — BTR rd, rs2
+ // rd = rs1 & ~(1 << (rs2 & 63)), BTR rd, rs2
  if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
   TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc2,true);
@@ -56136,7 +56277,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBEXT(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 begin
- // rd = (rs1 >> (rs2 & 63)) & 1 — BT rs1, rs2; SETB rd; MOVZX rd
+ // rd = (rs1 >> (rs2 & 63)) & 1, BT rs1, rs2; SETB rd; MOVZX rd
  EmitREX(true,aHostSrc2,0,aHostSrc1);
  EmitByte($0f);
  EmitByte($a3);
@@ -56148,7 +56289,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBINV(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- // rd = rs1 ^ (1 << (rs2 & 63)) — BTC rd, rs2
+ // rd = rs1 ^ (1 << (rs2 & 63)), BTC rd, rs2
  if (aHostDest=aHostSrc2) and (aHostDest<>aHostSrc1) then begin
   TempReg1:=ClaimHostIntRegister;
   EmitMOVRegReg(TempReg1,aHostSrc2,true);
@@ -56225,7 +56366,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH1ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- // rd = rs2 + (rs1 << 1) — LEA rd, [rs2 + rs1*2]
+ // rd = rs2 + (rs1 << 1), LEA rd, [rs2 + rs1*2]
  if (aHostSrc1 and 7)<>4 then begin
   EmitREX(true,aHostDest,aHostSrc1,aHostSrc2);
   EmitByte($8d);
@@ -56252,7 +56393,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH2ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- // rd = rs2 + (rs1 << 2) — LEA rd, [rs2 + rs1*4]
+ // rd = rs2 + (rs1 << 2), LEA rd, [rs2 + rs1*4]
  if (aHostSrc1 and 7)<>4 then begin
   EmitREX(true,aHostDest,aHostSrc1,aHostSrc2);
   EmitByte($8d);
@@ -56279,7 +56420,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH3ADD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
 begin
- // rd = rs2 + (rs1 << 3) — LEA rd, [rs2 + rs1*8]
+ // rd = rs2 + (rs1 << 3), LEA rd, [rs2 + rs1*8]
  if (aHostSrc1 and 7)<>4 then begin
   EmitREX(true,aHostDest,aHostSrc1,aHostSrc2);
   EmitByte($8d);
@@ -56379,12 +56520,12 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOADD(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
 begin
- // LOCK XADD [addr], temp — atomically: old=[addr]; [addr]+=temp; temp=old
+ // LOCK XADD [addr], temp, atomically: old=[addr]; [addr]+=temp; temp=old
  HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
  // LOCK prefix
  EmitByte($f0);
- // 0F C1 /r — XADD r/m, r
+ // 0F C1 /r, XADD r/m, r
  if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
   EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
@@ -56403,10 +56544,10 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOSWAP(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
 var HostTemp:TPasRISCVUInt8;
 begin
- // XCHG [addr], temp — implicitly locked, atomically swaps
+ // XCHG [addr], temp, implicitly locked, atomically swaps
  HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
- // 87 /r — XCHG r/m, r (implicitly locked)
+ // 87 /r, XCHG r/m, r (implicitly locked)
  if (not aIs32) or (HostTemp>=8) or (aHostAddr>=8) then begin
   EmitREX(not aIs32,HostTemp,0,aHostAddr);
  end;
@@ -56521,9 +56662,9 @@ begin
  EmitMemOp(X86_MOV_M_R,TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0,not aIs32);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
- // CMP RAX, rs2 — if RAX < rs2 (signed), keep RAX (old), else use rs2
+ // CMP RAX, rs2, if RAX < rs2 (signed), keep RAX (old), else use rs2
  Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
- // CMOVLE temp, RAX — if old <= rs2, temp=old (temp already = rs2)
+ // CMOVLE temp, RAX, if old <= rs2, temp=old (temp already = rs2)
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
@@ -56560,7 +56701,7 @@ begin
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
  Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
- // CMOVGE temp, RAX — if old >= rs2, temp=old
+ // CMOVGE temp, RAX, if old >= rs2, temp=old
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
@@ -56596,7 +56737,7 @@ begin
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
  Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
- // CMOVBE temp, RAX — if old <= rs2 (unsigned), temp=old
+ // CMOVBE temp, RAX, if old <= rs2 (unsigned), temp=old
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
@@ -56632,7 +56773,7 @@ begin
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,not aIs32);
  Emit2RegOp(X86_CMP,TPasRISCVUInt8(TX64Register.rRAX),aHostSrc,not aIs32);
- // CMOVAE temp, RAX — if old >= rs2 (unsigned), temp=old
+ // CMOVAE temp, RAX, if old >= rs2 (unsigned), temp=old
  if (not aIs32) or (HostTemp>=8) or (TPasRISCVUInt8(TX64Register.rRAX)>=8) then begin
   EmitREX(not aIs32,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
@@ -56723,7 +56864,7 @@ begin
  FailLabelAddr:=fTemporaryCodeSize;
  EmitByte(0);
 
- // All checks passed — attempt CMPXCHG
+ // All checks passed, attempt CMPXCHG
  EmitNativeLoad(TPasRISCVUInt8(TX64Register.rRAX),VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.LRSCCAS)),true);
 
  // LOCK CMPXCHG [addr], src
@@ -56773,7 +56914,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOADDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
 var HostTemp:TPasRISCVUInt8;
 begin
- // LOCK XADD byte [addr], temp — atomically: old=[addr]; [addr]+=temp; temp=old
+ // LOCK XADD byte [addr], temp, atomically: old=[addr]; [addr]+=temp; temp=old
  HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
  EmitByte($f0); // LOCK
@@ -56788,7 +56929,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOSWAPB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
 var HostTemp:TPasRISCVUInt8;
 begin
- // XCHG byte [addr], temp — implicitly locked, atomically swaps
+ // XCHG byte [addr], temp, implicitly locked, atomically swaps
  HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
  EmitREX(false,HostTemp,0,aHostAddr); // always REX for byte register access
@@ -56898,11 +57039,11 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AL, src — 8-bit comparison sets flags correctly
+ // CMP AL, src, 8-bit comparison sets flags correctly
  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
  EmitByte($38); // CMP r/m8, r8
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVLE temp, RAX — if old <= src (signed), temp=old
+ // CMOVLE temp, RAX, if old <= src (signed), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($4e);
@@ -56934,11 +57075,11 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AL, src — 8-bit comparison sets flags correctly
+ // CMP AL, src, 8-bit comparison sets flags correctly
  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
  EmitByte($38); // CMP r/m8, r8
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVGE temp, RAX — if old >= src (signed), temp=old
+ // CMOVGE temp, RAX, if old >= src (signed), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($4d);
@@ -56970,11 +57111,11 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AL, src — 8-bit comparison sets flags correctly
+ // CMP AL, src, 8-bit comparison sets flags correctly
  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
  EmitByte($38); // CMP r/m8, r8
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVBE temp, RAX — if old <= src (unsigned), temp=old
+ // CMOVBE temp, RAX, if old <= src (unsigned), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($46);
@@ -57006,11 +57147,11 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AL, src — 8-bit comparison sets flags correctly
+ // CMP AL, src, 8-bit comparison sets flags correctly
  EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX)); // always REX for byte register access
  EmitByte($38); // CMP r/m8, r8
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVAE temp, RAX — if old >= src (unsigned), temp=old
+ // CMOVAE temp, RAX, if old >= src (unsigned), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($43);
@@ -57031,7 +57172,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOADDH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
 var HostTemp:TPasRISCVUInt8;
 begin
- // LOCK XADD word [addr], temp — atomically: old=[addr]; [addr]+=temp; temp=old
+ // LOCK XADD word [addr], temp, atomically: old=[addr]; [addr]+=temp; temp=old
  HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
  EmitByte($66); // operand size prefix
@@ -57049,7 +57190,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOSWAPH(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8);
 var HostTemp:TPasRISCVUInt8;
 begin
- // XCHG word [addr], temp — implicitly locked, atomically swaps
+ // XCHG word [addr], temp, implicitly locked, atomically swaps
  HostTemp:=ClaimHostIntRegister;
  EmitMOVRegReg(HostTemp,aHostSrc,true);
  EmitByte($66); // operand size prefix
@@ -57171,14 +57312,14 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AX, src — 16-bit comparison sets flags correctly
+ // CMP AX, src, 16-bit comparison sets flags correctly
  EmitByte($66); // operand size prefix for 16-bit CMP
  if (aHostSrc>=8) then begin
   EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
  EmitByte($39); // CMP r/m16, r16
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVLE temp, RAX — if old <= src (signed), temp=old
+ // CMOVLE temp, RAX, if old <= src (signed), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($4e);
@@ -57213,14 +57354,14 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AX, src — 16-bit comparison sets flags correctly
+ // CMP AX, src, 16-bit comparison sets flags correctly
  EmitByte($66); // operand size prefix for 16-bit CMP
  if (aHostSrc>=8) then begin
   EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
  EmitByte($39); // CMP r/m16, r16
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVGE temp, RAX — if old >= src (signed), temp=old
+ // CMOVGE temp, RAX, if old >= src (signed), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($4d);
@@ -57255,14 +57396,14 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AX, src — 16-bit comparison sets flags correctly
+ // CMP AX, src, 16-bit comparison sets flags correctly
  EmitByte($66); // operand size prefix for 16-bit CMP
  if (aHostSrc>=8) then begin
   EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
  EmitByte($39); // CMP r/m16, r16
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVBE temp, RAX — if old <= src (unsigned), temp=old
+ // CMOVBE temp, RAX, if old <= src (unsigned), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($46);
@@ -57297,14 +57438,14 @@ begin
  EmitMemOperand(TPasRISCVUInt8(TX64Register.rRAX),aHostAddr,0);
  RetryOffset:=fTemporaryCodeSize;
  EmitMOVRegReg(HostTemp,aHostSrc,true); // temp = src (candidate)
- // CMP AX, src — 16-bit comparison sets flags correctly
+ // CMP AX, src, 16-bit comparison sets flags correctly
  EmitByte($66); // operand size prefix for 16-bit CMP
  if (aHostSrc>=8) then begin
   EmitREX(false,aHostSrc,0,TPasRISCVUInt8(TX64Register.rRAX));
  end;
  EmitByte($39); // CMP r/m16, r16
  EmitModRM(3,aHostSrc and 7,TPasRISCVUInt8(TX64Register.rRAX) and 7);
- // CMOVAE temp, RAX — if old >= src (unsigned), temp=old
+ // CMOVAE temp, RAX, if old >= src (unsigned), temp=old
  EmitREX(true,HostTemp,0,TPasRISCVUInt8(TX64Register.rRAX));
  EmitByte($0f);
  EmitByte($43);
@@ -57329,19 +57470,19 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLD(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOV r64, [addr+off] — opcode 8B with REX.W
+ // MOV r64, [addr+off], opcode 8B with REX.W
  EmitMemOp(X86_MOV_M_R,aHostDest,aHostAddr,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLW(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOVSXD r64, [addr+off] — opcode 63 with REX.W (sign-extend 32→64)
+ // MOVSXD r64, [addr+off], opcode 63 with REX.W (sign-extend 32→64)
  EmitMemOp(X86_MOVSXD,aHostDest,aHostAddr,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLH(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOVSX r64, word [addr+off] — 0F BF with REX.W
+ // MOVSX r64, word [addr+off], 0F BF with REX.W
  EmitREX(true,aHostDest,0,aHostAddr);
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXW);
@@ -57350,7 +57491,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLB(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOVSX r64, byte [addr+off] — 0F BE with REX.W
+ // MOVSX r64, byte [addr+off], 0F BE with REX.W
  EmitREX(true,aHostDest,0,aHostAddr);
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_MOVSXB);
@@ -57359,13 +57500,13 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLWU(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOV r32, [addr+off] — opcode 8B without REX.W (zero-extends to 64)
+ // MOV r32, [addr+off], opcode 8B without REX.W (zero-extends to 64)
  EmitMemOp(X86_MOV_M_R,aHostDest,aHostAddr,aOffset,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLHU(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOVZX r32, word [addr+off] — 0F B7 (zero-extends to 64 via 32-bit write)
+ // MOVZX r32, word [addr+off], 0F B7 (zero-extends to 64 via 32-bit write)
  if (aHostDest>=8) or (aHostAddr>=8) then begin
   EmitREX(false,aHostDest,0,aHostAddr);
  end;
@@ -57376,7 +57517,7 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeLBU(const aHostDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOVZX r32, byte [addr+off] — 0F B6 (zero-extends to 64 via 32-bit write)
+ // MOVZX r32, byte [addr+off], 0F B6 (zero-extends to 64 via 32-bit write)
  if (aHostDest>=8) or (aHostAddr>=8) then begin
   EmitREX(false,aHostDest,0,aHostAddr);
  end;
@@ -57387,19 +57528,19 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSD(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOV [addr+off], r64 — opcode 89 with REX.W
+ // MOV [addr+off], r64, opcode 89 with REX.W
  EmitMemOp(X86_MOV_R_M,aHostSrc,aHostAddr,aOffset,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSW(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOV [addr+off], r32 — opcode 89 without REX.W
+ // MOV [addr+off], r32, opcode 89 without REX.W
  EmitMemOp(X86_MOV_R_M,aHostSrc,aHostAddr,aOffset,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSH(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 begin
- // MOV [addr+off], r16 — 66 prefix + opcode 89 without REX.W
+ // MOV [addr+off], r16, 66 prefix + opcode 89 without REX.W
  EmitByte(X86_PREFIX_66);
  EmitMemOp(X86_MOV_R_M,aHostSrc,aHostAddr,aOffset,false);
 end;
@@ -57407,7 +57548,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSB(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 var EffSrc,EffAddr:TPasRISCVUInt8;
 begin
- // MOV [addr+off], r8 — opcode 88
+ // MOV [addr+off], r8, opcode 88
  // If src not byte-accessible (SPL/BPL/SIL/DIL = regs 4-7 without REX), XCHG with RAX
  if (aHostSrc<4) or (aHostSrc>=8) then begin
   // Byte-accessible: direct store (regs 0-3 use AL/CL/DL/BL, regs 8+ use REX prefix)
@@ -57714,7 +57855,7 @@ begin
  TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,true);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,true);
- // BTR TempReg1, 63 — clear bit 63
+ // BTR TempReg1, 63, clear bit 63
  EmitREX(true,0,0,TempReg1);
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_BT_GROUP);
@@ -57756,7 +57897,7 @@ begin
  TempReg2:=ClaimHostIntRegister;
  EmitSSE2MovXMMToGPR(TempReg1,aHostSrc1,true);
  EmitSSE2MovXMMToGPR(TempReg2,aHostSrc2,true);
- // BTR TempReg1, 63 — clear bit 63
+ // BTR TempReg1, 63, clear bit 63
  EmitREX(true,0,0,TempReg1);
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_BT_GROUP);
@@ -58187,7 +58328,7 @@ begin
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($80000000 for 32-bit result)
  EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($80000000),false);
- // JNE done (no overflow/NaN — fast path)
+ // JNE done (no overflow/NaN, fast path)
  EmitJccRel32(CC_NE,0);
  DoneFixup1:=fTemporaryCodeSize-4;
  // UCOMISS frs1, frs1 (NaN check: PF=1 if NaN)
@@ -58200,13 +58341,13 @@ begin
  // JP isNaN
  EmitJccRel32(CC_P,0);
  NaNFixup:=fTemporaryCodeSize-4;
- // Not NaN — check sign to distinguish positive/negative overflow
+ // Not NaN, check sign to distinguish positive/negative overflow
  EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,false);
  EmitTEST(TempReg1,TempReg1,false);
- // JS neg_overflow (SF=1 means negative — result $80000000 is correct INT32_MIN)
+ // JS neg_overflow (SF=1 means negative, result $80000000 is correct INT32_MIN)
  EmitJccRel32(CC_S,0);
  DoneFixup2:=fTemporaryCodeSize-4;
- // Positive overflow — INT32_MAX
+ // Positive overflow, INT32_MAX
  EmitMOVRegImm32(aHostIntDest,$7fffffff);
  EmitJmpRel32(0);
  OverflowFixup:=fTemporaryCodeSize-4;
@@ -58300,7 +58441,7 @@ begin
  // Check for x86 indefinite ($8000000000000000 for 64-bit result)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
  Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
- // JNE done (no overflow/NaN — fast path)
+ // JNE done (no overflow/NaN, fast path)
  EmitJccRel32(CC_NE,0);
  DoneFixup1:=fTemporaryCodeSize-4;
  // UCOMISS frs1, frs1 (NaN check: PF=1 if NaN)
@@ -58313,13 +58454,13 @@ begin
  // JP isNaN
  EmitJccRel32(CC_P,0);
  NaNFixup:=fTemporaryCodeSize-4;
- // Not NaN — check sign to distinguish positive/negative overflow
+ // Not NaN, check sign to distinguish positive/negative overflow
  EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,false);
  EmitTEST(TempReg1,TempReg1,false);
- // JS neg_overflow (SF=1 means negative — result $8000000000000000 is correct)
+ // JS neg_overflow (SF=1 means negative, result $8000000000000000 is correct)
  EmitJccRel32(CC_S,0);
  DoneFixup2:=fTemporaryCodeSize-4;
- // Positive overflow — INT64_MAX
+ // Positive overflow, INT64_MAX
  EmitMOVRegImm64(aHostIntDest,TPasRISCVUInt64($7fffffffffffffff));
  EmitJmpRel32(0);
  OverflowFixup:=fTemporaryCodeSize-4;
@@ -58378,7 +58519,7 @@ begin
  ZeroFixup:=fTemporaryCodeSize-4;
  EmitJmpRel32(0);
  SmallDoneFixup:=fTemporaryCodeSize-4;
- // .large: value >= 2^63 — subtract 2^63, convert, add back
+ // .large: value >= 2^63, subtract 2^63, convert, add back
  PatchJmpRel32(LargeFixup);
  EmitFPUMov(ScratchXMM2,aHostFPUSrc,false);
  EmitSSE2Op($f3,$5c,ScratchXMM2,ScratchXMM1); // SUBSS scratch2, scratch1
@@ -58437,7 +58578,7 @@ begin
  EmitModRM(3,aHostIntDest,aHostFPUSrc);
  // Check for x86 indefinite ($80000000 for 32-bit result)
  EmitImmOp(ALU_CMP,aHostIntDest,TPasRISCVInt32($80000000),false);
- // JNE done (no overflow/NaN — fast path)
+ // JNE done (no overflow/NaN, fast path)
  EmitJccRel32(CC_NE,0);
  DoneFixup1:=fTemporaryCodeSize-4;
  // UCOMISD frs1, frs1 (NaN check: PF=1 if NaN)
@@ -58445,14 +58586,14 @@ begin
  // JP isNaN
  EmitJccRel32(CC_P,0);
  NaNFixup:=fTemporaryCodeSize-4;
- // Not NaN — check sign to distinguish positive/negative overflow
+ // Not NaN, check sign to distinguish positive/negative overflow
  // Use MOVQ (64-bit) to get the double sign bit (bit 63)
  EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,true);
  EmitTEST(TempReg1,TempReg1,true);
- // JS neg_overflow (SF=1 means negative — result $80000000 is correct INT32_MIN)
+ // JS neg_overflow (SF=1 means negative, result $80000000 is correct INT32_MIN)
  EmitJccRel32(CC_S,0);
  DoneFixup2:=fTemporaryCodeSize-4;
- // Positive overflow — INT32_MAX
+ // Positive overflow, INT32_MAX
  EmitMOVRegImm32(aHostIntDest,$7fffffff);
  EmitJmpRel32(0);
  OverflowFixup:=fTemporaryCodeSize-4;
@@ -58542,7 +58683,7 @@ begin
  // Check for x86 indefinite ($8000000000000000 for 64-bit result)
  EmitMOVRegImm64(TempReg1,TPasRISCVUInt64($8000000000000000));
  Emit2RegOp(X86_CMP,aHostIntDest,TempReg1,true);
- // JNE done (no overflow/NaN — fast path)
+ // JNE done (no overflow/NaN, fast path)
  EmitJccRel32(CC_NE,0);
  DoneFixup1:=fTemporaryCodeSize-4;
  // UCOMISD frs1, frs1 (NaN check: PF=1 if NaN)
@@ -58550,14 +58691,14 @@ begin
  // JP isNaN
  EmitJccRel32(CC_P,0);
  NaNFixup:=fTemporaryCodeSize-4;
- // Not NaN — check sign to distinguish positive/negative overflow
+ // Not NaN, check sign to distinguish positive/negative overflow
  // Use MOVQ (64-bit) to get the double sign bit (bit 63)
  EmitSSE2MovXMMToGPR(TempReg1,aHostFPUSrc,true);
  EmitTEST(TempReg1,TempReg1,true);
- // JS neg_overflow (SF=1 means negative — result $8000000000000000 is correct)
+ // JS neg_overflow (SF=1 means negative, result $8000000000000000 is correct)
  EmitJccRel32(CC_S,0);
  DoneFixup2:=fTemporaryCodeSize-4;
- // Positive overflow — INT64_MAX
+ // Positive overflow, INT64_MAX
  EmitMOVRegImm64(aHostIntDest,TPasRISCVUInt64($7fffffffffffffff));
  EmitJmpRel32(0);
  OverflowFixup:=fTemporaryCodeSize-4;
@@ -58606,7 +58747,7 @@ begin
  ZeroFixup:=fTemporaryCodeSize-4;
  EmitJmpRel32(0);
  SmallDoneFixup:=fTemporaryCodeSize-4;
- // .large: value >= 2^63 — subtract 2^63, convert, add back
+ // .large: value >= 2^63, subtract 2^63, convert, add back
  PatchJmpRel32(LargeFixup);
  EmitFPUMov(ScratchXMM2,aHostFPUSrc,true);
  EmitSSE2Op($f2,$5c,ScratchXMM2,ScratchXMM1); // SUBSD scratch2, scratch1
@@ -58715,7 +58856,7 @@ begin
  EmitTEST(aHostIntSrc,aHostIntSrc,true);
  EmitJccRel32(CC_S,0);
  LargeFixup:=fTemporaryCodeSize-4;
- // Small path: fits in signed int64 — CVTSI2SS xmm, gpr64
+ // Small path: fits in signed int64, CVTSI2SS xmm, gpr64
  EmitByte(X86_PREFIX_F3);
  EmitREX(true,aHostFPUDest,0,aHostIntSrc);
  EmitByte(X86_FAR_BRANCH);
@@ -58802,7 +58943,7 @@ begin
  EmitTEST(aHostIntSrc,aHostIntSrc,true);
  EmitJccRel32(CC_S,0);
  LargeFixup:=fTemporaryCodeSize-4;
- // Small path: fits in signed int64 — CVTSI2SD xmm, gpr64
+ // Small path: fits in signed int64, CVTSI2SD xmm, gpr64
  EmitByte(X86_PREFIX_F2);
  EmitREX(true,aHostFPUDest,0,aHostIntSrc);
  EmitByte(X86_FAR_BRANCH);
@@ -60377,6 +60518,12 @@ begin
  // Check if the privilege mode is changing
  if fState.Mode<>aMode then begin
 
+{$ifdef PasRISCVJustInTimeCompilerStats}
+  if assigned(fJustInTimeCompiler) then begin
+   inc(fJustInTimeCompiler.fStatModeChanges);
+  end;
+{$endif}
+
   // Update the current privilege mode
   fState.Mode:=aMode;
 
@@ -60386,7 +60533,9 @@ begin
 {$ifdef PasRISCVJustInTimeCompiler}
   if assigned(fJustInTimeCompiler) then begin
    fState.JITTLBPtr:=@fDirectAccessTLBCache^[0];
-   FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
+{$ifndef JITTLBTAG}
+   fJustInTimeCompiler.FlushJITTLB;
+{$endif}
   end;
 {$endif}
   TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
@@ -60432,11 +60581,25 @@ end;
 
 procedure TPasRISCV.THART.UpdateMMU;
 var SATP:TPasRISCVUInt64;
+{$ifdef SmartSATPFlush}
+    OldMMUMode:TMMU.TMMUMode;
+    OldRootPageTable:TPasRISCVUInt64;
+{$endif}
 begin
  SATP:=fState.CSR.Load(THART.TCSR.TAddress.SATP);
+{$ifdef SmartSATPFlush}
+ OldMMUMode:=fMMUMode;
+ OldRootPageTable:=fRootPageTable;
+{$endif}
  fMMUMode:=TMMU.TMMUMode(SATP shr 60);
  fRootPageTable:=(SATP and ((TPasRISCVUInt64(1) shl 44)-1)) shl 12;
+{$ifdef SmartSATPFlush}
+ if (OldMMUMode<>fMMUMode) or (OldRootPageTable<>fRootPageTable) then begin
+  FlushTLB(true);
+ end;
+{$else}
  FlushTLB(true);
+{$endif}
 end;
 
 procedure TPasRISCV.THART.RaisePhysicalFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
@@ -60469,7 +60632,11 @@ begin
    SetException(TExceptionValue.InstructionPageFault,aAddress,fState.PC);
   end;
  end;
+{$ifdef NoPageFaultJITTLBFlush}
+ FlushTLB(true,true);
+{$else}
  FlushTLB(true);
+{$endif}
 end;
 
 procedure TPasRISCV.THART.RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
@@ -60489,7 +60656,11 @@ begin
    SetException(TExceptionValue.InstructionGuestPageFault,aGuestAddress,fState.PC);
   end;
  end;
+{$ifdef NoPageFaultJITTLBFlush}
+ FlushTLB(true,true);
+{$else}
  FlushTLB(true);
+{$endif}
 end;
 
 function TPasRISCV.THART.GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
@@ -60759,7 +60930,7 @@ begin
  fMMUMode:=SavedMMUMode;
 end;
 
-procedure TPasRISCV.THART.FlushTLB(const aInterrupt:Boolean);
+procedure TPasRISCV.THART.FlushTLB(const aInterrupt:Boolean;const aSkipJITTLB:Boolean=false);
 var DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 {$ifdef PerModeTLB}
     ModeIndex:TMode;
@@ -60781,8 +60952,8 @@ begin
  DirectAccessTLBEntry^.Execute:=TPasRISCVUInt64($ffffffffffffffff);
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
- if assigned(fJustInTimeCompiler) then begin
-  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
+ if (not aSkipJITTLB) and assigned(fJustInTimeCompiler) then begin
+  fJustInTimeCompiler.FlushJITTLB;
 {$ifdef PasRISCVJustInTimeCompilerStats}
   inc(fJustInTimeCompiler.fStatFlushTLBFull);
 {$endif}
@@ -60848,31 +61019,19 @@ begin
  end;
 {$endif}
 {$endif}
-{$ifdef PasRISCVJustInTimeCompiler}
-{$ifdef SmartJITTLBFlush}
-{$ifdef SmartJITTLBFlushForceClear}
- if HadExecute and assigned(fJustInTimeCompiler) then begin
-  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
- end;
-{$else}
- // JTLB flush not needed - Execute TLB check in JTLB fast path guards against stale entries
-{$endif}
-{$else}
- if assigned(fJustInTimeCompiler) then begin
-  FillChar(fJustInTimeCompiler.fJITTLB,SizeOf(fJustInTimeCompiler.fJITTLB),#0);
- end;
-{$endif}
+{$if defined(PasRISCVJustInTimeCompiler) and (defined(SmartJITTLBFlush) and defined(SmartJITTLBFlushForceClear)) or not defined(SmartJITTLBFlushForceClear)}
+ if assigned(fJustInTimeCompiler){$if defined(SmartJITTLBFlush)}and HadExecute{$ifend}then begin
+  fJustInTimeCompiler.FlushJITTLB;
 {$ifdef PasRISCVJustInTimeCompilerStats}
- if assigned(fJustInTimeCompiler) then begin
   inc(fJustInTimeCompiler.fStatFlushTLBPage);
 {$ifdef SmartJITTLBFlush}
   if HadExecute then begin
    inc(fJustInTimeCompiler.fStatFlushTLBPageExecute);
   end;
 {$endif}
+{$endif}
  end;
-{$endif}
-{$endif}
+{$ifend}
  if aInterrupt{$if defined(PasRISCVJustInTimeCompiler) and defined(SmartJITTLBFlush)} and HadExecute{$ifend} then begin
   TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
  end;
@@ -62952,6 +63111,7 @@ begin
   end;
 
   if Status<>OldStatus then begin
+
    // Verify UXL and SXL for RV64
    if ((Status shr 32) and 3)<>2 then begin
     Status:=(Status and not (TPasRISCVUInt64(3) shl 32)) or (TPasRISCVUInt64(2) shl 32);
@@ -62959,6 +63119,12 @@ begin
    if ((Status shr 34) and 3)<>2 then begin
     Status:=(Status and not (TPasRISCVUInt64(3) shl 34)) or (TPasRISCVUInt64(2) shl 34);
    end;
+
+  end;
+
+  if ((Status xor OldStatus) and TPasRISCV.THART.TCSR.TMask.TStatus.MXR)<>0 then begin
+   // Flush tlb on mstatus fields that affect VM like QEmu
+   FlushTLB(true);
   end;
 
   if THART.TMode((Status shr 11) and 3)=THART.TMode.Hypervisor then begin
@@ -64577,7 +64743,7 @@ begin
      // Unit-stride
      case UnitStrideMop of
       $00:begin
-       // vle8/16/32/64.v / vlseg — unit-stride (segment) load
+       // vle8/16/32/64.v / vlseg, unit-stride (segment) load
        Address:=fState.Registers[rs1];
        SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
@@ -64622,7 +64788,7 @@ begin
       end;
 
       $08:begin
-       // vlNre8/16/32/64.v — whole register load
+       // vlNre8/16/32/64.v, whole register load
        // NumFields+1 registers, evl = (NumFields+1)*VLEN/EEW
        // NREG must be 1, 2, 4, or 8 and vd must be aligned; vm must be 1
        if (not Unmasked) or (not ((NumFields+1) in [1,2,4,8])) or ((vd and NumFields)<>0) then begin
@@ -64652,7 +64818,7 @@ begin
       end;
 
       $0b:begin
-       // vlm.v — mask load (EEW=8, evl=ceil(vl/8))
+       // vlm.v, mask load (EEW=8, evl=ceil(vl/8))
        // Encoding requires nf=0, vm=1, and width=000 (EEW=8)
        if (NumFields<>0) or (not Unmasked) or (EEW<>8) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -64681,7 +64847,7 @@ begin
       end;
 
       $10:begin
-       // vle8ff/16ff/32ff/64ff.v / vlsegNff — fault-only-first (segment) load
+       // vle8ff/16ff/32ff/64ff.v / vlsegNff, fault-only-first (segment) load
        Address:=fState.Registers[rs1];
        SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
@@ -64925,7 +65091,7 @@ begin
      UnitStrideMop:=(aInstruction shr 20) and $1f;
      case UnitStrideMop of
       $00:begin
-       // vse8/16/32/64.v / vsseg — unit-stride (segment) store
+       // vse8/16/32/64.v / vsseg, unit-stride (segment) store
        Address:=fState.Registers[rs1];
        SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
@@ -64969,7 +65135,7 @@ begin
       end;
 
       $08:begin
-       // vsNr.v — whole register store
+       // vsNr.v, whole register store
        // NREG must be 1, 2, 4, or 8, vd must be aligned, vm must be 1, width must be 000 (EEW=8)
        if (not Unmasked) or (EEW<>8) or (not ((NumFields+1) in [1,2,4,8])) or ((vd and NumFields)<>0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -64998,7 +65164,7 @@ begin
       end;
 
       $0b:begin
-       // vsm.v — mask store (EEW=8, evl=ceil(vl/8))
+       // vsm.v, mask store (EEW=8, evl=ceil(vl/8))
        // Encoding requires nf=0, vm=1, and width=000 (EEW=8)
        if (NumFields<>0) or (not Unmasked) or (EEW<>8) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -65302,7 +65468,7 @@ begin
      if (rs1=TRegister.Zero) and (rd=TRegister.Zero) then begin
       // Compute old VLMAX from current vtype
       OldVTypeValue:=fState.CSR.fData[TCSR.TAddress.VTYPE];
-      // If current vtype has vill set, the operation is reserved — set vill
+      // If current vtype has vill set, the operation is reserved, set vill
       if (OldVTypeValue and (TPasRISCVUInt64(1) shl 63))<>0 then begin
        fState.CSR.fData[TCSR.TAddress.VTYPE]:=TPasRISCVUInt64(1) shl 63;
        fState.CSR.fData[TCSR.TAddress.VL]:=0;
@@ -65595,7 +65761,7 @@ begin
       end;
 
       $0c:begin
-       // vrgather.vv — vd must not overlap vs1 or vs2 (LMUL-aware), and when masked vd must not be v0
+       // vrgather.vv, vd must not overlap vs1 or vs2 (LMUL-aware), and when masked vd must not be v0
        begin
         OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
@@ -65682,7 +65848,7 @@ begin
       end;
 
       $10:begin
-       // vadc.vvm — must have vm=0 (Unmasked=false) and vd!=v0
+       // vadc.vvm, must have vm=0 (Unmasked=false) and vd!=v0
        if Unmasked or (vd=0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -65744,7 +65910,7 @@ begin
       end;
 
       $12:begin
-       // vsbc.vvm — must have vm=0 (Unmasked=false) and vd!=v0
+       // vsbc.vvm, must have vm=0 (Unmasked=false) and vd!=v0
        if Unmasked or (vd=0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -67366,7 +67532,7 @@ begin
       end;
 
       $10:begin
-       // vfmv.f.s — vs1 field must be 0, vm must be 1
+       // vfmv.f.s, vs1 field must be 0, vm must be 1
        if (vs1<>0) or (not Unmasked) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -71318,7 +71484,7 @@ begin
       $10:begin
        case vs1 of
         $00:begin
-         // vmv.x.s: Move vs2[0] to integer register rd — must have vm=1
+         // vmv.x.s: Move vs2[0] to integer register rd, must have vm=1
          if (not Unmasked) then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
@@ -71709,7 +71875,7 @@ begin
       end;
 
       $17:begin
-       // vcompress.vm — must have vm=1, vstart!=0 reserved, vd must not overlap vs2 or v0
+       // vcompress.vm, must have vm=1, vstart!=0 reserved, vd must not overlap vs2 or v0
        if (not Unmasked) or (fState.CSR.fData[TCSR.TAddress.VSTART]<>0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -71741,7 +71907,7 @@ begin
       end;
 
       $18:begin
-       // vmandn.mm — operates on full mask register, but must respect vstart (prestart elements undisturbed)
+       // vmandn.mm, operates on full mask register, but must respect vstart (prestart elements undisturbed)
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
        for Index:=0 to EVL-1 do begin
         if Index<fState.CSR.fData[TCSR.TAddress.VSTART] then begin
@@ -72028,7 +72194,7 @@ begin
       end;
 
       $0c:begin
-       // vrgather.vi — vd must not overlap vs2 (LMUL-aware)
+       // vrgather.vi, vd must not overlap vs2 (LMUL-aware)
        begin
         OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
@@ -72106,7 +72272,7 @@ begin
       end;
 
       $10:begin
-       // vadc.vim — must have vm=0 (Unmasked=false) and vd!=v0
+       // vadc.vim, must have vm=0 (Unmasked=false) and vd!=v0
        if Unmasked or (vd=0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -72850,7 +73016,7 @@ begin
       end;
 
       $0c:begin
-       // vrgather.vx — vd must not overlap vs2 (LMUL-aware)
+       // vrgather.vx, vd must not overlap vs2 (LMUL-aware)
        begin
         OperandValue:=LMUL8 shr 3;
         if OperandValue<1 then begin
@@ -72928,7 +73094,7 @@ begin
       end;
 
       $10:begin
-       // vadc.vxm — must have vm=0 (Unmasked=false) and vd!=v0
+       // vadc.vxm, must have vm=0 (Unmasked=false) and vd!=v0
        if Unmasked or (vd=0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -72989,7 +73155,7 @@ begin
       end;
 
       $12:begin
-       // vsbc.vxm — must have vm=0 (Unmasked=false) and vd!=v0
+       // vsbc.vxm, must have vm=0 (Unmasked=false) and vd!=v0
        if Unmasked or (vd=0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -74434,7 +74600,7 @@ begin
       end;
 
       $10:begin
-       // vfmv.s.f — vs2 field must be 0, vm must be 1
+       // vfmv.s.f, vs2 field must be 0, vm must be 1
        if (vs2<>0) or (not Unmasked) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -76388,7 +76554,7 @@ begin
       end;
 
       $10:begin
-       // VRXUNARY0: vmv.s.x - Move scalar to element 0 — must have vm=1, vs2=0
+       // VRXUNARY0: vmv.s.x - Move scalar to element 0, must have vm=1, vs2=0
        if (not Unmasked) or (vs2<>0) then begin
         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
         result:=4;
@@ -81892,6 +82058,10 @@ begin
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
               fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
 
+{$ifdef MRETSRETCheckInterrupts}
+              CheckInterrupts;
+{$endif}
+
               result:=4;
               exit;
 
@@ -81899,7 +82069,7 @@ begin
                           ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TSR))=0)) or
                          (fState.Mode=THART.TMode.Machine) then begin
 
-              // HS-mode SRET (V=0) — QEMU ordering: modify MSTATUS before swap
+              // HS-mode SRET (V=0), QEMU ordering: modify MSTATUS before swap
               Temporary:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
 
               SetMode(THART.TMode((Temporary shr TCSR.TMask.TSSTATUSBit.SPP) and 1));
@@ -81932,6 +82102,10 @@ begin
 
               // Set PC to CSR.SEPC
               fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
+
+{$ifdef MRETSRETCheckInterrupts}
+              CheckInterrupts;
+{$endif}
 
               result:=4;
               exit;
@@ -81983,6 +82157,10 @@ begin
 
               // Set PC to CSR.MEPC
               fState.PC:=fState.CSR.fData[TCSR.TAddress.MEPC]-4;
+
+{$ifdef MRETSRETCheckInterrupts}
+              CheckInterrupts;
+{$endif}
 
               result:=4;
               exit;
@@ -85708,7 +85886,7 @@ begin
        rs1:=TRegister((aInstruction shr 15) and $1f);
        rs2:=TRegister((aInstruction shr 20) and $1f);
        begin
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZabha)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerZabha)}
         if assigned(fJustInTimeCompiler) then begin
          case ((aInstruction shr 25) and $7c) shr 2 of
           $00:begin
@@ -86168,7 +86346,7 @@ begin
         result:=4;
         exit;
        end else begin
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZabha)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerZabha)}
         if assigned(fJustInTimeCompiler) then begin
          case ((aInstruction shr 25) and $7c) shr 2 of
           $00:begin
@@ -87658,7 +87836,7 @@ function TPasRISCV.THART.ReadIPrioCSR(const aISelectOffset:TPasRISCVUInt32;const
 var ByteIdx,IRQ:TPasRISCVUInt32;
     MapBase:TPasRISCVUInt32;
 begin
- // Read iprio CSR at iselect offset k (0..15) — returns packed 8-byte value for RV64
+ // Read iprio CSR at iselect offset k (0..15), returns packed 8-byte value for RV64
  result:=0;
  if aISelectOffset<16 then begin
   MapBase:=aISelectOffset*TCSR.IPRIO_BYTES_PER_REG;
@@ -87680,7 +87858,7 @@ var ByteIdx,IRQ:TPasRISCVUInt32;
     MapBase:TPasRISCVUInt32;
     PrioByte:TPasRISCVUInt8;
 begin
- // Write iprio CSR at iselect offset k (0..15) — unpacks 8-byte value for RV64
+ // Write iprio CSR at iselect offset k (0..15), unpacks 8-byte value for RV64
  if aISelectOffset<16 then begin
   MapBase:=aISelectOffset*TCSR.IPRIO_BYTES_PER_REG;
   for ByteIdx:=0 to TCSR.IPRIO_BYTES_PER_REG-1 do begin
@@ -88088,7 +88266,7 @@ begin
  if fState.VirtualMode<>aEnabled then begin
   SwapHypervisorRegs;
   fState.VirtualMode:=aEnabled;
-  FlushTLB(true);
+  FlushTLB(true); // Flush the TLB on all virtual mode changes like QEmu
   UpdateMMU;
  end;
 end;
@@ -88491,6 +88669,12 @@ begin
 
  repeat
 
+{$ifdef PasRISCVJustInTimeCompilerStats}
+  if assigned(fJustInTimeCompiler) then begin
+   inc(fJustInTimeCompiler.fStatOuterLoopIterations);
+  end;
+{$endif}
+
   if (fMachine.fFlushTLBHARTMask and fHARTMask)<>0 then begin
    FlushTLB(false);
    TPasMPInterlocked.BitwiseAnd(fMachine.fFlushTLBHARTMask,TPasMPUInt32(not TPasMPUInt32(fHARTMask)));
@@ -88535,7 +88719,8 @@ begin
 
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFastDispatch)}
    if assigned(fJustInTimeCompiler) and (not fJustInTimeCompiler.fCompiling) and
-      (TPasRISCVUInt64(InstructionAddress-PageAddress)<TPasRISCVUInt64($ffd)) and
+      (not fState.JITSkipExecution) and
+      //(TPasRISCVUInt64(InstructionAddress-PageAddress)<TPasRISCVUInt64($ffd)) and
       ((RunState^ and RUNSTATE_SINGLESTEP)=0){$ifdef Zicfilp} and (fState.ELP=0){$endif} then begin
 {$ifdef SmartJITTLBFlush}
     VPN:=InstructionAddress shr PAGE_SHIFT;
@@ -88543,6 +88728,10 @@ begin
     JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
     if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} then begin
      JITTLBEntry^.Block(@fState);
+     if fState.JITSkipExecution then begin
+      PageAddress:=TPasRISCVUInt64($7fffffffffffffff);
+      continue;
+     end;
 {$ifdef PasRISCVJustInTimeCompilerBlockChaining}
      for ChainIndex:=1 to 10 do begin
       InstructionAddress:=fState.PC;
@@ -88551,6 +88740,7 @@ begin
 {$endif}
       JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
       if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
+         (not fState.JITSkipExecution) and
          ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
          (((fState.Cycle xor LastCycles) shr 16)=0) then begin
        JITTLBEntry^.Block(@fState);
@@ -88644,10 +88834,14 @@ begin
   end;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerStats}
-  if assigned(fJustInTimeCompiler) and ((fState.Cycle-fJustInTimeCompiler.fStatLastReport)>=10000000) then begin
+  if assigned(fJustInTimeCompiler) and
+     ((fState.Cycle-fJustInTimeCompiler.fStatLastReport)>=10000000) and
+     ((GetTickCount64-fJustInTimeCompiler.fStatLastReportTime)>=1000) then begin
    fJustInTimeCompiler.fStatLastReport:=fState.Cycle;
-   writeln('JIT STATS: hits=',fJustInTimeCompiler.fStatTLBHits,
+   fJustInTimeCompiler.fStatLastReportTime:=GetTickCount64;
+   writeln('JIT STATS hart=',fHARTID,': hits=',fJustInTimeCompiler.fStatTLBHits,
     ' misses=',fJustInTimeCompiler.fStatTLBMisses,
+    ' slowHits=',fJustInTimeCompiler.fStatTLBSlowHits,
     ' blocks=',fJustInTimeCompiler.fStatBlocksCompiled,
     ' insns=',fJustInTimeCompiler.fStatTotalInstructions,
     ' links=',fJustInTimeCompiler.fStatLinksPatched,
@@ -88655,7 +88849,13 @@ begin
     ' bufsz=',fJustInTimeCompiler.fCodeBufferUsed,
     ' flushFull=',fJustInTimeCompiler.fStatFlushTLBFull,
     ' flushPage=',fJustInTimeCompiler.fStatFlushTLBPage,
-    ' flushPageExec=',fJustInTimeCompiler.fStatFlushTLBPageExecute);
+    ' flushPageExec=',fJustInTimeCompiler.fStatFlushTLBPageExecute,
+    ' dataTLBFills=',fJustInTimeCompiler.fStatDataTLBFills,
+    ' dataTLBPageCross=',fJustInTimeCompiler.fStatDataTLBFillPageCrossings,
+    ' mmio=',fJustInTimeCompiler.fStatMMIOAccesses,
+    ' modeChanges=',fJustInTimeCompiler.fStatModeChanges,
+    ' outerLoop=',fJustInTimeCompiler.fStatOuterLoopIterations,
+    ' cycle=',fState.Cycle);
   end;//}
 {$endif}
 {$endif}
@@ -93194,7 +93394,7 @@ begin
   TRTCMode.DS1307:begin
    fDS1742Device:=nil;
    fGoldfishRTCDevice:=nil;
-   // DS1307 is an I2C device — created later when I2C bus is set up
+   // DS1307 is an I2C device, created later when I2C bus is set up
    fDS1307Device:=nil;
   end;
   else begin
