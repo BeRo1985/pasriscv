@@ -311,7 +311,7 @@ unit PasRISCV;
 
 {$define VirtIOGPUDirectScanout} // Share Resource.Data as fFrameBuffer.fData directly when possible, eliminating one full-framebuffer copy per flush
 
-{-$define VirtIOFastDMA} // Fast path for VirtIO DMA: single Move for contiguous guest RAM instead of page-by-page copy
+{$define VirtIOFastDMA} // Fast path for VirtIO DMA: single Move for contiguous guest RAM instead of page-by-page copy
 
 {-$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
 
@@ -400,7 +400,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerTargetX8664}
   {$define PasRISCVJustInTimeCompilerNativeLinker}
   {$define PasRISCVJustInTimeCompilerBlockChaining}
-  {-$define PasRISCVJustInTimeCompilerFastDispatch}
+  {$define PasRISCVJustInTimeCompilerFastDispatch}
   {$define PasRISCVJustInTimeCompilerSideExit}
  {$ifend}
  {$if defined(cpuaarch64) or defined(CPUAARCH64)}
@@ -88782,6 +88782,8 @@ var Instruction:TPasRISCVUInt32;
     JITTLBEntry:TJustInTimeCompiler.PJITTLBEntry;
 {$ifdef PasRISCVJustInTimeCompilerBlockChaining}
     ChainIndex:TPasRISCVUInt32;
+    Tag:TPasRISCVUInt64;
+    JITCodeExecuted:Boolean;
 {$endif}
 {$ifdef SmartJITTLBFlush}
     VPN:TPasRISCVUInt64;
@@ -88847,47 +88849,40 @@ begin
 
   repeat
 
-   inc(fState.Cycle);
-
-   InstructionAddress:=fState.PC;
-
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFastDispatch)}
    if assigned(fJustInTimeCompiler) and (not fJustInTimeCompiler.fCompiling) and
       (not fState.JITSkipExecution) and
-      //(TPasRISCVUInt64(InstructionAddress-PageAddress)<TPasRISCVUInt64($ffd)) and
       ((RunState^ and RUNSTATE_SINGLESTEP)=0){$ifdef Zicfilp} and (fState.ELP=0){$endif} then begin
+    JITCodeExecuted:=false;
+{$ifdef JITTLBTag}
+    Tag:={$ifdef PerModeTLB}(fJustInTimeCompiler.fJITTLBGeneration shl 3) or (ord(fState.Mode) shl 1) or (ord(fState.VirtualMode) and 1){$else}fJustInTimeCompiler.fJITTLBGeneration{$endif};
+{$endif}
+    for ChainIndex:=0 to {$ifdef PasRISCVJustInTimeCompilerBlockChaining}10{$else}0{$endif} do begin
+     InstructionAddress:=fState.PC;
 {$ifdef SmartJITTLBFlush}
-    VPN:=InstructionAddress shr PAGE_SHIFT;
+     VPN:=InstructionAddress shr PAGE_SHIFT;
 {$endif}
-    JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
-    if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} then begin
-     JITTLBEntry^.Block(@fState);
-     if fState.JITSkipExecution then begin
-      PageAddress:=TPasRISCVUInt64($7fffffffffffffff);
-      continue;
+     JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
+     if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
+        (not fState.JITSkipExecution) and
+        ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
+        (((fState.Cycle xor LastCycles) shr 16)=0) then begin
+      JITTLBEntry^.Block(@fState);
+      JITCodeExecuted:=true;
+     end else begin
+      break;
      end;
-{$ifdef PasRISCVJustInTimeCompilerBlockChaining}
-     for ChainIndex:=1 to 10 do begin
-      InstructionAddress:=fState.PC;
-{$ifdef SmartJITTLBFlush}
-      VPN:=InstructionAddress shr PAGE_SHIFT;
-{$endif}
-      JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
-      if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
-         (not fState.JITSkipExecution) and
-         ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
-         (((fState.Cycle xor LastCycles) shr 16)=0) then begin
-       JITTLBEntry^.Block(@fState);
-      end else begin
-       break;
-      end;
-     end;
-{$endif}
+    end;
+    if JITCodeExecuted then begin
      PageAddress:=TPasRISCVUInt64($7fffffffffffffff);
      continue;
     end;
    end;
 {$ifend}
+
+   inc(fState.Cycle);
+
+   InstructionAddress:=fState.PC;
 
    if TPasRISCVUInt64(InstructionAddress-PageAddress)<TPasRISCVUInt64($ffd) then begin
 
