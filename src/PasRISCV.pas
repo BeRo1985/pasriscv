@@ -5182,12 +5182,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               const DefaultBaseAddress=TPasRISCVUInt64($10052000);
                     DefaultSize=TPasRISCVUInt64($1000);
                     DefaultIRQ=TPasRISCVUInt64($12);
-             private
-              fAbsoluteEvents:Boolean;
              public
               constructor Create(const aMachine:TPasRISCV); reintroduce;
               procedure DeviceInitialize; override;
-              property AbsoluteEvents:Boolean read fAbsoluteEvents write fAbsoluteEvents;
+            end;
+            TVirtIOInputTabletDevice=class(TVirtIOInputDevice)
+             public
+              const DefaultBaseAddress=TPasRISCVUInt64($10053000);
+                    DefaultSize=TPasRISCVUInt64($1000);
+                    DefaultIRQ=TPasRISCVUInt64($13);
+             public
+              constructor Create(const aMachine:TPasRISCV); reintroduce;
+              procedure DeviceInitialize; override;
             end;
             { TVirtIOSoundDevice }
             TVirtIOSoundDevice=class(TVirtIODevice)
@@ -10472,6 +10478,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVirtIOInputMouseSize:TPasRISCVUInt64;
               fVirtIOInputMouseIRQ:TPasRISCVUInt64;
 
+              fVirtIOInputTabletBase:TPasRISCVUInt64;
+              fVirtIOInputTabletSize:TPasRISCVUInt64;
+              fVirtIOInputTabletIRQ:TPasRISCVUInt64;
+
               fVirtIOSoundBase:TPasRISCVUInt64;
               fVirtIOSoundSize:TPasRISCVUInt64;
               fVirtIOSoundIRQ:TPasRISCVUInt64;
@@ -10650,6 +10660,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property VirtIOInputMouseSize:TPasRISCVUInt64 read fVirtIOInputMouseSize write fVirtIOInputMouseSize;
               property VirtIOInputMouseIRQ:TPasRISCVUInt64 read fVirtIOInputMouseIRQ write fVirtIOInputMouseIRQ;
 
+              property VirtIOInputTabletBase:TPasRISCVUInt64 read fVirtIOInputTabletBase write fVirtIOInputTabletBase;
+              property VirtIOInputTabletSize:TPasRISCVUInt64 read fVirtIOInputTabletSize write fVirtIOInputTabletSize;
+              property VirtIOInputTabletIRQ:TPasRISCVUInt64 read fVirtIOInputTabletIRQ write fVirtIOInputTabletIRQ;
+
               property VirtIOSoundBase:TPasRISCVUInt64 read fVirtIOSoundBase write fVirtIOSoundBase;
               property VirtIOSoundSize:TPasRISCVUInt64 read fVirtIOSoundSize write fVirtIOSoundSize;
               property VirtIOSoundIRQ:TPasRISCVUInt64 read fVirtIOSoundIRQ write fVirtIOSoundIRQ;
@@ -10819,6 +10833,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fVirtIOInputKeyboardDevice:TVirtIOInputKeyboardDevice;
 
        fVirtIOInputMouseDevice:TVirtIOInputMouseDevice;
+
+       fVirtIOInputTabletDevice:TVirtIOInputTabletDevice;
 
        fVirtIOSoundDevice:TVirtIOSoundDevice;
 
@@ -11022,6 +11038,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property VirtIOInputKeyboardDevice:TVirtIOInputKeyboardDevice read fVirtIOInputKeyboardDevice;
 
        property VirtIOInputMouseDevice:TVirtIOInputMouseDevice read fVirtIOInputMouseDevice;
+
+       property VirtIOInputTabletDevice:TVirtIOInputTabletDevice read fVirtIOInputTabletDevice;
 
        property VirtIOSoundDevice:TVirtIOSoundDevice read fVirtIOSoundDevice;
 
@@ -35968,13 +35986,7 @@ end;
 constructor TPasRISCV.TVirtIOInputMouseDevice.Create(const aMachine:TPasRISCV);
 var InputKind:TVirtIOInputDevice.TKind;
 begin
- fAbsoluteEvents:=true;
- if fAbsoluteEvents then begin
-  InputKind:=TVirtIOInputDevice.TKind.Tablet;
- end else begin
-  InputKind:=TVirtIOInputDevice.TKind.Mouse;
- end;
- inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputMouseBase,aMachine.fConfiguration.fVirtIOInputMouseSize,InputKind);
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputMouseBase,aMachine.fConfiguration.fVirtIOInputMouseSize,TVirtIOInputDevice.TKind.Mouse);
  fIRQ:=aMachine.fConfiguration.fVirtIOInputMouseIRQ;
 end;
 
@@ -35987,7 +35999,19 @@ end;
 
 { TPasRISCV.TVirtIOInputTabletDevice }
 
-// TODO
+constructor TPasRISCV.TVirtIOInputTabletDevice.Create(const aMachine:TPasRISCV);
+var InputKind:TVirtIOInputDevice.TKind;
+begin
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputTabletBase,aMachine.fConfiguration.fVirtIOInputTabletBase,TVirtIOInputDevice.TKind.Tablet);
+ fIRQ:=aMachine.fConfiguration.fVirtIOInputTabletIRQ;
+end;
+
+procedure TPasRISCV.TVirtIOInputTabletDevice.DeviceInitialize;
+begin
+{if assigned(fMachine) and assigned(fMachine.fPS2MouseDevice) and fMachine.fPS2MouseDevice.fActive then begin
+  fMachine.fPS2MouseDevice.fActive:=false;
+ end;}
+end;
 
 { TPasRISCV.TVirtIOSoundDevice.TPCMBuffer }
 
@@ -93152,6 +93176,10 @@ begin
  fVirtIOInputMouseSize:=TPasRISCV.TVirtIOInputMouseDevice.DefaultSize;
  fVirtIOInputMouseIRQ:=TPasRISCV.TVirtIOInputMouseDevice.DefaultIRQ;
 
+ fVirtIOInputTabletBase:=TPasRISCV.TVirtIOInputTabletDevice.DefaultBaseAddress;
+ fVirtIOInputTabletSize:=TPasRISCV.TVirtIOInputTabletDevice.DefaultSize;
+ fVirtIOInputTabletIRQ:=TPasRISCV.TVirtIOInputTabletDevice.DefaultIRQ;
+
  fVirtIOSoundBase:=TPasRISCV.TVirtIOSoundDevice.DefaultBaseAddress;
  fVirtIOSoundSize:=TPasRISCV.TVirtIOSoundDevice.DefaultSize;
  fVirtIOSoundIRQ:=TPasRISCV.TVirtIOSoundDevice.DefaultIRQ;
@@ -93327,6 +93355,10 @@ begin
  fVirtIOInputMouseBase:=aConfiguration.fVirtIOInputMouseBase;
  fVirtIOInputMouseSize:=aConfiguration.fVirtIOInputMouseSize;
  fVirtIOInputMouseIRQ:=aConfiguration.fVirtIOInputMouseIRQ;
+
+ fVirtIOInputTabletBase:=aConfiguration.fVirtIOInputTabletBase;
+ fVirtIOInputTabletSize:=aConfiguration.fVirtIOInputTabletSize;
+ fVirtIOInputTabletIRQ:=aConfiguration.fVirtIOInputTabletIRQ;
 
  fVirtIOSoundBase:=aConfiguration.fVirtIOSoundBase;
  fVirtIOSoundSize:=aConfiguration.fVirtIOSoundSize;
@@ -93714,6 +93746,8 @@ begin
 
  fVirtIOInputMouseDevice:=TVirtIOInputMouseDevice.Create(self);
 
+ fVirtIOInputTabletDevice:=TVirtIOInputTabletDevice.Create(self);
+
  fVirtIO9PDevice:=TVirtIO9PDevice.Create(self);
 
  fVirtIONetDevice:=TVirtIONetDevice.Create(self);
@@ -93786,6 +93820,7 @@ begin
  fBus.AddBusDevice(fPS2MouseDevice);
  fBus.AddBusDevice(fVirtIOInputKeyboardDevice);
  fBus.AddBusDevice(fVirtIOInputMouseDevice);
+ fBus.AddBusDevice(fVirtIOInputTabletDevice);
  if assigned(fVirtIOSoundDevice) then begin
   fBus.AddBusDevice(fVirtIOSoundDevice);
  end;
@@ -94001,6 +94036,7 @@ begin
 
  FreeAndNil(fVirtIOInputKeyboardDevice);
  FreeAndNil(fVirtIOInputMouseDevice);
+ FreeAndNil(fVirtIOInputTabletDevice);
  FreeAndNil(fVirtIOSoundDevice);
  FreeAndNil(fVirtIO9PDevice);
  FreeAndNil(fVirtIONetDevice);
@@ -94104,7 +94140,8 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     I2CClockNode,I2CNode,I2CHIDKeyboardNode,I2CDS1307Node,
     PS2KeyboardNode,PS2MouseNode,
     VirtIOBlockNode,
-    VirtIOInputKeyboardNode,VirtIOInputMouseNode,VirtIOSoundNode,VirtIO9PNode,VirtIONetNode,
+    VirtIOInputKeyboardNode,VirtIOInputMouseNode,VirtIOInputTabletNode,VirtIOSoundNode,
+    VirtIO9PNode,VirtIONetNode,
     VirtIORandomGeneratorNode,
     VirtIOGPUNode,
     VirtIOVSockNode,
@@ -95064,6 +95101,26 @@ begin
       SoCNode.AddChild(VirtIOInputMouseNode);
      end;
 
+     VirtIOInputTabletNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOInputTabletBase);
+     try
+      VirtIOInputTabletNode.AddPropertyString('compatible','virtio,mmio');
+      Cells[0]:=0;
+      Cells[1]:=fConfiguration.fVirtIOInputTabletBase;
+      Cells[2]:=0;
+      Cells[3]:=fConfiguration.fVirtIOInputTabletSize;
+      VirtIOInputTabletNode.AddPropertyCells('reg',@Cells,4);
+      Cells[0]:=INTC0.GetPHandle;
+      Cells[1]:=TPasRISCVUInt32(fConfiguration.fVirtIOInputTabletIRQ);
+      if fAIA then begin
+       Cells[2]:=4; // IRQ_TYPE_LEVEL_HIGH
+       VirtIOInputTabletNode.AddPropertyCells('interrupts-extended',@Cells,3);
+      end else begin
+       VirtIOInputTabletNode.AddPropertyCells('interrupts-extended',@Cells,2);
+      end;
+     finally
+      SoCNode.AddChild(VirtIOInputTabletNode);
+     end;
+
      if fConfiguration.fSoundMode=TSoundMode.VirtIO then begin
       VirtIOSoundNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'virtio',fConfiguration.fVirtIOSoundBase);
       try
@@ -95847,6 +95904,7 @@ begin
  fPS2MouseDevice.Reset;
  fVirtIOInputKeyboardDevice.Reset;
  fVirtIOInputMouseDevice.Reset;
+ fVirtIOInputTabletDevice.Reset;
  if assigned(fVirtIOSoundDevice) then begin
   fVirtIOSoundDevice.Reset;
  end;
