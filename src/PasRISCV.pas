@@ -35984,7 +35984,6 @@ end;
 { TPasRISCV.TVirtIOInputMouseDevice }
 
 constructor TPasRISCV.TVirtIOInputMouseDevice.Create(const aMachine:TPasRISCV);
-var InputKind:TVirtIOInputDevice.TKind;
 begin
  inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputMouseBase,aMachine.fConfiguration.fVirtIOInputMouseSize,TVirtIOInputDevice.TKind.Mouse);
  fIRQ:=aMachine.fConfiguration.fVirtIOInputMouseIRQ;
@@ -36000,9 +35999,8 @@ end;
 { TPasRISCV.TVirtIOInputTabletDevice }
 
 constructor TPasRISCV.TVirtIOInputTabletDevice.Create(const aMachine:TPasRISCV);
-var InputKind:TVirtIOInputDevice.TKind;
 begin
- inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputTabletBase,aMachine.fConfiguration.fVirtIOInputTabletBase,TVirtIOInputDevice.TKind.Tablet);
+ inherited Create(aMachine,aMachine.fConfiguration.fVirtIOInputTabletBase,aMachine.fConfiguration.fVirtIOInputTabletSize,TVirtIOInputDevice.TKind.Tablet);
  fIRQ:=aMachine.fConfiguration.fVirtIOInputTabletIRQ;
 end;
 
