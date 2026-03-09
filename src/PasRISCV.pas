@@ -327,13 +327,13 @@ unit PasRISCV;
 
 {-$define PasRISCVDebugVirtIOFSIOStats} // VirtIO FS: print FUSE read/write request sizes and throughput every 5 seconds
 
-{-$define JITMMIOFastPath} // JIT: handle MMIO loads directly in TLB fill helper instead of bailing out to interpreter
+{$define JITMMIOFastPath} // JIT: handle MMIO loads directly in TLB fill helper instead of bailing out to interpreter
 
 {$define ReducedJITTLBSize} // JIT: reduce JTLB from 4096 to 256 entries, FlushTLB from 64KB to 4KB memset
 
 {-$define FastTrapPath} // Trap: skip CheckTimers/EventTick when outer loop re-enters after ExecuteException
 
-{-$define JITInlineCSRRead} // JIT: inline pure CSR reads (csrrs/csrrc rd, CSR, x0) as direct TState loads without block break
+{$define JITInlineCSRRead} // JIT: inline pure CSR reads (csrrs/csrrc rd, CSR, x0) as direct TState loads without block break
 
 {$define PerModeTLB} // Separate Data TLBs per privilege mode, eliminates FlushTLB memset on mode switch
 
