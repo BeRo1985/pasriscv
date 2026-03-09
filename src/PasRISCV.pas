@@ -8530,6 +8530,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
                      fStatTLBHits:TPasRISCVUInt64;
                      fStatTLBMisses:TPasRISCVUInt64;
+                     fStatTLBFastDispatchHits:TPasRISCVUInt64;
+                     fStatTLBFastDispatchMisses:TPasRISCVUInt64;
                      fStatBlocksCompiled:TPasRISCVUInt64;
                      fStatTotalInstructions:TPasRISCVUInt64;
                      fStatLinksPatched:TPasRISCVUInt64;
@@ -49753,7 +49755,9 @@ begin
    LastCycles:=fHART.fState.Cycle;
 {$endif}
    BlockCallback(@fHART.fState);
+{$ifdef PasRISCVJustInTimeCompilerStats}
    inc(fStatTLBHits);
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerDebug}
    if fDebugJITCounter<40 then begin
     write('JIT FAST PC=',LowerCase(IntToHex(SavedPC,16)),'->',LowerCase(IntToHex(fHART.fState.PC,16)));
@@ -88874,8 +88878,15 @@ begin
      end;
     end;
     if JITCodeExecuted then begin
+{$ifdef PasRISCVJustInTimeCompilerStats}
+     inc(fStatTLBFastDispatchHits);
+{$endif}
      PageAddress:=TPasRISCVUInt64($7fffffffffffffff);
      continue;
+    end else begin
+{$ifdef PasRISCVJustInTimeCompilerStats}
+     inc(fStatTLBFastDispatchMisses);
+{$endif}
     end;
    end;
 {$ifend}
@@ -88968,9 +88979,14 @@ begin
      ((GetTickCount64-fJustInTimeCompiler.fStatLastReportTime)>=1000) then begin
    fJustInTimeCompiler.fStatLastReport:=fState.Cycle;
    fJustInTimeCompiler.fStatLastReportTime:=GetTickCount64;
-   writeln('JIT STATS hart=',fHARTID,': hits=',fJustInTimeCompiler.fStatTLBHits,
+   writeln('JIT STATS hart=',fHARTID,':',
+    ' hits=',fJustInTimeCompiler.fStatTLBHits,
     ' misses=',fJustInTimeCompiler.fStatTLBMisses,
     ' slowHits=',fJustInTimeCompiler.fStatTLBSlowHits,
+{$ifdef PasRISCVJustInTimeCompilerFastDispatch}
+    ' fastDispatchHits=',fJustInTimeCompiler.fStatTLBFastDispatchHits,
+    ' fastDispatchMisses=',fJustInTimeCompiler.fStatTLBFastDispatchMisses,
+{$endif}
     ' blocks=',fJustInTimeCompiler.fStatBlocksCompiled,
     ' insns=',fJustInTimeCompiler.fStatTotalInstructions,
     ' links=',fJustInTimeCompiler.fStatLinksPatched,
