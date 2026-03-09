@@ -8567,6 +8567,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fTemporaryCodeSize:TPasRISCVSizeInt;
                      fCurrentPhysicalPC:TPasRISCVUInt64;
                      fCurrentMode:TMode;
+                     fCurrentVirtualMode:TPasMPBool32;
                      fBlockVirtualPC:TPasRISCVUInt64;
                      fLinkage:TLinkage;
 
@@ -8603,7 +8604,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function JITBlockCodePtrOffset:TPasRISCVInt32;
 
 {$ifdef JITTLBTag}
-                     function GetJITTLBTag(const aMode:TPasRISCVInt32=-1):TPasRISCVUInt64; inline;
+                     function GetJITTLBTag(const aMode:TPasRISCVInt32=-1;const aVirtualMode:TPasRISCVInt32=-1):TPasRISCVUInt64; inline;
                      procedure UpdateJITTLBTag; inline;
 {$endif}
 
@@ -48515,9 +48516,9 @@ begin
 end;
 
 {$ifdef JITTLBTag}
-function TPasRISCV.THART.TJustInTimeCompiler.GetJITTLBTag(const aMode:TPasRISCVINt32):TPasRISCVUInt64;
+function TPasRISCV.THART.TJustInTimeCompiler.GetJITTLBTag(const aMode:TPasRISCVInt32;const aVirtualMode:TPasRISCVInt32):TPasRISCVUInt64;
 begin
- result:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (IfThen(aMode<0,ord(fHART.fState.Mode),aMode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+ result:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (IfThen(aMode<0,ord(fHART.fState.Mode),aMode) shl 1) or (IfThen(aVirtualMode<0,ord(fHART.fState.VirtualMode),aVirtualMode) and 1){$else}fJITTLBGeneration{$endif};
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.UpdateJITTLBTag;
@@ -49570,6 +49571,8 @@ begin
 
  fCurrentMode:=fHART.fState.Mode;
 
+ fCurrentVirtualMode:=fHART.fState.VirtualMode;
+
  EmitInit;
 
 end;
@@ -49623,7 +49626,7 @@ begin
  // Register block in block map
  Key.PhysicalPC:=fCurrentPhysicalPC;
  Key.Mode:=fCurrentMode;
- Key.VirtualMode:=fHART.fState.VirtualMode;
+ Key.VirtualMode:=fCurrentVirtualMode;
  fBlockMap.Add(Key,TPasRISCVPtrUInt(CodeDest));
 
  // Mark page as having JIT code (for dirty-tracking optimization)
@@ -49634,7 +49637,7 @@ begin
  JITTLBEntry:=@fJITTLB[TLBIndex];
  JITTLBEntry^.VirtualPC:=fBlockVirtualPC;
 {$ifdef JITTLBTag}
- JITTLBEntry^.Tag:=GetJITTLBTag(ord(fCurrentMode));
+ JITTLBEntry^.Tag:=GetJITTLBTag(ord(fCurrentMode),ord(fCurrentVirtualMode) and 1);
 {$endif}
  fJITTLB[TLBIndex].Block:=TBlockCallback(CodeDest);
 
