@@ -183,7 +183,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - RISC-V 64 backend (stub, not yet implemented)
   - Integer and floating-point JIT support (FPU JIT optional, separately toggleable) including FMA instructions 
   - Automatic cache management with block invalidation on page changes
-  - No vector instruction support in the JIT yet, but it is planned for a future update, but only when it is doable to implement it with good performance and better performance than the interpreter.
+  - Partial vector instruction support (work in progress), non-SIMDizable cases fall back to the interpreter and may even be slower than pure interpretation due to JIT overhead. Full RVV JIT coverage may never be complete due to the complexity of variable-length vectors and the wide range of RVV operations. A fixed-width Packed-SIMD extension (like the proposed P extension) with traditional fixed-size SIMD registers would be significantly easier to map to host SIMD (SSE/AVX, NEON) in the JIT than RVV's variable-length vector model.
 - Cross-platform (Windows, Linux, macOS)
 - Written in Object Pascal (Free Pascal / Lazarus)
 
