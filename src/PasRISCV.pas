@@ -63046,9 +63046,6 @@ end;
 destructor TPasRISCV.THART.TJustInTimeCompilerAArch64.Destroy;
 begin
  inherited Destroy;
-
- // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerAArch64.EmitNativeLoad(const aHostRegister:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIs64:Boolean);
