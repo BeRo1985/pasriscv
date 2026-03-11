@@ -372,7 +372,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerFPU}
   {$define PasRISCVJustInTimeCompilerFMA}
   {$define PasRISCVJustInTimeCompilerUseRealFMA}
-  {-$define PasRISCVJustInTimeCompilerVector}
+  {$define PasRISCVJustInTimeCompilerVector}
   {$define PasRISCVJustInTimeCompilerZbb}
   {$define PasRISCVJustInTimeCompilerZbs}
   {$define PasRISCVJustInTimeCompilerZba}
@@ -60879,14 +60879,14 @@ begin
  if fHasAVX2 then begin
 {$ifdef VLEN128}
   // VMOVDQU xmm0, [HostAddr] — VEX.128.F3.0F 6F
-  EmitVEXMemOp(2,false,false,1,$6F,0,HostAddr,0,$0F);
+  EmitVEXMemOp(2,false,false,1,$6F,0,HostAddr,0,0);
   // VMOVDQU [VMPtr+vregOffset], xmm0 — VEX.128.F3.0F 7F
-  EmitVEXMemOp(2,false,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,false,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
 {$else}
   // VMOVDQU ymm0, [HostAddr] — VEX.256.F3.0F 6F
-  EmitVEXMemOp(2,true,false,1,$6F,0,HostAddr,0,$0F);
+  EmitVEXMemOp(2,true,false,1,$6F,0,HostAddr,0,0);
   // VMOVDQU [VMPtr+vregOffset], ymm0 — VEX.256.F3.0F 7F
-  EmitVEXMemOp(2,true,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,true,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
 {$endif}
  end else begin
   // MOVDQU xmm0, [HostAddr] — F3 0F 6F
@@ -61092,14 +61092,14 @@ begin
  if fHasAVX2 then begin
 {$ifdef VLEN128}
   // VMOVDQU xmm0, [VMPtr+vregOffset] — VEX.128.F3.0F 6F
-  EmitVEXMemOp(2,false,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs3),$0F);
+  EmitVEXMemOp(2,false,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs3),0);
   // VMOVDQU [HostAddr], xmm0 — VEX.128.F3.0F 7F
-  EmitVEXMemOp(2,false,false,1,$7F,0,HostAddr,0,$0F);
+  EmitVEXMemOp(2,false,false,1,$7F,0,HostAddr,0,0);
 {$else}
   // VMOVDQU ymm0, [VMPtr+vregOffset] — VEX.256.F3.0F 6F
-  EmitVEXMemOp(2,true,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs3),$0F);
+  EmitVEXMemOp(2,true,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs3),0);
   // VMOVDQU [HostAddr], ymm0 — VEX.256.F3.0F 7F
-  EmitVEXMemOp(2,true,false,1,$7F,0,HostAddr,0,$0F);
+  EmitVEXMemOp(2,true,false,1,$7F,0,HostAddr,0,0);
 {$endif}
  end else begin
   // MOVDQU xmm0, [VMPtr+vregOffset] — F3 0F 6F
@@ -61257,28 +61257,28 @@ begin
   // VMOVD/VMOVQ xmm0, HostRS1
   if SEW=64 then begin
    // VMOVQ xmm0, r64: VEX.128.66.0F.W1 6E /r
-   EmitVEXOp(1,false,true,1,$6E,0,HostRS1,$0F);
+   EmitVEXOp(1,false,true,1,$6E,0,HostRS1,0);
   end else begin
    // VMOVD xmm0, r32: VEX.128.66.0F 6E /r
-   EmitVEXOp(1,false,false,1,$6E,0,HostRS1,$0F);
+   EmitVEXOp(1,false,false,1,$6E,0,HostRS1,0);
   end;
   // VPBROADCASTx ymm0/xmm0, xmm0: VEX.L.66.0F38 opcode /r
   case SEW of
    8:begin
-    EmitVEXOp(1,UseL,false,2,$78,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$78,0,0,0);
    end;
    16:begin
-    EmitVEXOp(1,UseL,false,2,$79,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$79,0,0,0);
    end;
    32:begin
-    EmitVEXOp(1,UseL,false,2,$58,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$58,0,0,0);
    end;
    64:begin
-    EmitVEXOp(1,UseL,false,2,$59,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$59,0,0,0);
    end;
   end;
   // VMOVDQU [VMPtr+vregOffset], xmm0/ymm0
-  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
  end else begin
   // SSE2 path
   // MOVD xmm0, HostRS1: 66 [REX] 0F 6E ModRM(3, xmm0, gpr)
@@ -61479,25 +61479,25 @@ begin
 
  if fHasAVX2 then begin
   if SEW=64 then begin
-   EmitVEXOp(1,false,true,1,$6E,0,HostTmp,$0F);
+   EmitVEXOp(1,false,true,1,$6E,0,HostTmp,0);
   end else begin
-   EmitVEXOp(1,false,false,1,$6E,0,HostTmp,$0F);
+   EmitVEXOp(1,false,false,1,$6E,0,HostTmp,0);
   end;
   case SEW of
    8:begin
-    EmitVEXOp(1,UseL,false,2,$78,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$78,0,0,0);
    end;
    16:begin
-    EmitVEXOp(1,UseL,false,2,$79,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$79,0,0,0);
    end;
    32:begin
-    EmitVEXOp(1,UseL,false,2,$58,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$58,0,0,0);
    end;
    64:begin
-    EmitVEXOp(1,UseL,false,2,$59,0,0,$0F);
+    EmitVEXOp(1,UseL,false,2,$59,0,0,0);
    end;
   end;
-  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
  end else begin
   if SEW=64 then begin
    EmitByte($66);
@@ -61733,13 +61733,13 @@ begin
  // === Load vs2 and vs1, operate, store to vd ===
  if fHasAVX2 then begin
   // VMOVDQU xmm0/ymm0, [VMPtr+vs2Offset]
-  EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),0);
   // VMOVDQU xmm1/ymm1, [VMPtr+vs1Offset]
-  EmitVEXMemOp(2,UseL,false,1,$6F,1,VMPtrRegister,GuestVectorRegisterOffset(vs1),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$6F,1,VMPtrRegister,GuestVectorRegisterOffset(vs1),0);
   // VPxxx ymm0/xmm0, ymm0/xmm0, ymm1/xmm1: VEX.L.66.0F opcode /r with vvvv=src1
   EmitVEXOp(1,UseL,false,1,SSEOpcode,0,1,0);
   // VMOVDQU [VMPtr+vdOffset], xmm0/ymm0
-  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
  end else begin
   // MOVDQU xmm0, [VMPtr+vs2Offset]
   EmitSSE2MemOp($F3,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2));
@@ -61978,27 +61978,27 @@ begin
  if fHasAVX2 then begin
   // MOVD/MOVQ xmm1, HostScalar
   if SEW=64 then begin
-   EmitVEXOp(1,false,true,1,$6E,1,HostScalar,$0F);
+   EmitVEXOp(1,false,true,1,$6E,1,HostScalar,0);
   end else begin
-   EmitVEXOp(1,false,false,1,$6E,1,HostScalar,$0F);
+   EmitVEXOp(1,false,false,1,$6E,1,HostScalar,0);
   end;
   // VPBROADCASTx ymm1, xmm1
   case vsew of
    0:begin
-    EmitVEXOp(1,UseL,false,2,$78,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$78,1,1,0);
    end;
    1:begin
-    EmitVEXOp(1,UseL,false,2,$79,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$79,1,1,0);
    end;
    2:begin
-    EmitVEXOp(1,UseL,false,2,$58,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$58,1,1,0);
    end;
    3:begin
-    EmitVEXOp(1,UseL,false,2,$59,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$59,1,1,0);
    end;
   end;
   // Load vs2 → ymm0
-  EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),0);
   // Operate
   if IsVRSUB then begin
    // vrsub: result = ymm1 - ymm0 → VPSUBx ymm0, ymm1, ymm0
@@ -62008,7 +62008,7 @@ begin
    EmitVEXOp(1,UseL,false,1,SSEOpcode,0,1,0);
   end;
   // Store result
-  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
  end else begin
   // SSE2 path: broadcast scalar → xmm1, load vs2 → xmm0, operate
   if SEW=64 then begin
@@ -62274,32 +62274,32 @@ begin
 
  if fHasAVX2 then begin
   if SEW=64 then begin
-   EmitVEXOp(1,false,true,1,$6E,1,HostScalar,$0F);
+   EmitVEXOp(1,false,true,1,$6E,1,HostScalar,0);
   end else begin
-   EmitVEXOp(1,false,false,1,$6E,1,HostScalar,$0F);
+   EmitVEXOp(1,false,false,1,$6E,1,HostScalar,0);
   end;
   case vsew of
    0:begin
-    EmitVEXOp(1,UseL,false,2,$78,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$78,1,1,0);
    end;
    1:begin
-    EmitVEXOp(1,UseL,false,2,$79,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$79,1,1,0);
    end;
    2:begin
-    EmitVEXOp(1,UseL,false,2,$58,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$58,1,1,0);
    end;
    3:begin
-    EmitVEXOp(1,UseL,false,2,$59,1,1,$0F);
+    EmitVEXOp(1,UseL,false,2,$59,1,1,0);
    end;
   end;
   // Load vs2 → ymm0
-  EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),0);
   if IsVRSUB then begin
    EmitVEXOp(1,UseL,false,1,SSEOpcode,0,0,1);
   end else begin
    EmitVEXOp(1,UseL,false,1,SSEOpcode,0,1,0);
   end;
-  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
  end else begin
   // SSE2 path
   if SEW=64 then begin
@@ -62430,9 +62430,9 @@ begin
  for RegIdx:=0 to NumRegs-1 do begin
   if fHasAVX2 then begin
    // VMOVDQU xmm0/ymm0, [VMPtr + vs2RegOffset]
-   EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset((vs2+RegIdx) and 31),$0F);
+   EmitVEXMemOp(2,UseL,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset((vs2+RegIdx) and 31),0);
    // VMOVDQU [VMPtr + vdRegOffset], xmm0/ymm0
-   EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset((vd+RegIdx) and 31),$0F);
+   EmitVEXMemOp(2,UseL,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset((vd+RegIdx) and 31),0);
   end else begin
    // MOVDQU xmm0, [VMPtr + vs2RegOffset]
    EmitSSE2MemOp($F3,$6F,0,VMPtrRegister,GuestVectorRegisterOffset((vs2+RegIdx) and 31));
@@ -62613,16 +62613,16 @@ begin
  if fHasAVX2 and (vsew<>1) then begin
   // AVX2 path: SEW=8 (PCMPEQB→PMOVMSKB) and SEW=32 (PCMPEQD→MOVMSKPS)
   // SEW=16 uses SSE2 path below to avoid AVX2 lane-crossing issues in PACKSSWB
-  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),$0F);
-  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$6F,1,VMPtrRegister,GuestVectorRegisterOffset(vs1),$0F);
+  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),0);
+  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$6F,1,VMPtrRegister,GuestVectorRegisterOffset(vs1),0);
   // VPCMPEQB/D: VEX.L.66.0F opcode /r with vvvv=xmm0
   EmitVEXOp(1,{$ifdef VLEN128}false{$else}true{$endif},false,1,CmpOpcode,0,1,0);
   if vsew=0 then begin
    // SEW=8: VPMOVMSKB
-   EmitVEXOp(1,{$ifdef VLEN128}false{$else}true{$endif},false,1,$D7,HostMask,0,$0F);
+   EmitVEXOp(1,{$ifdef VLEN128}false{$else}true{$endif},false,1,$D7,HostMask,0,0);
   end else begin
    // SEW=32: VMOVMSKPS
-   EmitVEXOp(0,{$ifdef VLEN128}false{$else}true{$endif},false,1,$50,HostMask,0,$0F);
+   EmitVEXOp(0,{$ifdef VLEN128}false{$else}true{$endif},false,1,$50,HostMask,0,0);
   end;
  end else begin
   // SSE2 path
@@ -62730,8 +62730,8 @@ begin
 
  // === Copy vs1 to vd ===
  if fHasAVX2 then begin
-  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs1),$0F);
-  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs1),0);
+  EmitVEXMemOp(2,{$ifdef VLEN128}false{$else}true{$endif},false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
  end else begin
   EmitSSE2MemOp($F3,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs1));
   EmitSSE2MemOp($F3,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd));
@@ -62884,7 +62884,7 @@ begin
 {$else}
  if fHasAVX2 then begin
   // Load vs2 → ymm0
-  EmitVEXMemOp(2,true,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),$0F);
+  EmitVEXMemOp(2,true,false,1,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2),0);
   if ShiftBytes<16 then begin
    // VPERM2I128 ymm1, ymm0, ymm_zero, $81 (high lane→low, zero high)
    // First zero ymm1: VPXOR ymm1, ymm1, ymm1
@@ -62910,7 +62910,7 @@ begin
    EmitVEXOp(1,true,false,1,$73,3,0,0);
    EmitByte(ShiftBytes-16);
   end;
-  EmitVEXMemOp(2,true,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,true,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
  end else begin
   // SSE2 fallback for VLEN=256: load both halves, shift across
   EmitSSE2MemOp($F3,$6F,0,VMPtrRegister,GuestVectorRegisterOffset(vs2));
@@ -63133,11 +63133,11 @@ begin
  // === Load from host memory, store to vector register ===
  if fHasAVX2 then begin
 {$ifdef VLEN128}
-  EmitVEXMemOp(2,false,false,1,$6F,0,HostAddr,0,$0F);
-  EmitVEXMemOp(2,false,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,false,false,1,$6F,0,HostAddr,0,0);
+  EmitVEXMemOp(2,false,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
 {$else}
-  EmitVEXMemOp(2,true,false,1,$6F,0,HostAddr,0,$0F);
-  EmitVEXMemOp(2,true,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),$0F);
+  EmitVEXMemOp(2,true,false,1,$6F,0,HostAddr,0,0);
+  EmitVEXMemOp(2,true,false,1,$7F,0,VMPtrRegister,GuestVectorRegisterOffset(vd),0);
 {$endif}
  end else begin
   EmitSSE2MemOp($F3,$6F,0,HostAddr,0);
