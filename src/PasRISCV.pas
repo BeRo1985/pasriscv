@@ -11478,9 +11478,39 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
         TPasRISCVUInt64($4cc5d4becb3e42b6),TPasRISCVUInt64($597f299cfc657e2a),TPasRISCVUInt64($5fcb6fab3ad6faec),TPasRISCVUInt64($6c44198c4a475817)
        );
 
+{$if defined(cpu386) or defined(cpux86_64) or defined(cpuamd64) or defined(cpux64)}
+var X86ToRISCVFPUExceptionLookUpTable:array[0..TPasRISCV.FE_ALL_EXCEPT] of TPasRISCVUInt8;
+{$ifend}
+
 {$if defined(PasRISCVCPUDebug)}
 var IgnoreInterrupts:boolean=false;
     DumpDebug:boolean=false;
+{$ifend}
+
+{$if defined(cpu386) or defined(cpux86_64) or defined(cpuamd64) or defined(cpux64)}
+procedure InitializeX86ToRISCVFPUExceptionLookUpTable;
+var Exceptions,Mask:TPasRISCVUInt32;
+begin
+ for Exceptions:=0 to TPasRISCV.FE_ALL_EXCEPT do begin
+  Mask:=0;
+{ if (Exceptions and TPasRISCV.FE_INVALID)<>0 then begin // Invalid
+   Mask:=Mask or TPasRISCV.THART.TCSR.TFPUExceptionMasks.Invalid;
+  end;}
+  if (Exceptions and TPasRISCV.FE_DIVBYZERO)<>0 then begin // Divide by zero
+   Mask:=Mask or TPasRISCV.THART.TCSR.TFPUExceptionMasks.DivByZero;
+  end;
+  if (Exceptions and TPasRISCV.FE_OVERFLOW)<>0 then begin // Overflow
+   Mask:=Mask or TPasRISCV.THART.TCSR.TFPUExceptionMasks.Overflow;
+  end;
+  if (Exceptions and TPasRISCV.FE_UNDERFLOW)<>0 then begin // Underflow
+   Mask:=Mask or TPasRISCV.THART.TCSR.TFPUExceptionMasks.Underflow;
+  end;
+  if (Exceptions and TPasRISCV.FE_INEXACT)<>0 then begin // Inexact
+   Mask:=Mask or TPasRISCV.THART.TCSR.TFPUExceptionMasks.Inexact;
+  end;
+  X86ToRISCVFPUExceptionLookUpTable[Exceptions]:=Mask;
+ end;
+end;
 {$ifend}
 
 function FlushStream(const aStream:TStream):Boolean;
@@ -67474,22 +67504,7 @@ var Exceptions:TPasRISCVUInt32;
 begin
  Exceptions:=fetestexcept(FE_ALL_EXCEPT);
  if Exceptions<>0 then begin
-  Exceptions:=Exceptions and aMask;
-{ if (Exceptions and FE_INVALID)<>0 then begin // Invalid
-   fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-  end;}
-  if (Exceptions and FE_DIVBYZERO)<>0 then begin // Divide by zero
-   fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.DivByZero);
-  end;
-  if (Exceptions and FE_OVERFLOW)<>0 then begin // Overflow
-   fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Overflow);
-  end;
-  if (Exceptions and FE_UNDERFLOW)<>0 then begin // Underflow
-   fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Underflow);
-  end;
-  if (Exceptions and FE_INEXACT)<>0 then begin // Inexact
-   fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
-  end;
+  fState.CSR.fData[TCSR.TAddress.FFLAGS]:=(fState.CSR.fData[TCSR.TAddress.FFLAGS] and not TCSR.TFPUExceptionMasks.Mask) or (X86ToRISCVFPUExceptionLookUpTable[Exceptions and aMask] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
   feclearexcept(FE_ALL_EXCEPT);
  end;
 end;
@@ -100298,4 +100313,7 @@ initialization
  FillChar(ZeroBuffer,SizeOf(TZeroBuffer),#0);
  CheckCPU;
  GenerateHalfFloatLookUpTables;
+{$if defined(cpu386) or defined(cpux86_64) or defined(cpuamd64) or defined(cpux64)}
+ InitializeX86ToRISCVFPUExceptionLookUpTable;
+{$ifend}
 end.
