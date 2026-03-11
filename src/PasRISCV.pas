@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-03-06-00-48-0000                       *
+ *                        Version 2026-03-11-06-14-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -8541,6 +8541,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      fFPUEnabled:Boolean;
                      fBlockHasFPUOperations:Boolean;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerVector}
+                     fBlockVectorEnabled:Boolean;
+                     fBlockVStartChecked:Boolean;
+                     fBlockVSDirtyEmitted:Boolean;
+                     fBlockVectorXMM0Freed:Boolean;
 {$endif}
                      fCompiling:Boolean;
                      fBlockEnds:Boolean;
@@ -48978,6 +48984,12 @@ begin
   fHostFPURegisterInfos[FPURegister].Flags:=0;
  end;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerVector}
+ fBlockVectorEnabled:=false;
+ fBlockVStartChecked:=false;
+ fBlockVSDirtyEmitted:=false;
+ fBlockVectorXMM0Freed:=false;
+{$endif}
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitEnd(const aLinkage:TLinkage);
@@ -60544,7 +60556,10 @@ begin
  end;
  VLMAX:=((VLEN div SEW)*LMUL8) shr 3;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // Special case: rs1=x0, rd=x0 means keep VL, only change vtype
  if (RS1=TRegister.Zero) and (RD=TRegister.Zero) then begin
@@ -60673,7 +60688,10 @@ begin
   NewVL:=VLMAX;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // Emit stores for all CSRs and rd (all constants)
  FreeAllHostIntRegisters;
@@ -60812,24 +60830,33 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- // JE .ok_vstart (skip bailout if VSTART==0)
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
- // .ok_vstart:
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  // JE .ok_vstart (skip bailout if VSTART==0)
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  // .ok_vstart:
+  fBlockVStartChecked:=true;
+ end;
 
  // === Runtime check: VL must still match compile-time value ===
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
@@ -60909,7 +60936,10 @@ begin
  FreeHostIntRegister(HostAddr);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -61025,24 +61055,33 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- // JE .ok_vstart (skip bailout if VSTART==0)
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
- // .ok_vstart:
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  // JE .ok_vstart (skip bailout if VSTART==0)
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  // .ok_vstart:
+  fBlockVStartChecked:=true;
+ end;
 
  // === Runtime check: VL must still match compile-time value ===
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
@@ -61201,22 +61240,31 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
 
  // === Runtime check: VL must still match compile-time value ===
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
@@ -61338,7 +61386,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -61422,22 +61473,31 @@ begin
   ImmVal:=ImmVal and ((TPasRISCVUInt64(1) shl SEW)-1);
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
 
  // === Runtime check: VL must still match compile-time value ===
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
@@ -61544,7 +61604,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -61683,22 +61746,31 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
 
  // === Runtime check: VL must still match compile-time value ===
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
@@ -61765,7 +61837,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -61924,22 +61999,31 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
 
  // === Runtime check: VL ===
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
@@ -62077,7 +62161,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -62217,22 +62304,31 @@ begin
  // Sign-extend 5-bit immediate
  Imm5:=TPasRISCVInt64(SignExtend((aInstruction shr 15) and $1f,5));
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
 
  // === Runtime check: VL ===
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
@@ -62363,7 +62459,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -62402,22 +62501,31 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
 {$ifdef VLEN128}
@@ -62453,7 +62561,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -62568,11 +62679,17 @@ begin
  NumElements:=VLENB div (SEW shr 3);
  MaskBits:=(TPasRISCVUInt64(1) shl NumElements)-1;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
  // === Runtime checks ===
@@ -62686,7 +62803,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -62710,22 +62830,31 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Copy vs1 to vd ===
@@ -62748,7 +62877,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -62832,11 +62964,17 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
  // === Runtime checks ===
@@ -62965,7 +63103,10 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- EmitSetVSDirty;
+ if not fBlockVSDirtyEmitted then begin
+  EmitSetVSDirty;
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
@@ -63072,22 +63213,31 @@ begin
   exit;
  end;
 
- EmitVectorEnabledCheck;
+ if not fBlockVectorEnabled then begin
+  EmitVectorEnabledCheck;
+  fBlockVectorEnabled:=true;
+ end;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+ if not fBlockVectorXMM0Freed then begin
+  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
+  fBlockVectorXMM0Freed:=true;
+ end;
 {$endif}
 
- // === Runtime check: VSTART must be 0 ===
  FreeAllHostIntRegisters;
  HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
- EmitTEST(HostTmp,HostTmp,true);
- EmitJccRel32(CC_E,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVStartChecked then begin
+  // === Runtime check: VSTART must be 0 ===
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
+  EmitTEST(HostTmp,HostTmp,true);
+  EmitJccRel32(CC_E,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVStartChecked:=true;
+ end;
 
  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
  HostCmp:=ClaimHostIntRegister;
