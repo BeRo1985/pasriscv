@@ -372,7 +372,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerFPU}
   {$define PasRISCVJustInTimeCompilerFMA}
   {$define PasRISCVJustInTimeCompilerUseRealFMA}
-  {-$define PasRISCVJustInTimeCompilerVector}
+  {$define PasRISCVJustInTimeCompilerVector}
   {$define PasRISCVJustInTimeCompilerZbb}
   {$define PasRISCVJustInTimeCompilerZbs}
   {$define PasRISCVJustInTimeCompilerZba}
@@ -68739,7 +68739,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVLE,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
@@ -68845,7 +68845,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVLEFF,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
@@ -69090,7 +69090,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSE,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
@@ -69325,19 +69325,19 @@ begin
       if (aInstruction and TPasRISCVUInt32($c0000000))=TPasRISCVUInt32($c0000000) then begin
        // vsetivli: bits[31:30]=11, compile-time AVL and VTYPE
        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSETIVLI,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
       end else if (aInstruction and TPasRISCVUInt32($80000000))=0 then begin
        // vsetvli: bit31=0, compile-time VTYPE (vsetvl has bit31=1, excluded here)
        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSETVLI,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
       end else if ((aInstruction shr 25) and $7f)=$40 then begin
        // vsetvl: bits[31:25]=1000000 exactly, runtime rs2 VTYPE
        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSETVL,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
-        result:=4;
+        result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
        end;
       end;
@@ -69567,19 +69567,19 @@ begin
       case funct6 of
        $00,$02,$09,$0a,$0b:begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVV,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
        $17:begin
         if Unmasked and fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVVV,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
        $18,$19:begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVCmpVV,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
@@ -76146,13 +76146,13 @@ begin
       case funct6 of
        $00,$03,$09,$0a,$0b:begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVI,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
        $0e,$0f:begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSlideVI,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
@@ -76419,7 +76419,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVVI,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
@@ -76644,7 +76644,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and false and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVNR,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
@@ -76889,7 +76889,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
      if assigned(fJustInTimeCompiler) and (funct6 in [$00,$02,$03,$09,$0a,$0b]) then begin
       if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVX,aInstruction,0,0,0,0,4) then begin
-       result:=4;
+       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
        exit;
       end;
      end;
@@ -77334,7 +77334,7 @@ begin
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVVX,aInstruction,0,0,0,0,4) then begin
-         result:=4;
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
        end;
