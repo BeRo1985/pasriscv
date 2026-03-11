@@ -8454,7 +8454,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                           TFPURegisterInfos=array[TFPURegister] of TRegisterInfo;
 {$endif}
                           TBlockCallback=procedure(const aStatePointer:Pointer); register;
-                          TIntrinsicMethod=procedure(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64) of object;
+                          TIntrinsicMethod=function(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean of object;
                           TJITTLBEntry=packed record
                            case TPasRISCVUInt8 of
                             0:(
@@ -8546,7 +8546,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fBlockVectorEnabled:Boolean;
                      fBlockVStartChecked:Boolean;
                      fBlockVSDirtyEmitted:Boolean;
-                     fBlockVectorXMM0Freed:Boolean;
 {$endif}
                      fCompiling:Boolean;
                      fBlockEnds:Boolean;
@@ -9015,7 +9014,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function TLBLookup:Boolean;
                      function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceFallback(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      function TraceVector(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
 {$endif}
@@ -9024,270 +9022,270 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
 
                      // Integer intrinsics (virtual, override in target-specific subclass)
-                     procedure IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicADDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRAI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLTIU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicXORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicANDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRA(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicADDIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRAIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicADDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSUBW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSRAW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULHSU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIVU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREM(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREMU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMULW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIVW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicDIVUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREMW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREMUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicADDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRAI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLTIU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicXORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicANDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRA(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicADDIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRAIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicADDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSUBW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSRAW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMULHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMULHSU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicDIV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicDIVU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicREM(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicREMU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMULW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicDIVW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicDIVUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicREMW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicREMUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$ifdef PasRISCVJustInTimeCompilerZbb}
-                     procedure IntrinsicCLZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicCTZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicCPOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicCLZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicCTZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicCPOPW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicANDN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicORN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicXNOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicROL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicROR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicROLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicRORW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicRORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicRORIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSEXTB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicZEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicORCB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicCLZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCTZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCPOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCLZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCTZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCPOPW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicANDN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicORN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicXNOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicROL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicROR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicROLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicRORW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicRORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicRORIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSEXTB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicZEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicORCB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbs}
-                     procedure IntrinsicBSET(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBCLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBEXTR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBINV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBSETI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBCLRI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBEXTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBINVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicBSET(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBCLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBEXTR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBINV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBSETI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBCLRI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBEXTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBINVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZba}
-                     procedure IntrinsicSH1ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSH2ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSH3ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSH1ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSH2ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSH3ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSLLIUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicSH1ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSH2ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSH3ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSH1ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSH2ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSH3ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSLLIUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZcb}
-                     procedure IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZihintpause}
-                     procedure IntrinsicPAUSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicPAUSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFence}
-                     procedure IntrinsicFenceSEQCST(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFenceACQREL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicFenceSEQCST(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFenceACQREL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
-                     procedure IntrinsicBREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicBREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef JITInlineCSRRead}
-                     procedure IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZknh}
-                     procedure IntrinsicSHA256SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSHA256SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSHA256SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSHA256SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSHA512SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSHA512SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSHA512SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSHA512SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicSHA256SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSHA256SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSHA256SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSHA256SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSHA512SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSHA512SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSHA512SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSHA512SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZksh}
-                     procedure IntrinsicSM3P0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSM3P1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicSM3P0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSM3P1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
-                     procedure IntrinsicPACK(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicPACKH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicPACKW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicPACK(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicPACKH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicPACKW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
-                     procedure IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicJALR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBEQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBNE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBGE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicBGEU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLBU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicJALR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBEQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBNE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBGE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicBGEU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLBU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$ifdef PasRISCVJustInTimeCompilerAMO}
                      // AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2, aParameter3=aIs32 (0=.d, 1=.w)
-                     procedure IntrinsicAMOADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOSWAP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicAMOADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOSWAP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$ifdef PasRISCVJustInTimeCompilerZabha}
                      // Zabha byte AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
-                     procedure IntrinsicAMOADDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOSWAPB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOXORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOANDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMINB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMAXB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMINUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMAXUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicAMOADDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOSWAPB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOXORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOANDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMINB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMAXB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMINUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMAXUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      // Zabha halfword AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
-                     procedure IntrinsicAMOADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOSWAPH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOXORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOANDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMINH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMAXH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMINUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicAMOMAXUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicAMOADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOSWAPH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOXORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOANDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMINH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMAXH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMINUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicAMOMAXUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      // FPU intrinsics
-                     procedure IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMULS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFDIVS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSQRTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMULD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFDIVD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSQRTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJNS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFSGNJXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMINS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMAXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMIND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMAXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFEQS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLES(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFEQD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFLED(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTSLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTWUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTLUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCVTDLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVXW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVWX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMVDX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCLASSS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFCLASSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMULS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFDIVS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSQRTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMULD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFDIVD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSQRTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSGNJS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSGNJNS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSGNJXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSGNJD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSGNJND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFSGNJXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMINS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMAXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMIND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMAXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFEQS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFLTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFLES(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFEQD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFLTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFLED(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTWS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTWUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTLS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTLUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTSWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTSL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTSLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTWD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTWUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTLUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTDWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTDL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCVTDLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMVXW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMVWX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMVXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMVDX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCLASSS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFCLASSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$ifdef PasRISCVJustInTimeCompilerFMA}
                      // FMA intrinsics (additionally guarded by fMachine.fJITFMAEnabled at call site)
-                     procedure IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                       // Vector JIT intrinsics
-                     procedure IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
-                     procedure IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); virtual;
+                     function IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
                     public
                      property Enabled:Boolean read fEnabled write fEnabled;
@@ -9749,7 +9747,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeBREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
 {$endif}
 {$ifdef JITInlineCSRRead}
-                     procedure IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     function IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZknh}
                      procedure EmitNativeSHA256SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
@@ -9828,35 +9826,35 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFClassD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
 {$ifdef PasRISCVJustInTimeCompilerFMA}
                       // FMA IntrinsicXxx overrides
-                     procedure IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     function IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
 {$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                       // Vector JIT intrinsic overrides
                      procedure EmitVectorEnabledCheck; override;
                      procedure EmitSetVSDirty; override;
-                     procedure IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
-                     procedure IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64); override;
+                     function IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
 {$endif}
                     public
                      constructor Create(const aHART:THART); override;
@@ -49018,7 +49016,6 @@ begin
  fBlockVectorEnabled:=false;
  fBlockVStartChecked:=false;
  fBlockVSDirtyEmitted:=false;
- fBlockVectorXMM0Freed:=false;
 {$endif}
 end;
 
@@ -50189,36 +50186,7 @@ begin
     writeln('  COMPILE @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
 {$endif}
-   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
-{$ifdef PasRISCVJITFPUFlushAfterEachOp}
-   FreeAllHostFPURegisters;
-{$endif}
-   inc(fPCOffset,aInstructionSize);
-   inc(fInstructionCount);
-   fBlockEnds:=false;
-  end;
-  result:=false;
- end;
-end;
-
-function TPasRISCV.THART.TJustInTimeCompiler.TraceFallback(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
-var SavedCodeSize:TPasRISCVUInt32;
-begin
- if (not fCompiling) and TLBLookup then begin
-{$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
-  dec(fHART.fState.PC,aInstructionSize);
-{$endif}
-  result:=true;
- end else begin
-  if fCompiling then begin
-{$ifdef PasRISCVJustInTimeCompilerDebug}
-   if fDebugJITCounter<60 then begin
-    writeln('  COMPILE @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
-   end;
-{$endif}
-   SavedCodeSize:=fTemporaryCodeSize;
-   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
-   if fTemporaryCodeSize<>SavedCodeSize then begin
+   if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
     FreeAllHostFPURegisters;
 {$endif}
@@ -50253,13 +50221,16 @@ begin
     writeln('  COMPILE LDST @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
 {$endif}
-   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+   if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-   FreeAllHostFPURegisters;
+    FreeAllHostFPURegisters;
 {$endif}
-   inc(fPCOffset,aInstructionSize);
-   inc(fInstructionCount);
-   fBlockEnds:=false;
+    inc(fPCOffset,aInstructionSize);
+    inc(fInstructionCount);
+    fBlockEnds:=false;
+   end else begin
+    fBlockEnds:=true;
+   end;
   end;
   result:=false;
  end;
@@ -50267,8 +50238,7 @@ end;
 
 {$ifdef PasRISCVJustInTimeCompilerVector}
 function TPasRISCV.THART.TJustInTimeCompiler.TraceVector(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
-var SavedCodeSize:TPasRISCVUInt32;
-    PC:TPasRISCVUInt64;
+var PC:TPasRISCVUInt64;
 begin
  PC:=fHART.fState.PC;
  if (not fCompiling) and (not fHART.fState.JITSkipExecution) and TLBLookup then begin
@@ -50287,9 +50257,7 @@ begin
     writeln('  COMPILE VEC @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
 {$endif}
-   SavedCodeSize:=fTemporaryCodeSize;
-   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
-   if fTemporaryCodeSize<>SavedCodeSize then begin
+   if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
     inc(fPCOffset,aInstructionSize);
     inc(fInstructionCount);
     fBlockEnds:=false;
@@ -50318,13 +50286,16 @@ begin
     writeln('  COMPILE JAL @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
 {$endif}
-   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+   if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-   FreeAllHostFPURegisters;
+    FreeAllHostFPURegisters;
 {$endif}
-   inc(fPCOffset,aOffset);
-   inc(fInstructionCount);
-   fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
+    inc(fPCOffset,aOffset);
+    inc(fInstructionCount);
+    fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
+   end else begin
+    fBlockEnds:=true;
+   end;
   end;
   result:=false;
  end;
@@ -50338,12 +50309,15 @@ begin
    writeln('  COMPILE JALR @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
   end;
 {$endif}
-  aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+  if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-  FreeAllHostFPURegisters;
+   FreeAllHostFPURegisters;
 {$endif}
-  inc(fInstructionCount);
-  fBlockEnds:=true;
+   inc(fInstructionCount);
+   fBlockEnds:=true;
+  end else begin
+   fBlockEnds:=true;
+  end;
  end;
  result:=false;
 end;
@@ -50363,13 +50337,16 @@ begin
    end;
 {$endif}
    inc(fPCOffset,aFallthroughOffset);
-   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+   if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
-   FreeAllHostFPURegisters;
+    FreeAllHostFPURegisters;
 {$endif}
-   inc(fPCOffset,aTargetOffset-aFallthroughOffset);
-   inc(fInstructionCount);
-   fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
+    inc(fPCOffset,aTargetOffset-aFallthroughOffset);
+    inc(fInstructionCount);
+    fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
+   end else begin
+    fBlockEnds:=true;
+   end;
   end;
   result:=false;
  end;
@@ -50393,7 +50370,7 @@ begin
 end;
 
 // Empty base implementations for integer intrinsics
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50401,15 +50378,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAdd(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50417,141 +50396,161 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSub(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddi(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlli(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrli(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrai(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlti(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTIU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTIU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSltiu(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeXori(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeOri(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicANDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicANDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAndi(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50559,15 +50558,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSll(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50575,15 +50576,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrl(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRA(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRA(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50591,15 +50594,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSra(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50607,15 +50612,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlt(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50623,15 +50630,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSltu(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50639,15 +50648,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeXor(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50655,15 +50666,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeOr(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50671,71 +50684,81 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAnd(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddiW(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSlliW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrliW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSraiW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50743,15 +50766,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUBW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSUBW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50759,15 +50784,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSubW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50775,15 +50802,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSllW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50791,15 +50820,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrlW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSRAW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50807,15 +50838,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSraW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50823,15 +50856,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMul(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50839,15 +50874,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulH(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50855,15 +50892,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulHU(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHSU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULHSU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50871,15 +50910,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulHSU(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50887,15 +50928,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDiv(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50903,15 +50946,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDivU(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREM(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREM(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50919,15 +50964,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRem(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50935,15 +50982,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRemU(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMULW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50951,15 +51000,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMulW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50967,15 +51018,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDivW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicDIVUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50983,15 +51036,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeDivUW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -50999,15 +51054,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRemW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREMUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51015,100 +51072,114 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRemUW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerZbb}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCLZ(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCTZ(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCPOP(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCLZW(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCTZW(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOPW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOPW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeCPOPW(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51116,15 +51187,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMIN(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51132,15 +51205,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMINU(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51148,15 +51223,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMAX(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51164,15 +51241,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeMAXU(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicANDN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicANDN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51180,15 +51259,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeANDN(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51196,15 +51277,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeORN(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXNOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicXNOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51212,15 +51295,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeXNOR(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51228,15 +51313,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeROL(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51244,15 +51331,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeROR(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicROLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51260,15 +51349,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeROLW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51276,307 +51367,350 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRORW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRORI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicRORIW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeRORIW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSEXTB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSEXTB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSEXTB(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSEXTH(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicZEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicZEXTH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeZEXTH(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeREV8(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORCB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicORCB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeORCB(HostRD,HostRS1);
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZcb}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  // NOP - no operation, just allows JIT tracing to continue through this instruction
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZihintpause}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPAUSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPAUSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  EmitNativePause;
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFence}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFenceSEQCST(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFenceSEQCST(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  EmitNativeFenceSEQCST;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFenceACQREL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFenceACQREL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  EmitNativeFenceACQREL;
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBREV8(HostRD,HostRS1);
+ result:=true;
 end;
 {$endif}
 
 {$ifdef JITInlineCSRRead}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZknh}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA256SUM0(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA256SUM1(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA256SIG0(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA256SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA256SIG1(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SUM0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA512SUM0(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SUM1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA512SUM1(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SIG0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA512SIG0(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSHA512SIG1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSHA512SIG1(HostRD,HostRS1);
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZksh}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSM3P0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSM3P0(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSM3P0(HostRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSM3P1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSM3P1(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSM3P1(HostRD,HostRS1);
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACK(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACK(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51584,15 +51718,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativePACK(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACKH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACKH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51600,15 +51736,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativePACKH(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACKW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicPACKW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51616,17 +51754,19 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativePACKW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZbs}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBSET(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBSET(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51634,15 +51774,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBSET(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBCLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBCLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51650,15 +51792,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBCLR(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEXTR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEXTR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51666,15 +51810,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBEXT(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBINV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBINV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51682,73 +51828,83 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBINV(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBSETI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBSETI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBSETI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBCLRI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBCLRI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBCLRI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEXTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEXTI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBEXTI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBINVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBINVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeBINVI(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZba}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH1ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH1ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51756,15 +51912,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH1ADD(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH2ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH2ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51772,15 +51930,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH2ADD(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH3ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH3ADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51788,15 +51948,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH3ADD(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH1ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH1ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51804,15 +51966,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH1ADDUW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH2ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH2ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51820,15 +51984,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH2ADDUW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH3ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH3ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51836,15 +52002,17 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSH3ADDUW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
 begin
@@ -51852,48 +52020,55 @@ begin
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeADDUW(HostRD,HostRS1,HostRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLIUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSLLIUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSLLIUW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
+ result:=true;
 end;
 {$endif}
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
 begin
  RD:=TRegister(aParameter0);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSetReg32s(HostRD,TPasRISCVInt32(aParameter1));
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAUIPC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
     Imm:TPasRISCVInt32;
 begin
  RD:=TRegister(aParameter0);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  Imm:=TPasRISCVInt32(aParameter1)+fPCOffset;
@@ -51904,9 +52079,10 @@ begin
  end;
  fHostIntRegisterInfos[RD].Flags:=fHostIntRegisterInfos[RD].Flags or REG_AUIPC;
  fHostIntRegisterInfos[RD].AUIPCOffset:=Imm;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJAL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
     LinkImm:TPasRISCVInt32;
@@ -51921,9 +52097,10 @@ begin
    EmitNativeAddi(HostRD,HostRD,LinkImm);
   end;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJALR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicJALR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     HostRS1,HostTemp,HostRD:TPasRISCVUInt8;
     Immediate:TPasRISCVInt32;
@@ -51958,9 +52135,10 @@ begin
   EmitNativeSD(HostTemp,VMPtrRegister,GuestPCOffset);
  end;
  FreeHostIntRegister(HostTemp);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -51978,9 +52156,10 @@ begin
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
 {$endif}
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBNE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBNE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -51998,9 +52177,10 @@ begin
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
 {$endif}
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLT(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -52018,9 +52198,10 @@ begin
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
 {$endif}
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -52038,9 +52219,10 @@ begin
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
 {$endif}
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLTU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -52058,9 +52240,10 @@ begin
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
 {$endif}
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGEU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGEU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
@@ -52078,9 +52261,10 @@ begin
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
 {$endif}
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -52095,9 +52279,10 @@ begin
   EmitNativeLB(HostDest,HostAddr,0);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -52112,9 +52297,10 @@ begin
   EmitNativeLH(HostDest,HostAddr,0);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -52129,9 +52315,10 @@ begin
   EmitNativeLW(HostDest,HostAddr,0);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -52146,9 +52333,10 @@ begin
   EmitNativeLD(HostDest,HostAddr,0);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLBU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLBU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -52163,9 +52351,10 @@ begin
   EmitNativeLBU(HostDest,HostAddr,0);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLHU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -52180,9 +52369,10 @@ begin
   EmitNativeLHU(HostDest,HostAddr,0);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostDest:TPasRISCVUInt8;
@@ -52197,9 +52387,10 @@ begin
   EmitNativeLWU(HostDest,HostAddr,0);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -52212,9 +52403,10 @@ begin
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,1,0,HostSrc);
  EmitNativeSB(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -52227,9 +52419,10 @@ begin
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,2,0,HostSrc);
  EmitNativeSH(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -52242,9 +52435,10 @@ begin
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,4,0,HostSrc);
  EmitNativeSW(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RS2,RS1:TRegister;
     Offset:TPasRISCVInt32;
     HostAddr,HostSrc:TPasRISCVUInt8;
@@ -52257,12 +52451,13 @@ begin
  EmitDataTLBLookup(HostAddr,RS1,Offset,TLB_W,8,0,HostSrc);
  EmitNativeSD(HostSrc,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerAMO}
 // AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2, aParameter3=Is32 (0=.d, 1=.w)
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52288,9 +52483,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52316,9 +52512,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52344,9 +52541,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOAND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52372,9 +52570,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOOR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52400,9 +52599,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMIN(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52428,9 +52628,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52456,9 +52657,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52484,9 +52686,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
@@ -52512,9 +52715,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostGuestAddr,ActualDest:TPasRISCVUInt8;
@@ -52540,9 +52744,10 @@ begin
  end;
  FreeHostIntRegister(HostDest);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     Is32:Boolean;
     HostAddr,HostDest,HostSrc,HostGuestAddr,ActualDest:TPasRISCVUInt8;
@@ -52570,12 +52775,13 @@ begin
  end;
  FreeHostIntRegister(HostDest);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerZabha}
 // Zabha byte AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52599,9 +52805,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAPB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAPB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52625,9 +52832,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52651,9 +52859,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOANDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOANDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52677,9 +52886,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOORB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52703,9 +52913,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52729,9 +52940,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52755,9 +52967,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52781,9 +52994,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52807,11 +53021,12 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
 // Zabha halfword AMO intrinsics
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52835,9 +53050,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAPH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOSWAPH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52861,9 +53077,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOXORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52887,9 +53104,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOANDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOANDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52913,9 +53131,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOORH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52939,9 +53158,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52965,9 +53185,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -52991,9 +53212,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMINUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -53017,9 +53239,10 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOMAXUH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
     CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
@@ -53043,13 +53266,14 @@ begin
   FreeHostIntRegister(HostDest);
  end;
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 {$endif}
 
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -53063,9 +53287,10 @@ begin
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFLW(HostFRD,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -53079,9 +53304,10 @@ begin
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFLD(HostFRD,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRS2:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -53095,9 +53321,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  EmitNativeFSW(HostFRS2,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRS2:TFPURegister;
     RS1:TRegister;
     Offset:TPasRISCVInt32;
@@ -53111,9 +53338,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  EmitNativeFSD(HostFRS2,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53134,9 +53362,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53157,9 +53386,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53180,9 +53410,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53203,9 +53434,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53224,9 +53456,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53247,9 +53480,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53270,9 +53504,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMULD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53293,9 +53528,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFDIVD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53316,9 +53552,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSQRTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53337,9 +53574,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53350,9 +53588,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjS(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJNS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJNS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53363,9 +53602,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjNS(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53376,9 +53616,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjXS(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53389,9 +53630,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjD(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53402,9 +53644,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjND(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFSGNJXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53415,9 +53658,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjXD(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53428,9 +53672,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMinS(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53441,9 +53686,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMaxS(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMIND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMIND(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53454,9 +53700,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMinD(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
@@ -53467,9 +53714,10 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMaxD(HostFRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53488,9 +53736,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
@@ -53509,9 +53758,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -53520,15 +53770,17 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFEqS(HostRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -53537,15 +53789,17 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLtS(HostRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLES(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLES(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -53554,15 +53808,17 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLeS(HostRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFEQD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -53571,15 +53827,17 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFEqD(HostRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLTD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -53588,15 +53846,17 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLtD(HostRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLED(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLED(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
@@ -53605,15 +53865,17 @@ begin
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLeD(HostRD,HostFRS1,HostFRS2);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53622,6 +53884,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53636,9 +53899,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53647,6 +53911,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53661,9 +53926,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53672,6 +53938,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53686,9 +53953,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53697,6 +53965,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53711,9 +53980,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53733,9 +54003,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53755,9 +54026,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53777,9 +54049,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53799,9 +54072,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53810,6 +54084,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53824,9 +54099,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTWUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53835,6 +54111,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53849,9 +54126,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53860,6 +54138,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53874,9 +54153,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTLUD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53885,6 +54165,7 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -53899,9 +54180,10 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53921,9 +54203,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDWU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53943,9 +54226,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53965,9 +54249,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTDLU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -53987,9 +54272,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -53997,14 +54283,16 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFMvXW(HostRD,HostFRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVWX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVWX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -54014,9 +54302,10 @@ begin
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMvWX(HostFRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVXD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -54024,14 +54313,16 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFMvXD(HostRD,HostFRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVDX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMVDX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
     RS1:TRegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
@@ -54041,9 +54332,10 @@ begin
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMvDX(HostFRD,HostRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -54051,14 +54343,16 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFClassS(HostRD,HostFRS1);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCLASSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
@@ -54066,45 +54360,55 @@ begin
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFClassD(HostRD,HostFRS1);
+ result:=true;
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFMA}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 {$endif}
 
@@ -54112,64 +54416,79 @@ end;
 
 // Vector JIT intrinsic base stubs
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerVector)}
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
+ result:=false;
 end;
 {$ifend}
 
@@ -56630,7 +56949,7 @@ end;
 {$endif}
 
 {$ifdef JITInlineCSRRead}
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     CSRAddress:TPasRISCVUInt32;
     HostRD:TPasRISCVUInt8;
@@ -56638,6 +56957,7 @@ begin
 
  RD:=TRegister(aParameter0);
  if RD=TRegister.Zero then begin
+  result:=true;
   exit;
  end;
 
@@ -56695,6 +57015,7 @@ begin
 
  end;
 
+ result:=true;
 end;
 {$endif}
 
@@ -59876,7 +60197,7 @@ end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFMA}
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -59888,6 +60209,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -59953,9 +60275,10 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -59967,6 +60290,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -60032,9 +60356,10 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -60046,6 +60371,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -60116,9 +60442,10 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -60130,6 +60457,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -60195,9 +60523,10 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -60210,6 +60539,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -60267,9 +60597,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -60282,6 +60613,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -60339,9 +60671,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -60354,6 +60687,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -60421,9 +60755,10 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
@@ -60436,6 +60771,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 begin
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
  if not fHasFMA3 then begin
+  result:=false;
   exit;
  end;
 {$endif}
@@ -60493,6 +60829,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ result:=true;
 end;
 
 {$endif}
@@ -60530,7 +60867,7 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1:TRegister;
     VTypeValue,SEW,LMUL8,VLMAX:TPasRISCVUInt64;
     vsew,vlmul:TPasRISCVUInt32;
@@ -60545,12 +60882,15 @@ begin
  vsew:=(VTypeValue shr 3) and 7;
  vlmul:=VTypeValue and 7;
  if (VTypeValue and not TPasRISCVUInt64($ff))<>0 then begin
+  result:=false;
   exit;
  end;
  if vsew>3 then begin
+  result:=false;
   exit;
  end;
  if vlmul=4 then begin
+  result:=false;
   exit;
  end;
 
@@ -60578,10 +60918,12 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
  if (TPasRISCVUInt64(VLEN)*LMUL8)<(SEW*8) then begin
+  result:=false;
   exit;
  end;
  VLMAX:=((VLEN div SEW)*LMUL8) shr 3;
@@ -60600,6 +60942,7 @@ begin
   EmitNativeZeroReg(HostTmp);
   EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
+  result:=true;
   exit;
  end;
 
@@ -60653,9 +60996,10 @@ begin
   EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
  end;
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     AVL,VTypeValue,SEW,LMUL8,VLMAX,NewVL:TPasRISCVUInt64;
     vsew,vlmul:TPasRISCVUInt32;
@@ -60670,12 +61014,15 @@ begin
  vsew:=(VTypeValue shr 3) and 7;
  vlmul:=VTypeValue and 7;
  if (VTypeValue and not TPasRISCVUInt64($ff))<>0 then begin
+  result:=false;
   exit;
  end;
  if vsew>3 then begin
+  result:=false;
   exit;
  end;
  if vlmul=4 then begin
+  result:=false;
   exit;
  end;
 
@@ -60703,10 +61050,12 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
  if (TPasRISCVUInt64(VLEN)*LMUL8)<(SEW*8) then begin
+  result:=false;
   exit;
  end;
  VLMAX:=((VLEN div SEW)*LMUL8) shr 3;
@@ -60740,14 +61089,16 @@ begin
  EmitNativeZeroReg(HostTmp);
  EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VSTART)),true);
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
+ result:=true;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  // vsetvl has runtime VTYPE from rs2 — no trace hook fires for this (excluded in dispatch)
+ result:=false;
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVLE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for unit-stride vector loads: vle8.v / vle16.v / vle32.v / vle64.v
 // Conditions for JIT: VSTART==0, unmasked (vm=1), no segmented (nf=0), EMUL=1 (single register)
 // Emits: runtime VSTART check → bailout, TLB lookup, page-crossing check → bailout,
@@ -60772,15 +61123,19 @@ begin
 
  // Only JIT unit-stride, non-segmented, unmasked loads
  if MemOpType<>0 then begin
+  result:=false;
   exit;
  end;
  if UnitStrideMop<>0 then begin
+  result:=false;
   exit;
  end;
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
  if NumFields<>0 then begin
+  result:=false;
   exit;
  end;
 
@@ -60799,6 +61154,7 @@ begin
    EEW:=64;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -60828,6 +61184,7 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -60836,27 +61193,32 @@ begin
  if (SEW>0) and (LMUL8>0) then begin
   EMUL8:=(EEW*LMUL8) div SEW;
  end else begin
+  result:=false;
   exit;
  end;
 
  // Only handle EMUL=1 (single register, EMUL8=8) for now
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  // vill check
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  // Get VL at compile time for byte count
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  // Only JIT when VL*EEW/8 == VLENB (full register load)
  if (VL_val*(EEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -60867,10 +61229,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -60970,9 +61329,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for unit-stride vector stores: vse8.v / vse16.v / vse32.v / vse64.v
 // Conditions for JIT: VSTART==0, unmasked (vm=1), no segmented (nf=0), EMUL=1 (single register)
 // Emits: runtime VSTART check → bailout, TLB lookup (write), page-crossing check → bailout,
@@ -60997,15 +61359,19 @@ begin
 
  // Only JIT unit-stride, non-segmented, unmasked stores
  if MemOpType<>0 then begin
+  result:=false;
   exit;
  end;
  if UnitStrideMop<>0 then begin
+  result:=false;
   exit;
  end;
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
  if NumFields<>0 then begin
+  result:=false;
   exit;
  end;
 
@@ -61024,6 +61390,7 @@ begin
    EEW:=64;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -61053,6 +61420,7 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -61061,27 +61429,32 @@ begin
  if (SEW>0) and (LMUL8>0) then begin
   EMUL8:=(EEW*LMUL8) div SEW;
  end else begin
+  result:=false;
   exit;
  end;
 
  // Only handle EMUL=1 (single register, EMUL8=8) for now
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  // vill check
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  // Get VL at compile time for byte count
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  // Only JIT when VL*EEW/8 == VLENB (full register store)
  if (VL_val*(EEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -61092,10 +61465,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -61189,9 +61559,12 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  FreeHostIntRegister(HostAddr);
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vmv.v.x: broadcast scalar GPR rs1 to all elements of vector register vd
 // Conditions: unmasked, vs2=0, EMUL=1, VSTART=0, full register (VL*SEW/8==VLENB)
 var vd,vs2:TPasRISCVUInt32;
@@ -61214,9 +61587,11 @@ begin
 
  // Only JIT unmasked vmv.v.x (not vmerge.vxm)
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
  if vs2<>0 then begin
+  result:=false;
   exit;
  end;
 
@@ -61245,6 +61620,7 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -61252,21 +61628,25 @@ begin
  // EMUL = LMUL for same-width ops
  EMUL8:=LMUL8;
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  // vill check
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  // Only JIT full register broadcast (VL*SEW/8 == VLENB)
  if (VL_val*(SEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -61277,10 +61657,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -61420,9 +61797,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vmv.v.i: broadcast sign-extended 5-bit immediate to all elements of vector register vd
 // Conditions: unmasked, vs2=0, EMUL=1, VSTART=0, full register (VL*SEW/8==VLENB)
 var vd,vs2:TPasRISCVUInt32;
@@ -61443,9 +61823,11 @@ begin
 
  // Only JIT unmasked vmv.v.i (not vmerge.vim)
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
  if vs2<>0 then begin
+  result:=false;
   exit;
  end;
 
@@ -61474,26 +61856,31 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
 
  EMUL8:=LMUL8;
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  // vill check
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  if (VL_val*(SEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -61510,10 +61897,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -61638,9 +62022,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vadd/vsub/vand/vor/vxor.vv: vector-vector arithmetic/logic
 // Conditions: unmasked, EMUL=1, VSTART=0, full register (VL*SEW/8==VLENB)
 // Pattern: load vs2→xmm0, load vs1→xmm1, xmm0 = xmm0 OP xmm1, store xmm0→vd
@@ -61665,6 +62052,7 @@ begin
 
  // Only JIT unmasked operations
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
 
@@ -61686,6 +62074,7 @@ begin
      SSEOpcode:=$D4;
     end;
     else begin
+     result:=false;
      exit;
     end;
    end;
@@ -61706,6 +62095,7 @@ begin
      SSEOpcode:=$FB;
     end;
     else begin
+     result:=false;
      exit;
     end;
    end;
@@ -61723,6 +62113,7 @@ begin
    SSEOpcode:=$EF;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -61752,27 +62143,32 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
 
  EMUL8:=LMUL8;
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  // vill check
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  // Only JIT full register operations
  if (VL_val*(SEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -61783,10 +62179,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -61871,9 +62264,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vadd/vsub/vrsub/vand/vor/vxor.vx: broadcast rs1, operate with vs2
 // Conditions: unmasked, EMUL=1, VSTART=0, full register (VL*SEW/8==VLENB)
 var vd,vs2,funct6:TPasRISCVUInt32;
@@ -61899,6 +62295,7 @@ begin
  funct6:=(aInstruction shr 26) and $3f;
 
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
 
@@ -61923,6 +62320,7 @@ begin
      SSEOpcode:=$D4;
     end;
     else begin
+     result:=false;
      exit;
     end;
    end;
@@ -61943,6 +62341,7 @@ begin
      SSEOpcode:=$FB;
     end;
     else begin
+     result:=false;
      exit;
     end;
    end;
@@ -61964,6 +62363,7 @@ begin
      SSEOpcode:=$FB;
     end;
     else begin
+     result:=false;
      exit;
     end;
    end;
@@ -61978,6 +62378,7 @@ begin
    SSEOpcode:=$EF;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -62007,25 +62408,30 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
 
  EMUL8:=LMUL8;
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  if (VL_val*(SEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -62036,10 +62442,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -62195,9 +62598,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVArithVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vadd/vrsub/vand/vor/vxor.vi: broadcast sign-extended imm5, operate with vs2
 // Conditions: unmasked, EMUL=1, VSTART=0, full register (VL*SEW/8==VLENB)
 var vd,vs2,funct6:TPasRISCVUInt32;
@@ -62222,6 +62628,7 @@ begin
  funct6:=(aInstruction shr 26) and $3f;
 
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
 
@@ -62245,6 +62652,7 @@ begin
      SSEOpcode:=$D4;
     end;
     else begin
+     result:=false;
      exit;
     end;
    end;
@@ -62266,6 +62674,7 @@ begin
      SSEOpcode:=$FB;
     end;
     else begin
+     result:=false;
      exit;
     end;
    end;
@@ -62280,6 +62689,7 @@ begin
    SSEOpcode:=$EF;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -62309,25 +62719,30 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
 
  EMUL8:=LMUL8;
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  if (VL_val*(SEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -62341,10 +62756,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -62493,9 +62905,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVNR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vmv1r.v/vmv2r.v/vmv4r.v/vmv8r.v: whole-register move
 // No masking, no VL/VTYPE dependency. Only needs VSTART=0 check.
 // Emits N × MOVDQU/VMOVDQU pairs (load from vs2, store to vd)
@@ -62517,17 +62932,20 @@ begin
 
  // Must be unmasked
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
 
  // Validate nr-1 encoding
  if not (vs1Field in [0,1,3,7]) then begin
+  result:=false;
   exit;
  end;
  NumRegs:=vs1Field+1;
 
  // Check alignment
  if ((vd and (NumRegs-1))<>0) or ((vs2 and (NumRegs-1))<>0) then begin
+  result:=false;
   exit;
  end;
 
@@ -62538,10 +62956,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -62595,9 +63010,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVCmpVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vmseq.vv / vmsne.vv: vector compare producing mask bits
 // SEW=8/16/32 only (SEW=64 needs SSE4.1 PCMPEQQ — bail out)
 // Pattern: PCMPEQB/W/D → PMOVMSKB/MOVMSKPS → [NOT for vmsne] → store mask to vd
@@ -62622,6 +63040,7 @@ begin
 
  // Only JIT unmasked comparisons
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
 
@@ -62633,6 +63052,7 @@ begin
    IsNotEqual:=true;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -62643,6 +63063,7 @@ begin
 
  // No PCMPEQQ in SSE2 — bail for SEW=64
  if vsew>2 then begin
+  result:=false;
   exit;
  end;
 
@@ -62658,6 +63079,7 @@ begin
    CmpOpcode:=$76; // PCMPEQD
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -62685,24 +63107,29 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
 
  if LMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  if (VL_val*(SEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -62716,10 +63143,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  // === Runtime checks ===
@@ -62837,9 +63261,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVMVVV(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vmv.v.v (unmasked vmerge funct6=$17 with vs2=0): copy vs1 to vd
 // Simple state-memory register copy, no masking
 var vd,vs1,vs2:TPasRISCVUInt32;
@@ -62854,9 +63281,11 @@ begin
 
  // Only handle unmasked vmv.v.v
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
  if vs2<>0 then begin
+  result:=false;
   exit;
  end;
 
@@ -62867,10 +63296,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -62911,9 +63337,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for vslidedown.vi: shift vector elements toward index 0 by imm5 positions
 // Also covers vslideup.vi (funct6=$0E) but bails out (too complex due to merge semantics)
 // Conditions: unmasked, EMUL=1, VSTART=0, full register, shift_bytes fits in PSRLDQ/cross-lane
@@ -62931,10 +63360,12 @@ begin
 
  // Only JIT vslidedown.vi (funct6=$0F), not vslideup.vi ($0E)
  if funct6<>$0F then begin
+  result:=false;
   exit;
  end;
 
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
 
@@ -62963,34 +63394,41 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
 
  EMUL8:=LMUL8;
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  if (VL_val*(SEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
  // Compute byte shift amount
  ShiftBytes:=Imm5*(SEW shr 3);
  if ShiftBytes=0 then begin
+  result:=false;
   exit;
  end;
  if ShiftBytes>=VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -63001,10 +63439,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  // === Runtime checks ===
@@ -63137,9 +63572,12 @@ begin
   EmitSetVSDirty;
   fBlockVSDirtyEmitted:=true;
  end;
+
+ result:=true;
+
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64);
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 // JIT for fault-only-first vector loads: vle8ff.v / vle16ff.v / vle32ff.v / vle64ff.v
 // Same as VLE but only JIT when entire access fits in one page (no page crossing).
 // If page crossing detected at runtime: bail to interpreter (which handles partial loads correctly).
@@ -63162,15 +63600,19 @@ begin
 
  // Only JIT unit-stride fault-only-first, non-segmented, unmasked
  if MemOpType<>0 then begin
+  result:=false;
   exit;
  end;
  if UnitStrideMop<>$10 then begin
+  result:=false;
   exit;
  end;
  if not Unmasked then begin
+  result:=false;
   exit;
  end;
  if NumFields<>0 then begin
+  result:=false;
   exit;
  end;
 
@@ -63188,6 +63630,7 @@ begin
    EEW:=64;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -63216,6 +63659,7 @@ begin
    LMUL8:=4;
   end;
   else begin
+   result:=false;
    exit;
   end;
  end;
@@ -63223,23 +63667,28 @@ begin
  if (SEW>0) and (LMUL8>0) then begin
   EMUL8:=(EEW*LMUL8) div SEW;
  end else begin
+  result:=false;
   exit;
  end;
 
  if EMUL8<>8 then begin
+  result:=false;
   exit;
  end;
 
  if (fHART.fState.CSR.fData[TCSR.TAddress.VTYPE] and (TPasRISCVUInt64(1) shl 63))<>0 then begin
+  result:=false;
   exit;
  end;
 
  VL_val:=fHART.fState.CSR.fData[TCSR.TAddress.VL];
  if VL_val=0 then begin
+  result:=false;
   exit;
  end;
 
  if (VL_val*(EEW shr 3))<>VLENB then begin
+  result:=false;
   exit;
  end;
 
@@ -63250,10 +63699,7 @@ begin
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- if not fBlockVectorXMM0Freed then begin
-  FreeHostFloatRegisters(TPasRISCVUInt32(1) shl 0);
-  fBlockVectorXMM0Freed:=true;
- end;
+ FreeHostFloatRegisters((TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1) or (TPasRISCVUInt32(1) shl 2));
 {$endif}
 
  FreeAllHostIntRegisters;
@@ -63335,6 +63781,9 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
 
  FreeHostIntRegister(HostAddr);
+
+ result:=true;
+
 end;
 
 {$endif}
@@ -68287,6 +68736,14 @@ begin
      case UnitStrideMop of
       $00:begin
        // vle8/16/32/64.v / vlseg, unit-stride (segment) load
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
+       if assigned(fJustInTimeCompiler) then begin
+        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVLE,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
+{$ifend}
        Address:=fState.Registers[rs1];
        SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
@@ -68385,6 +68842,14 @@ begin
 
       $10:begin
        // vle8ff/16ff/32ff/64ff.v / vlsegNff, fault-only-first (segment) load
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
+       if assigned(fJustInTimeCompiler) then begin
+        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVLEFF,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
+{$ifend}
        Address:=fState.Registers[rs1];
        SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
@@ -68622,6 +69087,14 @@ begin
      case UnitStrideMop of
       $00:begin
        // vse8/16/32/64.v / vsseg, unit-stride (segment) store
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
+       if assigned(fJustInTimeCompiler) then begin
+        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSE,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
+{$ifend}
        Address:=fState.Registers[rs1];
        SEW:=VectorGetSEW;
        EVL:=fState.CSR.fData[TCSR.TAddress.VL];
@@ -68847,7 +69320,7 @@ begin
      rd:=TRegister((aInstruction shr 7) and $1f);
      rs1:=TRegister((aInstruction shr 15) and $1f);
 
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
+{$if defined(PasRISCVJustInTimeCompiler) and false and defined(PasRISCVJustInTimeCompilerVector)}
      if assigned(fJustInTimeCompiler) then begin
       if (aInstruction and TPasRISCVUInt32($c0000000))=TPasRISCVUInt32($c0000000) then begin
        // vsetivli: bits[31:30]=11, compile-time AVL and VTYPE
@@ -69089,23 +69562,27 @@ begin
      vs2:=(aInstruction shr 20) and $1f;
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
-     if assigned(fJustInTimeCompiler) and (funct6 in [$00,$02,$09,$0A,$0B]) then begin
-      if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVV,aInstruction,0,0,0,0,4) then begin
-       result:=4;
-       exit;
-      end;
-     end;
-     if assigned(fJustInTimeCompiler) and (funct6 in [$18,$19]) then begin
-      if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVCmpVV,aInstruction,0,0,0,0,4) then begin
-       result:=4;
-       exit;
-      end;
-     end;
-     if assigned(fJustInTimeCompiler) and (funct6=$17) and Unmasked then begin
-      if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVVV,aInstruction,0,0,0,0,4) then begin
-       result:=4;
-       exit;
+{$if defined(PasRISCVJustInTimeCompiler) and false and defined(PasRISCVJustInTimeCompilerVector)}
+     if assigned(fJustInTimeCompiler) then begin
+      case funct6 of
+       $00,$02,$09,$0a,$0b:begin
+        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVV,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
+       $17:begin
+        if Unmasked and fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVVV,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
+       $18,$19:begin
+        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVCmpVV,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
       end;
      end;
 {$ifend}
@@ -75665,16 +76142,20 @@ begin
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
-     if assigned(fJustInTimeCompiler) and (funct6 in [$00,$03,$09,$0A,$0B]) then begin
-      if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVI,aInstruction,0,0,0,0,4) then begin
-       result:=4;
-       exit;
-      end;
-     end;
-     if assigned(fJustInTimeCompiler) and (funct6 in [$0E,$0F]) then begin
-      if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSlideVI,aInstruction,0,0,0,0,4) then begin
-       result:=4;
-       exit;
+     if assigned(fJustInTimeCompiler) then begin
+      case funct6 of
+       $00,$03,$09,$0a,$0b:begin
+        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVI,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
+       $0e,$0f:begin
+        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSlideVI,aInstruction,0,0,0,0,4) then begin
+         result:=4;
+         exit;
+        end;
+       end;
       end;
      end;
 {$ifend}
@@ -76160,7 +76641,7 @@ begin
       $27:begin
        // vmv<nr>r.v: whole register move (vm=1 required)
        // simm5 field (bits [19:15]) encodes nr-1; valid values: 0,1,3,7
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
+{$if defined(PasRISCVJustInTimeCompiler) and false and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVNR,aInstruction,0,0,0,0,4) then begin
          result:=4;
@@ -76406,7 +76887,7 @@ begin
      Unmasked:=((aInstruction shr 25) and 1)<>0;
      funct6:=(aInstruction shr 26) and $3f;
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
-     if assigned(fJustInTimeCompiler) and (funct6 in [$00,$02,$03,$09,$0A,$0B]) then begin
+     if assigned(fJustInTimeCompiler) and (funct6 in [$00,$02,$03,$09,$0a,$0b]) then begin
       if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVArithVX,aInstruction,0,0,0,0,4) then begin
        result:=4;
        exit;
@@ -76867,17 +77348,17 @@ begin
         end;
         if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
          for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
-           VectorSetElement(vd,Index,SEW,Stride);
+          VectorSetElement(vd,Index,SEW,Stride);
          end;
         end;
        end else begin
         if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
          for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
-           if VectorGetMaskBit(Index) then begin
-            VectorSetElement(vd,Index,SEW,Stride);
-           end else begin
-            VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW));
-           end;
+          if VectorGetMaskBit(Index) then begin
+           VectorSetElement(vd,Index,SEW,Stride);
+          end else begin
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index,SEW));
+          end;
          end;
         end;
        end;
@@ -86327,20 +86808,6 @@ begin
      // Route vector loads before FPU check (vector uses separate VS enable)
      case (aInstruction shr 12) and 7 of
       $0,$5,$6,$7:begin
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
-       if assigned(fJustInTimeCompiler) then begin
-        // Unit-stride load: try JIT trace if unmasked, non-segmented
-        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVLE,aInstruction,0,0,0,0,4) then begin
-         result:=4;
-         exit;
-        end;
-        // Fault-only-first load
-        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVLEFF,aInstruction,0,0,0,0,4) then begin
-         result:=4;
-         exit;
-        end;
-       end;
-{$ifend}
        result:=ExecuteVectorInstruction(aInstruction);
        exit;
       end;
@@ -86446,15 +86913,6 @@ begin
      // Route vector stores before FPU check (vector uses separate VS enable)
      case (aInstruction shr 12) and 7 of
       $0,$5,$6,$7:begin
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
-       if assigned(fJustInTimeCompiler) then begin
-        // Unit-stride store: try JIT trace if unmasked, non-segmented
-        if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVSE,aInstruction,0,0,0,0,4) then begin
-         result:=4;
-         exit;
-        end;
-       end;
-{$ifend}
        result:=ExecuteVectorInstruction(aInstruction);
        exit;
       end;
@@ -86557,7 +87015,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86580,7 +87038,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86639,7 +87097,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86662,7 +87120,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86747,7 +87205,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86770,7 +87228,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86829,7 +87287,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86852,7 +87310,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
