@@ -401,7 +401,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerTargetX8664}
   {$define PasRISCVJustInTimeCompilerNativeLinker}
   {$define PasRISCVJustInTimeCompilerBlockChaining}
-  {$define PasRISCVJustInTimeCompilerFastDispatch}
+  {-$define PasRISCVJustInTimeCompilerFastDispatch}
   {$define PasRISCVJustInTimeCompilerSideExit}
  {$ifend}
  {$if defined(cpuaarch64) or defined(CPUAARCH64)}
@@ -8242,6 +8242,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITRDTIMEHelperPtr:Pointer;
 {$endif}
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+                     FPUDirty:TPasMPBool32;
+{$endif}
                    end;
                    PState=^TState;
                    TCSROperation=
@@ -8537,6 +8540,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fEnabled:Boolean;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      fFPUEnabled:Boolean;
+                     fBlockHasFPUOperations:Boolean;
 {$endif}
                      fCompiling:Boolean;
                      fBlockEnds:Boolean;
@@ -8605,6 +8609,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestJITRdtimeHelperPtrOffset:TPasRISCVInt32;
                      class function JITRDTIMEHelper(aHART:Pointer):TPasRISCVUInt64; static;
                      function GuestCSRDataOffset(const aCSRAddress:TPasRISCVUInt32):TPasRISCVInt32;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+                     function GuestFPUDirtyOffset:TPasRISCVInt32;
+                     procedure EmitFPUEpilog(const aTempRegister:TPasRISCVInt32); virtual;
 {$endif}
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
 {$ifdef JITTLBTag}
@@ -10125,6 +10133,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function VFRec764(const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure CheckTimers;
               procedure CheckInterrupts;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+              procedure CheckFPUDirty;
+{$endif}
              public
               constructor Create(const aMachine:TPasRISCV;const aHARTID:TPasRISCVUInt32); reintroduce;
               destructor Destroy; override;
@@ -48959,6 +48970,7 @@ begin
  end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
+ fBlockHasFPUOperations:=false;
  fHostFPURegisterMask:=DefaultFPURegisterMask;
  for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
   fHostFPURegisterInfos[FPURegister].HostRegister:=REG_ILL;
@@ -49000,28 +49012,33 @@ begin
  SaveAllDirtyFPURegisters;
 {$endif}
 
- // 2. Reset host reg mask
+ // 2. FPU epilog
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+ EmitFPUEpilog(-1);
+{$ifend}
+
+ // 3. Reset host reg mask
  fHostIntRegisterMask:=DefaultHostRegisterMask;
 
- // 3. Update guest PC
+ // 4. Update guest PC
  EmitUpdatePC;
 
- // 4. Update cycle counter and check 16-bit boundary crossing
+ // 5. Update cycle counter and check 16-bit boundary crossing
  if fInstructionCount<>0 then begin
   ExitFixup:=EmitCycleUpdateAndCheck(fInstructionCount);
  end else begin
   ExitFixup:=0;
  end;
 
- // 5. RunState check: jne .exit if not running
+ // 6. RunState check: jne .exit if not running
  EmitRunStateCheck;
  EmitJccRel32(CC_NE,0);
  RunStateExitFixup:=fTemporaryCodeSize-4;
 
- // 6. Restore ABI callee-saved registers
+ // 7. Restore ABI callee-saved registers
  EmitRestoreABIRegs;
 
- // 7. Linkage-specific dispatch
+ // 8. Linkage-specific dispatch
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  case aLinkage of
   TLinkage.Jmp:begin
@@ -49038,7 +49055,7 @@ begin
  EmitRET;
 {$endif}
 
- // 8. .exit path (countdown expired or runstate not running)
+ // 9. .exit path (countdown expired or runstate not running)
  if ExitFixup<>0 then begin
   PatchJmpRel32(ExitFixup);
  end;
@@ -49048,7 +49065,7 @@ begin
 
  EmitRET;
 
- // 9. Restore saved state for continued compilation
+ // 10. Restore saved state for continued compilation
  fHostIntRegisterMask:=SavedHostRegMask;
  fABIReclaimMask:=SavedABIReclaimMask;
  fABIReclaimCount:=SavedABIReclaimCount;
@@ -49124,6 +49141,45 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITSkipExecution));
 end;
 
+{$ifdef JITInlineCSRRead}
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITRdtimeHelperPtrOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITRDTIMEHelperPtr));
+end;
+
+class function TPasRISCV.THART.TJustInTimeCompiler.JITRDTIMEHelper(aHART:Pointer):TPasRISCVUInt64;
+begin
+ result:=THART(aHART).fMachine.fACLINTDevice.GetTime;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCSRDataOffset(const aCSRAddress:TPasRISCVUInt32):TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CSR.fData[aCSRAddress]));
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+function TPasRISCV.THART.TJustInTimeCompiler.GuestFPUDirtyOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.FPUDirty));
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitFPUEpilog(const aTempRegister:TPasRISCVInt32);
+var HostTmp:TPasRISCVUInt32;
+begin
+ if fBlockHasFPUOperations then begin
+  if aTempRegister<0 then begin
+   HostTmp:=ClaimHostIntRegister;
+   EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
+   EmitNativeStore(HostTmp,VMPtrRegister,GuestFPUDirtyOffset,false);
+   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
+  end else begin
+   EmitNativeStore(aTempRegister,VMPtrRegister,GuestFPUDirtyOffset,false);
+  end;
+ end;
+end;
+{$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerSideExit}
 function TPasRISCV.THART.TJustInTimeCompiler.GuestJITDataTLBFillPtrOffset:TPasRISCVInt32;
 begin
@@ -49139,23 +49195,6 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.GuestJITMMIOScratchOffset:TPasRISCVInt32;
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITMMIOScratch));
-end;
-{$endif}
-
-{$ifdef JITInlineCSRRead}
-function TPasRISCV.THART.TJustInTimeCompiler.GuestJITRdtimeHelperPtrOffset:TPasRISCVInt32;
-begin
- result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITRDTIMEHelperPtr));
-end;
-
-class function TPasRISCV.THART.TJustInTimeCompiler.JITRDTIMEHelper(aHART:Pointer):TPasRISCVUInt64;
-begin
- result:=THART(aHART).fMachine.fACLINTDevice.GetTime;
-end;
-
-function TPasRISCV.THART.TJustInTimeCompiler.GuestCSRDataOffset(const aCSRAddress:TPasRISCVUInt32):TPasRISCVInt32;
-begin
- result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CSR.fData[aCSRAddress]));
 end;
 {$endif}
 
@@ -49560,6 +49599,8 @@ function TPasRISCV.THART.TJustInTimeCompiler.MapGuestToHostFPURegister(const aGu
 var HostRegister:TPasRISCVUInt8;
 begin
 
+ fBlockHasFPUOperations:=true;
+
  inc(fLRUCounter);
 
  // Already mapped?
@@ -49696,6 +49737,9 @@ begin
 {$endif}
  HostTmp:=ClaimHostIntRegister;
  EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ EmitFPUEpilog(HostTmp);
+{$endif}
  EmitNativeStore(HostTmp,VMPtrRegister,GuestJITSkipExecutionOffset,false);
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl HostTmp);
  EmitEnd(TLinkage.None);
@@ -49972,6 +50016,9 @@ begin
    LastCycles:=fHART.fState.Cycle;
 {$endif}
    BlockCallback(@fHART.fState);
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+   fHART.CheckFPUDirty;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerStats}
    inc(fStatTLBHits);
 {$endif}
@@ -50005,6 +50052,9 @@ begin
        ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
        (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
      JITTLBEntry^.Block(@fHART.fState);
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+     fHART.CheckFPUDirty;
+{$endif}
     end else begin
      break;
     end;
@@ -50047,6 +50097,9 @@ begin
 {$endif}
   dec(fHART.fState.Cycle);
   TBlockCallback(Pointer(CodePtr))(@fHART.fState);
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+  fHART.CheckFPUDirty;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerDebug}
   if fDebugJITCounter<40 then begin
    write('JIT SLOW PC=',LowerCase(IntToHex(SavedPC,16)),'->',LowerCase(IntToHex(fHART.fState.PC,16)));
@@ -55699,6 +55752,9 @@ begin
  // Set JITSkipExecution := true so interpreter doesn't re-enter JIT for this instruction
  // Use HostVPN (claimed, not mapped) to avoid clobbering a dirty guest-mapped register
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ EmitFPUEpilog(HostVPN);
+{$endif}
  EmitNativeStore(HostVPN,VMPtrRegister,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
 
@@ -63808,6 +63864,9 @@ begin
 {$endif}
 {$ifdef JITInlineCSRRead}
   fState.JITRDTIMEHelperPtr:=@TJustInTimeCompiler.JITRDTIMEHelper;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+  fState.FPUDirty:=false;
 {$endif}
   fJustInTimeCompiler.ClearBlocks;
  end;
@@ -92105,6 +92164,17 @@ begin
  end;
 end;
 
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+procedure TPasRISCV.THART.CheckFPUDirty;
+begin
+ if fState.FPUDirty then begin
+  fState.FPUDirty:=false;
+  SetFPUExceptions;
+  fState.CSR.SetFSDirty;
+ end;
+end;
+{$endif}
+
 {$if defined(PasRISCVCPUFileDumpDebug)}
 var DumpFile:^Text=nil;
 {$ifend}
@@ -92209,6 +92279,9 @@ begin
         ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
         (((fState.Cycle xor LastCycles) shr 16)=0) then begin
       JITTLBEntry^.Block(@fState);
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+      CheckFPUDirty;
+{$endif}
       JITCodeExecuted:=true;
      end else begin
       break;
