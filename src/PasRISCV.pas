@@ -9001,6 +9001,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function TLBLookup:Boolean;
                      function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceFallback(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      function TraceVector(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
 {$endif}
@@ -50105,6 +50106,38 @@ begin
  end;
 end;
 
+function TPasRISCV.THART.TJustInTimeCompiler.TraceFallback(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
+var SavedCodeSize:TPasRISCVUInt32;
+begin
+ if (not fCompiling) and TLBLookup then begin
+{$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
+  dec(fHART.fState.PC,aInstructionSize);
+{$endif}
+  result:=true;
+ end else begin
+  if fCompiling then begin
+{$ifdef PasRISCVJustInTimeCompilerDebug}
+   if fDebugJITCounter<60 then begin
+    writeln('  COMPILE @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
+   end;
+{$endif}
+   SavedCodeSize:=fTemporaryCodeSize;
+   aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+   if fTemporaryCodeSize<>SavedCodeSize then begin
+{$ifdef PasRISCVJITFPUFlushAfterEachOp}
+    FreeAllHostFPURegisters;
+{$endif}
+    inc(fPCOffset,aInstructionSize);
+    inc(fInstructionCount);
+    fBlockEnds:=false;
+   end else begin
+    fBlockEnds:=true;
+   end;
+  end;
+  result:=false;
+ end;
+end;
+
 function TPasRISCV.THART.TJustInTimeCompiler.TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
 var PC:TPasRISCVUInt64;
 begin
@@ -59751,7 +59784,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
-    ScratchXMM2:TPasRISCVUInt8;
+    ScratchXMM2,ScratchXMM3:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
@@ -59803,11 +59836,16 @@ begin
   fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
- // emulated: frd = frs1*frs2 + frs3
+ // emulated: frd = frs1*frs2 + frs3 (via double promotion for single-rounding)
  ScratchXMM2:=ClaimHostFPURegister;
- EmitFPUMov(ScratchXMM2,HostFRS1,false);
- EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
- EmitSSE2Op($f3,$58,ScratchXMM2,HostFRS3); // add
+ EmitSSE2Op($f3,$5a,ScratchXMM2,HostFRS1);    // cvtss2sd scratch2, frs1
+ ScratchXMM3:=ClaimHostFPURegister;
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS2);    // cvtss2sd scratch3, frs2
+ EmitSSE2Op($f2,$59,ScratchXMM2,ScratchXMM3); // mulsd scratch2, scratch3 (exact)
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS3);    // cvtss2sd scratch3, frs3
+ EmitSSE2Op($f2,$58,ScratchXMM2,ScratchXMM3); // addsd scratch2, scratch3
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM3);
+ EmitSSE2Op($f2,$5a,ScratchXMM2,ScratchXMM2); // cvtsd2ss scratch2, scratch2
  EmitFPUMov(HostFRD,ScratchXMM2,false);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
@@ -59825,7 +59863,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
-    ScratchXMM2:TPasRISCVUInt8;
+    ScratchXMM2,ScratchXMM3:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
@@ -59877,11 +59915,16 @@ begin
   fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
- // emulated: frd = frs1*frs2 - frs3
+ // emulated: frd = frs1*frs2 - frs3 (via double promotion for single-rounding)
  ScratchXMM2:=ClaimHostFPURegister;
- EmitFPUMov(ScratchXMM2,HostFRS1,false);
- EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
- EmitSSE2Op($f3,$5c,ScratchXMM2,HostFRS3); // sub
+ EmitSSE2Op($f3,$5a,ScratchXMM2,HostFRS1);    // cvtss2sd scratch2, frs1
+ ScratchXMM3:=ClaimHostFPURegister;
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS2);    // cvtss2sd scratch3, frs2
+ EmitSSE2Op($f2,$59,ScratchXMM2,ScratchXMM3); // mulsd scratch2, scratch3 (exact)
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS3);    // cvtss2sd scratch3, frs3
+ EmitSSE2Op($f2,$5c,ScratchXMM2,ScratchXMM3); // subsd scratch2, scratch3
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM3);
+ EmitSSE2Op($f2,$5a,ScratchXMM2,ScratchXMM2); // cvtsd2ss scratch2, scratch2
  EmitFPUMov(HostFRD,ScratchXMM2,false);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
@@ -59899,7 +59942,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
-    ScratchXMM2:TPasRISCVUInt8;
+    ScratchXMM2,ScratchXMM3,ScratchInt:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
@@ -59923,7 +59966,7 @@ begin
   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
- // VFNMSUB231SS: dst = -(vvvv*rm) - dst
+ // VFNMSUB231SS: dst = -(vvvv*rm) - dst (RISC-V FNMSUB = -(a*b-c))
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
   FMADst:=ClaimHostFPURegister;
@@ -59951,14 +59994,22 @@ begin
   fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
- // emulated: frd = -(frs1*frs2) - frs3
+ // emulated: frd = -(frs1*frs2-frs3) = -(frs1*frs2)+frs3 (via double promotion)
  ScratchXMM2:=ClaimHostFPURegister;
- EmitFPUMov(ScratchXMM2,HostFRS1,false);
- EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
- EmitSSE2Op($f3,$58,ScratchXMM2,HostFRS3); // add
- // negate: frd = 0 - scratch
- EmitSSE2Op($66,$ef,HostFRD,HostFRD); // PXOR frd,frd (zero)
- EmitSSE2Op($f3,$5c,HostFRD,ScratchXMM2); // sub: frd = 0 - result
+ EmitSSE2Op($f3,$5a,ScratchXMM2,HostFRS1);    // cvtss2sd scratch2, frs1
+ ScratchXMM3:=ClaimHostFPURegister;
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS2);    // cvtss2sd scratch3, frs2
+ EmitSSE2Op($f2,$59,ScratchXMM2,ScratchXMM3); // mulsd scratch2, scratch3 (exact)
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS3);    // cvtss2sd scratch3, frs3
+ EmitSSE2Op($f2,$58,ScratchXMM2,ScratchXMM3); // addsd scratch2, scratch3
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM3);
+ EmitSSE2Op($f2,$5a,ScratchXMM2,ScratchXMM2); // cvtsd2ss scratch2, scratch2
+ // negate via sign-bit flip (correct for signed zeros)
+ ScratchInt:=ClaimHostIntRegister;
+ EmitSSE2MovXMMToGPR(ScratchInt,ScratchXMM2,false);
+ EmitImmOp(ALU_XOR,ScratchInt,TPasRISCVInt32(TPasRISCVUInt32($80000000)),false);
+ EmitSSE2MovGPRToXMM(HostFRD,ScratchInt,false);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl ScratchInt);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
@@ -59975,7 +60026,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
-    ScratchXMM2:TPasRISCVUInt8;
+    ScratchXMM2,ScratchXMM3:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
@@ -59999,7 +60050,7 @@ begin
   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
- // VFNMADD231SS: dst = -(vvvv*rm) + dst
+ // VFNMADD231SS: dst = -(vvvv*rm) + dst (RISC-V FNMADD = -(a*b+c))
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
   FMADst:=ClaimHostFPURegister;
@@ -60027,13 +60078,18 @@ begin
   fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
- // emulated: frd = -(frs1*frs2) + frs3 = frs3 - frs1*frs2
+ // emulated: frd = -(frs1*frs2+frs3) = frs3 - frs1*frs2 - 2*frs3 ... simplified: -(product+frs3) (via double promotion)
  ScratchXMM2:=ClaimHostFPURegister;
- EmitFPUMov(ScratchXMM2,HostFRS1,false);
- EmitSSE2Op($f3,$59,ScratchXMM2,HostFRS2); // mul
- EmitFPUMov(HostFRD,HostFRS3,false);
- EmitSSE2Op($f3,$5c,HostFRD,ScratchXMM2); // frd = frs3 - mul
+ EmitSSE2Op($f3,$5a,ScratchXMM2,HostFRS1);    // cvtss2sd scratch2, frs1
+ ScratchXMM3:=ClaimHostFPURegister;
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS2);    // cvtss2sd scratch3, frs2
+ EmitSSE2Op($f2,$59,ScratchXMM2,ScratchXMM3); // mulsd scratch2, scratch3 (exact)
+ EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS3);    // cvtss2sd scratch3, frs3
+ EmitSSE2Op($f2,$5c,ScratchXMM3,ScratchXMM2); // subsd scratch3, scratch2 = frs3-product
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
+ EmitSSE2Op($f2,$5a,ScratchXMM3,ScratchXMM3); // cvtsd2ss scratch3, scratch3
+ EmitFPUMov(HostFRD,ScratchXMM3,false);
+ fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM3);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
@@ -60194,7 +60250,7 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
     VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM:TPasRISCVUInt8;
-    ScratchXMM2:TPasRISCVUInt8;
+    ScratchXMM2,ScratchInt:TPasRISCVUInt8;
 {$endif}
     RM,RMTmp:TPasRISCVUInt8;
 begin
@@ -60218,7 +60274,7 @@ begin
   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
- // VFNMSUB231SD: dst = -(vvvv*rm) - dst
+ // VFNMSUB231SD: dst = -(vvvv*rm) - dst (RISC-V FNMSUB = -(a*b-c))
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
   FMADst:=ClaimHostFPURegister;
@@ -60246,14 +60302,22 @@ begin
   fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
- // emulated: frd = -(frs1*frs2) - frs3
+ // emulated: frd = -(frs1*frs2-frs3) = -(frs1*frs2)+frs3
  ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,true);
- EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
- EmitSSE2Op($f2,$58,ScratchXMM2,HostFRS3); // add
- // negate: frd = 0 - scratch
- EmitSSE2Op($66,$ef,HostFRD,HostFRD); // PXOR frd,frd (zero)
- EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // sub: frd = 0 - result
+ EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mulsd
+ EmitSSE2Op($f2,$58,ScratchXMM2,HostFRS3); // addsd (product + frs3)
+ // negate via sign-bit flip (correct for signed zeros)
+ ScratchInt:=ClaimHostIntRegister;
+ EmitSSE2MovXMMToGPR(ScratchInt,ScratchXMM2,true);
+ // BTC ScratchInt, 63 (flip sign bit)
+ EmitREX(true,0,0,ScratchInt);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_BT_GROUP);
+ EmitModRM(3,7,ScratchInt);
+ EmitByte(63);
+ EmitSSE2MovGPRToXMM(HostFRD,ScratchInt,true);
+ fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl ScratchInt);
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
@@ -60292,7 +60356,7 @@ begin
   fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
- // VFNMADD231SD: dst = -(vvvv*rm) + dst
+ // VFNMADD231SD: dst = -(vvvv*rm) + dst (RISC-V FNMADD = -(a*b+c))
  // use scratch if dst aliases vvvv(frs1) or rm(frs2)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
   FMADst:=ClaimHostFPURegister;
@@ -60320,12 +60384,12 @@ begin
   fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl FMADst);
  end;
 {$else}
- // emulated: frd = -(frs1*frs2) + frs3 = frs3 - frs1*frs2
+ // emulated: frd = -(frs1*frs2+frs3) = frs3 - frs1*frs2 - 2*frs3 ... simplified as frs3 - product
  ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,true);
- EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mul
+ EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mulsd
  EmitFPUMov(HostFRD,HostFRS3,true);
- EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // frd = frs3 - mul
+ EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // frd = frs3 - product
  fHostFPURegisterMask:=fHostFPURegisterMask or (TPasRISCVUInt32(1) shl ScratchXMM2);
 {$endif}
  if RM<=4 then begin
@@ -64273,7 +64337,7 @@ begin
  end;
 {$endif}
 {$endif}
-{$if defined(PasRISCVJustInTimeCompiler) and (defined(SmartJITTLBFlush) and defined(SmartJITTLBFlushForceClear)) or not defined(SmartJITTLBFlushForceClear)}
+{$if defined(PasRISCVJustInTimeCompiler) and ((defined(SmartJITTLBFlush) and defined(SmartJITTLBFlushForceClear)) or not defined(SmartJITTLBFlushForceClear))}
  if assigned(fJustInTimeCompiler){$if defined(SmartJITTLBFlush)}and HadExecute{$ifend}then begin
   fJustInTimeCompiler.FlushJITTLB;
 {$ifdef PasRISCVJustInTimeCompilerStats}
@@ -86269,7 +86333,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86292,7 +86356,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86351,7 +86415,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86374,7 +86438,7 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
@@ -86459,12 +86523,12 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMADDS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
-        fState.FPURegisters[frd].f32:=-FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
+        fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(-ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
         fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
@@ -86482,12 +86546,12 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMADDD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
-        fState.FPURegisters[frd].f64:=-FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,-fState.FPURegisters[frs3].f64);
+        fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(-fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64);
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
@@ -86541,12 +86605,12 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMSUBS,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
-        fState.FPURegisters[frd].f32:=-FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
+        fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(-ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
         fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
@@ -86564,12 +86628,12 @@ begin
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
-           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
+           fJustInTimeCompiler.TraceFallback(fJustInTimeCompiler.IntrinsicFNMSUBD,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
          exit;
         end;
 {$ifend}
-        fState.FPURegisters[frd].f64:=-FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64);
+        fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(-fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,-fState.FPURegisters[frs3].f64);
         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
         end;
