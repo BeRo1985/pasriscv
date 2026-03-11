@@ -76441,7 +76441,7 @@ begin
       $27:begin
        // vmv<nr>r.v: whole register move (vm=1 required)
        // simm5 field (bits [19:15]) encodes nr-1; valid values: 0,1,3,7
-{$if defined(PasRISCVJustInTimeCompiler) and false and defined(PasRISCVJustInTimeCompilerVector)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerVector)}
        if assigned(fJustInTimeCompiler) then begin
         if fJustInTimeCompiler.TraceVector(fJustInTimeCompiler.IntrinsicVMVNR,aInstruction,0,0,0,0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
