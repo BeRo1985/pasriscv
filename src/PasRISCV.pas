@@ -8537,7 +8537,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fEnabled:Boolean;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      fFPUEnabled:Boolean;
-                     fBlockHasFPUOperations:Boolean;
                      fBlockFSDirtyEmitted:Boolean;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
@@ -49023,7 +49022,6 @@ begin
  end;
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
- fBlockHasFPUOperations:=false;
  fBlockFSDirtyEmitted:=false;
  fHostFPURegisterMask:=DefaultFPURegisterMask;
  for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
@@ -49663,8 +49661,6 @@ end;
 function TPasRISCV.THART.TJustInTimeCompiler.MapGuestToHostFPURegister(const aGuestRegister:TFPURegister;const aFlags:TPasRISCVUInt8):TPasRISCVUInt8;
 var HostRegister:TPasRISCVUInt8;
 begin
-
- fBlockHasFPUOperations:=true;
 
  inc(fLRUCounter);
 
@@ -55875,7 +55871,8 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPUEpilog;
 begin
- if fBlockHasFPUOperations then begin
+
+ if fBlockFSDirtyEmitted then begin
 
   // Save VMPtrRegister (clobbered by loading JITHART into first argument register, RCX on Win64 or RDI on SysV)
   EmitNativePush(VMPtrRegister);
