@@ -9011,6 +9011,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFSD(const aHostFPUSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
 {$endif}
                      // Integer intrinsics (virtual, override in target-specific subclass)
+                     function IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicADDI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9101,9 +9102,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerZicond}
                      function IntrinsicCZEROEQZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicCZERONEZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZcb}
-                     function IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZihintpause}
                      function IntrinsicPAUSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -50420,6 +50418,12 @@ begin
  end;
 end;
 
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ // NOP - no operation, just allows JIT tracing to continue through this instruction
+ result:=true;
+end;
+
 // Base implementations for integer intrinsics
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
@@ -51537,14 +51541,6 @@ begin
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeORCB(HostRD,HostRS1);
- result:=true;
-end;
-{$endif}
-
-{$ifdef PasRISCVJustInTimeCompilerZcb}
-function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
-begin
- // NOP - no operation, just allows JIT tracing to continue through this instruction
  result:=true;
 end;
 {$endif}
@@ -82633,6 +82629,13 @@ begin
          end;
 {$endif}
          // Other C.MOP.N: plain Zcmop NOP
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicNOP,aInstruction,0,0,0,0,2) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
+          exit;
+         end;
+{$ifend}
          result:=2;
          exit;
         end else begin
@@ -86387,12 +86390,26 @@ begin
           $0d:begin
            // wrs.nto (Zawrs) - Wait on Reservation Set, No Timeout
            // NOP in emulator: no hardware reservation set to poll
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicNOP,aInstruction,0,0,0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            result:=4;
            exit;
           end;
           $1d:begin
            // wrs.sto (Zawrs) - Wait on Reservation Set, Short Timeout
            // NOP in emulator: no hardware reservation set to poll
+{$if defined(PasRISCVJustInTimeCompiler) and true}
+           if assigned(fJustInTimeCompiler) and
+              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicNOP,aInstruction,0,0,0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+{$ifend}
            result:=4;
            exit;
           end;
