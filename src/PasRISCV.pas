@@ -8581,6 +8581,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fSignalMask:TPasRISCVUInt32;
                      fTemporaryCode:TPasRISCVUInt8DynamicArray;
                      fTemporaryCodeSize:TPasRISCVSizeInt;
+                     fInitialCodeSize:TPasRISCVSizeInt;
                      fCurrentPhysicalPC:TPasRISCVUInt64;
                      fCurrentMode:TMode;
                      fCurrentVirtualMode:TPasMPBool32;
@@ -8757,6 +8758,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
 
                      // Native emit helpers for intrinsics (virtual abstract, platform-specific)
+                     procedure EmitNativeNOP; virtual; abstract;
+                     procedure EmitNativeOnceNOP; virtual;
                      procedure EmitNativeAdd(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeSub(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeAddi(const aHostDest,aHostSrc:TPasRISCVUInt8;const aImm:TPasRISCVInt32); virtual; abstract;
@@ -9613,6 +9616,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      // EmitNativeXxx overrides for intrinsics
                      procedure EmitNativeSetReg32s(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVInt32); override;
                      procedure EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64); override;
+                     procedure EmitNativeNOP; override;
                      procedure EmitNativeAdd(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeSub(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeXor(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
@@ -49045,6 +49049,7 @@ begin
   fHostFPURegisterInfos[FPURegister].Flags:=0;
  end;
 {$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerVector}
  fBlockVectorEnabled:=false;
  fBlockVStartChecked:=false;
@@ -49052,6 +49057,9 @@ begin
  fBlockVTypeChecked:=false;
  fBlockVSDirtyEmitted:=false;
 {$endif}
+
+ fInitialCodeSize:=fTemporaryCodeSize;
+
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitEnd(const aLinkage:TLinkage);
@@ -49065,6 +49073,10 @@ var SavedHostRegMask:TPasRISCVUInt32;
     ExitFixup:TPasRISCVUInt32;
     RunStateExitFixup:TPasRISCVUInt32;
 begin
+
+{if fTemporaryCodeSize=fInitialCodeSize then begin
+  EmitNativeNOP;
+ end;}
 
  SavedHostRegMask:=fHostIntRegisterMask;
  SavedABIReclaimMask:=fABIReclaimMask;
@@ -50401,7 +50413,14 @@ begin
  end;
 end;
 
-// Empty base implementations for integer intrinsics
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitNativeOnceNOP;
+begin
+ if fInstructionCount=0 then begin
+  EmitNativeNOP;
+ end;
+end;
+
+// Base implementations for integer intrinsics
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD,RS1,RS2:TRegister;
     HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
@@ -56500,6 +56519,11 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64);
 begin
  EmitMOVRegImm64(aHostDest,aImm);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeNOP;
+begin
+ EmitByte($90);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAdd(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
