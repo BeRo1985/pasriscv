@@ -60856,28 +60856,34 @@ var HostTmp:TPasRISCVUInt8;
 begin
  // Runtime check: if MSTATUS.VS == Off (bits[10:9] == 0), bail to interpreter
  // IsVectorEnabled = ((MSTATUS >> 9) & 3) <> 0
- HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
- EmitShiftRegImm(SHIFT_SHR,HostTmp,9,true);
- EmitImmOp(ALU_AND,HostTmp,3,true);
- EmitTEST(HostTmp,HostTmp,true);
- FreeHostIntRegister(HostTmp);
- // JNE .vs_ok (skip bailout if VS != Off)
- EmitJccRel32(CC_NE,0);
- OkFixup:=fTemporaryCodeSize-4;
- EmitVectorBailout;
- PatchJmpRel32(OkFixup);
+ if not fBlockVectorEnabled then begin
+  HostTmp:=ClaimHostIntRegister;
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+  EmitShiftRegImm(SHIFT_SHR,HostTmp,9,true);
+  EmitImmOp(ALU_AND,HostTmp,3,true);
+  EmitTEST(HostTmp,HostTmp,true);
+  FreeHostIntRegister(HostTmp);
+  // JNE .vs_ok (skip bailout if VS != Off)
+  EmitJccRel32(CC_NE,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitVectorBailout;
+  PatchJmpRel32(OkFixup);
+  fBlockVectorEnabled:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSetVSDirty;
 var HostTmp:TPasRISCVUInt8;
 begin
  // Set MSTATUS.VS = Dirty (bits[10:9] = 11) via OR with (3 shl 9)
- HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
- EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 9),true);
- EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
- FreeHostIntRegister(HostTmp);
+ if not fBlockVSDirtyEmitted then begin
+  HostTmp:=ClaimHostIntRegister;
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+  EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 9),true);
+  EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+  FreeHostIntRegister(HostTmp);
+  fBlockVSDirtyEmitted:=true;
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitVectorVStartCheck(const aHostTemporaryRegister:TPasRISCVInt32);
@@ -61020,10 +61026,7 @@ begin
  end;
  VLMAX:=((VLEN div SEW)*LMUL8) shr 3;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // rs1=x0, rd=x0 depends on the runtime old VLMAX/current vtype state.
  // Let the interpreter handle this case to preserve exact semantics.
@@ -61079,10 +61082,8 @@ begin
   FreeHostIntRegister(HostTmp);
  end;
 
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ // === Set VS dirty in MSTATUS ===
+ EmitSetVSDirty;
 
  // A traced vsetvli changes the vector configuration for following ops in the block.
  fBlockVLChecked:=false;
@@ -61159,10 +61160,7 @@ begin
   NewVL:=VLMAX;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // Emit stores for all CSRs and rd (all constants)
  FreeAllHostIntRegisters;
@@ -61180,10 +61178,8 @@ begin
  EmitVectorClearVStart(HostTmp);
  FreeHostIntRegister(HostTmp);
 
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ // === Set VS dirty in MSTATUS ===
+ EmitSetVSDirty;
 
  // A traced vsetivli changes the vector configuration for following ops in the block.
  fBlockVLChecked:=false;
@@ -61322,10 +61318,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -61390,10 +61383,7 @@ begin
  FreeHostIntRegister(HostAddr);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -61523,10 +61513,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -61679,10 +61666,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -61789,10 +61773,7 @@ begin
  FreeHostIntRegister(HostRS1);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -61885,10 +61866,7 @@ begin
   ImmVal:=ImmVal and ((TPasRISCVUInt64(1) shl SEW)-1);
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -61980,10 +61958,7 @@ begin
  FreeHostIntRegister(HostTmp);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -62133,10 +62108,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -62188,10 +62160,7 @@ begin
  EmitVectorClearVStart(-1);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -62362,10 +62331,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -62488,10 +62454,7 @@ begin
  FreeHostIntRegister(HostScalar);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -62642,10 +62605,7 @@ begin
  // Sign-extend 5-bit immediate
  Imm5:=TPasRISCVInt64(SignExtend((aInstruction shr 15) and $1f,5));
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -62761,10 +62721,7 @@ begin
  FreeHostIntRegister(HostScalar);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -62808,10 +62765,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -62851,10 +62805,7 @@ begin
  EmitVectorClearVStart(-1);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -62980,10 +62931,7 @@ begin
  NumElements:=VLENB div (SEW shr 3);
  MaskBits:=(TPasRISCVUInt64(1) shl NumElements)-1;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -63075,10 +63023,7 @@ begin
  FreeHostIntRegister(HostMask);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -63159,10 +63104,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -63193,10 +63135,7 @@ begin
  EmitVectorClearVStart(-1);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -63292,10 +63231,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -63405,10 +63341,7 @@ begin
  EmitVectorClearVStart(-1);
 
  // === Set VS dirty in MSTATUS ===
- if not fBlockVSDirtyEmitted then begin
-  EmitSetVSDirty;
-  fBlockVSDirtyEmitted:=true;
- end;
+ EmitSetVSDirty;
 
  result:=true;
 
@@ -63529,10 +63462,7 @@ begin
   exit;
  end;
 
- if not fBlockVectorEnabled then begin
-  EmitVectorEnabledCheck;
-  fBlockVectorEnabled:=true;
- end;
+ EmitVectorEnabledCheck;
 
  // === Flush FPU registers that overlap with vector scratch XMM/YMM ===
 {$ifdef PasRISCVJustInTimeCompilerFPU}
