@@ -8541,6 +8541,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      fFPUEnabled:Boolean;
                      fBlockHasFPUOperations:Boolean;
+                     fBlockFSDirtyEmitted:Boolean;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      fBlockVectorEnabled:Boolean;
@@ -49026,6 +49027,7 @@ begin
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  fBlockHasFPUOperations:=false;
+ fBlockFSDirtyEmitted:=false;
  fHostFPURegisterMask:=DefaultFPURegisterMask;
  for FPURegister:=Low(TFPURegister) to High(TFPURegister) do begin
   fHostFPURegisterInfos[FPURegister].HostRegister:=REG_ILL;
@@ -49230,7 +49232,6 @@ procedure TPasRISCV.THART.TJustInTimeCompiler.EmitFPUEpilog;
 var HostTmp:TPasRISCVUInt32;
 begin
  if fBlockHasFPUOperations then begin
-
 
   HostTmp:=ClaimHostIntRegister;
   EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
@@ -53296,6 +53297,7 @@ end;
 {$endif}
 
 {$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
@@ -53312,6 +53314,7 @@ begin
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFLW(HostFRD,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53329,6 +53332,7 @@ begin
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFLD(HostFRD,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53346,6 +53350,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  EmitNativeFSW(HostFRS2,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53363,6 +53368,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  EmitNativeFSD(HostFRS2,HostAddr,0);
  FreeHostIntRegister(HostAddr);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53387,6 +53393,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53411,6 +53418,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53435,6 +53443,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53459,6 +53468,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53481,6 +53491,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53505,6 +53516,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53529,6 +53541,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53553,6 +53566,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53577,6 +53591,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53599,6 +53614,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53613,6 +53629,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjS(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53627,6 +53644,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjNS(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53641,6 +53659,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjXS(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53655,6 +53674,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjD(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53669,6 +53689,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjND(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53683,6 +53704,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFSgnjXD(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53697,6 +53719,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMinS(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53711,6 +53734,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMaxS(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53725,6 +53749,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMinD(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53739,6 +53764,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMaxD(HostFRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53761,6 +53787,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53783,6 +53810,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53802,6 +53830,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFEqS(HostRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53821,6 +53850,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLtS(HostRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53840,6 +53870,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLeS(HostRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53859,6 +53890,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFEqD(HostRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53878,6 +53910,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLtD(HostRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53897,6 +53930,7 @@ begin
  HostFRS2:=MapGuestToHostFPURegister(FRS2,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFLeD(HostRD,HostFRS1,HostFRS2);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53924,6 +53958,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53951,6 +53986,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -53978,6 +54014,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54005,6 +54042,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54028,6 +54066,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54051,6 +54090,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54074,6 +54114,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54097,6 +54138,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54124,6 +54166,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54151,6 +54194,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54178,6 +54222,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54205,6 +54250,7 @@ begin
  if (RM<=4) and (RM<>1) then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54228,6 +54274,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54251,6 +54298,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54274,6 +54322,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54297,6 +54346,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54314,6 +54364,7 @@ begin
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFMvXW(HostRD,HostFRS1);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54327,6 +54378,7 @@ begin
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMvWX(HostFRD,HostRS1);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54344,6 +54396,7 @@ begin
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFMvXD(HostRD,HostFRS1);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54357,6 +54410,7 @@ begin
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostFRD:=MapGuestToHostFPURegister(FRD,REG_DST);
  EmitNativeFMvDX(HostFRD,HostRS1);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54374,6 +54428,7 @@ begin
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFClassS(HostRD,HostFRS1);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -54391,6 +54446,7 @@ begin
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeFClassD(HostRD,HostFRS1);
+ EmitSetFSDirty;
  result:=true;
 end;
 {$endif}
@@ -55812,11 +55868,14 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSetFSDirty;
 var HostTmp:TPasRISCVUInt8;
 begin
- HostTmp:=ClaimHostIntRegister;
- EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
- EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 13),true);
- EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
- FreeHostIntRegister(HostTmp);
+ if not fBlockFSDirtyEmitted then begin
+  fBlockFSDirtyEmitted:=true;
+  HostTmp:=ClaimHostIntRegister;
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+  EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 13),true);
+  EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+  FreeHostIntRegister(HostTmp);
+ end;
 end;
 
 {$endif}
@@ -60308,6 +60367,7 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -60389,6 +60449,7 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -60475,6 +60536,7 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -60556,6 +60618,7 @@ begin
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(HostFRD,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -60630,6 +60693,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -60704,6 +60768,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -60788,6 +60853,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
@@ -60862,6 +60928,7 @@ begin
  if RM<=4 then begin
   EmitRestoreRoundingMode;
  end;
+ EmitSetFSDirty;
  result:=true;
 end;
 
