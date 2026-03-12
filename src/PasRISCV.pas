@@ -386,6 +386,9 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZksh}
   {$define PasRISCVJustInTimeCompilerZabha}
   {$define PasRISCVJustInTimeCompilerZicond}
+  {$define PasRISCVJustInTimeCompilerZimop}
+  {$define PasRISCVJustInTimeCompilerZbc}
+  {$define PasRISCVJustInTimeCompilerZacas}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
 {$ifend}
@@ -8868,6 +8871,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
                      procedure EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
                      procedure EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64); virtual; abstract;
+{$ifdef PasRISCVJustInTimeCompilerZacas}
+                     // Zacas (Atomic Compare-And-Swap)
+                     procedure EmitNativeAMOCAS(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
+                     procedure EmitNativeAMOCASQ(const aHostAddr:TPasRISCVUInt8;const aHostExpLo,aHostExpHi,aHostNewLo,aHostNewHi:TPasRISCVUInt8); virtual; abstract;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerZabha}
                      // Zabha (Byte Atomic Memory Operations)
                      procedure EmitNativeAMOADDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); virtual; abstract;
@@ -8903,6 +8911,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      // Zbkb
                      procedure EmitNativeBREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbc}
+                     // Zbc (Carry-less multiply)
+                     procedure EmitNativeCLMUL(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCLMULH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCLMULR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZknh}
                      // Zknh (SHA-256/SHA-512 scalar)
@@ -9103,6 +9117,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicCZEROEQZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicCZERONEZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerZimop}
+                     function IntrinsicZIMOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbc}
+                     function IntrinsicCLMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCLMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCLMULR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerZihintpause}
                      function IntrinsicPAUSE(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
@@ -9169,6 +9191,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicAMOMAXU(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicLR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicSC(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+{$ifdef PasRISCVJustInTimeCompilerZacas}
+                     // Zacas (Atomic Compare-And-Swap): aParameter0=rd, aParameter1=rs1, aParameter2=rs2, aParameter3=aIs32 (0=.d, 1=.w)
+                     function IntrinsicAMOCAS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     // Zacas 128-bit: aParameter0=rd, aParameter1=rs1, aParameter2=rs2, aParameter3=unused
+                     function IntrinsicAMOCASQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerZabha}
                      // Zabha byte AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
                      function IntrinsicAMOADDB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9477,6 +9505,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fHasPOPCNT:Boolean;
                      fHasFMA3:Boolean;
                      fHasAVX2:Boolean;
+                     fHasPCLMUL:Boolean;
                       // x86-64 encoding helpers
                      procedure EmitREX(const aW:Boolean;const aR:TPasRISCVUInt8;const aX:TPasRISCVUInt8;const aB:TPasRISCVUInt8);
                      procedure EmitModRM(const aMod:TPasRISCVUInt8;const aReg:TPasRISCVUInt8;const aRM:TPasRISCVUInt8);
@@ -9746,6 +9775,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeAMOMAXU(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
                      procedure EmitNativeLR(const aHostDest,aHostAddr,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean); override;
                      procedure EmitNativeSC(const aHostDest,aHostAddr,aHostSrc,aHostGuestAddr:TPasRISCVUInt8;const aIs32:Boolean;const aLRSCMaximumCycles:TPasRISCVUInt64); override;
+{$ifdef PasRISCVJustInTimeCompilerZacas}
+                     // Zacas
+                     procedure EmitNativeAMOCAS(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); override;
+                     procedure EmitNativeAMOCASQ(const aHostAddr:TPasRISCVUInt8;const aHostExpLo,aHostExpHi,aHostNewLo,aHostNewHi:TPasRISCVUInt8); override;
+                     function IntrinsicAMOCASQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerZabha}
                      // Zabha byte
                      procedure EmitNativeAMOADDB(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8); override;
@@ -9778,6 +9813,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      procedure EmitNativeBREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZbc}
+                     // Zbc
+                     procedure EmitNativeCLMUL(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeCLMULH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeCLMULR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     function IntrinsicCLMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicCLMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicCLMULR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
 {$endif}
 {$ifdef JITInlineCSRRead}
                      function IntrinsicCSRRead(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
@@ -52132,6 +52176,78 @@ begin
 end;
 {$endif}
 
+{$ifdef PasRISCVJustInTimeCompilerZimop}
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicZIMOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD:TRegister;
+    HostRD:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeZeroReg(HostRD);
+ result:=true;
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZbc}
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeCLMUL(HostRD,HostRS1,HostRS2);
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeCLMULH(HostRD,HostRS1,HostRS2);
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLMULR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeCLMULR(HostRD,HostRS1,HostRS2);
+ result:=true;
+end;
+{$endif}
+
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
@@ -52862,6 +52978,46 @@ begin
  FreeHostIntRegister(HostAddr);
  result:=true;
 end;
+
+{$ifdef PasRISCVJustInTimeCompilerZacas}
+// Zacas intrinsics: aParameter0=rd, aParameter1=rs1(addr), aParameter2=rs2(new value), aParameter3=Is32
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOCAS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD,RS1,RS2:TRegister;
+    Is32:Boolean;
+    HostAddr,HostDest,HostSrc:TPasRISCVUInt8;
+    CurrentAMOHostRegAvoidMask:TPasRISCVUInt32;
+begin
+ CurrentAMOHostRegAvoidMask:=AMOHostAvoidRegisterMask;
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ Is32:=aParameter3<>0;
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
+ HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
+ if RD<>TRegister.Zero then begin
+  // RD is both source (expected value for CAS) and destination (receives old value)
+  HostDest:=MapGuestToHostIntRegister(RD,REG_SRC or REG_DST,CurrentAMOHostRegAvoidMask);
+ end else begin
+  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+ end;
+ EmitNativeAMOCAS(HostDest,HostAddr,HostSrc,Is32);
+ if RD=TRegister.Zero then begin
+  FreeHostIntRegister(HostDest);
+ end;
+ FreeHostIntRegister(HostAddr);
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicAMOCASQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ // Default: fall back to interpreter. x86-64 overrides with CMPXCHG16B implementation.
+ result:=false;
+end;
+{$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZabha}
 // Zabha byte AMO intrinsics: aParameter0=rd, aParameter1=rs1, aParameter2=rs2
@@ -54644,6 +54800,7 @@ begin
  fHasPOPCNT:=(CPUFeatures and CPUFeatures_X86_POPCNT_Mask)<>0;
  fHasFMA3:=(CPUFeatures and CPUFeatures_X86_FMA_Mask)<>0;
  fHasAVX2:=(CPUFeatures and CPUFeatures_X86_AVX2_Mask)<>0;
+ fHasPCLMUL:=(CPUFeatures and CPUFeatures_X86_PCLMUL_Mask)<>0;
 end;
 
 destructor TPasRISCV.THART.TJustInTimeCompilerX8664.Destroy;
@@ -57450,6 +57607,157 @@ begin
 end;
 {$endif}
 
+{$ifdef PasRISCVJustInTimeCompilerZbc}
+// Zbc (Carry-less multiply) x86-64 implementations using PCLMULQDQ
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCLMUL(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ // clmul rd,rs1,rs2: rd = carry-less multiply of rs1 and rs2, lower 64 bits
+ // MOVQ XMM0, rs1: 66 REX.W 0F 6E /r
+ EmitByte($66);
+ EmitREX(true,0,0,aHostSrc1);
+ EmitByte($0f);
+ EmitByte($6e);
+ EmitModRM($03,0,aHostSrc1 and 7);
+ // MOVQ XMM1, rs2: 66 REX.W 0F 6E /r (with reg field=1 for XMM1)
+ EmitByte($66);
+ EmitREX(true,1,0,aHostSrc2);
+ EmitByte($0f);
+ EmitByte($6e);
+ EmitModRM($03,1,aHostSrc2 and 7);
+ // PCLMULQDQ XMM0, XMM1, 0: 66 0F 3A 44 C1 00
+ EmitByte($66);
+ EmitByte($0f);
+ EmitByte($3a);
+ EmitByte($44);
+ EmitModRM($03,0,1);
+ EmitByte($00);
+ // MOVQ rd, XMM0: 66 REX.W 0F 7E /r
+ EmitByte($66);
+ EmitREX(true,0,0,aHostDest);
+ EmitByte($0f);
+ EmitByte($7e);
+ EmitModRM($03,0,aHostDest and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCLMULH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+begin
+ // clmulh rd,rs1,rs2: rd = carry-less multiply of rs1 and rs2, upper 64 bits
+ // MOVQ XMM0, rs1
+ EmitByte($66);
+ EmitREX(true,0,0,aHostSrc1);
+ EmitByte($0f);
+ EmitByte($6e);
+ EmitModRM($03,0,aHostSrc1 and 7);
+ // MOVQ XMM1, rs2
+ EmitByte($66);
+ EmitREX(true,1,0,aHostSrc2);
+ EmitByte($0f);
+ EmitByte($6e);
+ EmitModRM($03,1,aHostSrc2 and 7);
+ // PCLMULQDQ XMM0, XMM1, 0
+ EmitByte($66);
+ EmitByte($0f);
+ EmitByte($3a);
+ EmitByte($44);
+ EmitModRM($03,0,1);
+ EmitByte($00);
+ // PSRLDQ XMM0, 8: shift right by 8 bytes to get upper 64 bits: 66 0F 73 /3 08
+ EmitByte($66);
+ EmitByte($0f);
+ EmitByte($73);
+ EmitModRM($03,3,0);
+ EmitByte($08);
+ // MOVQ rd, XMM0
+ EmitByte($66);
+ EmitREX(true,0,0,aHostDest);
+ EmitByte($0f);
+ EmitByte($7e);
+ EmitModRM($03,0,aHostDest and 7);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCLMULR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var HostTemp:TPasRISCVUInt8;
+begin
+ // clmulr rd,rs1,rs2: rd = bits[126:63] of carry-less multiply (reversed)
+ HostTemp:=ClaimHostIntRegister;
+ // MOVQ XMM0, rs1
+ EmitByte($66);
+ EmitREX(true,0,0,aHostSrc1);
+ EmitByte($0f);
+ EmitByte($6e);
+ EmitModRM($03,0,aHostSrc1 and 7);
+ // MOVQ XMM1, rs2
+ EmitByte($66);
+ EmitREX(true,1,0,aHostSrc2);
+ EmitByte($0f);
+ EmitByte($6e);
+ EmitModRM($03,1,aHostSrc2 and 7);
+ // PCLMULQDQ XMM0, XMM1, 0
+ EmitByte($66);
+ EmitByte($0f);
+ EmitByte($3a);
+ EmitByte($44);
+ EmitModRM($03,0,1);
+ EmitByte($00);
+ // Extract bits[126:63]: MOVQ lo=XMM0, PSRLDQ XMM0,8, MOVQ hi=XMM0, SHRD rd,hi,63
+ // Get low 64 bits into HostTemp
+ EmitByte($66);
+ EmitREX(true,0,0,HostTemp);
+ EmitByte($0f);
+ EmitByte($7e);
+ EmitModRM($03,0,HostTemp and 7);
+ // PSRLDQ XMM0, 8
+ EmitByte($66);
+ EmitByte($0f);
+ EmitByte($73);
+ EmitModRM($03,3,0);
+ EmitByte($08);
+ // Get high 64 bits into aHostDest
+ EmitByte($66);
+ EmitREX(true,0,0,aHostDest);
+ EmitByte($0f);
+ EmitByte($7e);
+ EmitModRM($03,0,aHostDest and 7);
+ // SHRD HostTemp(lo), aHostDest(hi), 63: bits[126:63] = (hi:lo) >> 63
+ // REX.W 0F AC /r imm8
+ EmitREX(true,aHostDest,0,HostTemp);
+ EmitByte($0f);
+ EmitByte($ac);
+ EmitModRM($03,aHostDest and 7,HostTemp and 7);
+ EmitByte(63);
+ EmitMOVRegReg(aHostDest,HostTemp,true);
+ FreeHostIntRegister(HostTemp);
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCLMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ if fHasPCLMUL then begin
+  result:=inherited IntrinsicCLMUL(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCLMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ if fHasPCLMUL then begin
+  result:=inherited IntrinsicCLMULH(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCLMULR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ if fHasPCLMUL then begin
+  result:=inherited IntrinsicCLMULR(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
+ end else begin
+  result:=false;
+ end;
+end;
+{$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerZbs}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeBSET(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg1:TPasRISCVUInt8;
@@ -58183,6 +58491,106 @@ begin
  fTemporaryCode[DoneLabel]:=TPasRISCVUInt8(fTemporaryCodeSize-(DoneLabel+1));
 
 end;
+
+{$ifdef PasRISCVJustInTimeCompilerZacas}
+// Zacas x86-64 implementations
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOCAS(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean);
+begin
+
+ // amocas.w/d: MOV RAX,expected(HostDest) -> LOCK CMPXCHG [HostAddr],new(HostSrc) -> MOV HostDest,RAX(old)
+
+ // RAX is already free due to AMOHostAvoidRegisterMask
+ EmitMOVRegReg(TPasRISCVUInt8(TX64Register.rRAX),aHostDest,true);
+
+ // LOCK prefix
+ EmitByte($f0);
+
+ // CMPXCHG [addr], src: 0F B1 /r
+ if (not aIs32) or (aHostSrc>=8) or (aHostAddr>=8) then begin
+  EmitREX(not aIs32,aHostSrc,0,aHostAddr);
+ end;
+ EmitByte($0f);
+ EmitByte($b1);
+ EmitMemOperand(aHostSrc,aHostAddr,0);
+
+ // RAX now contains old value
+ if aIs32 then begin
+  EmitMOVSXD(aHostDest,TPasRISCVUInt8(TX64Register.rRAX));
+ end else begin
+  EmitMOVRegReg(aHostDest,TPasRISCVUInt8(TX64Register.rRAX),true);
+ end;
+
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeAMOCASQ(const aHostAddr:TPasRISCVUInt8;const aHostExpLo,aHostExpHi,aHostNewLo,aHostNewHi:TPasRISCVUInt8);
+begin
+ 
+// amocas.q: LOCK CMPXCHG16B uses RDX:RAX (expected), RCX:RBX (new)
+
+ // All 4 fixed registers (RAX,RDX,RBX,RCX) are free due to avoid mask in IntrinsicAMOCASQ
+
+ // Load expected pair: RDX:RAX
+ EmitMOVRegReg(TPasRISCVUInt8(TX64Register.rRAX),aHostExpLo,true);
+ EmitMOVRegReg(TPasRISCVUInt8(TX64Register.rRDX),aHostExpHi,true);
+
+ // Load new pair: RCX:RBX
+ EmitMOVRegReg(TPasRISCVUInt8(TX64Register.rRBX),aHostNewLo,true);
+ EmitMOVRegReg(TPasRISCVUInt8(TX64Register.rRCX),aHostNewHi,true);
+
+ // LOCK CMPXCHG16B [HostAddr]: F0 REX.W 0F C7 /1
+ EmitByte($f0);
+ EmitREX(true,0,0,aHostAddr);
+ EmitByte($0f);
+ EmitByte($c7);
+ EmitMemOperand(1,aHostAddr,0);
+
+ // RDX:RAX now contains old value; write back to host regs for rd/rd+1
+ EmitMOVRegReg(aHostExpLo,TPasRISCVUInt8(TX64Register.rRAX),true);
+ EmitMOVRegReg(aHostExpHi,TPasRISCVUInt8(TX64Register.rRDX),true);
+
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicAMOCASQ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD,RS1,RS2,RDp1,RS2p1:TRegister;
+    HostAddr,HostExpLo,HostExpHi,HostNewLo,HostNewHi:TPasRISCVUInt8;
+    CASQAvoidMask:TPasRISCVUInt32;
+begin
+
+ // CMPXCHG16B uses RAX,RDX (expected) and RBX,RCX (new) implicitly,
+ // so avoid all four for operand allocation
+ CASQAvoidMask:=AMOHostAvoidRegisterMask or
+                (TPasRISCVUInt32(1) shl ord(TX64Register.rRDX)) or
+                (TPasRISCVUInt32(1) shl ord(TX64Register.rRBX)) or
+                (TPasRISCVUInt32(1) shl ord(TX64Register.rRCX));
+
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ RDp1:=TRegister((TPasRISCVUInt32(RD)+1) and $1f);
+ RS2p1:=TRegister((TPasRISCVUInt32(RS2)+1) and $1f);
+
+ FreeHostIntRegisters(CASQAvoidMask);
+
+ HostAddr:=ClaimHostIntRegister(CASQAvoidMask);
+
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,16,CASQAvoidMask);
+
+ FreeHostIntRegisters(CASQAvoidMask);
+
+ // RD/RDp1 are both source (expected values) and destination (old values)
+ HostExpLo:=MapGuestToHostIntRegister(RD,REG_SRC or REG_DST,CASQAvoidMask);
+ HostExpHi:=MapGuestToHostIntRegister(RDp1,REG_SRC or REG_DST,CASQAvoidMask);
+ HostNewLo:=MapGuestToHostIntRegister(RS2,REG_SRC,CASQAvoidMask);
+ HostNewHi:=MapGuestToHostIntRegister(RS2p1,REG_SRC,CASQAvoidMask);
+ EmitNativeAMOCASQ(HostAddr,HostExpLo,HostExpHi,HostNewLo,HostNewHi);
+
+ FreeHostIntRegister(HostAddr);
+
+ result:=true;
+
+end;
+{$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZabha}
 // Zabha byte AMO x86-64 implementations
@@ -84712,6 +85120,13 @@ begin
         end;
         $05:begin
          // clmul (Zbc)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbc)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCLMUL,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=CLMul64(TPasRISCVUInt64(fState.Registers[rs1]),TPasRISCVUInt64(fState.Registers[rs2]));
          end;
@@ -84820,6 +85235,13 @@ begin
         end;
         $05:begin
          // clmulr (Zbc)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbc)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCLMULR,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=CLMulR64(TPasRISCVUInt64(fState.Registers[rs1]),TPasRISCVUInt64(fState.Registers[rs2]));
          end;
@@ -84890,6 +85312,13 @@ begin
         end;
         $05:begin
          // clmulh (Zbc)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZbc)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCLMULH,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           fState.Registers[rd]:=CLMulH64(TPasRISCVUInt64(fState.Registers[rs1]),TPasRISCVUInt64(fState.Registers[rs2]));
          end;
@@ -86794,6 +87223,13 @@ begin
           end;
 {$endif}
           // Generic Zimop fallback: write 0 to rd
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZimop)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicZIMOP,aInstruction,ord(TRegister((aInstruction shr 7) and $1f)),0,0,0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           rd:=TRegister((aInstruction shr 7) and $1f);
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=0;
@@ -91155,6 +91591,13 @@ begin
          end;
          $05:begin
           // amocas.w (Zacas)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerZacas)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOCAS,aInstruction,ord(rd),ord(rs1),ord(rs2),1,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPUInt32(TPasMPInterlocked.CompareExchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]),TPasMPUInt32(fState.Registers[rd])));
@@ -91575,6 +92018,13 @@ begin
          end;
          $05:begin
           // amocas.d (Zacas)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerZacas)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOCAS,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            Temporary:=TPasMPUInt64(TPasMPInterlocked.CompareExchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]),TPasMPUInt64(fState.Registers[rd])));
@@ -91839,6 +92289,13 @@ begin
         case ((aInstruction shr 25) and $7c) shr 2 of
          $05:begin
           // amocas.q (Zacas)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerZacas)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOCASQ,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],16,@fState.Bounce.ui128,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
            fState.CAS128OldValue.Lo:=TPasMPUInt64(fState.Registers[rd]);
