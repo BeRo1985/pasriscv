@@ -8666,6 +8666,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      // Emit code to set VS=Dirty in MSTATUS (must be called after modifying vector registers)
                      procedure EmitSetVSDirty; virtual;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+                     procedure EmitSetFSDirty; virtual;
+{$endif}
 
                      // Code emission
                      procedure EmitByte(const aValue:TPasRISCVUInt8);
@@ -9552,6 +9555,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                       // MXCSR rounding mode override for explicit rm != 7 (dynamic)
                      procedure EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempRegister:TPasRISCVUInt8); override;
                      procedure EmitRestoreRoundingMode; override;
+                     procedure EmitSetFSDirty; override;
 {$endif}
 
                      // Inline TLB helpers
@@ -9584,6 +9588,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function AMOHostAvoidRegisterMask:TPasRISCVUInt32; override;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      function DefaultFPURegisterMask:TPasRISCVUInt32; override;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerVector}
+                      // Vector JIT intrinsic overrides
+                     procedure EmitVectorEnabledCheck; override;
+                     procedure EmitVectorVStartCheck(const aHostTemporaryRegister:TPasRISCVInt32);
+                     procedure EmitVectorClearVStart(const aHostTemporaryRegister:TPasRISCVInt32);
+                     procedure EmitVectorVLCheck(const aVLValue:TPasRISCVUInt64);
+                     procedure EmitVectorVTypeCheck(const aVTypeValue:TPasRISCVUInt64);
+                     procedure EmitSetVSDirty; override;
 {$endif}
 
                      // EmitNativeXxx overrides for intrinsics
@@ -9839,13 +9853,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
-                      // Vector JIT intrinsic overrides
-                     procedure EmitVectorEnabledCheck; override;
-                     procedure EmitVectorVStartCheck(const aHostTemporaryRegister:TPasRISCVInt32);
-                     procedure EmitVectorClearVStart(const aHostTemporaryRegister:TPasRISCVInt32);
-                     procedure EmitVectorVLCheck(const aVLValue:TPasRISCVUInt64);
-                     procedure EmitVectorVTypeCheck(const aVTypeValue:TPasRISCVUInt64);
-                     procedure EmitSetVSDirty; override;
+                     // Vector JIT intrinsic overrides
                      function IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
                      function IntrinsicVSETIVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
                      function IntrinsicVSETVL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
@@ -49222,6 +49230,8 @@ procedure TPasRISCV.THART.TJustInTimeCompiler.EmitFPUEpilog;
 var HostTmp:TPasRISCVUInt32;
 begin
  if fBlockHasFPUOperations then begin
+
+
   HostTmp:=ClaimHostIntRegister;
   EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
   EmitNativeStore(HostTmp,VMPtrRegister,GuestFPUDirtyOffset,false);
@@ -49801,12 +49811,19 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitVectorEnabledCheck;
 begin
- // Base class stub — overridden in x86-64 JIT
+ // Base class stub — overridden in backend JIT
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitSetVSDirty;
 begin
- // Base class stub — overridden in x86-64 JIT
+ // Base class stub — overridden in backend JIT
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitSetFSDirty;
+begin
+ // Base class stub — overridden in backend JIT
 end;
 {$endif}
 
@@ -55791,6 +55808,17 @@ begin
  // add rsp, 8
  EmitImmOp(ALU_ADD,TPasRISCVUInt8(ord(TX64Register.rRSP)),8,true);
 end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSetFSDirty;
+var HostTmp:TPasRISCVUInt8;
+begin
+ HostTmp:=ClaimHostIntRegister;
+ EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+ EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 13),true);
+ EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+ FreeHostIntRegister(HostTmp);
+end;
+
 {$endif}
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitInlineTLBLookup(const aAddrReg:TPasRISCVUInt8;const aIsWrite:Boolean;const aTempReg1:TPasRISCVUInt8;const aTempReg2:TPasRISCVUInt8;out aSlowPathFixup:TPasRISCVUInt32);
