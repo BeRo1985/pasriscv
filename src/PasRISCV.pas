@@ -8619,7 +8619,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      function GuestFPUDirtyOffset:TPasRISCVInt32;
-                     procedure EmitFPUEpilog(const aTempRegister:TPasRISCVInt32); virtual;
+                     procedure EmitFPUEpilog; virtual;
 {$endif}
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
 {$ifdef JITTLBTag}
@@ -49068,7 +49068,7 @@ begin
 
  // 2. FPU epilog
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
- EmitFPUEpilog(-1);
+ EmitFPUEpilog;
 {$ifend}
 
  // 3. Reset host reg mask
@@ -49218,18 +49218,14 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.FPUDirty));
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.EmitFPUEpilog(const aTempRegister:TPasRISCVInt32);
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitFPUEpilog;
 var HostTmp:TPasRISCVUInt32;
 begin
  if fBlockHasFPUOperations then begin
-  if aTempRegister<0 then begin
-   HostTmp:=ClaimHostIntRegister;
-   EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
-   EmitNativeStore(HostTmp,VMPtrRegister,GuestFPUDirtyOffset,false);
-   FreeHostIntRegister(HostTmp);
-  end else begin
-   EmitNativeStore(aTempRegister,VMPtrRegister,GuestFPUDirtyOffset,false);
-  end;
+  HostTmp:=ClaimHostIntRegister;
+  EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
+  EmitNativeStore(HostTmp,VMPtrRegister,GuestFPUDirtyOffset,false);
+  FreeHostIntRegister(HostTmp);
  end;
 end;
 {$endif}
@@ -49791,9 +49787,6 @@ begin
 {$endif}
  HostTmp:=ClaimHostIntRegister;
  EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
-{$ifdef PasRISCVJustInTimeCompilerFPU}
- EmitFPUEpilog(HostTmp);
-{$endif}
  EmitNativeStore(HostTmp,VMPtrRegister,GuestJITSkipExecutionOffset,false);
  FreeHostIntRegister(HostTmp);
  EmitEnd(TLinkage.None);
@@ -56128,9 +56121,6 @@ begin
  // Set JITSkipExecution := true so interpreter doesn't re-enter JIT for this instruction
  // Use HostVPN (claimed, not mapped) to avoid clobbering a dirty guest-mapped register
  EmitMOVRegImm32(HostVPN,TPasRISCVUInt32(TPasMPBool32(true)));
-{$ifdef PasRISCVJustInTimeCompilerFPU}
- EmitFPUEpilog(HostVPN);
-{$endif}
  EmitNativeStore(HostVPN,VMPtrRegister,GuestJITSkipExecutionOffset,false);
  EmitEnd(TLinkage.None);
 
