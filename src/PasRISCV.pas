@@ -8148,9 +8148,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure SetFS(const aValue:TPasRISCVUInt64);
                      function GetFS:TPasRISCVUInt64;
                      procedure ClearFS;
-                     procedure SetFSDirty; //inline;
+                     procedure SetFSDirty; inline;
                      function IsFPUEnabled:Boolean;
-                     procedure SetVSDirty;
+                     procedure SetVSDirty; inline;
                      function IsVectorEnabled:Boolean;
                    end;
                    PCSR=^TCSR;
@@ -48507,9 +48507,10 @@ end;
 
 procedure TPasRISCV.THART.TCSR.SetFSDirty;
 begin
- if ((fData[TCSR.TAddress.MSTATUS] shr 13) and 3)<>TCSR.TFS.Dirty then begin
+{if ((fData[TCSR.TAddress.MSTATUS] shr 13) and 3)<>TCSR.TFS.Dirty then begin
   fData[TCSR.TAddress.MSTATUS]:=fData[TCSR.TAddress.MSTATUS] or (TCSR.TFS.Dirty shl 13);
- end;
+ end;}
+ fData[TCSR.TAddress.MSTATUS]:=fData[TCSR.TAddress.MSTATUS] or (TCSR.TFS.Dirty shl 13);
 end;
 
 function TPasRISCV.THART.TCSR.IsFPUEnabled:Boolean;
@@ -48519,9 +48520,10 @@ end;
 
 procedure TPasRISCV.THART.TCSR.SetVSDirty;
 begin
- if ((fData[TCSR.TAddress.MSTATUS] shr 9) and 3)<>TCSR.TVS.Dirty then begin
+{if ((fData[TCSR.TAddress.MSTATUS] shr 9) and 3)<>TCSR.TVS.Dirty then begin
   fData[TCSR.TAddress.MSTATUS]:=fData[TCSR.TAddress.MSTATUS] or (TPasRISCVUInt64(TCSR.TVS.Dirty) shl 9);
- end;
+ end;}
+ fData[TCSR.TAddress.MSTATUS]:=fData[TCSR.TAddress.MSTATUS] or (TPasRISCVUInt64(TCSR.TVS.Dirty) shl 9);
 end;
 
 function TPasRISCV.THART.TCSR.IsVectorEnabled:Boolean;
