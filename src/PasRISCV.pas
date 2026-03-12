@@ -385,6 +385,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZknh}
   {$define PasRISCVJustInTimeCompilerZksh}
   {$define PasRISCVJustInTimeCompilerZabha}
+  {$define PasRISCVJustInTimeCompilerZicond}
   {-$define PasRISCVJITFPUFlushAfterEachOp}
  {$ifend}
 {$ifend}
@@ -8846,6 +8847,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); virtual; abstract;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerZicond}
+                     // Zicond
+                     procedure EmitNativeCZEROEQZ(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+                     procedure EmitNativeCZERONEZ(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerAMO}
                      // AMO (Atomic Memory Operations)
                      procedure EmitNativeAMOADD(const aHostDest,aHostAddr,aHostSrc:TPasRISCVUInt8;const aIs32:Boolean); virtual; abstract;
@@ -9088,6 +9094,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicSH3ADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicADDUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicSLLIUW(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZicond}
+                     function IntrinsicCZEROEQZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCZERONEZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZcb}
                      function IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9715,6 +9725,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeSH3ADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeADDUW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8); override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerZicond}
+                     // Zicond
+                     procedure EmitNativeCZEROEQZ(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure EmitNativeCZERONEZ(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerAMO}
                      // AMO
@@ -52064,6 +52079,44 @@ begin
 end;
 {$endif}
 
+{$ifdef PasRISCVJustInTimeCompilerZicond}
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCZEROEQZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeCZEROEQZ(HostRD,HostRS1,HostRS2);
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCZERONEZ(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RD,RS1,RS2:TRegister;
+    HostRD,HostRS1,HostRS2:TPasRISCVUInt8;
+begin
+ RD:=TRegister(aParameter0);
+ RS1:=TRegister(aParameter1);
+ RS2:=TRegister(aParameter2);
+ if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
+ HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
+ HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+ EmitNativeCZERONEZ(HostRD,HostRS1,HostRS2);
+ result:=true;
+end;
+{$endif}
+
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicLUI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var RD:TRegister;
     HostRD:TPasRISCVUInt8;
@@ -57662,6 +57715,58 @@ begin
  if aShamt<>0 then begin
   EmitShiftRegImm(SHIFT_SHL,aHostDest,aShamt,true);
  end;
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerZicond}
+// Zicond x86-64 implementations
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCZEROEQZ(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // czero.eqz: rd = (rs2 != 0) ? rs1 : 0
+
+ TempReg:=ClaimHostIntRegister;
+
+ // Zero the temp register
+ EmitNativeZeroReg(TempReg);
+
+ // Test rs2 for zero
+ EmitTEST(aHostSrc2,aHostSrc2,true);
+
+ // Move rs1 to rd if needed
+ if aHostDest<>aHostSrc1 then begin
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+ end;
+
+ // If rs2 == 0 (ZF=1), set rd to 0
+ EmitCMOVCC(CC_E,aHostDest,TempReg,true);
+
+ FreeHostIntRegister(TempReg);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCZERONEZ(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
+var TempReg:TPasRISCVUInt8;
+begin
+ // czero.nez: rd = (rs2 != 0) ? 0 : rs1
+
+ TempReg:=ClaimHostIntRegister;
+
+ // Zero the temp register
+ EmitNativeZeroReg(TempReg);
+
+ // Test rs2 for zero
+ EmitTEST(aHostSrc2,aHostSrc2,true);
+
+ // Move rs1 to rd if needed
+ if aHostDest<>aHostSrc1 then begin
+  EmitMOVRegReg(aHostDest,aHostSrc1,true);
+ end;
+
+ // If rs2 != 0 (ZF=0), set rd to 0
+ EmitCMOVCC(CC_NE,aHostDest,TempReg,true);
+
+ FreeHostIntRegister(TempReg);
 end;
 {$endif}
 
@@ -84947,6 +85052,13 @@ begin
         end;
         $07:begin
          // czero.eqz (Zicond)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZicond)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCZEROEQZ,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           if fState.Registers[rs2]<>0 then begin
            fState.Registers[rd]:=fState.Registers[rs1];
@@ -85177,6 +85289,13 @@ begin
         end;
         $07:begin
          // czero.nez (Zicond)
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZicond)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCZERONEZ,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
           if fState.Registers[rs2]<>0 then begin
            fState.Registers[rd]:=0;
