@@ -55858,13 +55858,15 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSetFSDirty;
 var HostTmp:TPasRISCVUInt8;
+    MSTATUSOffset:TPasRISCVUInt32;
 begin
  if not fBlockFSDirtyEmitted then begin
   fBlockFSDirtyEmitted:=true;
   HostTmp:=ClaimHostIntRegister;
-  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+  MSTATUSOffset:=GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS));
+  EmitNativeLoad(HostTmp,VMPtrRegister,MSTATUSOffset,true);
   EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 13),true);
-  EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
+  EmitNativeStore(HostTmp,VMPtrRegister,MSTATUSOffset,true);
   FreeHostIntRegister(HostTmp);
  end;
 end;
@@ -61018,15 +61020,17 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSetVSDirty;
 var HostTmp:TPasRISCVUInt8;
+    MSTATUSOffset:TPasRISCVUInt32;
 begin
  // Set MSTATUS.VS = Dirty (bits[10:9] = 11) via OR with (3 shl 9)
  if not fBlockVSDirtyEmitted then begin
-  HostTmp:=ClaimHostIntRegister;
-  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
-  EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 9),true);
-  EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS)),true);
-  FreeHostIntRegister(HostTmp);
   fBlockVSDirtyEmitted:=true;
+  HostTmp:=ClaimHostIntRegister;
+  MSTATUSOffset:=GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MSTATUS));
+  EmitNativeLoad(HostTmp,VMPtrRegister,MSTATUSOffset,true);
+  EmitImmOp(ALU_OR,HostTmp,TPasRISCVInt32(3 shl 9),true);
+  EmitNativeStore(HostTmp,VMPtrRegister,MSTATUSOffset,true);
+  FreeHostIntRegister(HostTmp);
  end;
 end;
 
@@ -61035,6 +61039,7 @@ var HostTmp:TPasRISCVUInt8;
     OkFixup:TPasRISCVUInt32;
 begin
  if not fBlockVStartChecked then begin
+  fBlockVStartChecked:=true;
   if aHostTemporaryRegister>=0 then begin
    HostTmp:=aHostTemporaryRegister;
   end else begin
@@ -61049,7 +61054,6 @@ begin
   if aHostTemporaryRegister<0 then begin
    FreeHostIntRegister(HostTmp);
   end;
-  fBlockVStartChecked:=true;
  end;
 end;
 
@@ -61074,6 +61078,7 @@ var HostTmp,HostCmp:TPasRISCVUInt8;
     OkFixup:TPasRISCVUInt32;
 begin
  if not fBlockVLChecked then begin
+  fBlockVLChecked:=true;
   HostTmp:=ClaimHostIntRegister;
   EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
   HostCmp:=ClaimHostIntRegister;
@@ -61085,7 +61090,6 @@ begin
   EmitVectorBailout;
   PatchJmpRel32(OkFixup);
   FreeHostIntRegister(HostTmp);
-  fBlockVLChecked:=true;
  end;
 end;
 
@@ -61094,6 +61098,7 @@ var HostTmp,HostCmp:TPasRISCVUInt8;
     OkFixup:TPasRISCVUInt32;
 begin
  if not fBlockVTypeChecked then begin
+  fBlockVTypeChecked:=true;
   HostTmp:=ClaimHostIntRegister;
   EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VTYPE)),true);
   HostCmp:=ClaimHostIntRegister;
@@ -61105,7 +61110,6 @@ begin
   EmitVectorBailout;
   PatchJmpRel32(OkFixup);
   FreeHostIntRegister(HostTmp);
-  fBlockVTypeChecked:=true;
  end;
 end;
 
