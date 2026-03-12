@@ -7671,7 +7671,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     public
                      constructor Create(const aExceptionValue:TExceptionValue;const aExceptionData,aExceptionPC:TPasRISCVUInt64); reintroduce;
                      destructor Destroy; override;
-                    published
+                    public
                      property ExceptionValue:TExceptionValue read fExceptionValue;
                      property ExceptionData:TPasRISCVUInt64 read fExceptionData;
                      property ExceptionPC:TPasRISCVUInt64 read fExceptionPC;
@@ -8999,30 +8999,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFSW(const aHostFPUSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeFSD(const aHostFPUSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
 {$endif}
-                    public
-                     constructor Create(const aHART:THART); virtual;
-                     destructor Destroy; override;
-                     procedure BeginTrace(const aVirtualPC,aPhysicalPC:TPasRISCVUInt64);
-                     procedure EndTrace;
-                     procedure Compile;
-                     procedure Discard;
-                     procedure FlushAllBlocks;
-                     procedure InvalidatePage(const aPhysicalAddress:TPasRISCVUInt64);
-
-                     // CSR
-                     function IsCSRCompatible(const aAddress:TPasRISCVUInt64;const aWrite:Boolean):Boolean;
-
-                     // Tracing methods
-                     function TLBLookup:Boolean;
-                     function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-{$ifdef PasRISCVJustInTimeCompilerVector}
-                     function TraceVector(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-{$endif}
-                     function TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; //inline;
-                     function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
-
                      // Integer intrinsics (virtual, override in target-specific subclass)
                      function IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicSUB(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9289,6 +9265,30 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicVSlideVI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicVLEFF(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
+                    public
+                     constructor Create(const aHART:THART); virtual;
+                     destructor Destroy; override;
+                     procedure BeginTrace(const aVirtualPC,aPhysicalPC:TPasRISCVUInt64);
+                     procedure EndTrace;
+                     procedure Compile;
+                     procedure Discard;
+                     procedure FlushAllBlocks;
+                     procedure InvalidatePage(const aPhysicalAddress:TPasRISCVUInt64);
+
+                     // CSR
+                     function IsCSRCompatible(const aAddress:TPasRISCVUInt64;const aWrite:Boolean):Boolean;
+
+                     // Tracing methods
+                     function TLBLookup:Boolean;
+                     function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+{$ifdef PasRISCVJustInTimeCompilerVector}
+                     function TraceVector(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+{$endif}
+                     function TraceJAL(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceJALR(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; //inline;
+                     function TraceBranch(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aTargetOffset,aFallthroughOffset:TPasRISCVInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+
                     public
                      property Enabled:Boolean read fEnabled write fEnabled;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -11561,7 +11561,7 @@ end;
 {$ifend}
 
 procedure FastDecodeDate(const aDate:TPasRISCVInt32;out aYear,aMonth,aDay:TPasRISCVInt32); // Epoch is 0000-Mar-01
-var n1,c,nc,n2,z,ny,y,n3,m,d,j:TPasRISCVUInt32;
+var n1,c,nc,n2,z,ny,n3,j:TPasRISCVUInt32;
     p2:TPasRISCVUInt64;
 begin
 
@@ -11588,8 +11588,10 @@ begin
 end;
 
 function FastEncodeDate(const aYear,aMonth,aDay:TPasRISCVInt32):TPasRISCVInt32; // Epoch is 0000-Mar-01
-var t,j,y,m,d:TPasRISCVInt32;
+var j,y,m,d:TPasRISCVInt32;
 begin
+
+ m:=aMonth;
 
  j:=1-(((m-3) shr 31) and 1); // t:=ord(m<3) and 1; // t:=IfThen(m>2,0,1);
  y:=aYear-j;
@@ -13804,7 +13806,6 @@ begin
                           (TPasRISCVUInt32(PPasRISCVUInt8Array(aInput)^[(SampleIndex*3)+2]) shl 24));
     aScratchBuffer^[SampleIndex]:=Value/2147483648.0;
    end;
-   exit;
   end;
   TPasRISCV.TVirtIOSoundDevice.VIRTIO_SND_PCM_FMT_U24_3:begin
    for SampleIndex:=0 to CountTotalSamples-1 do begin
@@ -13813,7 +13814,6 @@ begin
                           (TPasRISCVUInt32(PPasRISCVUInt8Array(aInput)^[(SampleIndex*3)+2]) shl 24))-2147483648;
     aScratchBuffer^[SampleIndex]:=Value/2147483648.0;
    end;
-   exit;
   end;
   TPasRISCV.TVirtIOSoundDevice.VIRTIO_SND_PCM_FMT_S20:begin
    for SampleIndex:=0 to CountTotalSamples-1 do begin
@@ -14044,7 +14044,6 @@ begin
     PPasRISCVUInt8Array(aOutput)^[(SampleIndex*3)+1]:=TPasRISCVUInt8((Value shr 16) and $ff);
     PPasRISCVUInt8Array(aOutput)^[(SampleIndex*3)+2]:=TPasRISCVUInt8((Value shr 24) and $ff);
    end;
-   exit;
   end;
   TPasRISCV.TVirtIOSoundDevice.VIRTIO_SND_PCM_FMT_U24_3:begin
    for SampleIndex:=0 to CountTotalSamples-1 do begin
@@ -14053,7 +14052,6 @@ begin
     PPasRISCVUInt8Array(aOutput)^[(SampleIndex*3)+1]:=TPasRISCVUInt8((Value shr 16) and $ff);
     PPasRISCVUInt8Array(aOutput)^[(SampleIndex*3)+2]:=TPasRISCVUInt8((Value shr 24) and $ff);
    end;
-   exit;
   end;
   TPasRISCV.TVirtIOSoundDevice.VIRTIO_SND_PCM_FMT_S20:begin
    for SampleIndex:=0 to CountTotalSamples-1 do begin
@@ -14435,7 +14433,7 @@ end;
 const OutChunkSize=65536;
 var d_stream:z_stream;
     r:TPasRISCVInt32;
-    Allocated,Have:TPasRISCVSizeUInt;
+    Allocated:TPasRISCVSizeUInt;
 begin
  result:=false;
  aDestLen:=0;
@@ -16880,7 +16878,7 @@ const PRIME32_1=TPasRISCVUInt32(2654435761);
       v4Initialization=TPasRISCVUInt32(TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Seed)-TPasRISCVInt64(PRIME32_1))));
       HashInitialization=TPasRISCVUInt32(TPasRISCVUInt64(TPasRISCVUInt64(Seed)+TPasRISCVUInt64(PRIME32_5)));
 var v1,v2,v3,v4:TPasRISCVUInt32;
-    p,e,Limit:PPasRISCVUInt8;
+    p,e:PPasRISCVUInt8;
 begin
  p:=aData;
  if aDataLength>=16 then begin
@@ -24678,8 +24676,7 @@ procedure TPasRISCV.TFDT.TFDTNode.SerializeToStream(const aFDT:TFDT);
   aFDT.fMemoryStream.WriteBuffer(Value[1],length(Value));
   aFDT.fStringsOffset:=RoundUpTo32(aFDT.fStringsOffset+length(Value),SizeOf(TPasRISCVUInt32));
  end;
-var NameLen:TPasRISCVSizeInt;
-    Index:TPasRISCVSizeInt;
+var Index:TPasRISCVSizeInt;
     Property_:TPasRISCV.TFDT.TFDTProperty;
     Node:TPasRISCV.TFDT.TFDTNode;
 begin
@@ -31401,7 +31398,7 @@ var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
     OPL3FloatDest:PPasRISCVFloatArray;
     Ch:PChannelDMA;
     ChIndex:TPasRISCVUInt32;
-    BytePos,BytesAvail,DMABufBytes:TPasRISCVUInt32;
+    BytePos,BytesAvailable,DMABufBytes:TPasRISCVUInt32;
 begin
 
  // Clear
@@ -31452,6 +31449,8 @@ begin
  end else begin
   Channels:=1;
  end;
+ if Channels<>0 then begin
+ end;
 
  DMABufBytes:=Ch^.BufferSize*FrameSize;
 
@@ -31469,15 +31468,15 @@ begin
    BytePos:=0;
    Ch^.Position:=0;
   end;
-  BytesAvail:=DMABufBytes-BytePos;
-  if BytesAvail=0 then begin
+  BytesAvailable:=DMABufBytes-BytePos;
+  if BytesAvailable=0 then begin
    BytePos:=0;
    Ch^.Position:=0;
-   BytesAvail:=DMABufBytes;
+   BytesAvailable:=DMABufBytes;
   end;
 
   // Limit to what we need
-  SrcSamples:=BytesAvail div FrameSize;
+  SrcSamples:=BytesAvailable div FrameSize;
   if SrcSamples<=0 then begin
    break;
   end;
@@ -31685,6 +31684,8 @@ begin
   Channels:=2;
  end else begin
   Channels:=1;
+ end;
+ if Channels<>0 then begin
  end;
 
  DstRate:=GetChannelRate(ChIndex); // guest rate
@@ -33364,10 +33365,10 @@ var Remain,ToDo,SrcSamples,DstSamples:TPasRISCVSizeInt;
     FloatSrc:PPasRISCVFloatArray;
     SrcRate,DstRate:TPasRISCVUInt64;
     Bits,Channels,SampleRate:TPasRISCVUInt32;
-    FrameSize:TPasRISCVUInt32;
+//  FrameSize:TPasRISCVUInt32;
     FloatSample:TPasRISCVFloat;
     SampleIndex:TPasRISCVSizeInt;
-    Sample8:TPasRISCVUInt8;
+//  Sample8:TPasRISCVUInt8;
     Sample16:TPasRISCVInt16;
     Sample32:TPasRISCVInt32;
     p:PPasRISCVUInt8;
@@ -33378,7 +33379,7 @@ var Remain,ToDo,SrcSamples,DstSamples:TPasRISCVSizeInt;
     BDLPtr:PPasRISCVUInt8;
     EntryAddr:TPasRISCVUInt64;
     EntryLen,EntryFlags:TPasRISCVUInt32;
-    BytesAvail:TPasRISCVUInt32;
+    BytesAvailable:TPasRISCVUInt32;
     CopyBytes:TPasRISCVSizeInt;
     IsStereo:Boolean;
     SampleFrameSize:TPasRISCVUInt32;
@@ -33447,8 +33448,8 @@ begin
    break;
   end;
 
-  BytesAvail:=EntryLen-Stream^.BDLBytePos;
-  if BytesAvail=0 then begin
+  BytesAvailable:=EntryLen-Stream^.BDLBytePos;
+  if BytesAvailable=0 then begin
    if (EntryFlags and 1)<>0 then begin
     Stream^.STS:=Stream^.STS or HDA_SDSTS_BCIS;
     UpdateIRQ;
@@ -33462,7 +33463,7 @@ begin
    continue;
   end;
 
-  DstSamples:=BytesAvail div SampleFrameSize;
+  DstSamples:=BytesAvailable div SampleFrameSize;
   if DstSamples<=0 then begin
    break;
   end;
@@ -34260,7 +34261,9 @@ function TPasRISCV.TVirtIODevice.ConsumeDescriptor(const aQueueIndex,aDescriptor
 var Queue:PQueue;
     UsedElementAddress:TPasRISCVUInt64;
     VirtQAvailRingPtr:pointer;
+{$ifndef VirtIOEventIndex}
     UsedIndex:TPasRISCVUInt16;
+{$endif}
 begin
 
  result:=false;
@@ -36341,7 +36344,7 @@ var Index:TPasRISCVSizeInt;
     SoundPCMSetParams:PVirtIOSoundPCMSetParams;
     SoundPCMHeader:PVirtIOSoundPCMHeader;
     SoundPCMXfer:PVirtIOSoundPCMXfer;
-    SoundPCMStatus:TVirtIOSoundPCMStatus;
+//  SoundPCMStatus:TVirtIOSoundPCMStatus;
     Size,Offset:TPasRISCVUInt64;
     Input,Output:PPasRISCVUInt8Array;
     PCMStream:TPCMStream;
@@ -39575,7 +39578,7 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOFSDevice.HandleForget(const aHeader:PFUSEInHeader);
-var ForgetIn:TFUSEForgetIn;
+var //ForgetIn:TFUSEForgetIn;
     Node:TNodeEntry;
 begin
  // FORGET has no reply
@@ -40786,8 +40789,8 @@ var Resource:TGPUResource;
 {$else}
     PageIndex:TPasRISCVSizeInt;
 {$endif}
-    SrcRow,DstRow:TPasRISCVUInt32;
-    SrcStride,DstStride:TPasRISCVUInt32;
+    {SrcRow,}DstRow:TPasRISCVUInt32;
+    {SrcStride,}DstStride:TPasRISCVUInt32;
 {$ifdef VirtIOGPUFastTransfer}
     Offset,PageOffset,SavedPageOffset,CopyLen,PageRemain:TPasRISCVUInt64;
 {$else}
@@ -42260,6 +42263,8 @@ begin
   Session^.AEADKeyLen:=KeyLen;
   Session^.AEADTagLen:=TagLen;
   Session^.AEADOp:=Op;
+  if AADLen<>0 then begin
+  end;
   if KeyLen>MAX_CIPHER_KEY_LEN then begin
    FreeSession(SessionID);
    fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
@@ -47670,7 +47675,7 @@ begin
 end;
 
 procedure TPasRISCV.TMemoryDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
-var Offset{$ifdef LITTLE_ENDIAN},Mask{$endif}:TPasRISCVUInt64;
+var Offset{$ifdef LITTLE_ENDIAN}{$ifndef UseAtomicMemCopyRelaxedForSlowPath},Mask{$endif}{$endif}:TPasRISCVUInt64;
 begin
  Offset:=aAddress-fBase;
  if (Offset+aSize)<=fSize then begin
@@ -48364,7 +48369,7 @@ begin
 end;
 
 procedure TPasRISCV.THART.TCSR.Store(const aAddress,aValue:TPasRISCVUInt64);
-var Value,Mask:TPasRISCVUInt64;
+var Value{,Mask}:TPasRISCVUInt64;
 begin
  case aAddress of
   TAddress.SSTATUS:begin
@@ -48554,7 +48559,7 @@ end;
 constructor TPasRISCV.THART.TJustInTimeCompiler.Create(const aHART:THART);
 var DirtyBitmapSize:TPasRISCVUInt32;
 {$ifdef JITTLBTag}
-    ModeIndex:THART.TMode;
+//  ModeIndex:THART.TMode;
 {$endif}
 begin
 
@@ -58554,7 +58559,7 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSB(const aHostSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
-var EffSrc,EffAddr:TPasRISCVUInt8;
+var {EffectiveSource,}EffectiveAddress:TPasRISCVUInt8;
 begin
  // MOV [addr+off], r8, opcode 88
  // If src not byte-accessible (SPL/BPL/SIL/DIL = regs 4-7 without REX), XCHG with RAX
@@ -58568,18 +58573,18 @@ begin
  end else begin
   // Regs 4-7 (SPL/BPL/SIL/DIL) need REX to be byte-accessible, or use XCHG trick
   // Use XCHG with RAX
-  EffAddr:=aHostAddr;
-  if EffAddr=aHostSrc then begin
-   EffAddr:=0; // RAX
-  end else if EffAddr=0 then begin
-   EffAddr:=aHostSrc;
+  EffectiveAddress:=aHostAddr;
+  if EffectiveAddress=aHostSrc then begin
+   EffectiveAddress:=0; // RAX
+  end else if EffectiveAddress=0 then begin
+   EffectiveAddress:=aHostSrc;
   end;
   EmitXCHG(0,aHostSrc);
-  if (EffAddr>=8) then begin
-   EmitREX(false,0,0,EffAddr);
+  if (EffectiveAddress>=8) then begin
+   EmitREX(false,0,0,EffectiveAddress);
   end;
   EmitByte(X86_MOV_R8_M);
-  EmitMemOperand(0,EffAddr,aOffset);
+  EmitMemOperand(0,EffectiveAddress,aOffset);
   EmitXCHG(0,aHostSrc);
  end;
 end;
@@ -67933,7 +67938,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerVL(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    CSRValue,OperationValue:TPasRISCVUInt64;
+    CSRValue{,OperationValue}:TPasRISCVUInt64;
 begin
  if not fState.CSR.IsVectorEnabled then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -67952,7 +67957,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerVTYPE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    CSRValue,OperationValue:TPasRISCVUInt64;
+    CSRValue{,OperationValue}:TPasRISCVUInt64;
 begin
  if not fState.CSR.IsVectorEnabled then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -67971,7 +67976,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerVLENB(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    CSRValue,OperationValue:TPasRISCVUInt64;
+    CSRValue{,OperationValue}:TPasRISCVUInt64;
 begin
  if not fState.CSR.IsVectorEnabled then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -68455,7 +68460,6 @@ var rd,rs1,rs2:TRegister;
     EEW,EVL:TPasRISCVUInt32;
     Address,Stride:TPasRISCVUInt64;
     SubIndex,Index:TPasRISCVUInt32;
-    SignedIndex:TPasRISCVInt32;
     SourceValue:TPasRISCVUInt64;
     OperandValue:TPasRISCVUInt64;
     FFTrimmed:Boolean;
@@ -92120,7 +92124,7 @@ begin
 end;
 
 procedure TPasRISCV.THART.SwapHypervisorRegs;
-var MStatus,SavedMStatus:TPasRISCVUInt64;
+var MStatus{,SavedMStatus}:TPasRISCVUInt64;
     Temp:TPasRISCVUInt64;
 begin
  // Swap S-mode CSRs between HS-mode and VS-mode backing store.
@@ -93568,6 +93572,8 @@ begin
  frs1:=TFPURegister((aInstruction shr 15) and $1f);
  frs2:=TFPURegister((aInstruction shr 20) and $1f);
  frs3:=TFPURegister((aInstruction shr 27) and $1f);
+ if rs3<>TRegister.x0 then begin
+ end;
  case aDefinition.Format of
   TInstructionSetArchitecture.TInstructionFormat.None:begin
    result:=Mnemonic;
@@ -95197,7 +95203,7 @@ end;
 
 procedure TPasRISCV.TDebugger.TServerThread.Execute;
 var ClientSocket:TRNLSocket;
-    ClientThread:TClientThread;
+//  ClientThread:TClientThread;
     Conditions:TRNLSocketWaitConditions;
     ClientAddress:TRNLAddress;
     Count:TPasMPInt32;
@@ -97891,7 +97897,7 @@ var Index,DeviceID,IRQPin:TPasRISCVSizeInt;
     InterruptMap:TPasRISCVUInt32DynamicArray;
     InterrurtMask:array[0..3] of TPasRISCVUInt32;
     BootArguments:TPasRISCVRawByteString;
-    FileStream:TFileStream;
+//  FileStream:TFileStream;
     IRQExt:TPasRISCVUInt32DynamicArray;
     ISA,ISAExtensions:TPasRISCVRawByteString;
  procedure AddISAExtension(const aExtension:TPasRISCVRawByteString);
@@ -99158,6 +99164,12 @@ begin
    fFDT.fRoot.AddChild(SoCNode);
   end;
 
+  if assigned(IMSICM0) then begin
+  end;
+
+  if assigned(I2CHIDKeyboardNode) then begin
+  end;
+
   ReservedMemoryNode:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'reserved-memory');
   try
    ReservedMemoryNode.AddPropertyU32('#address-cells',2);
@@ -99587,6 +99599,8 @@ begin
   end;
   fINITRDSize:=0;
   HasINITRD:=LoadINITRDIntoMemory(fConfiguration.fINITRD,fINITRDOffset,fINITRDSize);
+  if HasINITRD then begin
+  end;
 
  end;
 
