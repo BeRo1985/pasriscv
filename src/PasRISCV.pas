@@ -368,7 +368,7 @@ unit PasRISCV;
 
 {$define PasRISCVJustInTimeCompiler}
 {$if defined(PasRISCVJustInTimeCompiler)}
- {$if defined(cpux86_64)}
+ {$if defined(cpux86_64) or defined(cpuamd64) or defined(CPUX64)}
   {$define PasRISCVJustInTimeCompilerFPU}
   {$define PasRISCVJustInTimeCompilerFMA}
   {$define PasRISCVJustInTimeCompilerUseRealFMA}
