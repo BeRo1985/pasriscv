@@ -58029,9 +58029,9 @@ begin
  end;
 
  // Store helper result (RAX) into TState scratch field before restoring regs
- // Peek VMPtrRegister from stack (SysV: RDI is 5th push = RSP+4*8; Win64: RCX is 8th push = RSP+1*8)
+ // Peek VMPtrRegister from stack (SysV: RDI is 5th push = RSP+4*8; Win64: RCX is 2nd push = RSP+7*8)
 {$ifdef Windows}
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),TPasRISCVUInt8(ord(TX64Register.rRSP)),1*8,true);
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),TPasRISCVUInt8(ord(TX64Register.rRSP)),7*8,true);
 {$else}
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),TPasRISCVUInt8(ord(TX64Register.rRSP)),4*8,true);
 {$endif}
