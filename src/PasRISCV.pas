@@ -313,6 +313,14 @@ unit PasRISCV;
 
 {$define VirtIOFastDMA} // Fast path for VirtIO DMA: single Move for contiguous guest RAM instead of page-by-page copy
 
+{$define PasRISCVAddressSpaceDispatch} // QEMU-style pre-computed FlatView + dispatch for Device I/O
+{$ifdef PasRISCVAddressSpaceDispatch}
+ {$define PasRISCVAddressSpaceDispatchFlatViewLookup} // Use FlatView binary search in Fetch/Load/Store hotpaths instead of FindBusDevice
+ {//$define PasRISCVDebugFlatView} // Enable mismatch logging (FlatView vs FindBusDevice comparison)
+{$endif}
+
+{$define PasRISCVPCIIODirectPortMap} // Direct 64K port map for O(1) PCI I/O port lookup (512KB)
+
 {-$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
 
 {-$define VirtIOFSDirectIO} // VirtIO FS: FOPEN_DIRECT_IO bypasses guest page cache, enables app-sized FUSE reads (1MB with dd bs=1M)
@@ -3547,17 +3555,26 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              public
               type TOnIOLoad=function(const aPort:TPasRISCVUInt16;const aSize:TPasRISCVUInt64):TPasRISCVUInt64 of object;
                    TOnIOStore=procedure(const aPort:TPasRISCVUInt16;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64) of object;
-                   PIORange=^TIORange;
                    TIORange=record
                     fPort:TPasRISCVUInt16;
                     fSize:TPasRISCVUInt16;
                     fOnLoad:TOnIOLoad;
                     fOnStore:TOnIOStore;
                    end;
+                   PIORange=^TIORange;
+{$ifdef PasRISCVPCIIODirectPortMap}
+                   TPortMap=array[0..65535] of TPasRISCV.TPCIIODevice.PIORange;
+{$endif}
              private
               fRanges:array of TIORange;
               fCountRanges:TPasRISCVSizeInt;
+{$ifdef PasRISCVPCIIODirectPortMap}
+              fPortMap:TPortMap;
+{$endif}
               function FindRange(const aPort:TPasRISCVUInt16):PIORange;
+{$ifdef PasRISCVPCIIODirectPortMap}
+              procedure RebuildPortMap;
+{$endif}
              public
               constructor Create(const aMachine:TPasRISCV;const aBase,aSize:TPasRISCVUInt64); override;
               destructor Destroy; override;
@@ -7610,10 +7627,79 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             { TBus }
             TBus=class
              public
+{$ifdef PasRISCVAddressSpaceDispatch}
+              type { TAddressSpaceDispatch }
+                   TAddressSpaceDispatch=record
+                    public
+                     type TRange=record
+                           RangeBase:TPasRISCVUInt64;
+                           RangeSize:TPasRISCVUInt64;
+                           Device:TBusDevice;
+                          end;
+                          PRange=^TRange;
+                          TRangeArray=array of TRange;
+                     const DISPATCH_PAGE_BITS=12; // 4KB pages, matching RISC-V page size
+                           DISPATCH_L2_BITS=9; // 9 bits per radix level = 512 entries per node
+                           DISPATCH_L2_SIZE=1 shl DISPATCH_L2_BITS; // 512 entries per node
+                           DISPATCH_LEVELS=6; // ((64-PAGE_BITS+(L2_BITS-1)) div L2_BITS) for full 64-bit coverage
+                           DISPATCH_POINTER_BITS=26; // Lower 26 bits of entry = node/section index
+                           DISPATCH_SKIP_BITS=6; // Upper 6 bits of entry = skip count for tree compaction
+                           DISPATCH_POINTER_MASK=(TPasRISCVUInt32(1) shl DISPATCH_POINTER_BITS)-1; // $03ffffff
+                           DISPATCH_SKIP_MASK=(TPasRISCVUInt32(1) shl DISPATCH_SKIP_BITS)-1; // $3f
+                           DISPATCH_SKIP_FIELD_MASK=not DISPATCH_POINTER_MASK; // $fc000000
+                           DISPATCH_NODE_NIL=DISPATCH_POINTER_MASK; // Sentinel: all pointer bits set = empty
+                           DISPATCH_SECTION_UNASSIGNED=0; // Section index 0 = no device mapped
+                     type TDispatchSection=record
+                           Device:TBusDevice;
+                           RangeBase:TPasRISCVUInt64;
+                           RangeSize:TPasRISCVUInt64;
+                          end;
+                          PDispatchSection=^TDispatchSection;
+                          TDispatchSectionArray=array of TDispatchSection;
+                          TPhysicalPageNode=array[0..DISPATCH_L2_SIZE-1] of TPasRISCVUInt32; // Each entry: [skip:6|pointer:26]
+                          PPhysicalPageNode=^TPhysicalPageNode;
+                          TPhysicalPageNodeArray=array of TPhysicalPageNode;
+                    private
+                     fBus:TBus;
+                     fRanges:TPasRISCV.TBus.TAddressSpaceDispatch.TRangeArray;
+                     fCountRanges:TPasRISCVSizeInt;
+                     fGeneration:TPasMPInt32;
+                     fGenerationCounter:TPasMPInt32;
+                     fDispatchSections:TPasRISCV.TBus.TAddressSpaceDispatch.TDispatchSectionArray;
+                     fCountDispatchSections:TPasRISCVSizeInt;
+                     fPhysicalPageNodes:TPasRISCV.TBus.TAddressSpaceDispatch.TPhysicalPageNodeArray;
+                     fCountPhysicalPageNodes:TPasRISCVSizeInt;
+                     fDispatchRoot:TPasRISCVUInt32;
+                     fMRUSection:TPasRISCVInt32;
+                    public
+                     procedure Initialize(const aBus:TBus);
+                     procedure Finalize;
+                     procedure Assign(const aFrom:TPasRISCV.TBus.TAddressSpaceDispatch);
+                     procedure SortRangesByBase(var aRanges:TPasRISCV.TBus.TAddressSpaceDispatch.TRangeArray;const aLeft,aRight:TPasRISCVSizeInt);
+                     procedure Build;
+                     procedure Dump;
+                     procedure Invalidate;
+                     function FindDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
+                     procedure DispatchNodeReserve(const aCount:TPasRISCVSizeInt);
+                     function DispatchNodeAlloc(const aLeaf:Boolean):TPasRISCVUInt32;
+                     procedure DispatchPageSetLevel(var aEntry:TPasRISCVUInt32;var aPageIndex:TPasRISCVUInt64;var aPageCount:TPasRISCVUInt64;const aSectionIndex:TPasRISCVUInt32;const aLevel:TPasRISCVInt32);
+                     procedure DispatchPageSet(const aStartPage:TPasRISCVUInt64;const aCountPages:TPasRISCVUInt64;const aSectionIndex:TPasRISCVUInt32);
+                     procedure DispatchCompact(var aEntry:TPasRISCVUInt32);
+                     procedure BuildDispatch;
+                     function DispatchFind(const aAddress:TPasRISCVUInt64):TPasRISCVInt32;
+                   end;
+{$endif}
              private
               fMachine:TPasRISCV;
               fBusDevices:TBusDeviceArray;
               fCountBusDevices:TPasRISCVUInt64;
+{$ifdef PasRISCVAddressSpaceDispatch}
+              fAddressSpaceDispatch:TAddressSpaceDispatch;
+              fAddressSpaceDispatchLock:TPasMPInt32;
+{$ifdef PasRISCVDebugFlatView}
+              fAddressSpaceDispatchMismatchCount:TPasRISCVInt32;
+{$endif}
+{$endif}
               function LoadUnaligned(const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               function StoreUnaligned(const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
              public
@@ -10308,6 +10394,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
               fPCG32:TPCG32;
               fWasVirtual:Boolean;
+{$ifdef PasRISCVAddressSpaceDispatch}
+              fAddressSpaceDispatch:TPasRISCV.TBus.TAddressSpaceDispatch;
+{$endif}
 {$ifdef PasMPDebugSpinDetect}
               fSpinDetectPC:TPasRISCVUInt64;
               fSpinDetectStartTime:TPasRISCVUInt64;
@@ -25385,6 +25474,11 @@ begin
   SetLength(fSubBusDevices,fCountSubBusDevices+((fCountSubBusDevices+1) shr 1)); // Grow by 1.5
  end;
  fSubBusDevices[Index]:=aSubBusDevice;
+{$ifdef PasRISCVAddressSpaceDispatch}
+ if assigned(fMachine) and assigned(fMachine.fBus) then begin
+  fMachine.fBus.fAddressSpaceDispatch.Invalidate;
+ end;
+{$endif}
 end;
 
 procedure TPasRISCV.TBusDevice.RemoveSubBusDevice(const aSubBusDevice:TBusDevice);
@@ -25397,6 +25491,11 @@ begin
    end;
    fSubBusDevices[fCountSubBusDevices-1]:=nil;
    dec(fCountSubBusDevices);
+{$ifdef PasRISCVAddressSpaceDispatch}
+   if assigned(fMachine) and assigned(fMachine.fBus) then begin
+    fMachine.fBus.fAddressSpaceDispatch.Invalidate;
+   end;
+{$endif}
    exit;
   end;
  end;
@@ -27043,6 +27142,9 @@ begin
  inherited Create(aMachine,aBase,aSize);
  fRanges:=nil;
  fCountRanges:=0;
+{$ifdef PasRISCVPCIIODirectPortMap}
+ FillChar(fPortMap,SizeOf(TPortMap),0);
+{$endif}
  fUnalignedAccessSupport:=true;
  fMinOpSize:=1;
  fMaxOpSize:=4;
@@ -27056,6 +27158,11 @@ begin
 end;
 
 function TPasRISCV.TPCIIODevice.FindRange(const aPort:TPasRISCVUInt16):PIORange;
+{$ifdef PasRISCVPCIIODirectPortMap}
+begin
+ result:=fPortMap[aPort];
+end;
+{$else}
 var Index:TPasRISCVSizeInt;
 begin
  for Index:=0 to fCountRanges-1 do begin
@@ -27066,6 +27173,25 @@ begin
  end;
  result:=nil;
 end;
+{$endif}
+
+{$ifdef PasRISCVPCIIODirectPortMap}
+procedure TPasRISCV.TPCIIODevice.RebuildPortMap;
+var Index:TPasRISCVSizeInt;
+    Range:PIORange;
+    Port:TPasRISCVUInt32;
+begin
+ FillChar(fPortMap,SizeOf(TPortMap),0);
+ for Index:=0 to fCountRanges-1 do begin
+  Range:=@fRanges[Index];
+  for Port:=Range^.fPort to (TPasRISCVUInt32(Range^.fPort)+TPasRISCVUInt32(Range^.fSize))-1 do begin
+   if Port<=65535 then begin
+    fPortMap[Port]:=Range;
+   end;
+  end;
+ end;
+end;
+{$endif}
 
 procedure TPasRISCV.TPCIIODevice.RegisterIORange(const aPort,aSize:TPasRISCVUInt16;const aOnLoad:TOnIOLoad;const aOnStore:TOnIOStore);
 var Index:TPasRISCVSizeInt;
@@ -27081,6 +27207,9 @@ begin
  Range^.fSize:=aSize;
  Range^.fOnLoad:=aOnLoad;
  Range^.fOnStore:=aOnStore;
+{$ifdef PasRISCVPCIIODirectPortMap}
+ RebuildPortMap;
+{$endif}
 end;
 
 procedure TPasRISCV.TPCIIODevice.UnregisterIORange(const aPort:TPasRISCVUInt16);
@@ -27092,6 +27221,9 @@ begin
     fRanges[Index]:=fRanges[fCountRanges-1];
    end;
    dec(fCountRanges);
+{$ifdef PasRISCVPCIIODirectPortMap}
+   RebuildPortMap;
+{$endif}
    exit;
   end;
  end;
@@ -27532,6 +27664,9 @@ begin
       BarAddress:=BarAddress and TPasRISCVUInt64(not TPasRISCVUInt64(BarSize-1));
       TPasMPInterlocked.Write(BusDevice.fBase,BarAddress);
       TPasMPMemoryBarrier.ReadWrite;
+{$ifdef PasRISCVAddressSpaceDispatch}
+      fMachine.fBus.fAddressSpaceDispatch.Invalidate;
+{$endif}
      end;
     end else begin
      case BarID of
@@ -27552,6 +27687,9 @@ begin
      end;
      Address:=Address and not TPasRISCVUInt64(15);
      TPasMPInterlocked.Write(BusDevice.fBase,Address);
+{$ifdef PasRISCVAddressSpaceDispatch}
+     fMachine.fBus.fAddressSpaceDispatch.Invalidate;
+{$endif}
     end;
 {$endif}
    end;
@@ -27566,6 +27704,9 @@ begin
      ROMAddress:=ROMAddress and TPasRISCVUInt64(not TPasRISCVUInt64(ROMSize-1));
      TPasMPInterlocked.Write(Func.fExpansionROM.fBase,ROMAddress);
      TPasMPMemoryBarrier.ReadWrite;
+{$ifdef PasRISCVAddressSpaceDispatch}
+     fMachine.fBus.fAddressSpaceDispatch.Invalidate;
+{$endif}
     end;
 {$endif}
    end;
@@ -48052,6 +48193,636 @@ begin
  end;
 end;
 
+{$ifdef PasRISCVAddressSpaceDispatch}
+
+{ TPasRISCV.TBus.TAddressSpaceDispatch }
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.Initialize(const aBus:TBus);
+begin
+ fBus:=aBus;
+ fRanges:=nil;
+ fCountRanges:=0;
+ fGeneration:=TPasRISCVUInt64($ffffffffffffffff);
+ fGenerationCounter:=0;
+ fDispatchSections:=nil;
+ fCountDispatchSections:=0;
+ fPhysicalPageNodes:=nil;
+ fCountPhysicalPageNodes:=0;
+ fDispatchRoot:=(TPasRISCVUInt32(1) shl TPasRISCV.TBus.TAddressSpaceDispatch.DISPATCH_POINTER_BITS) or TPasRISCV.TBus.TAddressSpaceDispatch.DISPATCH_NODE_NIL;
+ fMRUSection:=-1;
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.Finalize;
+begin
+ fRanges:=nil;
+ fCountRanges:=0;
+ fDispatchSections:=nil;
+ fCountDispatchSections:=0;
+ fPhysicalPageNodes:=nil;
+ fCountPhysicalPageNodes:=0;
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.Assign(const aFrom:TPasRISCV.TBus.TAddressSpaceDispatch);
+begin
+ fRanges:=copy(aFrom.fRanges);
+ fCountRanges:=aFrom.fCountRanges;
+ fDispatchSections:=copy(aFrom.fDispatchSections);
+ fCountDispatchSections:=aFrom.fCountDispatchSections;
+ fPhysicalPageNodes:=copy(aFrom.fPhysicalPageNodes);
+ fCountPhysicalPageNodes:=aFrom.fCountPhysicalPageNodes;
+ fDispatchRoot:=aFrom.fDispatchRoot;
+ fMRUSection:=-1;
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.SortRangesByBase(var aRanges:TPasRISCV.TBus.TAddressSpaceDispatch.TRangeArray;const aLeft,aRight:TPasRISCVSizeInt);
+var Lower,Upper:TPasRISCVSizeInt;
+    Pivot:TPasRISCVUInt64;
+    Temporary:TPasRISCV.TBus.TAddressSpaceDispatch.TRange;
+begin
+ if aLeft<aRight then begin
+  Lower:=aLeft;
+  Upper:=aRight;
+  Pivot:=aRanges[(aLeft+aRight) shr 1].RangeBase;
+  while Lower<=Upper do begin
+   while aRanges[Lower].RangeBase<Pivot do begin
+    inc(Lower);
+   end;
+   while aRanges[Upper].RangeBase>Pivot do begin
+    dec(Upper);
+   end;
+   if Lower<=Upper then begin
+    Temporary:=aRanges[Lower];
+    aRanges[Lower]:=aRanges[Upper];
+    aRanges[Upper]:=Temporary;
+    inc(Lower);
+    dec(Upper);
+   end;
+  end;
+  if aLeft<Upper then begin
+   SortRangesByBase(aRanges,aLeft,Upper);
+  end;
+  if Lower<aRight then begin
+   SortRangesByBase(aRanges,Lower,aRight);
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.Build;
+var CountAllRanges,DeviceIndex,SubIndex,RangeIndex,OutputIndex,NextIndex,StackTop:TPasRISCVSizeInt;
+    CurrentBase,CurrentEnd,OverrideEnd:TPasRISCVUInt64;
+    CurrentRange,OutputRange,TailRange:TPasRISCV.TBus.TAddressSpaceDispatch.PRange;
+    Device:TBusDevice;
+    AllRanges:TPasRISCV.TBus.TAddressSpaceDispatch.TRangeArray;
+    StackDevices:TBusDeviceArray;
+begin
+
+ // Phase 1: Collect all device ranges iteratively via manual stack
+ AllRanges:=nil;
+
+ CountAllRanges:=0;
+ SetLength(StackDevices,fBus.fCountBusDevices+64);
+
+ StackTop:=0;
+
+ for DeviceIndex:=fBus.fCountBusDevices-1 downto 0 do begin
+  StackDevices[StackTop]:=fBus.fBusDevices[DeviceIndex];
+  inc(StackTop);
+ end;
+
+ while StackTop>0 do begin
+  dec(StackTop);
+  Device:=StackDevices[StackTop];
+  if assigned(Device) and (Device.fSize>0) then begin
+   if CountAllRanges>=length(AllRanges) then begin
+    SetLength(AllRanges,(CountAllRanges+1)+((CountAllRanges+2) shr 1));
+   end;
+   CurrentRange:=@AllRanges[CountAllRanges];
+   inc(CountAllRanges);
+   CurrentRange^.RangeBase:=Device.fBase;
+   CurrentRange^.RangeSize:=Device.fSize;
+   CurrentRange^.Device:=Device;
+   if Device.fCountSubBusDevices>0 then begin
+    if (StackTop+Device.fCountSubBusDevices)>length(StackDevices) then begin
+     SetLength(StackDevices,(StackTop+Device.fCountSubBusDevices+1)+((StackTop+Device.fCountSubBusDevices+2) shr 1));
+    end;
+    for SubIndex:=Device.fCountSubBusDevices-1 downto 0 do begin
+     StackDevices[StackTop]:=Device.fSubBusDevices[SubIndex];
+     inc(StackTop);
+    end;
+   end;
+  end;
+ end;
+
+ StackDevices:=nil;
+
+ if CountAllRanges=0 then begin
+  fRanges:=nil;
+  fCountRanges:=0;
+  BuildDispatch;
+  exit;
+ end;
+
+ // Phase 2: Sort by base address
+ SortRangesByBase(AllRanges,0,CountAllRanges-1);
+
+ // Phase 3: Build non-overlapping flat view
+ // Strategy: smaller ranges (subdevices) override larger ranges (parents).
+ // We process ranges sorted by base. When a smaller range overlaps a larger
+ // one, we split the larger range around the smaller one.
+ // Output buffer — worst case each input range creates 2 extra fragments
+ SetLength(fRanges,(CountAllRanges*3)+1);
+ OutputIndex:=0;
+
+ // Insert each range, splitting existing output ranges as needed
+ for RangeIndex:=0 to CountAllRanges-1 do begin
+
+  CurrentRange:=@AllRanges[RangeIndex];
+  CurrentBase:=CurrentRange^.RangeBase;
+  CurrentEnd:=CurrentBase+CurrentRange^.RangeSize;
+
+  // Walk existing output and handle overlaps
+  NextIndex:=0;
+  while NextIndex<OutputIndex do begin
+
+   OutputRange:=@fRanges[NextIndex];
+
+   if (OutputRange^.RangeBase+OutputRange^.RangeSize<=CurrentBase) or (OutputRange^.RangeBase>=CurrentEnd) then begin
+    inc(NextIndex);
+    continue;
+   end;
+
+   // Overlap detected. Decide priority: smaller size wins.
+   if CurrentRange^.RangeSize<OutputRange^.RangeSize then begin
+
+    // New range is smaller = higher priority. Split the existing range.
+
+    OverrideEnd:=OutputRange^.RangeBase+OutputRange^.RangeSize;
+
+    if OutputRange^.RangeBase<CurrentBase then begin
+
+     if OverrideEnd>CurrentEnd then begin
+      // Tail piece: shift everything after NextIndex right by 1
+      if (OutputIndex+1)>=length(fRanges) then begin
+       SetLength(fRanges,(OutputIndex+1)+((OutputIndex+2) shr 1));
+      end;
+      OutputRange:=@fRanges[NextIndex];
+      Move(fRanges[NextIndex+1],fRanges[NextIndex+2],(OutputIndex-(NextIndex+1))*SizeOf(TPasRISCV.TBus.TAddressSpaceDispatch.TRange));
+      inc(OutputIndex);
+      TailRange:=@fRanges[NextIndex+1];
+      TailRange^.RangeBase:=CurrentEnd;
+      TailRange^.RangeSize:=OverrideEnd-CurrentEnd;
+      TailRange^.Device:=OutputRange^.Device;
+     end;
+
+     // Truncate existing to [ExistingBase..CurrentBase)
+     OutputRange^.RangeSize:=CurrentBase-OutputRange^.RangeBase;
+     inc(NextIndex);
+     if OverrideEnd>CurrentEnd then begin
+      inc(NextIndex); // skip the tail we just inserted
+     end;
+
+    end else if OutputRange^.RangeBase>=CurrentBase then begin
+
+     if OverrideEnd<=CurrentEnd then begin
+
+      // Existing range fully inside new range — remove it
+      Move(fRanges[NextIndex+1],fRanges[NextIndex],(OutputIndex-(NextIndex+1))*SizeOf(TPasRISCV.TBus.TAddressSpaceDispatch.TRange));
+      dec(OutputIndex);
+
+     end else begin
+
+      // Existing range extends beyond new range — shrink its start
+
+      OutputRange^.RangeSize:=OverrideEnd-CurrentEnd;
+      OutputRange^.RangeBase:=CurrentEnd;
+
+      inc(NextIndex);
+
+     end;
+
+    end;
+
+   end else begin
+
+    // Existing range is smaller or equal = higher priority. Carve new range around it.
+    if CurrentBase<OutputRange^.RangeBase then begin
+
+     // Emit left fragment before existing
+
+     if OutputIndex>=length(fRanges) then begin
+      SetLength(fRanges,(OutputIndex+1)+((OutputIndex+2) shr 1));
+     end;
+
+     Move(fRanges[NextIndex],fRanges[NextIndex+1],(OutputIndex-NextIndex)*SizeOf(TPasRISCV.TBus.TAddressSpaceDispatch.TRange));
+
+     OutputRange:=@fRanges[NextIndex];
+
+     TailRange:=@fRanges[NextIndex+1];
+
+     OutputRange^.RangeBase:=CurrentBase;
+     OutputRange^.RangeSize:=TailRange^.RangeBase-CurrentBase;
+     OutputRange^.Device:=CurrentRange^.Device;
+
+     inc(OutputIndex);
+
+     inc(NextIndex); // skip the fragment we just inserted
+
+    end;
+
+    // Advance CurrentBase past existing range
+    OutputRange:=@fRanges[NextIndex];
+    CurrentBase:=OutputRange^.RangeBase+OutputRange^.RangeSize;
+    inc(NextIndex);
+    if CurrentBase>=CurrentEnd then begin
+     CurrentBase:=CurrentEnd;
+     break;
+    end;
+
+   end;
+
+  end;
+
+  // Emit remaining portion of new range (if any)
+  if CurrentBase<CurrentEnd then begin
+
+   if OutputIndex>=length(fRanges) then begin
+    SetLength(fRanges,(OutputIndex+1)+((OutputIndex+2) shr 1));
+   end;
+
+   OutputRange:=@fRanges[OutputIndex];
+   OutputRange^.RangeBase:=CurrentBase;
+   OutputRange^.RangeSize:=CurrentEnd-CurrentBase;
+   OutputRange^.Device:=CurrentRange^.Device;
+
+   inc(OutputIndex);
+
+  end;
+
+ end;
+
+ fCountRanges:=OutputIndex;
+
+ SetLength(fRanges,fCountRanges);
+
+ // Final sort to ensure output is ordered by base
+ if fCountRanges>1 then begin
+  SortRangesByBase(fRanges,0,fCountRanges-1);
+ end;
+
+ BuildDispatch;
+
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.Dump;
+var Index,MismatchCount:TPasRISCVSizeInt;
+    Range:TPasRISCV.TBus.TAddressSpaceDispatch.PRange;
+    FoundDevice:TBusDevice;
+    DeviceName:string;
+begin
+
+ WriteLn('[FlatView] ',fCountRanges,' ranges:');
+
+ MismatchCount:=0;
+
+ for Index:=0 to fCountRanges-1 do begin
+
+  Range:=@fRanges[Index];
+
+  FoundDevice:=fBus.FindBusDevice(Range^.RangeBase);
+
+  DeviceName:=Range^.Device.ClassName;
+  if (Range^.Device is TPCIMemoryDevice) and assigned(TPCIMemoryDevice(Range^.Device).fPCIDevice) then begin
+   DeviceName:=DeviceName+' -> '+TPCIMemoryDevice(Range^.Device).fPCIDevice.ClassName;
+  end;
+
+  WriteLn('[FlatView] #',Index,
+          ' $',HexStr(Range^.RangeBase,16),
+          '..$',HexStr(Range^.RangeBase+Range^.RangeSize-1,16),
+          ' size=$',HexStr(Range^.RangeSize,16),
+          ' Device $',HexStr(Range^.Device.Base,16),
+          '..$',HexStr(Range^.Device.Base+Range^.Device.Size-1,16),
+          ' size=$',HexStr(Range^.Device.Size,16),
+          ' device=',DeviceName);
+
+  if FoundDevice<>Range^.Device then begin
+   if assigned(FoundDevice) then begin
+    WriteLn('[FlatView] MISMATCH at $',HexStr(Range^.RangeBase,16),
+            ': flatview=',DeviceName,
+            ' findbus=',FoundDevice.ClassName);
+   end else begin
+    WriteLn('[FlatView] MISMATCH at $',HexStr(Range^.RangeBase,16),
+            ': flatview=',DeviceName,
+            ' findbus=nil');
+   end;
+   inc(MismatchCount);
+  end;
+
+  if (Index<(fCountRanges-1)) and ((Range^.RangeBase+Range^.RangeSize)>fRanges[Index+1].RangeBase) then begin
+   WriteLn('[FlatView] OVERLAP: range #',Index,' overlaps range #',Index+1);
+   inc(MismatchCount);
+  end;
+
+ end;
+
+ if MismatchCount>0 then begin
+  WriteLn('[FlatView] ',MismatchCount,' problems found!');
+ end else begin
+  WriteLn('[FlatView] Validation passed.');
+ end;
+
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.Invalidate;
+begin
+ TPasMPInterlocked.Increment(fGenerationCounter);
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.DispatchNodeReserve(const aCount:TPasRISCVSizeInt);
+begin
+ // Pre-allocate node slots so recursive page insertion never triggers realloc mid-walk
+ if length(fPhysicalPageNodes)<(fCountPhysicalPageNodes+aCount) then begin
+  SetLength(fPhysicalPageNodes,(fCountPhysicalPageNodes+aCount)+(((fCountPhysicalPageNodes+aCount)+1) shr 1));
+ end;
+end;
+
+function TPasRISCV.TBus.TAddressSpaceDispatch.DispatchNodeAlloc(const aLeaf:Boolean):TPasRISCVUInt32;
+var Index:TPasRISCVSizeInt;
+    InitEntry:TPasRISCVUInt32;
+    PhysicalPageNode:PPhysicalPageNode;
+begin
+ result:=fCountPhysicalPageNodes;
+ inc(fCountPhysicalPageNodes);
+
+ // Leaf nodes point to section indices, internal nodes point to NIL (lazy alloc)
+ if aLeaf then begin
+  InitEntry:=DISPATCH_SECTION_UNASSIGNED;
+ end else begin
+  InitEntry:=(TPasRISCVUInt32(1) shl DISPATCH_POINTER_BITS) or DISPATCH_NODE_NIL;
+ end;
+
+ PhysicalPageNode:=@fPhysicalPageNodes[result];
+ for Index:=0 to DISPATCH_L2_SIZE-1 do begin
+  PhysicalPageNode^[Index]:=InitEntry;
+ end;
+
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.DispatchPageSetLevel(var aEntry:TPasRISCVUInt32;var aPageIndex:TPasRISCVUInt64;var aPageCount:TPasRISCVUInt64;const aSectionIndex:TPasRISCVUInt32;const aLevel:TPasRISCVInt32);
+var Step:TPasRISCVUInt64;
+    NodeIndex:TPasRISCVUInt32;
+    Slot:TPasRISCVSizeInt;
+    PhysicalPageNode:PPhysicalPageNode;
+begin
+
+ // Number of pages covered by one slot at this level
+ Step:=TPasRISCVUInt64(1) shl (aLevel*DISPATCH_L2_BITS);
+
+ // Lazy node allocation: create child node on first access
+ if ((aEntry shr DISPATCH_POINTER_BITS)>0) and ((aEntry and DISPATCH_POINTER_MASK)=DISPATCH_NODE_NIL) then begin
+  aEntry:=(aEntry and DISPATCH_SKIP_FIELD_MASK) or DispatchNodeAlloc(aLevel=0);
+ end;
+
+ NodeIndex:=aEntry and DISPATCH_POINTER_MASK;
+ Slot:=TPasRISCVSizeInt((aPageIndex shr (aLevel*DISPATCH_L2_BITS)) and (DISPATCH_L2_SIZE-1));
+
+ while (aPageCount>0) and (Slot<DISPATCH_L2_SIZE) do begin
+  PhysicalPageNode:=@fPhysicalPageNodes[NodeIndex];
+  if ((aPageIndex and (Step-1))=0) and (aPageCount>=Step) then begin
+   // Aligned and covers full subtree: set leaf directly (bulk optimization)
+   PhysicalPageNode^[Slot]:=aSectionIndex;
+   aPageIndex:=aPageIndex+Step;
+   aPageCount:=aPageCount-Step;
+  end else begin
+   // Partial coverage: recurse into next level
+   DispatchPageSetLevel(PhysicalPageNode^[Slot],aPageIndex,aPageCount,aSectionIndex,aLevel-1);
+  end;
+  inc(Slot);
+ end;
+
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.DispatchPageSet(const aStartPage:TPasRISCVUInt64;const aCountPages:TPasRISCVUInt64;const aSectionIndex:TPasRISCVUInt32);
+var PageIndex,PageCount:TPasRISCVUInt64;
+begin
+ PageIndex:=aStartPage;
+ PageCount:=aCountPages;
+ DispatchNodeReserve(3*DISPATCH_LEVELS);
+ DispatchPageSetLevel(fDispatchRoot,PageIndex,PageCount,aSectionIndex,DISPATCH_LEVELS-1);
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.DispatchCompact(var aEntry:TPasRISCVUInt32);
+var NodeIndex,ValidPtr,Skip,ChildSkip:TPasRISCVUInt32;
+    ValidCount,Index:TPasRISCVSizeInt;
+    PhysicalPageNode:PPhysicalPageNode;
+begin
+
+ NodeIndex:=aEntry and DISPATCH_POINTER_MASK;
+ if NodeIndex<>DISPATCH_NODE_NIL then begin
+
+  // Count valid (non-NIL) children, recursing into internal nodes
+  ValidPtr:=0;
+  ValidCount:=0;
+  for Index:=0 to DISPATCH_L2_SIZE-1 do begin
+   PhysicalPageNode:=@fPhysicalPageNodes[NodeIndex];
+   if (PhysicalPageNode^[Index] and DISPATCH_POINTER_MASK)<>DISPATCH_NODE_NIL then begin
+    ValidPtr:=Index;
+    inc(ValidCount);
+    if (PhysicalPageNode^[Index] shr DISPATCH_POINTER_BITS)>0 then begin
+     DispatchCompact(PhysicalPageNode^[Index]);
+    end;
+   end;
+  end;
+
+  // Only collapse single-child nodes (skip-level optimization)
+  if ValidCount<>1 then begin
+   exit;
+  end;
+
+  PhysicalPageNode:=@fPhysicalPageNodes[NodeIndex];
+
+  Skip:=(aEntry shr DISPATCH_POINTER_BITS) and DISPATCH_SKIP_MASK;
+  ChildSkip:=(PhysicalPageNode^[ValidPtr] shr DISPATCH_POINTER_BITS) and DISPATCH_SKIP_MASK;
+
+  // Don't compact if combined skip would overflow the 6-bit field
+  if (Skip+ChildSkip)>=(TPasRISCVUInt32(1) shl DISPATCH_SKIP_BITS) then begin
+   exit;
+  end;
+
+  if ChildSkip=0 then begin
+   // Child is a leaf: become a leaf directly
+   aEntry:=PhysicalPageNode^[ValidPtr];
+  end else begin
+   // Child is internal: accumulate skip counts
+   aEntry:=((Skip+ChildSkip) shl DISPATCH_POINTER_BITS) or (PhysicalPageNode^[ValidPtr] and DISPATCH_POINTER_MASK);
+  end;
+
+ end;
+
+end;
+
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.BuildDispatch;
+var RangeIndex:TPasRISCVSizeInt;
+    Range:TPasRISCV.TBus.TAddressSpaceDispatch.PRange;
+    SectionIndex:TPasRISCVUInt32;
+    StartPage,PageCount:TPasRISCVUInt64;
+    DispatchSection:PDispatchSection;
+begin
+
+ // Reset dispatch tree
+ fPhysicalPageNodes:=nil;
+ fCountPhysicalPageNodes:=0;
+ fDispatchRoot:=(TPasRISCVUInt32(1) shl DISPATCH_POINTER_BITS) or DISPATCH_NODE_NIL;
+
+ // Section 0 = unassigned (sentinel for unmapped pages)
+ fCountDispatchSections:=0;
+ SetLength(fDispatchSections,fCountRanges+1);
+ DispatchSection:=@fDispatchSections[0];
+ DispatchSection^.RangeBase:=0;
+ DispatchSection^.RangeSize:=0;
+ fCountDispatchSections:=1;
+
+ // Register each FlatView range as a section and insert its pages into the radix tree
+ for RangeIndex:=0 to fCountRanges-1 do begin
+  Range:=@fRanges[RangeIndex];
+  SectionIndex:=fCountDispatchSections;
+  DispatchSection:=@fDispatchSections[SectionIndex];
+  inc(fCountDispatchSections);
+  DispatchSection^.Device:=Range^.Device;
+  DispatchSection^.RangeBase:=Range^.RangeBase;
+  DispatchSection^.RangeSize:=Range^.RangeSize;
+  StartPage:=Range^.RangeBase shr DISPATCH_PAGE_BITS;
+  PageCount:=((Range^.RangeBase+Range^.RangeSize-1) shr DISPATCH_PAGE_BITS)-StartPage+1;
+  DispatchPageSet(StartPage,PageCount,SectionIndex);
+ end;
+
+ // Compress single-child nodes for shorter tree walks
+ if (fDispatchRoot shr DISPATCH_POINTER_BITS)>0 then begin
+  DispatchCompact(fDispatchRoot);
+ end;
+
+ fMRUSection:=-1;
+
+end;
+
+function TPasRISCV.TBus.TAddressSpaceDispatch.DispatchFind(const aAddress:TPasRISCVUInt64):TPasRISCVInt32;
+var Entry:TPasRISCVUInt32;
+    PageIndex:TPasRISCVUInt64;
+    Level:TPasRISCVInt32;
+    Skip,NodeIndex:TPasRISCVUInt32;
+begin
+
+ Entry:=fDispatchRoot;
+ PageIndex:=aAddress shr DISPATCH_PAGE_BITS;
+ Level:=DISPATCH_LEVELS;
+
+ // Walk the compacted radix tree: skip>0 means internal node, skip=0 means leaf
+ Skip:=(Entry shr DISPATCH_POINTER_BITS) and DISPATCH_SKIP_MASK;
+ while Skip>0 do begin
+
+  dec(Level,Skip);
+
+  if Level<0 then begin
+   result:=DISPATCH_SECTION_UNASSIGNED;
+   exit;
+  end;
+
+  NodeIndex:=Entry and DISPATCH_POINTER_MASK;
+  if NodeIndex=DISPATCH_NODE_NIL then begin
+   result:=DISPATCH_SECTION_UNASSIGNED;
+   exit;
+  end;
+
+  Entry:=fPhysicalPageNodes[NodeIndex][(PageIndex shr (Level*DISPATCH_L2_BITS)) and (DISPATCH_L2_SIZE-1)];
+  Skip:=(Entry shr DISPATCH_POINTER_BITS) and DISPATCH_SKIP_MASK;
+
+ end;
+
+ // Leaf: lower bits are section index
+ result:=Entry and DISPATCH_POINTER_MASK;
+
+end;
+
+function TPasRISCV.TBus.TAddressSpaceDispatch.FindDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
+var BusGeneration:TPasMPInt32;
+    SectionIndex:TPasRISCVInt32;
+    Section:TPasRISCV.TBus.TAddressSpaceDispatch.PDispatchSection;
+{$ifdef PasRISCVDebugFlatView}
+    Low,High,Mid:TPasRISCVSizeInt;
+    Range:TPasRISCV.TBus.TAddressSpaceDispatch.PRange;
+    RefDevice:TBusDevice;
+{$endif}
+begin
+
+ // Check generation counter and rebuild if bus topology changed
+ BusGeneration:={TPasMPInterlocked.Read}(fBus.fAddressSpaceDispatch.fGenerationCounter);
+ if fGeneration<>BusGeneration then begin
+  Build;
+{$ifdef PasRISCVDebugFlatView}
+  WriteLn('[FlatView HART] Rebuilt with ',fCountRanges,' ranges, ',fCountDispatchSections,' sections, ',fCountPhysicalPageNodes,' nodes');
+  Dump;
+{$endif}
+  fGeneration:=BusGeneration;
+ end;
+
+ result:=nil;
+
+ // Fast path: MRU single-entry cache (most MMIO accesses hit the same device repeatedly)
+ SectionIndex:=fMRUSection;
+ if SectionIndex>DISPATCH_SECTION_UNASSIGNED then begin
+  Section:=@fDispatchSections[SectionIndex];
+  if (aAddress>=Section^.RangeBase) and ((aAddress-Section^.RangeBase)<Section^.RangeSize) then begin
+   result:=Section^.Device;
+  end;
+ end;
+
+ // Slow path: radix tree walk to find the page, then sub-page range check
+ if not assigned(result) then begin
+  SectionIndex:=DispatchFind(aAddress);
+  if SectionIndex>DISPATCH_SECTION_UNASSIGNED then begin
+   Section:=@fDispatchSections[SectionIndex];
+   if (aAddress>=Section^.RangeBase) and ((aAddress-Section^.RangeBase)<Section^.RangeSize) then begin
+    fMRUSection:=SectionIndex;
+    result:=Section^.Device;
+   end;
+  end;
+ end;
+
+{$ifdef PasRISCVDebugFlatView}
+ // Debug: verify dispatch result against binary search reference
+ RefDevice:=nil;
+ Low:=0;
+ High:=fCountRanges-1;
+ while Low<=High do begin
+  Mid:=(Low+High) shr 1;
+  Range:=@fRanges[Mid];
+  if aAddress<Range^.RangeBase then begin
+   High:=Mid-1;
+  end else if (aAddress-Range^.RangeBase)>=Range^.RangeSize then begin
+   Low:=Mid+1;
+  end else begin
+   RefDevice:=Range^.Device;
+   break;
+  end;
+ end;
+ if (result<>RefDevice) and (TPasMPInterlocked.Increment(fBus.fAddressSpaceDispatchMismatchCount)<10) then begin
+  if assigned(result) then begin
+   if assigned(RefDevice) then begin
+    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=',result.ClassName,'@$',HexStr(result.fBase,16),' binsearch=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end else begin
+    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=',result.ClassName,'@$',HexStr(result.fBase,16),' binsearch=nil');
+   end;
+  end else begin
+   if assigned(RefDevice) then begin
+    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=nil binsearch=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end;
+  end;
+ end;
+{$endif}
+
+end;
+
+{$endif}
+
 { TPasRISCV.TBus }
 
 constructor TPasRISCV.TBus.Create(const aMachine:TPasRISCV);
@@ -48060,12 +48831,22 @@ begin
  fMachine:=aMachine;
  fBusDevices:=nil;
  fCountBusDevices:=0;
+{$ifdef PasRISCVAddressSpaceDispatch}
+ fAddressSpaceDispatch.Initialize(self);
+ fAddressSpaceDispatchLock:=0;
+{$ifdef PasRISCVDebugFlatView}
+ fAddressSpaceDispatchMismatchCount:=0;
+{$endif}
+{$endif}
 end;
 
 destructor TPasRISCV.TBus.Destroy;
 begin
  fBusDevices:=nil;
  fCountBusDevices:=0;
+{$ifdef PasRISCVAddressSpaceDispatch}
+ fAddressSpaceDispatch.Finalize;
+{$endif}
  inherited Destroy;
 end;
 
@@ -48098,6 +48879,9 @@ begin
   SetLength(fBusDevices,fCountBusDevices+((fCountBusDevices+1) shr 1)); // Grow by 1.5
  end;
  fBusDevices[Index]:=aBusDevice;
+{$ifdef PasRISCVAddressSpaceDispatch}
+ fAddressSpaceDispatch.Invalidate;
+{$endif}
 end;
 
 procedure TPasRISCV.TBus.RemoveBusDevice(const aBusDevice:TBusDevice);
@@ -48112,6 +48896,9 @@ begin
     fBusDevices[Index]:=nil;
    end;
    dec(fCountBusDevices);
+{$ifdef PasRISCVAddressSpaceDispatch}
+   fAddressSpaceDispatch.Invalidate;
+{$endif}
    break;
   end;
  end;
@@ -48137,7 +48924,15 @@ var BusDevice:TBusDevice;
 begin
  result:=fMachine.fMemoryDevice.GetDeviceDirectMemoryAccessPointer(aAddress,aSize,aWrite,aBounce);
  if not assigned(result) then begin
-  BusDevice:=FindBusDevice(aAddress);
+  if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(fAddressSpaceDispatchLock) then begin
+   BusDevice:=fAddressSpaceDispatch.FindDevice(aAddress);
+   TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(fAddressSpaceDispatchLock);
+   if not assigned(BusDevice) then begin
+    BusDevice:=FindBusDevice(aAddress);
+   end;
+  end else begin
+   BusDevice:=FindBusDevice(aAddress);
+  end;
   if assigned(BusDevice) then begin
    result:=BusDevice.GetDeviceDirectMemoryAccessPointer(aAddress,aSize,aWrite,aBounce);
   end else begin
@@ -48153,8 +48948,39 @@ end;
 
 function TPasRISCV.TBus.Fetch(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var BusDevice:TBusDevice;
+{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugFlatView)}
+    RefDevice:TBusDevice;
+{$ifend}
 begin
+{$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
+ if assigned(aHART) then begin
+  BusDevice:=aHART.fAddressSpaceDispatch.FindDevice(aAddress);
+  if not assigned(BusDevice) then begin
+   BusDevice:=FindBusDevice(aAddress);
+  end;
+ end else begin
+  BusDevice:=FindBusDevice(aAddress);
+ end;
+{$ifdef PasRISCVDebugFlatView}
+ RefDevice:=FindBusDevice(aAddress);
+ if (BusDevice<>RefDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
+  if assigned(BusDevice) then begin
+   if assigned(RefDevice) then begin
+    WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end else begin
+    WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=nil');
+   end;
+  end else begin
+   if assigned(RefDevice) then begin
+    WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=nil expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end;
+  end;
+ end;
+ BusDevice:=RefDevice;
+{$endif}
+{$else}
  BusDevice:=FindBusDevice(aAddress);
+{$endif}
  if assigned(BusDevice) then begin
   result:=BusDevice.Load(aAddress,aSize);
  end else begin
@@ -48420,8 +49246,39 @@ end;
 
 function TPasRISCV.TBus.Load(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var BusDevice:TBusDevice;
+{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugFlatView)}
+    RefDevice:TBusDevice;
+{$ifend}
 begin
+{$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
+ if assigned(aHART) then begin
+  BusDevice:=aHART.fAddressSpaceDispatch.FindDevice(aAddress);
+  if not assigned(BusDevice) then begin
+   BusDevice:=FindBusDevice(aAddress);
+  end;
+ end else begin
+  BusDevice:=FindBusDevice(aAddress);
+ end;
+{$ifdef PasRISCVDebugFlatView}
+ RefDevice:=FindBusDevice(aAddress);
+ if (BusDevice<>RefDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
+  if assigned(BusDevice) then begin
+   if assigned(RefDevice) then begin
+    WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end else begin
+    WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=nil');
+   end;
+  end else begin
+   if assigned(RefDevice) then begin
+    WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=nil expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end;
+  end;
+ end;
+ BusDevice:=RefDevice;
+{$endif}
+{$else}
  BusDevice:=FindBusDevice(aAddress);
+{$endif}
  if assigned(BusDevice) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    result:=BusDevice.Load(aAddress,aSize);
@@ -48442,8 +49299,39 @@ end;
 
 procedure TPasRISCV.TBus.Store(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var BusDevice:TBusDevice;
+{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugFlatView)}
+    RefDevice:TBusDevice;
+{$ifend}
 begin
+{$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
+ if assigned(aHART) then begin
+  BusDevice:=aHART.fAddressSpaceDispatch.FindDevice(aAddress);
+  if not assigned(BusDevice) then begin
+   BusDevice:=FindBusDevice(aAddress);
+  end;
+ end else begin
+  BusDevice:=FindBusDevice(aAddress);
+ end;
+{$ifdef PasRISCVDebugFlatView}
+ RefDevice:=FindBusDevice(aAddress);
+ if (BusDevice<>RefDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
+  if assigned(BusDevice) then begin
+   if assigned(RefDevice) then begin
+    WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end else begin
+    WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=nil');
+   end;
+  end else begin
+   if assigned(RefDevice) then begin
+    WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=nil expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   end;
+  end;
+ end;
+ BusDevice:=RefDevice;
+{$endif}
+{$else}
  BusDevice:=FindBusDevice(aAddress);
+{$endif}
  if assigned(BusDevice) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    BusDevice.Store(aAddress,aValue,aSize);
@@ -66917,6 +67805,11 @@ begin
 
  fMachine:=aMachine;
 
+{$ifdef PasRISCVAddressSpaceDispatch}
+ fAddressSpaceDispatch.Initialize(fMachine.fBus);
+ fAddressSpaceDispatch.fGeneration:=-1;
+{$endif}
+
  fVector:=fMachine.fVector;
 
  fPHandle:=fMachine.AllocatePHandle;
@@ -67328,6 +68221,9 @@ begin
    FreeAndNil(fAIARegFiles[AIARegFileMode]);
   end;
  end;
+{$ifdef PasRISCVAddressSpaceDispatch}
+ fAddressSpaceDispatch.Finalize;
+{$endif}
  inherited Destroy;
 end;
 
@@ -103243,6 +104139,12 @@ begin
 {$ifdef PasMPDebugSpinDetect}
  fSpinDetectEnabled:=true;
  fSpinDetectThresholdTicks:=CLOCK_FREQUENCY*10; // 10 seconds default
+{$endif}
+
+{$ifdef PasRISCVAddressSpaceDispatch}
+ fBus.fAddressSpaceDispatch.Build;
+//fBus.fAddressSpaceDispatch.Dump;
+ fBus.fAddressSpaceDispatch.Invalidate;
 {$endif}
 
 end;
