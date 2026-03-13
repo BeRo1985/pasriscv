@@ -10047,7 +10047,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFMvDX(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFClassS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFClassD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-{$ifend}
+{$endif}
 {$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
                       // FMA IntrinsicXxx overrides
                      function IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
