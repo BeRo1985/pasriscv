@@ -8233,21 +8233,21 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITRunStatePtr:Pointer; // = @fMachine.fRunState, set once in THART.Create
                      JITTLBPtr:Pointer; // = @fDirectAccessTLBCache[ModeBase], updated on SetMode with PerModeTLB
                      JITBlockTLBPtr:Pointer; // = @fJustInTimeCompiler.fJITTLB[0], set once in THART.Create
-{$ifdef JITTLBTag}
+ {$ifdef JITTLBTag}
                      JITTLBTag:TPasRISCVUInt64; // current tag for native JIT block TLB lookup
-{$endif}
+ {$endif}
                      JITHART:THART;
                      JITSkipExecution:TPasMPBool32;
-{$ifdef PasRISCVJustInTimeCompilerSideExit}
+ {$ifdef PasRISCVJustInTimeCompilerSideExit}
                      JITDataTLBFillPtr:Pointer;
                      JITScratch:TPasRISCVPtrUInt;
-{$ifdef JITMMIOFastPath}
+  {$ifdef JITMMIOFastPath}
                      JITMMIOScratch:TPasRISCVUInt64;
-{$endif}
-{$endif}
-{$ifdef JITInlineCSRRead}
+  {$endif}
+ {$endif}
+ {$ifdef JITInlineCSRRead}
                      JITRDTIMEHelperPtr:Pointer;
-{$endif}
+ {$endif}
 {$endif}
                    end;
                    PState=^TState;
@@ -9026,7 +9026,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFLD(const aHostFPUDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeFSW(const aHostFPUSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeFSD(const aHostFPUSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$endif}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
                      // Zfhmin: half-float load/store/conversion
                      procedure EmitNativeFLH(const aHostFPUDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
                      procedure EmitNativeFSH(const aHostFPUSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); virtual; abstract;
@@ -9063,8 +9064,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFMSubH(const aHostDest,aHostSrc1,aHostSrc2,aHostSrc3:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFNMAddH(const aHostDest,aHostSrc1,aHostSrc2,aHostSrc3:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFNMSubH(const aHostDest,aHostSrc1,aHostSrc2,aHostSrc3:TPasRISCVUInt8); virtual; abstract;
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfa}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
                      // Zfa: additional float operations
                      procedure EmitNativeFMinMS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFMaxMS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
@@ -9081,7 +9082,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFCvtModWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFLiS(const aHostFPUDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFLiD(const aHostFPUDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt8); virtual; abstract;
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
                      procedure EmitNativeFMinMH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFMaxMH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFRoundH(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
@@ -9089,14 +9091,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFLeqH(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFLtqH(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFLiH(const aHostFPUDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt8); virtual; abstract;
-{$endif}
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfbfmin}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
                      // Zfbfmin: BF16 conversions
                      procedure EmitNativeFCvtSBF16(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeFCvtBF16S(const aHostDest,aHostSrc:TPasRISCVUInt8); virtual; abstract;
-{$endif}
-{$endif}
+{$ifend}
                      // Integer intrinsics (virtual, override in target-specific subclass)
                      function IntrinsicNOP(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicADD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9349,7 +9349,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicFMVDX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFCLASSS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFCLASSD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$ifdef PasRISCVJustInTimeCompilerFMA}
+{$endif}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
                      // FMA intrinsics (additionally guarded by fMachine.fJITFMAEnabled at call site)
                      function IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFMSUBS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9359,8 +9360,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicFMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
                      // Zfhmin: half-float load/store/conversion intrinsics
                      function IntrinsicFLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9393,14 +9394,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicFMVXH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFMVHX(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFCLASSH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$ifdef PasRISCVJustInTimeCompilerFMA}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh) and defined(PasRISCVJustInTimeCompilerFMA)}
                      function IntrinsicFMADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFMSUBH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFNMADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFNMSUBH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$endif}
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfa}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
                      // Zfa: additional float intrinsics
                      function IntrinsicFMINMS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFMAXMS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9417,7 +9418,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicFCVTMODWD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFLIS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFLID(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
                      function IntrinsicFMINMH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFMAXMH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFROUNDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9425,14 +9427,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicFLEQH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFLTQH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFLIH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$endif}
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfbfmin}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
                      // Zfbfmin: BF16 conversion intrinsics
                      function IntrinsicFCVTSBF16(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFCVTBF16S(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
-{$endif}
-{$endif}
+{$ifend}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                       // Vector JIT intrinsics
                      function IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
@@ -9718,20 +9718,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMemAddImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt64;const aIs64:Boolean); override;
                      procedure EmitNativeMemSubImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
                      procedure EmitNativeMemCmpImm(const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aValue:TPasRISCVInt32;const aIs64:Boolean); override;
-{$ifdef PasRISCVJustInTimeCompilerFPU}
-                      // SSE2 encoding helpers
+                      // SSE2 encoding helpers (used by FPU, FMA, Zbb/ORCB)
                      procedure EmitSSE2Op(const aPrefix:TPasRISCVInt32;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
                      procedure EmitSSE2MemOp(const aPrefix:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
                      procedure EmitSSE2MovGPRToXMM(const aXMM:TPasRISCVUInt8;const aGPR:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitSSE2MovXMMToGPR(const aGPR:TPasRISCVUInt8;const aXMM:TPasRISCVUInt8;const aIs64:Boolean);
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerVector}
-                      // VEX encoding helpers (for AVX/AVX2)
+                      // VEX encoding helpers (used by AVX/AVX2, FMA, F16C, Vector)
                      procedure EmitVEX2(const aPP:TPasRISCVUInt8;const aL:Boolean;const aVVVV:TPasRISCVUInt8;const aR:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8);
                      procedure EmitVEX3(const aPP:TPasRISCVUInt8;const aL:Boolean;const aW:Boolean;const aVVVV:TPasRISCVUInt8;const aMap:TPasRISCVUInt8;const aR,aX,aB:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8);
                      procedure EmitVEXOp(const aPP:TPasRISCVUInt8;const aL:Boolean;const aW:Boolean;const aMap:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aDstReg:TPasRISCVUInt8;const aSrcReg:TPasRISCVUInt8;const aVVVV:TPasRISCVUInt8);
                      procedure EmitVEXMemOp(const aPP:TPasRISCVUInt8;const aL:Boolean;const aW:Boolean;const aMap:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8;const aReg:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aVVVV:TPasRISCVUInt8);
-{$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      procedure EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
                      procedure EmitFPUStore(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean); override;
@@ -10051,7 +10047,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFMvDX(const aHostFPUDest,aHostIntSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFClassS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFClassD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
-{$ifdef PasRISCVJustInTimeCompilerFMA}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
                       // FMA IntrinsicXxx overrides
                      function IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
                      function IntrinsicFMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
@@ -10061,8 +10058,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicFNMSUBD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
                      function IntrinsicFNMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
                      function IntrinsicFNMADDD(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
                      // Zfhmin EmitNative overrides
                      procedure EmitNativeFLH(const aHostFPUDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
                      procedure EmitNativeFSH(const aHostFPUSrc,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32); override;
@@ -10099,8 +10096,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFMSubH(const aHostDest,aHostSrc1,aHostSrc2,aHostSrc3:TPasRISCVUInt8); override;
                      procedure EmitNativeFNMAddH(const aHostDest,aHostSrc1,aHostSrc2,aHostSrc3:TPasRISCVUInt8); override;
                      procedure EmitNativeFNMSubH(const aHostDest,aHostSrc1,aHostSrc2,aHostSrc3:TPasRISCVUInt8); override;
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfa}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
                      // Zfa EmitNative overrides
                      procedure EmitNativeFMinMS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFMaxMS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
@@ -10117,7 +10114,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFCvtModWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFLiS(const aHostFPUDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt8); override;
                      procedure EmitNativeFLiD(const aHostFPUDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt8); override;
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
                      procedure EmitNativeFMinMH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFMaxMH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFRoundH(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
@@ -10125,14 +10123,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFLeqH(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFLtqH(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFLiH(const aHostFPUDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt8); override;
-{$endif}
-{$endif}
-{$ifdef PasRISCVJustInTimeCompilerZfbfmin}
+{$ifend}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
                      // Zfbfmin EmitNative overrides
                      procedure EmitNativeFCvtSBF16(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFCvtBF16S(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
-{$endif}
-{$endif}
+{$ifend}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      // Vector JIT intrinsic overrides
                      function IntrinsicVSETVLI(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
@@ -48890,7 +48886,7 @@ begin
 
  FillChar(fHostIntRegisterInfos,SizeOf(fHostIntRegisterInfos),#0);
 
- {$ifdef PasRISCVJustInTimeCompilerFPU}
+{$ifdef PasRISCVJustInTimeCompilerFPU}
  FillChar(fHostFPURegisterInfos,SizeOf(fHostFPURegisterInfos),#0);
 {$endif}
 
@@ -50062,6 +50058,7 @@ begin
   end;
  end;
 end;
+{$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerVector}
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitVectorBailout;
@@ -54886,7 +54883,7 @@ begin
 end;
 {$endif}
 
-{$ifdef PasRISCVJustInTimeCompilerFMA}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  result:=false;
@@ -54926,9 +54923,9 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFNMSUBD(const aInstruction
 begin
  result:=false;
 end;
-{$endif}
+{$ifend}
 
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
 // Zfhmin: half-float load/store/conversion intrinsics (base class)
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFLH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD:TFPURegister;
@@ -55575,8 +55572,9 @@ begin
  EmitSetFSDirty;
  result:=true;
 end;
+{$ifend}
 
-{$ifdef PasRISCVJustInTimeCompilerFMA}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh) and defined(PasRISCVJustInTimeCompilerFMA)}
 // Zfh: half-float FMA intrinsics (base class)
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMADDH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
@@ -55685,11 +55683,9 @@ begin
  EmitSetFSDirty;
  result:=true;
 end;
+{$ifend}
 
-{$endif}
-{$endif}
-
-{$ifdef PasRISCVJustInTimeCompilerZfa}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
 // Zfa: additional float intrinsics (base class)
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINMS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
@@ -55966,8 +55962,9 @@ begin
  EmitSetFSDirty;
  result:=true;
 end;
+{$ifend}
 
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh) and defined(PasRISCVJustInTimeCompilerZfa)}
 // Zfa/Zfh: half-float additional ops (base class)
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINMH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2:TFPURegister;
@@ -56098,10 +56095,9 @@ begin
  result:=true;
 end;
 
-{$endif}
-{$endif}
+{$ifend}
 
-{$ifdef PasRISCVJustInTimeCompilerZfbfmin}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
 // Zfbfmin: BF16 conversion intrinsics (base class)
 function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFCVTSBF16(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1:TFPURegister;
@@ -56149,9 +56145,7 @@ begin
  result:=true;
 end;
 
-{$endif}
-
-{$endif}
+{$ifend}
 
 // Vector JIT intrinsic base stubs
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerVector)}
@@ -57306,9 +57300,8 @@ begin
 end;
 {$endif}
 
-// VEX encoding helpers (for AVX/AVX2 vector JIT)
+// VEX encoding helpers (used by AVX/AVX2, FMA, F16C, Vector)
 // VEX 2-byte form: $c5 [R'vvvvLpp]
-{$ifdef PasRISCVJustInTimeCompilerVector}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitVEX2(const aPP:TPasRISCVUInt8;const aL:Boolean;const aVVVV:TPasRISCVUInt8;const aR:TPasRISCVUInt8;const aOpcode:TPasRISCVUInt8);
 var Byte2:TPasRISCVUInt8;
 begin
@@ -57376,9 +57369,8 @@ begin
  end;
  EmitMemOperand(aReg,aBase,aOffset);
 end;
-{$endif}
 
-{$ifdef PasRISCVJustInTimeCompilerFPU}
+// SSE2 encoding helpers (used by FPU, FMA, Zbb/ORCB)
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSSE2Op(const aPrefix:TPasRISCVInt32;const aOpcode:TPasRISCVUInt8;const aDstXMM:TPasRISCVUInt8;const aSrcXMM:TPasRISCVUInt8);
 begin
  // prefix 0F opcode modrm(11,dst,src)
@@ -57425,6 +57417,8 @@ begin
  EmitByte(X86_SSE_MOVD_FROM_XMM);
  EmitModRM(3,aXMM,aGPR);
 end;
+
+{$ifdef PasRISCVJustInTimeCompilerFPU}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPULoad(const aXMMReg:TPasRISCVUInt8;const aBaseRegister:TPasRISCVUInt8;const aOffset:TPasRISCVInt32;const aIsDouble:Boolean);
 begin
  if aIsDouble then begin
@@ -58803,7 +58797,9 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeORCB(const aHostDes
 const XMM01Mask=(TPasRISCVUInt32(1) shl 0) or (TPasRISCVUInt32(1) shl 1);
 var TempReg1,TempReg2:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJustInTimeCompilerFPU}
  if (fHostFPURegisterMask and XMM01Mask)<>XMM01Mask then begin
+{$endif}
   // orc.b: for each byte, if any bit set => 0xff, else 0x00
   // Same algorithm as BitwiseOrCombine:
   // t = (((val | 0x8080...) - 0x0101...) | val) & 0x8080...
@@ -58830,6 +58826,7 @@ begin
   Emit2RegOp($29,aHostDest,TempReg1,true); // aHostDest -= TempReg1
   FreeHostIntRegister(TempReg1);
   FreeHostIntRegister(TempReg2);
+{$ifdef PasRISCVJustInTimeCompilerFPU}
  end else begin
   // Inline SSE2 approach: movq xmm0,src; xorps xmm1,xmm1; pcmpeqb xmm0,xmm1; pcmpeqb xmm0,xmm1; movq dst,xmm0
   // Save xmm0+xmm1 on stack (may be mapped FPU regs)
@@ -58851,6 +58848,7 @@ begin
   EmitSSE2MemOp(X86_PREFIX_F3,$6f,1,TPasRISCVUInt8(ord(TX64Register.rRSP)),16); // movdqu xmm1,[rsp+16]
   EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),32);
  end;
+{$endif}
 end;
 {$endif}
 
@@ -62473,7 +62471,7 @@ begin
 end;
 {$endif}
 
-{$ifdef PasRISCVJustInTimeCompilerFMA}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerFMA)}
 function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFMADDS(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
@@ -63117,10 +63115,9 @@ begin
  result:=true;
 end;
 
-{$endif}
+{$ifend}
 
-
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLH(const aHostFPUDest,aHostAddr:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
 var ScratchReg:TPasRISCVUInt8;
@@ -63612,9 +63609,9 @@ begin
  FreeHostFPURegister(ScratchXMM);
 end;
 
-{$endif}
+{$ifend}
 
-{$ifdef PasRISCVJustInTimeCompilerZfa}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinMS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
@@ -63954,10 +63951,11 @@ begin
  FreeHostFPURegister(ScratchXMM);
 end;
 
-{$endif}
+{$ifend}
+
 {$endif}
 
-{$ifdef PasRISCVJustInTimeCompilerZfbfmin}
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtSBF16(const aHostDest,aHostSrc:TPasRISCVUInt8);
 var TempReg:TPasRISCVUInt8;
@@ -63997,7 +63995,7 @@ begin
  FreeHostFPURegister(ScratchXMM);
 end;
 
-{$endif}
+{$ifend}
 
 {$ifdef PasRISCVJustInTimeCompilerVector}
 // Vector JIT intrinsic implementations (x86-64)
@@ -89826,7 +89824,7 @@ begin
         rs1:=TRegister((aInstruction shr 15) and $1f);
         Offset:=TPasRISCVInt64(TPasRISCVInt32(SARLongint(TPasRISCVInt32(aInstruction),20)));
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFLH,aInstruction,ord(frd),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -89928,7 +89926,7 @@ begin
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         Offset:=SignExtend((((aInstruction shr 25) and $7f) shl 5) or ((aInstruction shr 7) and $1f),12);
         Address:=fState.Registers[rs1]+TPasRISCVUInt64(Offset);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicFSH,aInstruction,ord(frs2),ord(rs1),TPasRISCVUInt64(Offset),0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90020,7 +90018,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMADDH,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90109,7 +90107,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMSUBH,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90224,7 +90222,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMADDH,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90313,7 +90311,7 @@ begin
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
         frs3:=TFPURegister((aInstruction shr 27) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFNMSUBH,aInstruction,ord(frd),ord(frs1),ord(frs2),ord(frs3),4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90409,7 +90407,7 @@ begin
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFADDH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90487,7 +90485,7 @@ begin
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSUBH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90554,7 +90552,7 @@ begin
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMULH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90621,7 +90619,7 @@ begin
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
         frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFDIVH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90776,7 +90774,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90794,7 +90792,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJNH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90812,7 +90810,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSGNJXH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90928,7 +90926,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINMS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -90964,7 +90962,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXMS,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91096,7 +91094,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINMD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91131,7 +91129,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXMD,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91176,7 +91174,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91206,7 +91204,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91236,7 +91234,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMINMH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91261,7 +91259,7 @@ begin
           frd:=TFPURegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMAXMH,aInstruction,ord(frd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91315,7 +91313,7 @@ begin
          end;
          $04:begin
           // fround.s (Zfa)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFROUNDS,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91373,7 +91371,7 @@ begin
          end;
          $05:begin
           // froundnx.s (Zfa)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFROUNDNXS,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91429,7 +91427,7 @@ begin
          end;
          $02:begin
           // fcvt.s.h (Zfhmin)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSH,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91450,7 +91448,7 @@ begin
          end;
          $06:begin
           // fcvt.s.bf16 (Zfbfmin)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfbfmin)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTSBF16,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91502,7 +91500,7 @@ begin
          end;
          $04:begin
           // fround.d (Zfa)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFROUNDD,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91559,7 +91557,7 @@ begin
          end;
          $05:begin
           // froundnx.d (Zfa)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFROUNDNXD,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91614,7 +91612,7 @@ begin
          end;
          $02:begin
           // fcvt.d.h (Zfhmin)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTDH,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91646,7 +91644,7 @@ begin
         case (aInstruction shr 20) and $1f of
          $00:begin
           // fcvt.h.s (Zfhmin)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTHS,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91668,7 +91666,7 @@ begin
          end;
          $01:begin
           // fcvt.h.d (Zfhmin)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTHD,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91690,7 +91688,7 @@ begin
          end;
          $04:begin
           // fround.h (Zfa)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFROUNDH,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91740,7 +91738,7 @@ begin
          end;
          $05:begin
           // froundnx.h (Zfa)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFROUNDNXH,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91791,7 +91789,7 @@ begin
          end;
          $08:begin
           // fcvt.bf16.s (Zfbfmin)
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfbfmin)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTBF16S,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91870,7 +91868,7 @@ begin
         // fsqrt.h (Zfh)
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         frs1:=TFPURegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
         if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
            fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFSQRTH,aInstruction,ord(frd),ord(frs1),0,0,4) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91964,7 +91962,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLEQS,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -91986,7 +91984,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTQS,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92084,7 +92082,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLEQD,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92106,7 +92104,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTQD,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92138,7 +92136,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLEH,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92160,7 +92158,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTH,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92182,7 +92180,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFEQH,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92210,7 +92208,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLEQH,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92237,7 +92235,7 @@ begin
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
           frs2:=TFPURegister((aInstruction shr 20) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLTQH,aInstruction,ord(rd),ord(frs1),ord(frs2),0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92570,7 +92568,7 @@ begin
            result:=4;
            exit;
           end;
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTMODWD,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92660,7 +92658,7 @@ begin
         case (aInstruction shr 20) and $1f of
          0:begin
           // fcvt.w.h
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWH,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92688,7 +92686,7 @@ begin
          end;
          1:begin
           // fcvt.wu.h
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTWUH,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92716,7 +92714,7 @@ begin
          end;
          2:begin
           // fcvt.l.h
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLH,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92736,7 +92734,7 @@ begin
          end;
          3:begin
           // fcvt.lu.h
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTLUH,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92898,7 +92896,7 @@ begin
         case (aInstruction shr 20) and $1f of
          0:begin
           // fcvt.h.w
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTHW,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92910,7 +92908,7 @@ begin
          end;
          1:begin
           // fcvt.h.wu
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTHWU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92922,7 +92920,7 @@ begin
          end;
          2:begin
           // fcvt.h.l
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTHL,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -92934,7 +92932,7 @@ begin
          end;
          3:begin
           // fcvt.h.lu
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCVTHLU,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -93132,7 +93130,7 @@ begin
           // fmv.x.h
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVXH,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -93150,7 +93148,7 @@ begin
           // fclass.h (Zfh)
           rd:=TRegister((aInstruction shr 7) and $1f);
           frs1:=TFPURegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFCLASSH,aInstruction,ord(rd),ord(frs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -93237,7 +93235,7 @@ begin
          end;
          $01:begin
           // fli.s (Zfa): load floating-point immediate from table
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLIS,aInstruction,ord(frd),0,0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -93280,7 +93278,7 @@ begin
          end;
          $01:begin
           // fli.d (Zfa): load floating-point immediate from table
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLID,aInstruction,ord(frd),0,0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -93318,7 +93316,7 @@ begin
          $00:begin
           // fmv.h.x
           rs1:=TRegister((aInstruction shr 15) and $1f);
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFMVHX,aInstruction,ord(frd),ord(rs1),0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
@@ -93333,7 +93331,7 @@ begin
          end;
          $01:begin
           // fli.h (Zfa): load floating-point immediate from table
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fMachine.fJITFPUEnabled and
              fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLIH,aInstruction,ord(frd),0,0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
