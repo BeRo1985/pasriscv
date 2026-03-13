@@ -7663,8 +7663,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fBus:TBus;
                      fRanges:TPasRISCV.TBus.TAddressSpaceDispatch.TRangeArray;
                      fCountRanges:TPasRISCVSizeInt;
-                     fGeneration:TPasMPInt32;
-                     fGenerationCounter:TPasMPInt32;
+                     fLock:TPasMPInt32;
+                     fReadGeneration:TPasMPInt32;
+                     fWriteGeneration:TPasMPInt32;
                      fDispatchSections:TPasRISCV.TBus.TAddressSpaceDispatch.TDispatchSectionArray;
                      fCountDispatchSections:TPasRISCVSizeInt;
                      fPhysicalPageNodes:TPasRISCV.TBus.TAddressSpaceDispatch.TPhysicalPageNodeArray;
@@ -7679,6 +7680,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure Build;
                      procedure Dump;
                      procedure Invalidate;
+                     procedure CheckRebuild(const aGeneration:TPasMPInt32);
                      function FindDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
                      procedure DispatchNodeReserve(const aCount:TPasRISCVSizeInt);
                      function DispatchNodeAlloc(const aLeaf:Boolean):TPasRISCVUInt32;
@@ -48202,8 +48204,9 @@ begin
  fBus:=aBus;
  fRanges:=nil;
  fCountRanges:=0;
- fGeneration:=TPasRISCVUInt64($ffffffffffffffff);
- fGenerationCounter:=0;
+ fLock:=0;
+ fWriteGeneration:=0;
+ fReadGeneration:=not fWriteGeneration;
  fDispatchSections:=nil;
  fCountDispatchSections:=0;
  fPhysicalPageNodes:=nil;
@@ -48534,7 +48537,7 @@ end;
 
 procedure TPasRISCV.TBus.TAddressSpaceDispatch.Invalidate;
 begin
- TPasMPInterlocked.Increment(fGenerationCounter);
+ TPasMPInterlocked.Increment(fWriteGeneration);
 end;
 
 procedure TPasRISCV.TBus.TAddressSpaceDispatch.DispatchNodeReserve(const aCount:TPasRISCVSizeInt);
@@ -48742,6 +48745,23 @@ begin
 
 end;
 
+procedure TPasRISCV.TBus.TAddressSpaceDispatch.CheckRebuild(const aGeneration:TPasMPInt32);
+begin
+ TPasMPMultipleReaderSingleWriterSpinLock.AcquireWrite(fLock);
+ try
+  if fReadGeneration<>aGeneration then begin
+   Build;
+{$ifdef PasRISCVDebugFlatView}
+   WriteLn('[FlatView HART] Rebuilt with ',fCountRanges,' ranges, ',fCountDispatchSections,' sections, ',fCountPhysicalPageNodes,' nodes');
+   Dump;
+{$endif}
+   fReadGeneration:=aGeneration;
+  end;
+ finally
+  TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(fLock);
+ end;
+end;
+
 function TPasRISCV.TBus.TAddressSpaceDispatch.FindDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
 var BusGeneration:TPasMPInt32;
     SectionIndex:TPasRISCVInt32;
@@ -48754,14 +48774,9 @@ var BusGeneration:TPasMPInt32;
 begin
 
  // Check generation counter and rebuild if bus topology changed
- BusGeneration:={TPasMPInterlocked.Read}(fBus.fAddressSpaceDispatch.fGenerationCounter);
- if fGeneration<>BusGeneration then begin
-  Build;
-{$ifdef PasRISCVDebugFlatView}
-  WriteLn('[FlatView HART] Rebuilt with ',fCountRanges,' ranges, ',fCountDispatchSections,' sections, ',fCountPhysicalPageNodes,' nodes');
-  Dump;
-{$endif}
-  fGeneration:=BusGeneration;
+ BusGeneration:={TPasMPInterlocked.Read}(fBus.fAddressSpaceDispatch.fWriteGeneration);
+ if fReadGeneration<>BusGeneration then begin
+  CheckRebuild(BusGeneration);
  end;
 
  result:=nil;
@@ -48924,15 +48939,14 @@ var BusDevice:TBusDevice;
 begin
  result:=fMachine.fMemoryDevice.GetDeviceDirectMemoryAccessPointer(aAddress,aSize,aWrite,aBounce);
  if not assigned(result) then begin
-  if TPasMPMultipleReaderSingleWriterSpinLock.TryAcquireWrite(fAddressSpaceDispatchLock) then begin
-   BusDevice:=fAddressSpaceDispatch.FindDevice(aAddress);
-   TPasMPMultipleReaderSingleWriterSpinLock.ReleaseWrite(fAddressSpaceDispatchLock);
-   if not assigned(BusDevice) then begin
-    BusDevice:=FindBusDevice(aAddress);
-   end;
-  end else begin
+{$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
+  BusDevice:=fAddressSpaceDispatch.FindDevice(aAddress);
+  if not assigned(BusDevice) then begin
    BusDevice:=FindBusDevice(aAddress);
   end;
+{$else}
+  BusDevice:=FindBusDevice(aAddress);
+{$endif}
   if assigned(BusDevice) then begin
    result:=BusDevice.GetDeviceDirectMemoryAccessPointer(aAddress,aSize,aWrite,aBounce);
   end else begin
@@ -67807,7 +67821,7 @@ begin
 
 {$ifdef PasRISCVAddressSpaceDispatch}
  fAddressSpaceDispatch.Initialize(fMachine.fBus);
- fAddressSpaceDispatch.fGeneration:=-1;
+ fAddressSpaceDispatch.fReadGeneration:=-1;
 {$endif}
 
  fVector:=fMachine.fVector;
