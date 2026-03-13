@@ -315,8 +315,8 @@ unit PasRISCV;
 
 {$define PasRISCVAddressSpaceDispatch} // QEMU-style pre-computed FlatView + dispatch for Device I/O
 {$ifdef PasRISCVAddressSpaceDispatch}
- {$define PasRISCVAddressSpaceDispatchFlatViewLookup} // Use FlatView binary search in Fetch/Load/Store hotpaths instead of FindBusDevice
- {//$define PasRISCVDebugFlatView} // Enable mismatch logging (FlatView vs FindBusDevice comparison)
+ {$define PasRISCVAddressSpaceDispatchFlatViewLookup} // Use optimized search in Fetch/Load/Store hotpaths instead of FindBusDevice
+ {//$define PasRISCVDebugAddressSpaceDispatch} // Enable mismatch logging (optimized vs FindBusDevice comparison)
 {$endif}
 
 {$define PasRISCVPCIIODirectPortMap} // Direct 64K port map for O(1) PCI I/O port lookup (512KB)
@@ -7697,8 +7697,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCountBusDevices:TPasRISCVUInt64;
 {$ifdef PasRISCVAddressSpaceDispatch}
               fAddressSpaceDispatch:TAddressSpaceDispatch;
-              fAddressSpaceDispatchLock:TPasMPInt32;
-{$ifdef PasRISCVDebugFlatView}
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
               fAddressSpaceDispatchMismatchCount:TPasRISCVInt32;
 {$endif}
 {$endif}
@@ -7711,12 +7710,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure AddBusDevice(const aBusDevice:TBusDevice);
               procedure RemoveBusDevice(const aBusDevice:TBusDevice);
               function FindBusDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
-              function GetDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
+              function GetDirectMemoryAccessPointer(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
               function Fetch(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               function Load(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure Store(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
-              function LoadEx(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
-              function StoreEx(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
+              function LoadEx(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
+              function StoreEx(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               procedure Step;
             end;
             { THART }
@@ -25554,7 +25553,7 @@ end;
 
 function TPasRISCV.TBusDevice.GetGlobalDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
 begin
- result:=fMachine.fBus.GetDirectMemoryAccessPointer(aAddress,aSize,aWrite,aBounce);
+ result:=fMachine.fBus.GetDirectMemoryAccessPointer(nil,aAddress,aSize,aWrite,aBounce);
 end;
 
 function TPasRISCV.TBusDevice.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -26982,7 +26981,7 @@ begin
     if ((MSIXControl and TPCI.PCI_MSIX_MASKED)=0) and ((VecCtrl and 1)=0) then begin
      // Not function-masked and not per-vector-masked: deliver MSI write
      if MSIAddress<>0 then begin
-      fBus.fMachine.fBus.StoreEx(MSIAddress,MSIData,4);
+      fBus.fMachine.fBus.StoreEx(nil,MSIAddress,MSIData,4);
      end;
     end else begin
      // Masked: set pending bit in PBA
@@ -27018,7 +27017,7 @@ begin
    MSIData:=TPasMPInterlocked.Read(fMSIData);
    if MSIAddress<>0 then begin
     // Write MSI: 32-bit LE write to address, data = identity
-    fBus.fMachine.fBus.StoreEx(MSIAddress,MSIData,4);
+    fBus.fMachine.fBus.StoreEx(nil,MSIAddress,MSIData,4);
    end;
 
    exit; // MSI handled (even if address was 0), don't fall through to INTx
@@ -27815,7 +27814,7 @@ end;
 
 function TPasRISCV.TPCIDevice.GetGlobalDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
 begin
- result:=fBus.fMachine.fBus.GetDirectMemoryAccessPointer(aAddress,aSize,aWrite,aBounce);
+ result:=fBus.fMachine.fBus.GetDirectMemoryAccessPointer(nil,aAddress,aSize,aWrite,aBounce);
 end;
 
 { TPasRISCV.TPCIHostBridgeDevice }
@@ -48751,7 +48750,7 @@ begin
  try
   if fReadGeneration<>aGeneration then begin
    Build;
-{$ifdef PasRISCVDebugFlatView}
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
    WriteLn('[FlatView HART] Rebuilt with ',fCountRanges,' ranges, ',fCountDispatchSections,' sections, ',fCountPhysicalPageNodes,' nodes');
    Dump;
 {$endif}
@@ -48766,10 +48765,10 @@ function TPasRISCV.TBus.TAddressSpaceDispatch.FindDevice(const aAddress:TPasRISC
 var BusGeneration:TPasMPInt32;
     SectionIndex:TPasRISCVInt32;
     Section:TPasRISCV.TBus.TAddressSpaceDispatch.PDispatchSection;
-{$ifdef PasRISCVDebugFlatView}
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
     Low,High,Mid:TPasRISCVSizeInt;
     Range:TPasRISCV.TBus.TAddressSpaceDispatch.PRange;
-    RefDevice:TBusDevice;
+    ReferenceDevice:TBusDevice;
 {$endif}
 begin
 
@@ -48802,9 +48801,9 @@ begin
   end;
  end;
 
-{$ifdef PasRISCVDebugFlatView}
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
  // Debug: verify dispatch result against binary search reference
- RefDevice:=nil;
+ ReferenceDevice:=nil;
  Low:=0;
  High:=fCountRanges-1;
  while Low<=High do begin
@@ -48815,20 +48814,20 @@ begin
   end else if (aAddress-Range^.RangeBase)>=Range^.RangeSize then begin
    Low:=Mid+1;
   end else begin
-   RefDevice:=Range^.Device;
+   ReferenceDevice:=Range^.Device;
    break;
   end;
  end;
- if (result<>RefDevice) and (TPasMPInterlocked.Increment(fBus.fAddressSpaceDispatchMismatchCount)<10) then begin
+ if (result<>ReferenceDevice) and (TPasMPInterlocked.Increment(fBus.fAddressSpaceDispatchMismatchCount)<10) then begin
   if assigned(result) then begin
-   if assigned(RefDevice) then begin
-    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=',result.ClassName,'@$',HexStr(result.fBase,16),' binsearch=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=',result.ClassName,'@$',HexStr(result.fBase,16),' binsearch=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end else begin
     WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=',result.ClassName,'@$',HexStr(result.fBase,16),' binsearch=nil');
    end;
   end else begin
-   if assigned(RefDevice) then begin
-    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=nil binsearch=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=nil binsearch=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end;
   end;
  end;
@@ -48848,8 +48847,7 @@ begin
  fCountBusDevices:=0;
 {$ifdef PasRISCVAddressSpaceDispatch}
  fAddressSpaceDispatch.Initialize(self);
- fAddressSpaceDispatchLock:=0;
-{$ifdef PasRISCVDebugFlatView}
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
  fAddressSpaceDispatchMismatchCount:=0;
 {$endif}
 {$endif}
@@ -48934,14 +48932,18 @@ begin
  result:=nil;
 end;
 
-function TPasRISCV.TBus.GetDirectMemoryAccessPointer(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
+function TPasRISCV.TBus.GetDirectMemoryAccessPointer(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aWrite:Boolean;const aBounce:Pointer):Pointer;
 var BusDevice:TBusDevice;
 begin
  result:=fMachine.fMemoryDevice.GetDeviceDirectMemoryAccessPointer(aAddress,aSize,aWrite,aBounce);
  if not assigned(result) then begin
 {$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
-  BusDevice:=fAddressSpaceDispatch.FindDevice(aAddress);
-  if not assigned(BusDevice) then begin
+  if assigned(aHART) then begin
+   BusDevice:=aHART.fAddressSpaceDispatch.FindDevice(aAddress);
+   if not assigned(BusDevice) then begin
+    BusDevice:=FindBusDevice(aAddress);
+   end;
+  end else begin
    BusDevice:=FindBusDevice(aAddress);
   end;
 {$else}
@@ -48962,8 +48964,8 @@ end;
 
 function TPasRISCV.TBus.Fetch(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var BusDevice:TBusDevice;
-{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugFlatView)}
-    RefDevice:TBusDevice;
+{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugAddressSpaceDispatch)}
+    ReferenceDevice:TBusDevice;
 {$ifend}
 begin
 {$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
@@ -48975,22 +48977,22 @@ begin
  end else begin
   BusDevice:=FindBusDevice(aAddress);
  end;
-{$ifdef PasRISCVDebugFlatView}
- RefDevice:=FindBusDevice(aAddress);
- if (BusDevice<>RefDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
+ ReferenceDevice:=FindBusDevice(aAddress);
+ if (BusDevice<>ReferenceDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
   if assigned(BusDevice) then begin
-   if assigned(RefDevice) then begin
-    WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end else begin
     WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=nil');
    end;
   end else begin
-   if assigned(RefDevice) then begin
-    WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=nil expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[FlatView MISMATCH] Fetch addr=$',HexStr(aAddress,16),' flatview=nil expected=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end;
   end;
  end;
- BusDevice:=RefDevice;
+ BusDevice:=ReferenceDevice;
 {$endif}
 {$else}
  BusDevice:=FindBusDevice(aAddress);
@@ -49260,8 +49262,8 @@ end;
 
 function TPasRISCV.TBus.Load(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var BusDevice:TBusDevice;
-{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugFlatView)}
-    RefDevice:TBusDevice;
+{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugAddressSpaceDispatch)}
+    ReferenceDevice:TBusDevice;
 {$ifend}
 begin
 {$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
@@ -49273,22 +49275,22 @@ begin
  end else begin
   BusDevice:=FindBusDevice(aAddress);
  end;
-{$ifdef PasRISCVDebugFlatView}
- RefDevice:=FindBusDevice(aAddress);
- if (BusDevice<>RefDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
+ ReferenceDevice:=FindBusDevice(aAddress);
+ if (BusDevice<>ReferenceDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
   if assigned(BusDevice) then begin
-   if assigned(RefDevice) then begin
-    WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end else begin
     WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=nil');
    end;
   end else begin
-   if assigned(RefDevice) then begin
-    WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=nil expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[FlatView MISMATCH] Load  addr=$',HexStr(aAddress,16),' flatview=nil expected=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end;
   end;
  end;
- BusDevice:=RefDevice;
+ BusDevice:=ReferenceDevice;
 {$endif}
 {$else}
  BusDevice:=FindBusDevice(aAddress);
@@ -49313,8 +49315,8 @@ end;
 
 procedure TPasRISCV.TBus.Store(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 var BusDevice:TBusDevice;
-{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugFlatView)}
-    RefDevice:TBusDevice;
+{$if defined(PasRISCVAddressSpaceDispatchFlatViewLookup) and defined(PasRISCVDebugAddressSpaceDispatch)}
+    ReferenceDevice:TBusDevice;
 {$ifend}
 begin
 {$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
@@ -49326,22 +49328,22 @@ begin
  end else begin
   BusDevice:=FindBusDevice(aAddress);
  end;
-{$ifdef PasRISCVDebugFlatView}
- RefDevice:=FindBusDevice(aAddress);
- if (BusDevice<>RefDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
+{$ifdef PasRISCVDebugAddressSpaceDispatch}
+ ReferenceDevice:=FindBusDevice(aAddress);
+ if (BusDevice<>ReferenceDevice) and (TPasMPInterlocked.Increment(fAddressSpaceDispatchMismatchCount)<10) then begin
   if assigned(BusDevice) then begin
-   if assigned(RefDevice) then begin
-    WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end else begin
     WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=',BusDevice.ClassName,'@$',HexStr(BusDevice.fBase,16),' expected=nil');
    end;
   end else begin
-   if assigned(RefDevice) then begin
-    WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=nil expected=',RefDevice.ClassName,'@$',HexStr(RefDevice.fBase,16));
+   if assigned(ReferenceDevice) then begin
+    WriteLn('[FlatView MISMATCH] Store addr=$',HexStr(aAddress,16),' flatview=nil expected=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
    end;
   end;
  end;
- BusDevice:=RefDevice;
+ BusDevice:=ReferenceDevice;
 {$endif}
 {$else}
  BusDevice:=FindBusDevice(aAddress);
@@ -49363,10 +49365,21 @@ begin
  end;
 end;
 
-function TPasRISCV.TBus.LoadEx(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.TBus.LoadEx(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
 var BusDevice:TBusDevice;
 begin
+{$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
+ if assigned(aHART) then begin
+  BusDevice:=aHART.fAddressSpaceDispatch.FindDevice(aAddress);
+  if not assigned(BusDevice) then begin
+   BusDevice:=FindBusDevice(aAddress);
+  end;
+ end else begin
+  BusDevice:=FindBusDevice(aAddress);
+ end;
+{$else}
  BusDevice:=FindBusDevice(aAddress);
+{$endif}
  if assigned(BusDevice) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    aValue:=BusDevice.Load(aAddress,aSize);
@@ -49380,10 +49393,21 @@ begin
  end;
 end;
 
-function TPasRISCV.TBus.StoreEx(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
+function TPasRISCV.TBus.StoreEx(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
 var BusDevice:TBusDevice;
 begin
+{$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
+ if assigned(aHART) then begin
+  BusDevice:=aHART.fAddressSpaceDispatch.FindDevice(aAddress);
+  if not assigned(BusDevice) then begin
+   BusDevice:=FindBusDevice(aAddress);
+  end;
+ end else begin
+  BusDevice:=FindBusDevice(aAddress);
+ end;
+{$else}
  BusDevice:=FindBusDevice(aAddress);
+{$endif}
  if assigned(BusDevice) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    BusDevice.Store(aAddress,aValue,aSize);
@@ -68523,7 +68547,7 @@ begin
    PageTableOffset:=((aGuestPhysical shr BitOffset) and TMMU.VPN_MASK) shl 3;
   end;
 
-  PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(PageTable+PageTableOffset,SizeOf(TPasRISCVUInt64),true,nil);
+  PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(self,PageTable+PageTableOffset,SizeOf(TPasRISCVUInt64),true,nil);
   if not assigned(PageTableEntryPointer) then begin
    RaiseGuestPageFault(aGuestPhysical,aAccessType);
    result:=0;
@@ -68912,7 +68936,7 @@ begin
   fMachine.JITMarkDirtyMemory(aPhysicalAddress);
  end;
 {$endif}
- Target:=fBus.GetDirectMemoryAccessPointer(aPhysicalAddress and PAGE_ADDRESS_MASK,PAGE_SIZE,TMMU.AccessWrite[aAccessType],nil);
+ Target:=fBus.GetDirectMemoryAccessPointer(self,aPhysicalAddress and PAGE_ADDRESS_MASK,PAGE_SIZE,TMMU.AccessWrite[aAccessType],nil);
  if assigned(Target) then begin
   TLBPut(aVirtualAddress and PAGE_ADDRESS_MASK,TPasRISCVPtrUInt(Target),aAccessType);
  end;
@@ -69072,7 +69096,7 @@ begin
      end;
     end;
 
-    PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(PTEFetchAddress,SizeOf(TPasRISCVUInt64),true,nil);
+    PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(self,PTEFetchAddress,SizeOf(TPasRISCVUInt64),true,nil);
     if not assigned(PageTableEntryPointer) then begin
      // Physical fault
      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
@@ -70306,7 +70330,7 @@ begin
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=nil;
   end else begin
-   result:=fBus.GetDirectMemoryAccessPointer(TranslatedAddress,aSize,not aReadOnly,aBounce);
+   result:=fBus.GetDirectMemoryAccessPointer(self,TranslatedAddress,aSize,not aReadOnly,aBounce);
    if result=@aBounce then begin
     case aSize of
      4:begin
@@ -70513,60 +70537,60 @@ begin
   if TranslatedAddress<>0 then begin
    case aSize of
     3:begin
-     if not fBus.LoadEx(TranslatedAddress,PartValue,2) then begin
+     if not fBus.LoadEx(self,TranslatedAddress,PartValue,2) then begin
       aValue:=0;
       exit;
      end;
      aValue:=PartValue and TPasRISCVUInt64($ffff);
-     if not fBus.LoadEx(TranslatedAddress+2,PartValue,1) then begin
+     if not fBus.LoadEx(self,TranslatedAddress+2,PartValue,1) then begin
       aValue:=0;
       exit;
      end;
      aValue:=aValue or ((PartValue and TPasRISCVUInt64($ff)) shl 16);
     end;
     5:begin
-     if not fBus.LoadEx(TranslatedAddress,PartValue,4) then begin
+     if not fBus.LoadEx(self,TranslatedAddress,PartValue,4) then begin
       aValue:=0;
       exit;
      end;
      aValue:=PartValue and TPasRISCVUInt64($ffffffff);
-     if not fBus.LoadEx(TranslatedAddress+4,PartValue,1) then begin
+     if not fBus.LoadEx(self,TranslatedAddress+4,PartValue,1) then begin
       aValue:=0;
       exit;
      end;
      aValue:=aValue or ((PartValue and TPasRISCVUInt64($ff)) shl 32);
     end;
     6:begin
-     if not fBus.LoadEx(TranslatedAddress,PartValue,4) then begin
+     if not fBus.LoadEx(self,TranslatedAddress,PartValue,4) then begin
       aValue:=0;
       exit;
      end;
      aValue:=PartValue and TPasRISCVUInt64($ffffffff);
-     if not fBus.LoadEx(TranslatedAddress+4,PartValue,2) then begin
+     if not fBus.LoadEx(self,TranslatedAddress+4,PartValue,2) then begin
       aValue:=0;
       exit;
      end;
      aValue:=aValue or ((PartValue and TPasRISCVUInt64($ffff)) shl 32);
     end;
     7:begin
-     if not fBus.LoadEx(TranslatedAddress,PartValue,4) then begin
+     if not fBus.LoadEx(self,TranslatedAddress,PartValue,4) then begin
       aValue:=0;
       exit;
      end;
      aValue:=PartValue and TPasRISCVUInt64($ffffffff);
-     if not fBus.LoadEx(TranslatedAddress+4,PartValue,2) then begin
+     if not fBus.LoadEx(self,TranslatedAddress+4,PartValue,2) then begin
       aValue:=0;
       exit;
      end;
      aValue:=aValue or ((PartValue and TPasRISCVUInt64($ffff)) shl 32);
-     if not fBus.LoadEx(TranslatedAddress+6,PartValue,1) then begin
+     if not fBus.LoadEx(self,TranslatedAddress+6,PartValue,1) then begin
       aValue:=0;
       exit;
      end;
      aValue:=aValue or ((PartValue and TPasRISCVUInt64($ff)) shl 48);
     end;
     else begin
-     if fBus.LoadEx(TranslatedAddress,PartValue,aSize) then begin
+     if fBus.LoadEx(self,TranslatedAddress,PartValue,aSize) then begin
       aValue:=PartValue;
      end else begin
       aValue:=0;
@@ -70597,42 +70621,42 @@ begin
   if TranslatedAddress<>0 then begin
    case aSize of
     3:begin
-     if not fBus.StoreEx(TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffff),2) then begin
+     if not fBus.StoreEx(self,TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffff),2) then begin
       exit;
      end;
-     if not fBus.StoreEx(TranslatedAddress+2,(aValue shr 16) and TPasRISCVUInt64($ff),1) then begin
+     if not fBus.StoreEx(self,TranslatedAddress+2,(aValue shr 16) and TPasRISCVUInt64($ff),1) then begin
       exit;
      end;
     end;
     5:begin
-     if not fBus.StoreEx(TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffffffff),4) then begin
+     if not fBus.StoreEx(self,TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffffffff),4) then begin
       exit;
      end;
-     if not fBus.StoreEx(TranslatedAddress+4,(aValue shr 32) and TPasRISCVUInt64($ff),1) then begin
+     if not fBus.StoreEx(self,TranslatedAddress+4,(aValue shr 32) and TPasRISCVUInt64($ff),1) then begin
       exit;
      end;
     end;
     6:begin
-     if not fBus.StoreEx(TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffffffff),4) then begin
+     if not fBus.StoreEx(self,TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffffffff),4) then begin
       exit;
      end;
-     if not fBus.StoreEx(TranslatedAddress+4,(aValue shr 32) and TPasRISCVUInt64($ffff),2) then begin
+     if not fBus.StoreEx(self,TranslatedAddress+4,(aValue shr 32) and TPasRISCVUInt64($ffff),2) then begin
       exit;
      end;
     end;
     7:begin
-     if not fBus.StoreEx(TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffffffff),4) then begin
+     if not fBus.StoreEx(self,TranslatedAddress,(aValue shr 0) and TPasRISCVUInt64($ffffffff),4) then begin
       exit;
      end;
-     if not fBus.StoreEx(TranslatedAddress+4,(aValue shr 32) and TPasRISCVUInt64($ffff),2) then begin
+     if not fBus.StoreEx(self,TranslatedAddress+4,(aValue shr 32) and TPasRISCVUInt64($ffff),2) then begin
       exit;
      end;
-     if not fBus.StoreEx(TranslatedAddress+6,(aValue shr 48) and TPasRISCVUInt64($ff),1) then begin
+     if not fBus.StoreEx(self,TranslatedAddress+6,(aValue shr 48) and TPasRISCVUInt64($ff),1) then begin
       exit;
      end;
     end;
     else begin
-     if not fBus.StoreEx(TranslatedAddress,aValue,aSize) then begin
+     if not fBus.StoreEx(self,TranslatedAddress,aValue,aSize) then begin
       exit;
      end;
     end;
