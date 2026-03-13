@@ -48765,11 +48765,8 @@ function TPasRISCV.TBus.TAddressSpaceDispatch.FindDevice(const aAddress:TPasRISC
 var BusGeneration:TPasMPInt32;
     SectionIndex:TPasRISCVInt32;
     Section:TPasRISCV.TBus.TAddressSpaceDispatch.PDispatchSection;
-{$ifdef PasRISCVDebugAddressSpaceDispatch}
     Low,High,Mid:TPasRISCVSizeInt;
     Range:TPasRISCV.TBus.TAddressSpaceDispatch.PRange;
-    ReferenceDevice:TBusDevice;
-{$endif}
 begin
 
  // Check generation counter and rebuild if bus topology changed
@@ -48786,24 +48783,22 @@ begin
   Section:=@fDispatchSections[SectionIndex];
   if (aAddress>=Section^.RangeBase) and ((aAddress-Section^.RangeBase)<Section^.RangeSize) then begin
    result:=Section^.Device;
+   exit;
   end;
  end;
 
  // Slow path: radix tree walk to find the page, then sub-page range check
- if not assigned(result) then begin
-  SectionIndex:=DispatchFind(aAddress);
-  if SectionIndex>DISPATCH_SECTION_UNASSIGNED then begin
-   Section:=@fDispatchSections[SectionIndex];
-   if (aAddress>=Section^.RangeBase) and ((aAddress-Section^.RangeBase)<Section^.RangeSize) then begin
-    fMRUSection:=SectionIndex;
-    result:=Section^.Device;
-   end;
+ SectionIndex:=DispatchFind(aAddress);
+ if SectionIndex>DISPATCH_SECTION_UNASSIGNED then begin
+  Section:=@fDispatchSections[SectionIndex];
+  if (aAddress>=Section^.RangeBase) and ((aAddress-Section^.RangeBase)<Section^.RangeSize) then begin
+   fMRUSection:=SectionIndex;
+   result:=Section^.Device;
+   exit;
   end;
  end;
 
-{$ifdef PasRISCVDebugAddressSpaceDispatch}
- // Debug: verify dispatch result against binary search reference
- ReferenceDevice:=nil;
+ // Fallback path: Binary search to find the page
  Low:=0;
  High:=fCountRanges-1;
  while Low<=High do begin
@@ -48814,24 +48809,10 @@ begin
   end else if (aAddress-Range^.RangeBase)>=Range^.RangeSize then begin
    Low:=Mid+1;
   end else begin
-   ReferenceDevice:=Range^.Device;
-   break;
+   result:=Range^.Device;
+   exit;
   end;
  end;
- if (result<>ReferenceDevice) and (TPasMPInterlocked.Increment(fBus.fAddressSpaceDispatchMismatchCount)<10) then begin
-  if assigned(result) then begin
-   if assigned(ReferenceDevice) then begin
-    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=',result.ClassName,'@$',HexStr(result.fBase,16),' binsearch=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
-   end else begin
-    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=',result.ClassName,'@$',HexStr(result.fBase,16),' binsearch=nil');
-   end;
-  end else begin
-   if assigned(ReferenceDevice) then begin
-    WriteLn('[Dispatch MISMATCH] addr=$',HexStr(aAddress,16),' dispatch=nil binsearch=',ReferenceDevice.ClassName,'@$',HexStr(ReferenceDevice.fBase,16));
-   end;
-  end;
- end;
-{$endif}
 
 end;
 
