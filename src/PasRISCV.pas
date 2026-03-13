@@ -63857,7 +63857,9 @@ begin
  FreeHostIntRegister(TempReg);
 end;
 
-{$ifdef PasRISCVJustInTimeCompilerZfh}
+{$ifend}
+
+{$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinMH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM,ScratchXMM2:TPasRISCVUInt8;
 begin
@@ -63952,8 +63954,6 @@ begin
 end;
 
 {$ifend}
-
-{$endif}
 
 {$if defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfbfmin)}
 
