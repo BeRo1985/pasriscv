@@ -303,7 +303,7 @@ unit PasRISCV;
 
 {$define NVMELevelTriggeredPCIEInterrupts}
 
-{-$define NVMeSyncProcessing} // NVMe: process commands synchronously in doorbell handler (no job manager dispatch), skip fStreamLock
+{-$define NVMeSyncProcessing} // NVMe: process commands synchronously in doorbell handler (no job manager dispatch)
 
 {$define VirtIOReadAvailRingFlags} // VirtIO spec 2.7.7.1: read VIRTQ_AVAIL_F_NO_INTERRUPT from available ring instead of used ring
 
@@ -28823,14 +28823,6 @@ begin
     Size:=0;
     Buffer:=GetPRPRegion(aCommand,Size);
     if assigned(Buffer) then begin
-{$ifdef NVMeSyncProcessing}
-     fStream.Seek(Pos,soBeginning);
-     if Opcode=NVM_WRITE then begin
-      Temporary:=fStream.Write(Buffer^,Size);
-     end else begin
-      Temporary:=fStream.Read(Buffer^,Size);
-     end;
-{$else}
      fStreamLock.Acquire;
      try
       fStream.Seek(Pos,soBeginning);
@@ -28842,7 +28834,6 @@ begin
      finally
       fStreamLock.Release;
      end;
-{$endif}
      if Temporary<>Size then begin
       CompleteCommand(aCommand,SC_DATA_ERR);
       exit;
@@ -28855,13 +28846,6 @@ begin
    CompleteCommand(aCommand,SC_SUCCESS);
   end;
   NVM_FLUSH:begin
-{$ifdef NVMeSyncProcessing}
-   if FlushStream(fStream) then begin
-    CompleteCommand(aCommand,SC_SUCCESS);
-   end else begin
-    CompleteCommand(aCommand,SC_DATA_ERR);
-   end;
-{$else}
    fStreamLock.Acquire;
    try
     if FlushStream(fStream) then begin
@@ -28872,7 +28856,6 @@ begin
    finally
     fStreamLock.Release;
    end;
-{$endif}
   end;
   NVM_DTSM:begin
    if (PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW11] and 4)<>0 then begin
@@ -28886,18 +28869,6 @@ begin
        Pos:=TPasRISCVUInt64(PPasRISCVUInt32(@PPasRISCVUInt8Array(Buffer)^[Temporary+4])^) shl NVME_LBA_SHIFT;
        ToDo:=PPasRISCVUInt64(@PPasRISCVUInt8Array(Buffer)^[Temporary+8])^ shl NVME_LBA_SHIFT;
        if ToDo>0 then begin
-{$ifdef NVMeSyncProcessing}
-        fStream.Seek(Pos,soBeginning);
-        while ToDo>0 do begin
-         if ToDo<SizeOf(TZeroBuffer) then begin
-          Size:=ToDo;
-         end else begin
-          Size:=SizeOf(TZeroBuffer);
-         end;
-         fStream.Write(ZeroBuffer[0],Size);
-         dec(ToDo,Size);
-        end;
-{$else}
         fStreamLock.Acquire;
         try
          fStream.Seek(Pos,soBeginning);
@@ -28913,7 +28884,6 @@ begin
         finally
          fStreamLock.Release;
         end;
-{$endif}
        end;
        inc(Temporary,16);
       end;
