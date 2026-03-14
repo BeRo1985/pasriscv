@@ -390,6 +390,7 @@ unit PasRISCV;
   {$define PasRISCVJustInTimeCompilerZcb}
   {$define PasRISCVJustInTimeCompilerZihintpause}
   {$define PasRISCVJustInTimeCompilerFence}
+  {$define PasRISCVJustInTimeCompilerCBO}
   {$define PasRISCVJustInTimeCompilerZbkb}
   {$define PasRISCVJustInTimeCompilerZknh}
   {$define PasRISCVJustInTimeCompilerZksh}
@@ -8685,6 +8686,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fBlockVTypeChecked:Boolean;
                      fBlockVSDirtyEmitted:Boolean;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+                     fBlockCBOInvalChecked:Boolean;
+                     fBlockCBOCleanFlushChecked:Boolean;
+                     fBlockCBOZeroChecked:Boolean;
+{$endif}
                      fCompiling:Boolean;
                      fBlockEnds:Boolean;
                      fSavedTemporaryCodeSize:TPasRISCVSizeInt;
@@ -8759,6 +8765,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestSetFPUExceptionHelperAbsoluteOffset:TPasRISCVUInt64;
                      procedure EmitFPUEpilog; virtual;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+                     class procedure CBOZeroHelper(aHART:Pointer;aAddress:TPasRISCVUInt64); static;
+                     function GuestCBOZeroHelperAbsoluteOffset:TPasRISCVUInt64;
+                     function GuestModeOffset:TPasRISCVInt32;
+                     function GuestVirtualModeOffset:TPasRISCVInt32;
+{$endif}
                      function GuestStateCSRPtrOffset:TPasRISCVUInt64;
                      function JITTLBEntryCodePtrOffset:TPasRISCVInt32;
 {$ifdef JITTLBTag}
@@ -8804,6 +8816,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitVectorEnabledCheck; virtual;
                      // Emit code to set VS=Dirty in MSTATUS (must be called after modifying vector registers)
                      procedure EmitSetVSDirty; virtual;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+                     procedure EmitCBOBailout;
+                     procedure EmitCBOENVCFGCheck(const aMask:TPasRISCVUInt64;var aBlockChecked:Boolean); virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      procedure EmitSetFSDirty; virtual;
@@ -9042,6 +9058,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      // Fence
                      procedure EmitNativeFenceSEQCST; virtual; abstract;
                      procedure EmitNativeFenceACQREL; virtual; abstract;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+                     // CBO (Zicbom/Zicboz)
+                     procedure EmitNativeCBOFence; virtual; abstract;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      // Zbkb
@@ -9337,6 +9357,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function IntrinsicFenceSEQCST(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
                      function IntrinsicFenceACQREL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+                     function IntrinsicCBOInval(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCBOClean(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCBOFlush(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+                     function IntrinsicCBOZero(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      function IntrinsicBREV8(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; virtual;
 {$endif}
@@ -9600,6 +9626,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function TLBLookup:Boolean;
                      function Trace(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
                      function TraceLDST(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+                     function TraceCBO(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
+{$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      function TraceVector(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean; //inline;
 {$endif}
@@ -10088,6 +10117,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVJustInTimeCompilerFence}
                      procedure EmitNativeFenceSEQCST; override;
                      procedure EmitNativeFenceACQREL; override;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+                     procedure EmitNativeCBOFence; override;
+                     procedure EmitCBOENVCFGCheck(const aMask:TPasRISCVUInt64;var aBlockChecked:Boolean); override;
+                     function IntrinsicCBOInval(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicCBOClean(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicCBOFlush(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
+                     function IntrinsicCBOZero(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerZbkb}
                      procedure EmitNativeBREV8(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
@@ -10586,6 +10623,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function FetchInstruction(const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32):Boolean; //inline;
               function GetInstructionSize(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64; inline;
               function ExecuteVectorInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+              procedure ExecuteInstructionCBOZero(const aAddress:TPasRISCVUInt64);
               function ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
 {$ifdef Zicfilp}
               function ExecuteInstructionWithPrechecks(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
@@ -50273,6 +50311,12 @@ begin
  fBlockVSDirtyEmitted:=false;
 {$endif}
 
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+ fBlockCBOInvalChecked:=false;
+ fBlockCBOCleanFlushChecked:=false;
+ fBlockCBOZeroChecked:=false;
+{$endif}
+
  fInitialCodeSize:=fTemporaryCodeSize;
 
 end;
@@ -50477,6 +50521,28 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitFPUEpilog;
 begin
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+class procedure TPasRISCV.THART.TJustInTimeCompiler.CBOZeroHelper(aHART:Pointer;aAddress:TPasRISCVUInt64);
+begin
+ THART(aHART).ExecuteInstructionCBOZero(aAddress);
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCBOZeroHelperAbsoluteOffset:TPasRISCVUInt64;
+begin
+ result:=TPasRISCVUInt64(TPasRISCVPtrUInt(Pointer(@CBOZeroHelper)));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestModeOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Mode));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestVirtualModeOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.VirtualMode));
 end;
 {$endif}
 
@@ -51111,6 +51177,48 @@ begin
 end;
 {$endif}
 
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitCBOBailout;
+var HostTmp:TPasRISCVUInt8;
+    SavedHostRegMask:TPasRISCVUInt32;
+    SavedABIReclaimMask:TPasRISCVUInt32;
+    SavedABIReclaimCount:TPasRISCVUInt32;
+    SavedIntRegInfos:TIntRegisterInfos;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+    SavedFPURegInfos:TFPURegisterInfos;
+{$endif}
+begin
+ SavedHostRegMask:=fHostIntRegisterMask;
+ SavedABIReclaimMask:=fABIReclaimMask;
+ SavedABIReclaimCount:=fABIReclaimCount;
+ SavedIntRegInfos:=fHostIntRegisterInfos;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ SavedFPURegInfos:=fHostFPURegisterInfos;
+{$endif}
+ SaveAllDirtyIntRegisters;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ SaveAllDirtyFPURegisters;
+{$endif}
+ HostTmp:=ClaimHostIntRegister;
+ EmitNativeSetReg32s(HostTmp,TPasRISCVInt32(TPasMPBool32(true)));
+ EmitNativeStore(HostTmp,VMPtrRegister,GuestJITSkipExecutionOffset,false);
+ FreeHostIntRegister(HostTmp);
+ EmitEnd(TLinkage.None);
+ fHostIntRegisterMask:=SavedHostRegMask;
+ fABIReclaimMask:=SavedABIReclaimMask;
+ fABIReclaimCount:=SavedABIReclaimCount;
+ fHostIntRegisterInfos:=SavedIntRegInfos;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ fHostFPURegisterInfos:=SavedFPURegInfos;
+{$endif}
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitCBOENVCFGCheck(const aMask:TPasRISCVUInt64;var aBlockChecked:Boolean);
+begin
+ // Base class stub — overridden in backend JIT
+end;
+{$endif}
+
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitSetFSDirty;
 begin
@@ -51542,6 +51650,40 @@ begin
   result:=false;
  end;
 end;
+
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+function TPasRISCV.THART.TJustInTimeCompiler.TraceCBO(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
+var PC:TPasRISCVUInt64;
+begin
+ PC:=fHART.fState.PC;
+ if (not fCompiling) and (not fHART.fState.JITSkipExecution) and TLBLookup then begin
+  if PC=fHART.fState.PC then begin
+   fHART.fState.JITSkipExecution:=true;
+  end;
+{$ifndef PasRISCVJustInTimeCompilerZeroInstructionSize}
+  dec(fHART.fState.PC,aInstructionSize);
+{$endif}
+  result:=true;
+ end else begin
+  fHART.fState.JITSkipExecution:=false;
+  if fCompiling then begin
+{$ifdef PasRISCVJustInTimeCompilerDebug}
+   if fDebugJITCounter<60 then begin
+    writeln('  COMPILE CBO @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
+   end;
+{$endif}
+   if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
+    inc(fPCOffset,aInstructionSize);
+    inc(fInstructionCount);
+    fBlockEnds:=false;
+   end else begin
+    fBlockEnds:=true;
+   end;
+  end;
+  result:=false;
+ end;
+end;
+{$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerVector}
 function TPasRISCV.THART.TJustInTimeCompiler.TraceVector(const aIntrinsicMethod:TIntrinsicMethod;const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64;const aInstructionSize:TPasRISCVUInt64):Boolean;
@@ -52829,6 +52971,35 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFenceACQREL(const aInstruc
 begin
  EmitNativeFenceACQREL;
  result:=true;
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCBOInval(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBIE,fBlockCBOInvalChecked);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCBOClean(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCBOFlush(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCBOZero(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBZE,fBlockCBOZeroChecked);
+ result:=false;
 end;
 {$endif}
 
@@ -59878,6 +60049,169 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFenceACQREL;
 begin
  // On x86-64 TSO, LoadLoad/LoadStore/StoreStore ordering is already guaranteed by hardware.
  // No instruction needed, the JIT trace just continues through the fence.
+end;
+{$endif}
+
+{$ifdef PasRISCVJustInTimeCompilerCBO}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeCBOFence;
+begin
+ // MFENCE = 0F AE F0
+ EmitByte($0f);
+ EmitByte($ae);
+ EmitByte($f0);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCBOENVCFGCheck(const aMask:TPasRISCVUInt64;var aBlockChecked:Boolean);
+var HostMode,HostMask,HostTmp:TPasRISCVUInt8;
+    DoneFixup1,DoneFixup2,SkipHENVCFGFixup,OkFixup:TPasRISCVUInt32;
+begin
+ if not aBlockChecked then begin
+  aBlockChecked:=true;
+
+  HostMode:=ClaimHostIntRegister;
+  HostMask:=ClaimHostIntRegister;
+  HostTmp:=ClaimHostIntRegister;
+
+  // Load Mode (1-byte enum, 32-bit load + mask for safety)
+  EmitNativeLoad(HostMode,VMPtrRegister,GuestModeOffset,false);
+  EmitImmOp(ALU_AND,HostMode,$ff,false);
+
+  // Initialize mask accumulator
+  EmitNativeSetReg64(HostMask,aMask);
+
+  // If Mode == Machine (3), skip all ENVCFG checks (always enabled in M-mode)
+  EmitImmOp(ALU_CMP,HostMode,TPasRISCVInt32(ord(TMode.Machine)),false);
+  EmitJccRel32(CC_E,0);
+  DoneFixup1:=fTemporaryCodeSize-4;
+
+  // Mode < Machine: AND mask with MENVCFG
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.MENVCFG)),true);
+  Emit2RegOp(X86_AND,HostMask,HostTmp,true);
+
+  // Check VirtualMode
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestVirtualModeOffset,false);
+  EmitTEST(HostTmp,HostTmp,false);
+  EmitJccRel32(CC_E,0);
+  SkipHENVCFGFixup:=fTemporaryCodeSize-4;
+
+  // VirtualMode=true: AND mask with HENVCFG
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.HENVCFG)),true);
+  Emit2RegOp(X86_AND,HostMask,HostTmp,true);
+
+  PatchJmpRel32(SkipHENVCFGFixup);
+
+  // If Mode >= Supervisor (1), skip SENVCFG check
+  EmitImmOp(ALU_CMP,HostMode,TPasRISCVInt32(ord(TMode.Supervisor)),false);
+  EmitJccRel32(CC_AE,0);
+  DoneFixup2:=fTemporaryCodeSize-4;
+
+  // Mode < Supervisor (User mode): AND mask with SENVCFG
+  EmitNativeLoad(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.SENVCFG)),true);
+  Emit2RegOp(X86_AND,HostMask,HostTmp,true);
+
+  // Done with privilege-level checks
+  PatchJmpRel32(DoneFixup1);
+  PatchJmpRel32(DoneFixup2);
+
+  // Test final accumulated mask
+  EmitTEST(HostMask,HostMask,true);
+
+  FreeHostIntRegister(HostTmp);
+  FreeHostIntRegister(HostMask);
+  FreeHostIntRegister(HostMode);
+
+  // JNE .ok (mask != 0, CBO is enabled at current privilege level)
+  EmitJccRel32(CC_NE,0);
+  OkFixup:=fTemporaryCodeSize-4;
+  EmitCBOBailout;
+  PatchJmpRel32(OkFixup);
+ end;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOInval(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBIE,fBlockCBOInvalChecked);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOClean(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOFlush(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOZero(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+var RS1:TRegister;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBZE,fBlockCBOZeroChecked);
+
+ RS1:=TRegister(aParameter0);
+
+ FreeAllHostIntRegisters;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ FreeAllHostFPURegisters;
+{$endif}
+
+ // Save VMPtrRegister (clobbered by loading JITHART into first argument register)
+ EmitNativePush(VMPtrRegister);
+
+{$ifdef Windows}
+ // Win64 ABI: RCX=arg1 (HART), RDX=arg2 (address)
+ // Load RS1 value from TState into RDX (arg2)
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrRegister,GuestIntRegisterOffset(RS1),true);
+ // Load helper address into R8 (scratch)
+ EmitNativeSetReg64(TPasRISCVUInt8(ord(TX64Register.rR8)),GuestCBOZeroHelperAbsoluteOffset);
+ // Load JITHART into RCX (arg1, clobbers VMPtrRegister)
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),VMPtrRegister,GuestJITHARTOffset,true);
+
+ // Stack alignment
+ if (fABIReclaimCount and 1)<>0 then begin
+  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-8);
+ end;
+ // Win64: allocate 32 bytes shadow space
+ EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-32);
+
+ EmitCallReg(TPasRISCVUInt8(ord(TX64Register.rR8)));
+
+ // Win64: deallocate shadow space
+ EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),32);
+ if (fABIReclaimCount and 1)<>0 then begin
+  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),8);
+ end;
+{$else}
+ // SysV ABI: RDI=arg1 (HART), RSI=arg2 (address)
+ // Load RS1 value from TState into RSI (arg2)
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRSI)),VMPtrRegister,GuestIntRegisterOffset(RS1),true);
+ // Load helper address into RDX (scratch)
+ EmitNativeSetReg64(TPasRISCVUInt8(ord(TX64Register.rRDX)),GuestCBOZeroHelperAbsoluteOffset);
+ // Load JITHART into RDI (arg1, clobbers VMPtrRegister)
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrRegister,GuestJITHARTOffset,true);
+
+ // Stack alignment
+ if (fABIReclaimCount and 1)<>0 then begin
+  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-8);
+ end;
+
+ EmitCallReg(TPasRISCVUInt8(ord(TX64Register.rRDX)));
+
+ if (fABIReclaimCount and 1)<>0 then begin
+  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),8);
+ end;
+{$endif}
+
+ // Restore VMPtrRegister
+ EmitNativePop(VMPtrRegister);
+
+ result:=true;
 end;
 {$endif}
 
@@ -86423,6 +86757,15 @@ end;
  {$pop}
 {$endif}
 
+procedure TPasRISCV.THART.ExecuteInstructionCBOZero(const aAddress:TPasRISCVUInt64);
+var Ptr:Pointer;
+begin
+ Ptr:=MemoryPointerTranslate(aAddress and TPasRISCVUInt64($ffffffffffffffc0),64,nil,false);
+ if assigned(Ptr) then begin
+  FillChar(Ptr^,64,#0);
+ end;
+end;
+
 {$ifdef fpc}
  {$push}
  {$codealign jump=16}
@@ -87939,6 +88282,13 @@ begin
         $00:begin
          // cbo.inval
          if (((aInstruction shr 7) and 15)=0) and IsCSRENVCFGEnabled(TCSR.ENVCFG_CBIE) then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOInval,aInstruction,0,0,0,0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           TPasMPMemoryBarrier.ReadWrite;
           result:=4;
           exit;
@@ -87951,6 +88301,21 @@ begin
         $01,$02:begin
          // cbo.clean, cbo.flush
          if (((aInstruction shr 7) and 15)=0) and IsCSRENVCFGEnabled(TCSR.ENVCFG_CBCFE) then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
+          if assigned(fJustInTimeCompiler) then begin
+           if (aInstruction shr 20)=$01 then begin
+            if fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOClean,aInstruction,0,0,0,0,4) then begin
+             result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+             exit;
+            end;
+           end else begin
+            if fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOFlush,aInstruction,0,0,0,0,4) then begin
+             result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+             exit;
+            end;
+           end;
+          end;
+{$ifend}
           TPasMPMemoryBarrier.ReadWrite;
           result:=4;
           exit;
@@ -87963,11 +88328,19 @@ begin
         $04:begin
          // cbo.zero
          if (((aInstruction shr 7) and 15)=0) and IsCSRENVCFGEnabled(TCSR.ENVCFG_CBZE) then begin
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
+          if assigned(fJustInTimeCompiler) and
+             fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOZero,aInstruction,ord(TRegister((aInstruction shr 15) and $1f)),0,0,0,4) then begin
+           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+           exit;
+          end;
+{$ifend}
           rs1:=TRegister((aInstruction shr 15) and $1f);
-          Ptr:=MemoryPointerTranslate(fState.Registers[rs1] and TPasRISCVUInt64($ffffffffffffffc0),64,nil,false);
+          ExecuteInstructionCBOZero(fState.Registers[rs1]);
+{         Ptr:=MemoryPointerTranslate(fState.Registers[rs1] and TPasRISCVUInt64($ffffffffffffffc0),64,nil,false);
           if assigned(Ptr) then begin
            FillChar(Ptr^,64,#0);
-          end;
+          end;}
           result:=4;
           exit;
          end else begin
