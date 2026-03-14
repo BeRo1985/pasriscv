@@ -321,6 +321,8 @@ unit PasRISCV;
 
 {$define PasRISCVPCIIODirectPortMap} // Direct 64K port map for O(1) PCI I/O port lookup (512KB)
 
+{$define PasRISCVMMIOTLB} // Cache MMIO device lookups in the per-HART TLB for O(1) warm MMIO access
+
 {-$define VirtIOFSFastIO} // VirtIO FS: larger MaxWrite (1MB), higher cache timeouts, writeback cache, fewer copies
 
 {-$define VirtIOFSDirectIO} // VirtIO FS: FOPEN_DIRECT_IO bypasses guest page cache, enables app-sized FUSE reads (1MB with dd bs=1M)
@@ -7714,6 +7716,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function Fetch(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               function Load(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure Store(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+              function BusDeviceLoad(const aHART:THART;const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+              procedure BusDeviceStore(const aHART:THART;const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               function LoadEx(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               function StoreEx(const aHART:THART;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               procedure Step;
@@ -8468,6 +8472,22 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                          PDirectAccessTLBEntry=^TDirectAccessTLBEntry;
                          TDirectAccessTLBEntries=array[0..DIRECT_ACCESS_TLB_ENTRIES-1] of TDirectAccessTLBEntry;
                          PDirectAccessTLBEntries=^TDirectAccessTLBEntries;
+{$ifdef PasRISCVMMIOTLB}
+                         // MMIO TLB: caches device lookup results for MMIO pages
+                         // Fully separate from RAM TLB, uses generation counter for invalidation
+                         TMMIOTLBEntry=record
+                          VPN:TPasRISCVUInt64;              // Virtual page number tag
+                          Generation:TPasRISCVUInt64;       // Generation counter for invalidation
+                          PhysicalPageBase:TPasRISCVUInt64; // Physical page base address
+                          BusDevice:TBusDevice;             // Cached device for this MMIO page
+                         end;
+                         PMMIOTLBEntry=^TMMIOTLBEntry;
+                         TMMIOTLBEntries=array[0..DIRECT_ACCESS_TLB_ENTRIES-1] of TMMIOTLBEntry;
+                         PMMIOTLBEntries=^TMMIOTLBEntries;
+{$ifdef PerModeTLB}
+                         TMMIOTLBDataModes=array[TMode.User..TMode.Machine] of TMMU.TMMIOTLBEntries;
+{$endif}
+{$endif}
                          TPNArray=array[0..4] of TPasRISCVUInt64;
                      const ModeLevels:array[TMMUMode] of TPasRISCVUInt64=(0,0,0,0,0,0,0,0,3,4,5,0,0,0,0,0);
                    end;
@@ -10380,6 +10400,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fDirectAccessTLBCacheModes:array[TMode.User..TMode.Machine] of TMMU.TDirectAccessTLBEntries;
 {$endif}
               fDirectAccessTLBCache:{$ifdef PerModeTLB}TMMU.PDirectAccessTLBEntries{$else}TMMU.TDirectAccessTLBEntries{$endif};
+{$ifdef PasRISCVMMIOTLB}
+{$ifdef PerModeTLB}
+              fMMIOTLBDataModes:TMMU.TMMIOTLBDataModes;
+{$endif}
+              fMMIOTLBData:{$ifdef PerModeTLB}TMMU.PMMIOTLBEntries{$else}TMMU.TMMIOTLBEntries{$endif};
+{$endif}
               fState:TState;
               fPointerToState:PState;
               fCSRHandlerMap:TCSRHandlerMap;
@@ -10410,6 +10436,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
               procedure TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
               procedure TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+{$ifdef PasRISCVMMIOTLB}
+              procedure TLBPutMMIO(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+{$endif}
               procedure RaisePhysicalFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               procedure RaisePageFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               procedure RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
@@ -11332,6 +11361,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$endif}
 
        fAllHARTMask:TPasRISCVUInt32;
+
+{$ifdef PasRISCVMMIOTLB}
+       fMMIOTLBGeneration:TPasRISCVUInt64;
+{$endif}
 
        fLRSCMaximumCycles:TPasRISCVUInt64;
 
@@ -25480,6 +25513,9 @@ begin
   fMachine.fBus.fAddressSpaceDispatch.Invalidate;
  end;
 {$endif}
+{$ifdef PasRISCVMMIOTLB}
+ TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+{$endif}
 end;
 
 procedure TPasRISCV.TBusDevice.RemoveSubBusDevice(const aSubBusDevice:TBusDevice);
@@ -25496,6 +25532,9 @@ begin
    if assigned(fMachine) and assigned(fMachine.fBus) then begin
     fMachine.fBus.fAddressSpaceDispatch.Invalidate;
    end;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
 {$endif}
    exit;
   end;
@@ -27668,6 +27707,9 @@ begin
 {$ifdef PasRISCVAddressSpaceDispatch}
       fMachine.fBus.fAddressSpaceDispatch.Invalidate;
 {$endif}
+{$ifdef PasRISCVMMIOTLB}
+      TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+{$endif}
      end;
     end else begin
      case BarID of
@@ -27691,6 +27733,9 @@ begin
 {$ifdef PasRISCVAddressSpaceDispatch}
      fMachine.fBus.fAddressSpaceDispatch.Invalidate;
 {$endif}
+{$ifdef PasRISCVMMIOTLB}
+     TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+{$endif}
     end;
 {$endif}
    end;
@@ -27707,6 +27752,9 @@ begin
      TPasMPMemoryBarrier.ReadWrite;
 {$ifdef PasRISCVAddressSpaceDispatch}
      fMachine.fBus.fAddressSpaceDispatch.Invalidate;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+     TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
 {$endif}
     end;
 {$endif}
@@ -49346,6 +49394,32 @@ begin
  end;
 end;
 
+function TPasRISCV.TBus.BusDeviceLoad(const aHART:THART;const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
+begin
+ if (aSize>=aBusDevice.fMinOpSize) and (aSize<=aBusDevice.fMaxOpSize) and (aBusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
+  result:=aBusDevice.Load(aAddress,aSize);
+ end else begin
+  if not LoadUnaligned(aBusDevice,aAddress,result,aSize) then begin
+   if assigned(aHART) then begin
+    aHART.SetException(THART.TExceptionValue.LoadAccessFault,aAddress,aHART.fState.PC);
+   end;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.TBus.BusDeviceStore(const aHART:THART;const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
+begin
+ if (aSize>=aBusDevice.fMinOpSize) and (aSize<=aBusDevice.fMaxOpSize) and (aBusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
+  aBusDevice.Store(aAddress,aValue,aSize);
+ end else begin
+  if not StoreUnaligned(aBusDevice,aAddress,aValue,aSize) then begin
+   if assigned(aHART) then begin
+    aHART.SetException(THART.TExceptionValue.StoreAccessFault,aAddress,aHART.fState.PC);
+   end;
+  end;
+ end;
+end;
+
 function TPasRISCV.TBus.LoadEx(const aHART:THART;const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
 var BusDevice:TBusDevice;
 begin
@@ -50455,10 +50529,10 @@ end;
 
 class function TPasRISCV.THART.TJustInTimeCompiler.JITDataTLBFillHelper(aHART:Pointer;aVirtualAddress:TPasRISCVUInt64;aTLBFieldOffset:TPasRISCVUInt64;aAlignment:TPasRISCVUInt64):TPasRISCVPtrUInt;
 var HART:THART;
-    VPN:TPasRISCVUInt64;
+    VPN{$ifdef JITMMIOFastPath},PhysicalAddress{$endif}:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
-{$ifdef JITMMIOFastPath}
-    PhysicalAddress:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
 {$endif}
 begin
 
@@ -50481,20 +50555,39 @@ begin
   exit;
  end;
 
- // Do page walk to fill the data TLB
-{$ifdef JITMMIOFastPath}
- if aTLBFieldOffset=TLB_W then begin
-  PhysicalAddress:=HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[]);
- end else begin
-  PhysicalAddress:=HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
- end;
-{$else}
- if aTLBFieldOffset=TLB_W then begin
-  HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[]);
- end else begin
-  HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
+{$ifdef PasRISCVMMIOTLB}
+ // MMIO TLB fast path — skips AddressTranslate + device lookup entirely
+ VPN:=aVirtualAddress shr PAGE_SHIFT;
+ MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
+  if aTLBFieldOffset=TLB_W then begin
+   HART.fBus.BusDeviceStore(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),HART.fState.JITMMIOScratch,aAlignment);
+   if HART.fState.ExceptionValue<>TExceptionValue.None then begin
+    HART.fState.ExceptionValue:=TExceptionValue.None;
+    result:=0;
+    exit;
+   end;
+   result:=TPasRISCVPtrUInt(@HART.fState.JITMMIOScratch);
+   exit;
+  end else begin
+   HART.fState.JITMMIOScratch:=HART.fBus.BusDeviceLoad(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),aAlignment);
+   if HART.fState.ExceptionValue<>TExceptionValue.None then begin
+    HART.fState.ExceptionValue:=TExceptionValue.None;
+    result:=0;
+    exit;
+   end;
+   result:=TPasRISCVPtrUInt(@HART.fState.JITMMIOScratch);
+   exit;
+  end;
  end;
 {$endif}
+
+ // Do page walk to fill the data TLB
+ if aTLBFieldOffset=TLB_W then begin
+  {$ifdef JITMMIOFastPath}PhysicalAddress:={$endif}HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[]);
+ end else begin
+  {$ifdef JITMMIOFastPath}PhysicalAddress:={$endif}HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
+ end;
 
  // If AddressTranslate raised an exception, clear it and bail out.
  // The interpreter will re-execute the instruction and handle the exception properly with correct PC.
@@ -50509,6 +50602,20 @@ begin
  DirectAccessTLBEntry:={$ifdef PerModeTLB}@HART.fDirectAccessTLBCache^{$else}@HART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if aTLBFieldOffset=TLB_W then begin
   if DirectAccessTLBEntry^.Write<>VPN then begin
+{$ifdef PasRISCVMMIOTLB}
+// MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+   if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
+    // MMIO TLB hit — use cached device pointer
+    HART.fBus.BusDeviceStore(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),HART.fState.JITMMIOScratch,aAlignment);
+    if HART.fState.ExceptionValue<>TExceptionValue.None then begin
+     HART.fState.ExceptionValue:=TExceptionValue.None;
+     result:=0;
+     exit;
+    end;
+    result:=TPasRISCVPtrUInt(@HART.fState.JITMMIOScratch);
+    exit;
+   end;
+{$endif}
 {$ifdef JITMMIOFastPath}
    // MMIO store: value already pre-stored in JITMMIOScratch by JIT side-exit path
 {$ifdef PasRISCVJustInTimeCompilerStats}
@@ -50530,6 +50637,20 @@ begin
   end;
  end else begin
   if DirectAccessTLBEntry^.Read<>VPN then begin
+{$ifdef PasRISCVMMIOTLB}
+// MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+   if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
+    // MMIO TLB hit — use cached device pointer
+    HART.fState.JITMMIOScratch:=HART.fBus.BusDeviceLoad(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),aAlignment);
+    if HART.fState.ExceptionValue<>TExceptionValue.None then begin
+     HART.fState.ExceptionValue:=TExceptionValue.None;
+     result:=0;
+     exit;
+    end;
+    result:=TPasRISCVPtrUInt(@HART.fState.JITMMIOScratch);
+    exit;
+   end;
+{$endif}
 {$ifdef JITMMIOFastPath}
    // MMIO load: perform the read directly and return pointer to scratch buffer
 {$ifdef PasRISCVJustInTimeCompilerStats}
@@ -68265,6 +68386,9 @@ begin
  fState.Mode:=TPasRISCV.THART.TMode.Machine;
 {$ifdef PerModeTLB}
  fDirectAccessTLBCache:=@fDirectAccessTLBCacheModes[TPasRISCV.THART.TMode.Machine];
+{$ifdef PasRISCVMMIOTLB}
+ fMMIOTLBData:=@fMMIOTLBDataModes[TPasRISCV.THART.TMode.Machine];
+{$endif}
 {$endif}
  fState.Registers[TRegister.Zero]:=0;
  fState.Registers[TRegister.SP]:=fMachine.fStartStackPointer-(fHARTID shl 16);
@@ -68313,6 +68437,10 @@ begin
   fMachine.fRandomGeneratorLock.Release;
  end;
 
+{$ifdef PasRISCVMMIOTLB}
+ FillChar(fMMIOTLBDataModes,SizeOf(TMMU.TMMIOTLBDataModes),#0);
+{$endif}
+
 end;
 
 procedure TPasRISCV.THART.SetMode(const aMode:TMode);
@@ -68333,6 +68461,9 @@ begin
 {$ifdef PerModeTLB}
   // Per-mode TLB: no data TLB flush needed, just update mode base and JIT pointers
   fDirectAccessTLBCache:=@fDirectAccessTLBCacheModes[aMode];
+{$ifdef PasRISCVMMIOTLB}
+  fMMIOTLBData:=@fMMIOTLBDataModes[aMode];
+{$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
   if assigned(fJustInTimeCompiler) then begin
    fState.JITTLBPtr:=@fDirectAccessTLBCache^[0];
@@ -68347,6 +68478,10 @@ begin
 {$else}
   // Flush the Translation Lookaside Buffer (TLB) to ensure memory access consistency after mode change
   FlushTLB(true);
+{$endif}
+
+{$ifdef PasRISCVMMIOTLB}
+  TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
 {$endif}
 
   // Clear LR/SC reservation on privilege mode change (like QEMU's riscv_cpu_set_mode)
@@ -68764,6 +68899,9 @@ begin
 {$endif}
  end;
 {$endif}
+{$ifdef PasRISCVMMIOTLB}
+ TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+{$endif}
  if aInterrupt then begin
   TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
  end;
@@ -68819,7 +68957,7 @@ begin
  if DirectAccessTLBEntry^.Write=VPN then begin
   DirectAccessTLBEntry^.Write:=VPN-1;
  end;
- if DEntry^.Execute=VPN then begin
+ if DirectAccessTLBEntry^.Execute=VPN then begin
   DirectAccessTLBEntry^.Execute:=VPN-1;
  end;
 {$endif}
@@ -68920,8 +69058,50 @@ begin
  Target:=fBus.GetDirectMemoryAccessPointer(self,aPhysicalAddress and PAGE_ADDRESS_MASK,PAGE_SIZE,TMMU.AccessWrite[aAccessType],nil);
  if assigned(Target) then begin
   TLBPut(aVirtualAddress and PAGE_ADDRESS_MASK,TPasRISCVPtrUInt(Target),aAccessType);
+{$ifdef PasRISCVMMIOTLB}
+ end else begin
+  // MMIO page: cache the device in the MMIO TLB for fast subsequent access
+  TLBPutMMIO(aVirtualAddress,aPhysicalAddress,aAccessType);
+{$endif}
  end;
 end;
+
+{$ifdef PasRISCVMMIOTLB}
+procedure TPasRISCV.THART.TLBPutMMIO(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+var VPN:TPasRISCVUInt64;
+    Index:TPasRISCVSizeInt;
+    BusDevice:TBusDevice;
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+begin
+
+ VPN:=aVirtualAddress shr PAGE_SHIFT;
+ Index:=VPN and TMMU.DIRECT_ACCESS_TLB_MASK;
+
+ // Look up the MMIO device for this physical address
+{$ifdef PasRISCVAddressSpaceDispatchFlatViewLookup}
+ BusDevice:=fAddressSpaceDispatch.FindDevice(aPhysicalAddress);
+ if not assigned(BusDevice) then begin
+  BusDevice:=fBus.FindBusDevice(aPhysicalAddress);
+ end;
+{$else}
+ BusDevice:=fBus.FindBusDevice(aPhysicalAddress);
+{$endif}
+
+ if assigned(BusDevice) then begin
+
+  // Cache device, physical page base, VPN tag and current generation in the
+  // separate MMIO TLB array. Does NOT touch DirectAccessTLBEntry at all -
+  // the MMIO TLB is fully independent from the RAM TLB.
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[Index];
+  MMIOTLBEntry^.VPN:=VPN;
+  MMIOTLBEntry^.Generation:=fMachine.fMMIOTLBGeneration;
+  MMIOTLBEntry^.PhysicalPageBase:=aPhysicalAddress and PAGE_ADDRESS_MASK;
+  MMIOTLBEntry^.BusDevice:=BusDevice;
+
+ end;
+
+end;
+{$endif}
 
 function TPasRISCV.THART.CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
 begin
@@ -69281,6 +69461,9 @@ end;
 function TPasRISCV.THART.Load8(const aAddress:TPasRISCVUInt64):TPasRISCVUInt8;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69294,6 +69477,15 @@ begin
   exit;
  end;
 
+{$ifdef PasRISCVMMIOTLB}
+ // MMIO TLB check: separate from RAM TLB, uses generation counter
+ MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  result:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
+  exit;
+ end;
+{$endif}
+
  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
  if fState.ExceptionValue<>TExceptionValue.None then begin
   result:=0;
@@ -69305,6 +69497,10 @@ begin
   result:=PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
 {$endif}
 {$endif}
+{$ifdef PasRISCVMMIOTLB}
+ end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  result:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
+{$endif}
  end else begin
   result:=TPasRISCVUInt8(fBus.Load(self,TranslatedAddress,1));
  end;
@@ -69315,6 +69511,9 @@ procedure TPasRISCV.THART.LoadRegisterS8(const aRegister:TRegister;const aAddres
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69331,6 +69530,17 @@ begin
   exit;
  end;
 
+{$ifdef PasRISCVMMIOTLB}
+ MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1)))));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   fState.Registers[aRegister]:=Value;
+  end;
+  exit;
+ end;
+{$endif}
+
  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69343,6 +69553,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
    end;
+{$ifdef PasRISCVMMIOTLB}
+  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1)))));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+{$endif}
   end else{$endif}begin
    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.Load(self,TranslatedAddress,1)))));
    if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -69357,6 +69574,9 @@ procedure TPasRISCV.THART.LoadRegisterU8(const aRegister:TRegister;const aAddres
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69373,6 +69593,17 @@ begin
   exit;
  end;
 
+{$ifdef PasRISCVMMIOTLB}
+ MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  Value:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   fState.Registers[aRegister]:=Value;
+  end;
+  exit;
+ end;
+{$endif}
+
  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69385,6 +69616,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
    end;
+{$ifdef PasRISCVMMIOTLB}
+  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+{$endif}
   end else{$endif}begin
    Value:=TPasRISCVUInt8(fBus.Load(self,TranslatedAddress,1));
    if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -69398,6 +69636,9 @@ end;
 procedure TPasRISCV.THART.Store8(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt8);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69411,6 +69652,14 @@ begin
   exit;
  end;
 
+{$ifdef PasRISCVMMIOTLB}
+ MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,1);
+  exit;
+ end;
+{$endif}
+
  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69419,6 +69668,10 @@ begin
    AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
 {$else}
    PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,1);
 {$endif}
   end else{$endif}begin
    fBus.Store(self,TranslatedAddress,aValue,1);
@@ -69431,6 +69684,9 @@ procedure TPasRISCV.THART.StoreRegisterU8(const aAddress:TPasRISCVUInt64;const a
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt8;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  Value:=fState.Registers[aRegister];
@@ -69446,6 +69702,14 @@ begin
   exit;
  end;
 
+{$ifdef PasRISCVMMIOTLB}
+ MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,1);
+  exit;
+ end;
+{$endif}
+
  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
  if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69454,6 +69718,10 @@ begin
    AtomicMemStoreRelaxedUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
 {$else}
    PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,1);
 {$endif}
   end else{$endif}begin
    fBus.Store(self,TranslatedAddress,Value,1);
@@ -69465,6 +69733,9 @@ end;
 function TPasRISCV.THART.Load16(const aAddress:TPasRISCVUInt64):TPasRISCVUInt16;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69479,6 +69750,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   result:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=0;
@@ -69489,6 +69767,10 @@ begin
 {$else}
    result:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
 {$endif}
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   result:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
 {$endif}
   end else begin
    result:=TPasRISCVUInt16(fBus.Load(self,TranslatedAddress,2));
@@ -69506,6 +69788,9 @@ procedure TPasRISCV.THART.LoadRegisterS16(const aRegister:TRegister;const aAddre
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69523,6 +69808,16 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2)))));
+ {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69535,6 +69830,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
     end;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2)))));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+    end;
+{$endif}
    end else {$endif}begin
     Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.Load(self,TranslatedAddress,2)))));
     if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -69558,6 +69860,9 @@ procedure TPasRISCV.THART.LoadRegisterU16(const aRegister:TRegister;const aAddre
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69575,6 +69880,16 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
+ {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69587,6 +69902,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+     fState.Registers[aRegister]:=Value;
+    end;
+{$endif}
    end else{$endif}begin
     Value:=TPasRISCVUInt16(fBus.Load(self,TranslatedAddress,2));
     if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -69609,6 +69931,9 @@ end;
 procedure TPasRISCV.THART.Store16(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt16);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69623,6 +69948,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,2);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69631,6 +69963,10 @@ begin
     AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
 {$else}
     PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,2);
 {$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,aValue,2);
@@ -69649,6 +69985,9 @@ procedure TPasRISCV.THART.StoreRegisterU16(const aAddress:TPasRISCVUInt64;const 
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt16;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  Value:=fState.Registers[aRegister];
@@ -69665,6 +70004,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,2);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69673,6 +70019,10 @@ begin
     AtomicMemStoreRelaxedUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
 {$else}
     PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,2);
 {$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,Value,2);
@@ -69690,6 +70040,9 @@ end;
 function TPasRISCV.THART.Load32(const aAddress:TPasRISCVUInt64):TPasRISCVUInt32;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69704,6 +70057,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   result:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=0;
@@ -69714,6 +70074,10 @@ begin
 {$else}
    result:=PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
 {$endif}
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   result:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
 {$endif}
   end else begin
    result:=TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4));
@@ -69728,6 +70092,9 @@ procedure TPasRISCV.THART.LoadRegisterS32(const aRegister:TRegister;const aAddre
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69745,6 +70112,16 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4)))));
+ {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69757,6 +70134,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4)))));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+     fState.Registers[aRegister]:=Value;
+    end;
+{$endif}
    end else{$endif}begin
     Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4)))));
     if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -69777,6 +70161,9 @@ procedure TPasRISCV.THART.LoadRegisterU32(const aRegister:TRegister;const aAddre
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69794,6 +70181,16 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
+ {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69806,6 +70203,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+     fState.Registers[aRegister]:=Value;
+    end;
+{$endif}
    end else{$endif}begin
     Value:=TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4));
     if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -69826,6 +70230,9 @@ procedure TPasRISCV.THART.LoadRegisterF32(const aRegister:TFPURegister;const aAd
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69842,6 +70249,15 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
+   fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
+   fState.CSR.SetFSDirty;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69853,6 +70269,12 @@ begin
 {$endif}
     fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
     fState.CSR.SetFSDirty;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
+    fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
+    fState.CSR.SetFSDirty;
+{$endif}
    end else{$endif}begin
     Value:=TPasRISCVUInt32(fBus.Load(self,TranslatedAddress,4));
     if fState.ExceptionValue=TExceptionValue.None then begin
@@ -69874,6 +70296,9 @@ end;
 procedure TPasRISCV.THART.Store32(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt32);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -69888,6 +70313,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,4);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69896,6 +70328,10 @@ begin
     AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
 {$else}
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,4);
 {$endif}
    end else{$endif} begin
     fBus.Store(self,TranslatedAddress,aValue,4);
@@ -69911,6 +70347,9 @@ procedure TPasRISCV.THART.StoreRegisterU32(const aAddress:TPasRISCVUInt64;const 
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt32;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  Value:=fState.Registers[aRegister];
@@ -69927,6 +70366,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69935,6 +70381,10 @@ begin
     AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
 {$else}
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
 {$endif}
    end else{$endif} begin
     fBus.Store(self,TranslatedAddress,Value,4);
@@ -69950,6 +70400,9 @@ procedure TPasRISCV.THART.StoreRegisterF32(const aAddress:TPasRISCVUInt64;const 
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt32;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  Value:=fState.FPURegisters[aRegister].ui32;
@@ -69966,6 +70419,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -69974,6 +70434,10 @@ begin
     AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
 {$else}
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
 {$endif}
    end else{$endif} begin
     fBus.Store(self,TranslatedAddress,Value,4);
@@ -69988,6 +70452,9 @@ end;
 function TPasRISCV.THART.Load64(const aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -70002,6 +70469,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   result:=fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=0;
@@ -70012,6 +70486,10 @@ begin
 {$else}
    result:=PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryRead{$endif}+aAddress)))^;
 {$endif}
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   result:=fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8);
 {$endif}
   end else begin
    result:=fBus.Load(self,TranslatedAddress,8);
@@ -70026,6 +70504,9 @@ procedure TPasRISCV.THART.LoadRegisterS64(const aRegister:TRegister;const aAddre
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -70043,6 +70524,16 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt64(TPasRISCVInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8)));
+ {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -70055,6 +70546,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt64(TPasRISCVInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8)));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+     fState.Registers[aRegister]:=Value;
+    end;
+{$endif}
    end else{$endif}begin
     Value:=TPasRISCVUInt64(TPasRISCVInt64(fBus.Load(self,TranslatedAddress,8)));
     if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -70075,6 +70573,9 @@ procedure TPasRISCV.THART.LoadRegisterU64(const aRegister:TRegister;const aAddre
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -70092,6 +70593,16 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
+ {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+    fState.Registers[aRegister]:=Value;
+   end;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -70104,6 +70615,13 @@ begin
 {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
      fState.Registers[aRegister]:=Value;
     end;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
+{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+     fState.Registers[aRegister]:=Value;
+    end;
+{$endif}
    end else{$endif}begin
     Value:=TPasRISCVUInt64(fBus.Load(self,TranslatedAddress,8));
     if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
@@ -70124,6 +70642,9 @@ procedure TPasRISCV.THART.LoadRegisterF64(const aRegister:TFPURegister;const aAd
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -70140,6 +70661,15 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
+   fState.FPURegisters[aRegister].ui64:=Value;
+   fState.CSR.SetFSDirty;
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -70151,6 +70681,12 @@ begin
 {$endif}
     fState.FPURegisters[aRegister].ui64:=Value;
     fState.CSR.SetFSDirty;
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
+    fState.FPURegisters[aRegister].ui64:=Value;
+    fState.CSR.SetFSDirty;
+{$endif}
    end else{$endif}begin
     Value:=TPasRISCVUInt64(fBus.Load(self,TranslatedAddress,8));
     if fState.ExceptionValue=TExceptionValue.None then begin
@@ -70172,6 +70708,9 @@ end;
 procedure TPasRISCV.THART.Store64(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64);
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -70186,6 +70725,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,8);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -70194,6 +70740,10 @@ begin
     AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),aValue);
 {$else}
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,8);
 {$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,aValue,8);
@@ -70209,6 +70759,9 @@ procedure TPasRISCV.THART.StoreRegisterU64(const aAddress:TPasRISCVUInt64;const 
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  Value:=fState.Registers[aRegister];
@@ -70225,6 +70778,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -70233,6 +70793,10 @@ begin
     AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
 {$else}
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
 {$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,Value,8);
@@ -70248,6 +70812,9 @@ procedure TPasRISCV.THART.StoreRegisterF64(const aAddress:TPasRISCVUInt64;const 
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
     Value:TPasRISCVUInt64;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  Value:=fState.FPURegisters[aRegister].ui64;
@@ -70264,6 +70831,13 @@ begin
  end;
 
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
+{$ifdef PasRISCVMMIOTLB}
+  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
+   exit;
+  end;
+{$endif}
   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
@@ -70272,6 +70846,10 @@ begin
     AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),Value);
 {$else}
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
+{$endif}
+{$ifdef PasRISCVMMIOTLB}
+   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
 {$endif}
    end else{$endif}begin
     fBus.Store(self,TranslatedAddress,Value,8);
@@ -71769,6 +72347,9 @@ end;
 function TPasRISCV.THART.FetchInstruction(const aAddress:TPasRISCVUInt64;out aInstruction:TPasRISCVUInt32):Boolean;
 var VPN,TranslatedAddress:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PasRISCVMMIOTLB}
+    MMIOTLBEntry:TMMU.PMMIOTLBEntry;
+{$endif}
 begin
 
  VPN:=aAddress shr PAGE_SHIFT;
@@ -71797,6 +72378,15 @@ begin
   result:=true;
   exit;
  end;
+
+{$ifdef PasRISCVMMIOTLB}
+ MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+  aInstruction:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
+  result:=true;
+  exit;
+ end;
+{$endif}
 
  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Instruction,[]);
  if fState.ExceptionValue<>TExceptionValue.None then begin
@@ -104164,6 +104754,10 @@ begin
  fBus.fAddressSpaceDispatch.Build;
 //fBus.fAddressSpaceDispatch.Dump;
  fBus.fAddressSpaceDispatch.Invalidate;
+{$endif}
+
+{$ifdef PasRISCVMMIOTLB}
+ fMMIOTLBGeneration:=1;
 {$endif}
 
 end;
