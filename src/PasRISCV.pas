@@ -8559,7 +8559,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            JIT_CODE_BUFFER_SIZE=64*1024*1024;
                            JIT_MAX_BLOCK_SIZE=4096;
                            JIT_TEMPORARY_CODE_INITIAL_SIZE=1024*1024;
-                           UNROLL_MAX_BLOCK_SIZE=256;
+                           UNROLL_MAX_BLOCK_SIZE=1024;
                            JIT_DIRTY_PAGE_SHIFT=12; // 4KB pages
                            JIT_DIRTY_WORD_SHIFT=17; // 32 pages per word (12+5)
                            // Data TLB field offsets within TDirectAccessTLBEntry
