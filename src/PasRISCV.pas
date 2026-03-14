@@ -312,7 +312,7 @@ unit PasRISCV;
 {-$define PasRISCVInterruptAtomicIRQState}        // Approach D: combined atomic state word per IRQ + CAS
 
 // Wakeup hardening (orthogonal, can combine with any above):
-{-$define PasRISCVInterruptWakeupHardening}       // Wake-generation counter + InterruptAndWakeUp consolidation
+{$define PasRISCVInterruptWakeupHardening}        // Wake-generation counter + InterruptAndWakeUp consolidation
 
 // Safety net disable (only use with a race-free approach above, not with the default original):
 {-$define PasRISCVInterruptNoSafetyNet}           // Disable 100Hz FullUpdate safety net in EventTick
@@ -26713,46 +26713,46 @@ begin
  fIRQLock.Acquire;
  try
 {$ifend}
- HARTID:=aContext shr 1;
- if HARTID<length(fMachine.fHARTs) then begin
-  if (aContext and 1)<>0 then begin
-   fMachine.fHARTs[HARTID].ClearInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
-  end else begin
-   fMachine.fHARTs[HARTID].ClearInterrupt(TPasRISCV.THART.TInterruptValue.MachineExternal);
-  end;
- end;
- Threshold:=TPasMPInterlocked.Read(fThreshold[aContext]);
- NotifyingIRQs:=0;
- HighestPriorityIRQ:=0;
- MaxPriority:=0;
- for Index:=0 to PLIC_SRC_REG_COUNT-1 do begin
-  IRQs:=TPasMPInterlocked.Read(fPending[Index]) and TPasMPInterlocked.Read(fEnable[aContext][Index]);
-  while IRQs<>0 do begin
-   IRQ:=(Index shl 5) or TPasMPMath.BitScanForward32(IRQs); // Find first set bit
-   Priority:=TPasMPInterlocked.Read(fPriority[IRQ]);
-   if Threshold<Priority then begin
-    inc(NotifyingIRQs);
-   end;
-   if MaxPriority<Priority then begin
-    MaxPriority:=Priority;
-    HighestPriorityIRQ:=IRQ;
-   end;
-   IRQs:=IRQs and (IRQs-1); // Mask out first set bit
-  end;
- end;
- if aClaim and (Threshold<MaxPriority) then begin
-  dec(NotifyingIRQs);
- end;
- if NotifyingIRQs<>0 then begin
+  HARTID:=aContext shr 1;
   if HARTID<length(fMachine.fHARTs) then begin
    if (aContext and 1)<>0 then begin
-    fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
+    fMachine.fHARTs[HARTID].ClearInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
    end else begin
-    fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.MachineExternal);
+    fMachine.fHARTs[HARTID].ClearInterrupt(TPasRISCV.THART.TInterruptValue.MachineExternal);
    end;
   end;
- end;
- result:=HighestPriorityIRQ;
+  Threshold:=TPasMPInterlocked.Read(fThreshold[aContext]);
+  NotifyingIRQs:=0;
+  HighestPriorityIRQ:=0;
+  MaxPriority:=0;
+  for Index:=0 to PLIC_SRC_REG_COUNT-1 do begin
+   IRQs:=TPasMPInterlocked.Read(fPending[Index]) and TPasMPInterlocked.Read(fEnable[aContext][Index]);
+   while IRQs<>0 do begin
+    IRQ:=(Index shl 5) or TPasMPMath.BitScanForward32(IRQs); // Find first set bit
+    Priority:=TPasMPInterlocked.Read(fPriority[IRQ]);
+    if Threshold<Priority then begin
+     inc(NotifyingIRQs);
+    end;
+    if MaxPriority<Priority then begin
+     MaxPriority:=Priority;
+     HighestPriorityIRQ:=IRQ;
+    end;
+    IRQs:=IRQs and (IRQs-1); // Mask out first set bit
+   end;
+  end;
+  if aClaim and (Threshold<MaxPriority) then begin
+   dec(NotifyingIRQs);
+  end;
+  if NotifyingIRQs<>0 then begin
+   if HARTID<length(fMachine.fHARTs) then begin
+    if (aContext and 1)<>0 then begin
+     fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.SupervisorExternal);
+    end else begin
+     fMachine.fHARTs[HARTID].RaiseInterrupt(TPasRISCV.THART.TInterruptValue.MachineExternal);
+    end;
+   end;
+  end;
+  result:=HighestPriorityIRQ;
 {$if defined(PasRISCVInterruptControllerLock)}
  finally
   fIRQLock.Release;
@@ -26767,9 +26767,9 @@ begin
  fIRQLock.Acquire;
  try
 {$ifend}
- for Context:=0 to fCountContexts-1 do begin
-  UpdateContext(Context,false);
- end;
+  for Context:=0 to fCountContexts-1 do begin
+   UpdateContext(Context,false);
+  end;
 {$if defined(PasRISCVInterruptControllerLock)}
  finally
   fIRQLock.Release;
@@ -26784,14 +26784,14 @@ begin
  fIRQLock.Acquire;
  try
 {$ifend}
- OldPriority:=TPasMPInterlocked.Exchange(fPriority[aIRQ],aPriority);
- if aPriority<OldPriority then begin
-  if IsIRQPending(aIRQ) then begin
-   FullUpdate;
+  OldPriority:=TPasMPInterlocked.Exchange(fPriority[aIRQ],aPriority);
+  if aPriority<OldPriority then begin
+   if IsIRQPending(aIRQ) then begin
+    FullUpdate;
+   end;
+  end else if aPriority>OldPriority then begin
+   UpdateIRQ(aIRQ);
   end;
- end else if aPriority>OldPriority then begin
-  UpdateIRQ(aIRQ);
- end;
 {$if defined(PasRISCVInterruptControllerLock)}
  finally
   fIRQLock.Release;
@@ -26806,15 +26806,15 @@ begin
  fIRQLock.Acquire;
  try
 {$ifend}
- OldEnable:=TPasMPInterlocked.Exchange(fEnable[aContext][aRegister],aEnable);
- IRQsDisabled:=OldEnable and not aEnable;
- if IRQsDisabled<>0 then begin
-  if (IRQsDisabled and TPasMPInterlocked.Read(fPending[aRegister]))<>0 then begin
-   FullUpdate;
+  OldEnable:=TPasMPInterlocked.Exchange(fEnable[aContext][aRegister],aEnable);
+  IRQsDisabled:=OldEnable and not aEnable;
+  if IRQsDisabled<>0 then begin
+   if (IRQsDisabled and TPasMPInterlocked.Read(fPending[aRegister]))<>0 then begin
+    FullUpdate;
+   end;
+  end else if (aEnable and not OldEnable)<>0 then begin
+   UpdateContextIRQRegister(aContext,aRegister);
   end;
- end else if (aEnable and not OldEnable)<>0 then begin
-  UpdateContextIRQRegister(aContext,aRegister);
- end;
 {$if defined(PasRISCVInterruptControllerLock)}
  finally
   fIRQLock.Release;
@@ -26829,10 +26829,10 @@ begin
  fIRQLock.Acquire;
  try
 {$ifend}
- OldThreshold:=TPasMPInterlocked.Exchange(fThreshold[aContext],aThreshold);
- if OldThreshold<>aThreshold then begin
-  UpdateContext(aContext,false);
- end;
+  OldThreshold:=TPasMPInterlocked.Exchange(fThreshold[aContext],aThreshold);
+  if OldThreshold<>aThreshold then begin
+   UpdateContext(aContext,false);
+  end;
 {$if defined(PasRISCVInterruptControllerLock)}
  finally
   fIRQLock.Release;
