@@ -7629,6 +7629,29 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TBus=class
              public
 {$ifdef PasRISCVAddressSpaceDispatch}
+              // The address-space dispatch is kept per-HART here instead of using a single
+              // global QEMU-style snapshot/RCU dispatch.
+              //
+              // Rationale:
+              // - In PasRISCV, dispatch rebuilds are rare enough that per-HART rebuild cost
+              //   is not a meaningful bottleneck.
+              // - HART-local data such as MRU state, MMIO/TLB-related fast paths and other
+              //   address-space lookup helpers fit naturally into a per-HART design.
+              // - A global snapshot design would add substantially more synchronization and
+              //   lifetime-management complexity (publish/swap, ABA safety, delayed freeing,
+              //   refcount/RCU-style reclamation) without giving a relevant steady-state
+              //   performance benefit for this code base.
+              // - The per-HART generation-counter-based design is therefore intentionally
+              //   chosen for robustness and simplicity: each HART can rebuild its own dispatch
+              //   after generation-counter-based invalidation, while the shared bus topology
+              //   remains the single source of truth.
+              //
+              // Summary:
+              // - Intentionally per-HART, not global like QEMU, because dispatch rebuilds are
+              //   rare here, so a global snapshot/RCU-style design would add much more
+              //   synchronization, ABA/lifetime and reclamation complexity than benefit.
+              //   Per-HART lookup state also matches MRU/MMIO/TLB fast paths better, so this
+              //   design is kept for robustness and simpler correctness.
               type { TAddressSpaceDispatch }
                    TAddressSpaceDispatch=record
                     public
