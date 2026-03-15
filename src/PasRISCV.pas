@@ -304,12 +304,18 @@ unit PasRISCV;
 // PLIC/APLIC interrupt race condition fix:
 // The original chained fRaised+fPending dedup in RaiseIRQ can lose interrupts because fRaised
 // is only cleared late by LowerIRQ (inside ISR), causing new RaiseIRQ calls to be silently
-// dropped when fRaised is still set from an old interrupt. Approaches A-D fix this race.
-// Interrupt controller race condition fix approaches (mutually exclusive, default = original chained dedup):
-{-$define PasRISCVInterruptPendingOnlyDedup}      // Approach A: dedup only on fPending (lock-free, minimal fix)
-{-$define PasRISCVInterruptGenerationCounter}     // Approach B: per-IRQ generation counter (stronger guarantee)
-{-$define PasRISCVInterruptControllerLock}        // Approach C: QEMU-style critical section per controller
-{-$define PasRISCVInterruptAtomicIRQState}        // Approach D: combined atomic state word per IRQ + CAS
+// dropped when fRaised is still set from an old interrupt. Approaches fix this race.
+
+// APLIC interrupt race condition fix approaches (mutually exclusive, default = original chained dedup):
+{-$define PasRISCVAPLICControllerLock} // QEMU-style critical section per controller
+{-$define PasRISCVAPLICAtomicIRQState} // Combined atomic state word per IRQ + CAS
+{$define PasRISCVAPLICOptimizedAtomicIRQState} // Packed 4-bit-per-IRQ atomic state in uint64 words
+
+// PLIC interrupt race condition fix approaches (mutually exclusive, default = original chained dedup):
+{-$define PasRISCVPLICGenerationCounter} // Per-IRQ generation counter (stronger guarantee)
+{-$define PasRISCVPLICControllerLock} // QEMU-style critical section per controller
+{-$define PasRISCVPLICAtomicIRQState} // Combined atomic state word per IRQ + CAS
+{$define PasRISCVPLICOptimizedAtomicIRQState} // Packed 4-bit-per-IRQ atomic state in uint64 words
 
 // Wakeup hardening (orthogonal, can combine with any above):
 {$define PasRISCVInterruptWakeupHardening}        // Wake-generation counter + InterruptAndWakeUp consolidation
@@ -3210,9 +3216,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     APLIC_MSIADDRCFGH_L=TPasRISCVUInt32($80000000);
                     APLIC_SRC_LIMIT=64;
                     APLIC_SRC_REGS=APLIC_SRC_LIMIT shr 5;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVAPLICAtomicIRQState)}
                     IRQ_STATE_ASSERTED=TPasRISCVUInt32(1);
                     IRQ_STATE_PENDING=TPasRISCVUInt32(2);
+                    IRQ_STATE_INPUT=TPasRISCVUInt32(4);
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+                    IRQ_STATE_ASSERTED=TPasRISCVUInt64(1);
+                    IRQ_STATE_PENDING=TPasRISCVUInt64(2);
+                    IRQ_STATE_INPUT=TPasRISCVUInt64(4);
+                    IRQS_PER_WORD=16;
+                    IRQS_SHIFT=4;
+                    IRQ_STATE_BITS=4;
+                    IRQ_STATE_WORD_COUNT=(APLIC_SRC_LIMIT+(IRQS_PER_WORD-1)) shr IRQS_SHIFT;
 {$ifend}
               type TDomainDevice=class(TBusDevice)
                     private
@@ -3245,15 +3260,17 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                    TDomainCfg=array[TPasRISCV.TAIARegFileMode] of TPasRISCVUInt32;
                    TDeviceRegisters=array[0..APLIC_SRC_REGS-1] of TPasRISCVUInt32;
                    TSources=array[0..APLIC_SRC_LIMIT-1] of TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptGenerationCounter)}
-                   TSourceGenerations=array[0..APLIC_SRC_LIMIT-1] of TPasRISCVUInt64;
+{$if defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+                   TIRQStates=array[0..IRQ_STATE_WORD_COUNT-1] of TPasRISCVUInt64;
 {$ifend}
              private
               fDomainDevices:TDomainDevices;
               fDomainCfg:TDomainCfg;
               fDelegated:TDeviceRegisters;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVAPLICAtomicIRQState)}
               fIRQState:TSources;
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+              fIRQStates:TIRQStates;
 {$else}
               fRaised:TDeviceRegisters;
 {$ifend}
@@ -3262,11 +3279,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fEnabled:TDeviceRegisters;
               fSource:TSources;
               fTarget:TSources;
-{$if defined(PasRISCVInterruptGenerationCounter)}
-              fRaisedGenerations:TSourceGenerations;
-              fProcessedGenerations:TSourceGenerations;
-{$ifend}
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVAPLICControllerLock)}
               fIRQLock:TPasMPCriticalSection;
 {$ifend}
               procedure GenerateMSI(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aTarget:TPasRISCVUInt32);
@@ -3311,14 +3324,24 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     PLIC_SOURCE_MAX=1024;
                     PLIC_SRC_REG_COUNT=(PLIC_SOURCE_MAX+$1f) shr 5;
                     PLIC_CONTEXT_MAX=15872;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
                     IRQ_STATE_ASSERTED=TPasRISCVUInt32(1);
                     IRQ_STATE_PENDING=TPasRISCVUInt32(2);
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+                    IRQ_STATE_ASSERTED=TPasRISCVUInt64(1);
+                    IRQ_STATE_PENDING=TPasRISCVUInt64(2);
+                    IRQS_PER_WORD=16;
+                    IRQS_SHIFT=4;
+                    IRQ_STATE_BITS=4;
+                    IRQ_STATE_WORD_COUNT=(PLIC_SOURCE_MAX+(IRQS_PER_WORD-1)) shr IRQS_SHIFT;
 {$ifend}
               type TSources=array[0..PLIC_SOURCE_MAX-1] of TPasRISCVUInt32;
                    TSourceRegisters=array[0..PLIC_SRC_REG_COUNT-1] of TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptGenerationCounter)}
+{$if defined(PasRISCVPLICGenerationCounter)}
                    TSourceGenerations=array[0..PLIC_SOURCE_MAX-1] of TPasRISCVUInt64;
+{$ifend}
+{$if defined(PasRISCVPLICOptimizedAtomicIRQState)}
+                   TIRQStates=array[0..IRQ_STATE_WORD_COUNT-1] of TPasRISCVUInt64;
 {$ifend}
                    TContextEnables=array[0..PLIC_CONTEXT_MAX-1] of TSourceRegisters;
                    TContextThresholds=array[0..PLIC_CONTEXT_MAX-1] of TPasRISCVUInt32;
@@ -3327,16 +3350,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCountContexts:TPasRISCVUInt32;
               fPriority:TSources;
               fPending:TSourceRegisters;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
               fIRQState:TSources;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+              fIRQStates:TIRQStates;
 {$else}
               fRaised:TSourceRegisters;
 {$ifend}
-{$if defined(PasRISCVInterruptGenerationCounter)}
+{$if defined(PasRISCVPLICGenerationCounter)}
               fRaisedGenerations:TSourceGenerations;
               fProcessedGenerations:TSourceGenerations;
 {$ifend}
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
               fIRQLock:TPasMPCriticalSection;
 {$ifend}
               fEnable:TContextEnables;
@@ -26331,7 +26356,7 @@ begin
  fUnalignedAccessSupport:=false;
  fMinOpSize:=4;
  fMaxOpSize:=4;
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVAPLICControllerLock)}
  fIRQLock:=TPasMPCriticalSection.Create;
 {$ifend}
  fDomainDevices[TPasRISCV.TAIARegFileMode.Machine]:=TDomainDevice.Create(self,MachineBase,MachineSize,TPasRISCV.TAIARegFileMode.Machine,true);
@@ -26343,7 +26368,7 @@ end;
 
 destructor TPasRISCV.TAPLICDevice.Destroy;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVAPLICControllerLock)}
  FreeAndNil(fIRQLock);
 {$ifend}
  inherited Destroy; // where each sub-device is also destroyed
@@ -26355,8 +26380,10 @@ begin
  inherited Reset;
  FillChar(fDomainCfg,SizeOf(TDomainCfg),#0);
  FillChar(fDelegated,SizeOf(TDeviceRegisters),#$ff); // All sources delegated in root domain
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVAPLICAtomicIRQState)}
  FillChar(fIRQState,SizeOf(TSources),#0);
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+ FillChar(fIRQStates,SizeOf(TIRQStates),#0);
 {$else}
  FillChar(fRaised,SizeOf(TDeviceRegisters),#0);
 {$ifend}
@@ -26365,10 +26392,6 @@ begin
  FillChar(fEnabled,SizeOf(TDeviceRegisters),#0);
  FillChar(fSource,SizeOf(TSources),#0);
  FillChar(fTarget,SizeOf(TSources),#0);
-{$if defined(PasRISCVInterruptGenerationCounter)}
- FillChar(fRaisedGenerations,SizeOf(TSourceGenerations),#0);
- FillChar(fProcessedGenerations,SizeOf(TSourceGenerations),#0);
-{$ifend}
  for Mode:=Low(TPasRISCV.TAIARegFileMode) to High(TPasRISCV.TAIARegFileMode) do begin
   if assigned(fDomainDevices[Mode]) then begin
    fDomainDevices[Mode].Reset;
@@ -26387,12 +26410,15 @@ end;
 
 function TPasRISCV.TAPLICDevice.RectifiedBits(const aReg:TPasRISCVUInt64):TPasRISCVUInt32;
 var Raised,Invert:TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVAPLICAtomicIRQState)}
     Index,BaseIRQ:TPasRISCVUInt32;
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+    WordIndex:TPasRISCVUInt32;
+    WordValue:TPasRISCVUInt64;
 {$ifend}
 begin
  if aReg<APLIC_SRC_REGS then begin
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVAPLICAtomicIRQState)}
   // Reconstruct bitmap from per-IRQ state words
   Raised:=0;
   BaseIRQ:=aReg shl 5;
@@ -26403,6 +26429,21 @@ begin
     end;
    end;
   end;
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+  // Extract 16 ASSERTED bits from each packed uint64 word, combine to 32-bit bitmap
+  WordIndex:=TPasRISCVUInt32(aReg) shl 1;
+  WordValue:=TPasMPInterlocked.Read(fIRQStates[WordIndex or 0]) and $1111111111111111;
+  WordValue:=(WordValue or (WordValue shr 3)) and $0303030303030303;
+  WordValue:=(WordValue or (WordValue shr 6)) and $000f000f000f000f;
+  WordValue:=(WordValue or (WordValue shr 12)) and $000000ff000000ff;
+  WordValue:=(WordValue or (WordValue shr 24)) and $000000000000ffff;
+  Raised:=TPasRISCVUInt32(WordValue);
+  WordValue:=TPasMPInterlocked.Read(fIRQStates[WordIndex or 1]) and $1111111111111111;
+  WordValue:=(WordValue or (WordValue shr 3)) and $0303030303030303;
+  WordValue:=(WordValue or (WordValue shr 6)) and $000f000f000f000f;
+  WordValue:=(WordValue or (WordValue shr 12)) and $000000ff000000ff;
+  WordValue:=(WordValue or (WordValue shr 24)) and $000000000000ffff;
+  Raised:=Raised or (TPasRISCVUInt32(WordValue) shl 16);
 {$else}
   TPasMPMemoryBarrier.ReadDependency;
   Raised:=fRaised[aReg];
@@ -26479,14 +26520,14 @@ end;
 procedure TPasRISCV.TAPLICDevice.FullUpdate;
 var Source:TPasRISCVUInt32;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVAPLICControllerLock)}
  fIRQLock.Acquire;
  try
 {$ifend}
- for Source:=1 to APLIC_SRC_LIMIT-1 do begin
-  UpdateInterrupt(Source);
- end;
-{$if defined(PasRISCVInterruptControllerLock)}
+  for Source:=1 to APLIC_SRC_LIMIT-1 do begin
+   UpdateInterrupt(Source);
+  end;
+{$if defined(PasRISCVAPLICControllerLock)}
  finally
   fIRQLock.Release;
  end;
@@ -26503,42 +26544,59 @@ end;
 
 function TPasRISCV.TAPLICDevice.RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 var Mask:TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVAPLICAtomicIRQState)}
     Old,New:TPasRISCVUInt32;
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+    Old,New,FlagMask,PendingMask,InputMask:TPasRISCVUInt64;
+    WordIndex,Shift:TPasRISCVUInt32;
 {$ifend}
 begin
  if (aIRQ>0) and (aIRQ<APLIC_SRC_LIMIT) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
-{$if defined(PasRISCVInterruptPendingOnlyDedup)}
-  // Approach A: always set fRaised, always call UpdateInterrupt
-  TPasMPInterlocked.BitwiseOr(fRaised[aIRQ shr 5],Mask);
-  UpdateInterrupt(aIRQ);
-{$elseif defined(PasRISCVInterruptGenerationCounter)}
-  // Approach B: bump gen counter, always set fRaised, always update
-  if TPasMPInterlocked.Increment(fRaisedGenerations[aIRQ])=0 then begin
-   TPasMPInterlocked.CompareExchange(fRaisedGenerations[aIRQ],1,0);
-   TPasMPInterlocked.Write(fProcessedGenerations[aIRQ],0);
-  end;
-  TPasMPInterlocked.BitwiseOr(fRaised[aIRQ shr 5],Mask);
-  UpdateInterrupt(aIRQ);
-{$elseif defined(PasRISCVInterruptControllerLock)}
-  // Approach C: under lock
+{$if defined(PasRISCVAPLICControllerLock)}
+  // Using lock
   fIRQLock.Acquire;
   try
-   fRaised[aIRQ shr 5]:=fRaised[aIRQ shr 5] or Mask;
-   UpdateInterrupt(aIRQ);
+   if (fRaised[aIRQ shr 5] and Mask)=0 then begin
+    fRaised[aIRQ shr 5]:=fRaised[aIRQ shr 5] or Mask;
+    UpdateInterrupt(aIRQ);
+   end;
   finally
    fIRQLock.Release;
   end;
-{$elseif defined(PasRISCVInterruptAtomicIRQState)}
-  // Approach D: CAS on per-IRQ state
+{$elseif defined(PasRISCVAPLICAtomicIRQState)}
+  // CAS on per-IRQ state with edge detection
   repeat
    Old:=TPasMPInterlocked.Read(fIRQState[aIRQ]);
-   New:=Old or IRQ_STATE_ASSERTED;
+   New:=Old or (IRQ_STATE_ASSERTED or IRQ_STATE_INPUT);
+   // Edge-rise: only set PENDING on INPUT 0=>1 transition when not already pending
+   if ((Old and IRQ_STATE_INPUT)=0) and ((Old and IRQ_STATE_PENDING)=0) then begin
+    New:=New or IRQ_STATE_PENDING;
+   end;
   until TPasMPInterlocked.CompareExchange(fIRQState[aIRQ],New,Old)=Old;
-  UpdateInterrupt(aIRQ);
+  // Only call UpdateInterrupt on pending 0=>1 transition
+  if ((Old and IRQ_STATE_PENDING)=0) and ((New and IRQ_STATE_PENDING)<>0) then begin
+   UpdateInterrupt(aIRQ);
+  end;
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+  // CAS on packed 4-bit-per-IRQ state with edge detection
+  WordIndex:=aIRQ shr 4;
+  Shift:=(aIRQ and $f) shl 2;
+  FlagMask:=(IRQ_STATE_ASSERTED or IRQ_STATE_INPUT) shl Shift;
+  PendingMask:=IRQ_STATE_PENDING shl Shift;
+  InputMask:=IRQ_STATE_INPUT shl Shift;
+  repeat
+   Old:=TPasMPInterlocked.Read(fIRQStates[WordIndex]);
+   New:=Old or FlagMask;
+   if ((Old and InputMask)=0) and ((Old and PendingMask)=0) then begin
+    New:=New or PendingMask;
+   end;
+  until TPasMPInterlocked.CompareExchange(fIRQStates[WordIndex],New,Old)=Old;
+  if ((Old and PendingMask)=0) and ((New and PendingMask)<>0) then begin
+   UpdateInterrupt(aIRQ);
+  end;
 {$else}
-  // Default (original): dedup on fRaised
+  // Dedup on fRaised
   if ((not TPasMPInterlocked.ExchangeBitwiseOr(fRaised[aIRQ shr 5],Mask)) and Mask)<>0 then begin
    UpdateInterrupt(aIRQ);
   end;
@@ -26551,37 +26609,50 @@ end;
 
 function TPasRISCV.TAPLICDevice.LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 var Mask:TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVAPLICAtomicIRQState)}
     Old,New:TPasRISCVUInt32;
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+    Old,New,ClearMask,InputMask:TPasRISCVUInt64;
+    WordIndex,Shift:TPasRISCVUInt32;
 {$ifend}
 begin
  if (aIRQ>0) and (aIRQ<APLIC_SRC_LIMIT) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
-{$if defined(PasRISCVInterruptPendingOnlyDedup)}
-  // Approach A: clear fRaised, update
-  TPasMPInterlocked.BitwiseAnd(fRaised[aIRQ shr 5],not Mask);
-  UpdateInterrupt(aIRQ);
-{$elseif defined(PasRISCVInterruptGenerationCounter)}
-  // Approach B: snapshot gen, clear fRaised
-  TPasMPInterlocked.Write(fProcessedGenerations[aIRQ],TPasMPInterlocked.Read(fRaisedGenerations[aIRQ]));
-  TPasMPInterlocked.BitwiseAnd(fRaised[aIRQ shr 5],not Mask);
-{$elseif defined(PasRISCVInterruptControllerLock)}
-  // Approach C: under lock
+{$if defined(PasRISCVAPLICControllerLock)}
+  // Using lock
   fIRQLock.Acquire;
   try
-   fRaised[aIRQ shr 5]:=fRaised[aIRQ shr 5] and not Mask;
-   UpdateInterrupt(aIRQ);
+   if (fRaised[aIRQ shr 5] and Mask)<>0 then begin
+    fRaised[aIRQ shr 5]:=fRaised[aIRQ shr 5] and not Mask;
+    UpdateInterrupt(aIRQ);
+   end;
   finally
    fIRQLock.Release;
   end;
-{$elseif defined(PasRISCVInterruptAtomicIRQState)}
-  // Approach D: CAS clear asserted only
+{$elseif defined(PasRISCVAPLICAtomicIRQState)}
+  // CAS clear input and asserted
   repeat
    Old:=TPasMPInterlocked.Read(fIRQState[aIRQ]);
-   New:=Old and not IRQ_STATE_ASSERTED;
+   New:=Old and not (IRQ_STATE_ASSERTED or IRQ_STATE_INPUT);
   until TPasMPInterlocked.CompareExchange(fIRQState[aIRQ],New,Old)=Old;
+  if (Old and IRQ_STATE_INPUT)<>0 then begin
+   UpdateInterrupt(aIRQ);
+  end;
+{$elseif defined(PasRISCVAPLICOptimizedAtomicIRQState)}
+  // CAS clear input and asserted in packed word
+  WordIndex:=aIRQ shr 4;
+  Shift:=(aIRQ and $f) shl 2;
+  ClearMask:=(IRQ_STATE_ASSERTED or IRQ_STATE_INPUT) shl Shift;
+  InputMask:=IRQ_STATE_INPUT shl Shift;
+  repeat
+   Old:=TPasMPInterlocked.Read(fIRQStates[WordIndex]);
+   New:=Old and not ClearMask;
+  until TPasMPInterlocked.CompareExchange(fIRQStates[WordIndex],New,Old)=Old;
+  if (Old and InputMask)<>0 then begin
+   UpdateInterrupt(aIRQ);
+  end;
 {$else}
-  // Default (original): dedup on fRaised
+  // Dedup on fRaised
   if ((TPasMPInterlocked.ExchangeBitwiseAnd(fRaised[aIRQ shr 5],not Mask)) and Mask)<>0 then begin
    UpdateInterrupt(aIRQ);
   end;
@@ -26612,7 +26683,7 @@ begin
  fMaxOpSize:=4;
  fAllocationIRQCounter:=0;
  fCountContexts:=fMachine.fCountHARTs shl 1;
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  fIRQLock:=TPasMPCriticalSection.Create;
 {$ifend}
  Reset;
@@ -26620,7 +26691,7 @@ end;
 
 destructor TPasRISCV.TPLICDevice.Destroy;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  FreeAndNil(fIRQLock);
 {$ifend}
  inherited Destroy;
@@ -26630,12 +26701,14 @@ procedure TPasRISCV.TPLICDevice.Reset;
 begin
  FillChar(fPriority,SizeOf(TSources),#0);
  FillChar(fPending,SizeOf(TSourceRegisters),#0);
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
  FillChar(fIRQState,SizeOf(TSources),#0);
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+ FillChar(fIRQStates,SizeOf(TIRQStates),#0);
 {$else}
  FillChar(fRaised,SizeOf(TSourceRegisters),#0);
 {$ifend}
-{$if defined(PasRISCVInterruptGenerationCounter)}
+{$if defined(PasRISCVPLICGenerationCounter)}
  FillChar(fRaisedGenerations,SizeOf(TSourceGenerations),#0);
  FillChar(fProcessedGenerations,SizeOf(TSourceGenerations),#0);
 {$ifend}
@@ -26645,8 +26718,10 @@ end;
 
 function TPasRISCV.TPLICDevice.IsIRQPending(const aIRQ:TPasRISCVUInt32):Boolean;
 begin
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
  result:=(TPasMPInterlocked.Read(fIRQState[aIRQ]) and IRQ_STATE_PENDING)<>0;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+ result:=(TPasMPInterlocked.Read(fIRQStates[aIRQ shr 4]) and (IRQ_STATE_PENDING shl ((aIRQ and $f) shl 2)))<>0;
 {$else}
  result:=(TPasMPInterlocked.Read(fPending[aIRQ shr 5]) and (TPasRISCVUInt32(1) shl (aIRQ and 31)))<>0;
 {$ifend}
@@ -26709,7 +26784,7 @@ end;
 function TPasRISCV.TPLICDevice.UpdateContext(const aContext:TPasRISCVUInt32;const aClaim:Boolean):TPasRISCVUInt32;
 var Threshold,NotifyingIRQs,HighestPriorityIRQ,Priority,MaxPriority,IRQs,Index,IRQ,HARTID:TPasRISCVUInt32;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  fIRQLock.Acquire;
  try
 {$ifend}
@@ -26753,7 +26828,7 @@ begin
    end;
   end;
   result:=HighestPriorityIRQ;
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  finally
   fIRQLock.Release;
  end;
@@ -26763,14 +26838,14 @@ end;
 procedure TPasRISCV.TPLICDevice.FullUpdate;
 var Context:TPasRISCVUInt32;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  fIRQLock.Acquire;
  try
 {$ifend}
   for Context:=0 to fCountContexts-1 do begin
    UpdateContext(Context,false);
   end;
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  finally
   fIRQLock.Release;
  end;
@@ -26780,7 +26855,7 @@ end;
 procedure TPasRISCV.TPLICDevice.SetIRQPriority(const aIRQ,aPriority:TPasRISCVUInt32);
 var OldPriority:TPasRISCVUInt32;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  fIRQLock.Acquire;
  try
 {$ifend}
@@ -26792,7 +26867,7 @@ begin
   end else if aPriority>OldPriority then begin
    UpdateIRQ(aIRQ);
   end;
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  finally
   fIRQLock.Release;
  end;
@@ -26802,7 +26877,7 @@ end;
 procedure TPasRISCV.TPLICDevice.SetEnableBits(const aContext,aRegister,aEnable:TPasRISCVUInt32);
 var OldEnable,IRQsDisabled:TPasRISCVUInt32;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  fIRQLock.Acquire;
  try
 {$ifend}
@@ -26815,7 +26890,7 @@ begin
   end else if (aEnable and not OldEnable)<>0 then begin
    UpdateContextIRQRegister(aContext,aRegister);
   end;
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  finally
   fIRQLock.Release;
  end;
@@ -26825,7 +26900,7 @@ end;
 procedure TPasRISCV.TPLICDevice.SetContextThreshold(const aContext,aThreshold:TPasRISCVUInt32);
 var OldThreshold:TPasRISCVUInt32;
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  fIRQLock.Acquire;
  try
 {$ifend}
@@ -26833,7 +26908,7 @@ begin
   if OldThreshold<>aThreshold then begin
    UpdateContext(aContext,false);
   end;
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  finally
   fIRQLock.Release;
  end;
@@ -26842,11 +26917,14 @@ end;
 
 function TPasRISCV.TPLICDevice.ClaimIRQ(const aContext:TPasRISCVUInt32):TPasRISCVUInt32;
 var IRQ,Mask:TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
     Old,New:TPasRISCVUInt32;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+    Old,New,PendingMask:TPasRISCVUInt64;
+    WordIndex,Shift:TPasRISCVUInt32;
 {$ifend}
 begin
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
  fIRQLock.Acquire;
  try
   IRQ:=UpdateContext(aContext,true);
@@ -26858,7 +26936,7 @@ begin
  finally
   fIRQLock.Release;
  end;
-{$elseif defined(PasRISCVInterruptAtomicIRQState)}
+{$elseif defined(PasRISCVPLICAtomicIRQState)}
  repeat
   IRQ:=UpdateContext(aContext,true);
   if IRQ<>0 then begin
@@ -26866,8 +26944,29 @@ begin
    // CAS clear pending in per-IRQ state
    repeat
     Old:=TPasMPInterlocked.Read(fIRQState[IRQ]);
-    New:=Old and (not IRQ_STATE_PENDING);
+    New:=Old and not IRQ_STATE_PENDING;
    until TPasMPInterlocked.CompareExchange(fIRQState[IRQ],New,Old)=Old;
+   // Also clear in summary bitmap
+   if (TPasMPInterlocked.ExchangeBitwiseAnd(fPending[IRQ shr 5],not Mask) and Mask)=0 then begin
+    continue; // someone stole our IRQ, retry
+   end;
+  end;
+  break;
+ until false;
+ result:=IRQ;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+ repeat
+  IRQ:=UpdateContext(aContext,true);
+  if IRQ<>0 then begin
+   Mask:=TPasRISCVUInt32(1) shl (IRQ and 31);
+   // CAS clear pending in packed word
+   WordIndex:=IRQ shr 4;
+   Shift:=(IRQ and $f) shl 2;
+   PendingMask:=IRQ_STATE_PENDING shl Shift;
+   repeat
+    Old:=TPasMPInterlocked.Read(fIRQStates[WordIndex]);
+    New:=Old and not PendingMask;
+   until TPasMPInterlocked.CompareExchange(fIRQStates[WordIndex],New,Old)=Old;
    // Also clear in summary bitmap
    if (TPasMPInterlocked.ExchangeBitwiseAnd(fPending[IRQ shr 5],not Mask) and Mask)=0 then begin
     continue; // someone stole our IRQ, retry
@@ -26895,25 +26994,21 @@ end;
 
 procedure TPasRISCV.TPLICDevice.CompleteIRQ(const aContext,aIRQ:TPasRISCVUInt32);
 var Raised:TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
     Old,New:TPasRISCVUInt32;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+    Old,New,AssertedMask,PendingMask:TPasRISCVUInt64;
+    WordIndex,Shift:TPasRISCVUInt32;
 {$ifend}
 begin
-{$if defined(PasRISCVInterruptPendingOnlyDedup)}
- // Approach A: same as original — check fRaised level state
- Raised:=TPasMPInterlocked.Read(fRaised[aIRQ shr 5]) and (TPasRISCVUInt32(1) shl (aIRQ and 31));
- if Raised<>0 then begin
-  TPasMPInterlocked.BitwiseOr(fPending[aIRQ shr 5],Raised);
-  NotifyContextIRQ(aContext,aIRQ);
- end;
-{$elseif defined(PasRISCVInterruptGenerationCounter)}
- // Approach B: compare generation counters — if different, level still asserted
+{$if defined(PasRISCVPLICGenerationCounter)}
+ // Compare generation counters — if different, level still asserted
  if TPasMPInterlocked.Read(fRaisedGenerations[aIRQ])<>TPasMPInterlocked.Read(fProcessedGenerations[aIRQ]) then begin
   TPasMPInterlocked.BitwiseOr(fPending[aIRQ shr 5],TPasRISCVUInt32(1) shl (aIRQ and 31));
   NotifyContextIRQ(aContext,aIRQ);
  end;
-{$elseif defined(PasRISCVInterruptControllerLock)}
- // Approach C: check under lock
+{$elseif defined(PasRISCVPLICControllerLock)}
+ // Check under lock
  fIRQLock.Acquire;
  try
   Raised:=fRaised[aIRQ shr 5] and (TPasRISCVUInt32(1) shl (aIRQ and 31));
@@ -26924,8 +27019,8 @@ begin
  finally
   fIRQLock.Release;
  end;
-{$elseif defined(PasRISCVInterruptAtomicIRQState)}
- // Approach D: CAS loop, if asserted => set pending
+{$elseif defined(PasRISCVPLICAtomicIRQState)}
+ // CAS loop, if asserted => set pending
  repeat
   Old:=TPasMPInterlocked.Read(fIRQState[aIRQ]);
   if (Old and IRQ_STATE_ASSERTED)=0 then begin
@@ -26934,6 +27029,23 @@ begin
   New:=Old or IRQ_STATE_PENDING;
  until TPasMPInterlocked.CompareExchange(fIRQState[aIRQ],New,Old)=Old;
  if ((Old and IRQ_STATE_ASSERTED)<>0) and ((Old and IRQ_STATE_PENDING)=0) then begin
+  TPasMPInterlocked.BitwiseOr(fPending[aIRQ shr 5],TPasRISCVUInt32(1) shl (aIRQ and 31));
+  NotifyContextIRQ(aContext,aIRQ);
+ end;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+ // CAS loop on packed word, if asserted => set pending
+ WordIndex:=aIRQ shr 4;
+ Shift:=(aIRQ and $f) shl 2;
+ AssertedMask:=IRQ_STATE_ASSERTED shl Shift;
+ PendingMask:=IRQ_STATE_PENDING shl Shift;
+ repeat
+  Old:=TPasMPInterlocked.Read(fIRQStates[WordIndex]);
+  if (Old and AssertedMask)=0 then begin
+   break;
+  end;
+  New:=Old or PendingMask;
+ until TPasMPInterlocked.CompareExchange(fIRQStates[WordIndex],New,Old)=Old;
+ if ((Old and AssertedMask)<>0) and ((Old and PendingMask)=0) then begin
   TPasMPInterlocked.BitwiseOr(fPending[aIRQ shr 5],TPasRISCVUInt32(1) shl (aIRQ and 31));
   NotifyContextIRQ(aContext,aIRQ);
  end;
@@ -26960,7 +27072,7 @@ var Mask:TPasRISCVUInt32;
 begin
  if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
-{$if defined(PasRISCVInterruptControllerLock)}
+{$if defined(PasRISCVPLICControllerLock)}
   fIRQLock.Acquire;
   try
    if (fPending[aIRQ shr 5] and Mask)=0 then begin
@@ -26983,21 +27095,17 @@ end;
 
 function TPasRISCV.TPLICDevice.RaiseIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
 var Mask:TPasRISCVUInt32;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
     Old,New:TPasRISCVUInt32;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+    Old,New,AssertedMask,PendingMask:TPasRISCVUInt64;
+    WordIndex,Shift:TPasRISCVUInt32;
 {$ifend}
 begin
  if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
   Mask:=TPasRISCVUInt32(1) shl (aIRQ and 31);
-{$if defined(PasRISCVInterruptPendingOnlyDedup)}
-  // Approach A: always set fRaised (level state for CompleteIRQ), dedup only on fPending
-  // which is cleared early by ClaimIRQ, closing the race window.
-  TPasMPInterlocked.BitwiseOr(fRaised[aIRQ shr 5],Mask);
-  if (TPasMPInterlocked.ExchangeBitwiseOr(fPending[aIRQ shr 5],Mask) and Mask)=0 then begin
-   NotifyIRQ(aIRQ);
-  end;
-{$elseif defined(PasRISCVInterruptGenerationCounter)}
-  // Approach B: bump generation counter (no ABA possible), dedup on fPending.
+{$if defined(PasRISCVPLICGenerationCounter)}
+  // Bump generation counter (no ABA possible), dedup on fPending.
   if TPasMPInterlocked.Increment(fRaisedGenerations[aIRQ])=0 then begin
    TPasMPInterlocked.CompareExchange(fRaisedGenerations[aIRQ],1,0);
    TPasMPInterlocked.Write(fProcessedGenerations[aIRQ],0);
@@ -27005,8 +27113,8 @@ begin
   if (TPasMPInterlocked.ExchangeBitwiseOr(fPending[aIRQ shr 5],Mask) and Mask)=0 then begin
    NotifyIRQ(aIRQ);
   end;
-{$elseif defined(PasRISCVInterruptControllerLock)}
-  // Approach C: QEMU-style critical section, all state updates serialized.
+{$elseif defined(PasRISCVPLICControllerLock)}
+  // QEMU-style critical section, all state updates serialized.
   fIRQLock.Acquire;
   try
    fRaised[aIRQ shr 5]:=fRaised[aIRQ shr 5] or Mask;
@@ -27017,8 +27125,8 @@ begin
   finally
    fIRQLock.Release;
   end;
-{$elseif defined(PasRISCVInterruptAtomicIRQState)}
-  // Approach D: combined atomic state word per IRQ, CAS loop.
+{$elseif defined(PasRISCVPLICAtomicIRQState)}
+  // Combined atomic state word per IRQ, CAS loop.
   // Asserted + pending in single word, no intermediate inconsistent state.
   repeat
    Old:=TPasMPInterlocked.Read(fIRQState[aIRQ]);
@@ -27029,6 +27137,23 @@ begin
   until TPasMPInterlocked.CompareExchange(fIRQState[aIRQ],New,Old)=Old;
   if ((Old and IRQ_STATE_PENDING)=0) and ((New and IRQ_STATE_PENDING)<>0) then begin
    // Also update fPending summary bitmap for scan/MMIO compatibility
+   TPasMPInterlocked.BitwiseOr(fPending[aIRQ shr 5],Mask);
+   NotifyIRQ(aIRQ);
+  end;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+  // CAS on packed 4-bit-per-IRQ state
+  WordIndex:=aIRQ shr 4;
+  Shift:=(aIRQ and $f) shl 2;
+  AssertedMask:=IRQ_STATE_ASSERTED shl Shift;
+  PendingMask:=IRQ_STATE_PENDING shl Shift;
+  repeat
+   Old:=TPasMPInterlocked.Read(fIRQStates[WordIndex]);
+   New:=Old or AssertedMask;
+   if (Old and PendingMask)=0 then begin
+    New:=New or PendingMask;
+   end;
+  until TPasMPInterlocked.CompareExchange(fIRQStates[WordIndex],New,Old)=Old;
+  if ((Old and PendingMask)=0) and ((New and PendingMask)<>0) then begin
    TPasMPInterlocked.BitwiseOr(fPending[aIRQ shr 5],Mask);
    NotifyIRQ(aIRQ);
   end;
@@ -27052,33 +27177,42 @@ begin
 end;
 
 function TPasRISCV.TPLICDevice.LowerIRQ(const aIRQ:TPasRISCVUInt32):Boolean;
-{$if defined(PasRISCVInterruptAtomicIRQState)}
+{$if defined(PasRISCVPLICAtomicIRQState)}
 var Old,New:TPasRISCVUInt32;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+var Old,New,AssertedMask:TPasRISCVUInt64;
+    WordIndex,Shift:TPasRISCVUInt32;
 {$ifend}
 begin
  if (aIRQ>0) and (aIRQ<PLIC_SOURCE_MAX) then begin
-{$if defined(PasRISCVInterruptPendingOnlyDedup)}
-  // Approach A: same as original — clear fRaised for level semantics
-  TPasMPInterlocked.BitwiseAnd(fRaised[aIRQ shr 5],not (TPasRISCVUInt32(1) shl (aIRQ and 31)));
-{$elseif defined(PasRISCVInterruptGenerationCounter)}
-  // Approach B: snapshot current generation as processed
+{$if defined(PasRISCVPLICGenerationCounter)}
+  // Snapshot current generation as processed
   TPasMPInterlocked.Write(fProcessedGenerations[aIRQ],TPasMPInterlocked.Read(fRaisedGenerations[aIRQ]));
-{$elseif defined(PasRISCVInterruptControllerLock)}
-  // Approach C: clear under lock
+{$elseif defined(PasRISCVPLICControllerLock)}
+  // Clear under lock
   fIRQLock.Acquire;
   try
    fRaised[aIRQ shr 5]:=fRaised[aIRQ shr 5] and not (TPasRISCVUInt32(1) shl (aIRQ and 31));
   finally
    fIRQLock.Release;
   end;
-{$elseif defined(PasRISCVInterruptAtomicIRQState)}
-  // Approach D: CAS loop, clear only asserted, never touch pending
+{$elseif defined(PasRISCVPLICAtomicIRQState)}
+  // CAS loop, clear only asserted, never touch pending
   repeat
    Old:=TPasMPInterlocked.Read(fIRQState[aIRQ]);
    New:=Old and not IRQ_STATE_ASSERTED;
   until TPasMPInterlocked.CompareExchange(fIRQState[aIRQ],New,Old)=Old;
+{$elseif defined(PasRISCVPLICOptimizedAtomicIRQState)}
+  // CAS clear only asserted in packed word
+  WordIndex:=aIRQ shr 4;
+  Shift:=(aIRQ and $f) shl 2;
+  AssertedMask:=IRQ_STATE_ASSERTED shl Shift;
+  repeat
+   Old:=TPasMPInterlocked.Read(fIRQStates[WordIndex]);
+   New:=Old and not AssertedMask;
+  until TPasMPInterlocked.CompareExchange(fIRQStates[WordIndex],New,Old)=Old;
 {$else}
-  // Default (original): clear fRaised bitmap bit
+  // Clear fRaised bitmap bit
   TPasMPInterlocked.BitwiseAnd(fRaised[aIRQ shr 5],not (TPasRISCVUInt32(1) shl (aIRQ and 31)));
 {$ifend}
   result:=true;
