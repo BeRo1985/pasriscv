@@ -104261,8 +104261,10 @@ begin
        APLIC0:=TPasRISCV.TFDT.TFDTNode.Create(fFDT,'aplics_s',fConfiguration.fAPLICSupervisorBase);
       end;
       else begin
+       continue;
       end;
      end;
+
      try
 
       ///////////
