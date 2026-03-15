@@ -10573,10 +10573,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fSpinDetectStartTime:TPasRISCVUInt64;
               fSpinDetectTriggered:Boolean;
 {$endif}
+              procedure RestartExecution; inline;
               procedure UpdateMMU;
               function CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
               function AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
-              procedure FlushTLB(const aInterrupt:Boolean;const aSkipJITTLB:Boolean=false);
+              procedure FlushTLB(const aInterrupt,aFlushJITTLB:Boolean);
               procedure FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
               procedure TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
               procedure TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
@@ -68840,7 +68841,7 @@ begin
 
  fMMUMode:=TMMU.TMMUMode.SV39;
  fRootPageTable:=0;
- FlushTLB(false);
+ FlushTLB(false,true);
 
 {$ifdef PasMPDebugSpinDetect}
  fSpinDetectPC:=0;
@@ -69213,6 +69214,11 @@ begin
  inherited Destroy;
 end;
 
+procedure TPasRISCV.THART.RestartExecution;
+begin
+ TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
+end;
+
 procedure TPasRISCV.THART.Init;
 var AIARegFileMode:TAIARegFileMode;
 begin
@@ -69320,10 +69326,10 @@ begin
 {$endif}
   end;
 {$endif}
-  TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
+  RestartExecution;
 {$else}
   // Flush the Translation Lookaside Buffer (TLB) to ensure memory access consistency after mode change
-  FlushTLB(true);
+  FlushTLB(true,true);
 {$endif}
 
 {$ifdef PasRISCVMMIOTLB}
@@ -69354,7 +69360,7 @@ begin
   fState.ExceptionValue:=aExceptionValue;
   fState.ExceptionData:=aExceptionData;
   fState.ExceptionPC:=aExceptionPC;
-  TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
+  RestartExecution;
  end;
 end;
 
@@ -69381,10 +69387,10 @@ begin
  fRootPageTable:=(SATP and ((TPasRISCVUInt64(1) shl 44)-1)) shl 12;
 {$ifdef SmartSATPFlush}
  if (OldMMUMode<>fMMUMode) or (OldRootPageTable<>fRootPageTable) then begin
-  FlushTLB(true);
+  FlushTLB(true,true);
  end;
 {$else}
- FlushTLB(true);
+ FlushTLB(true,true);
 {$endif}
 end;
 
@@ -69418,11 +69424,7 @@ begin
    SetException(TExceptionValue.InstructionPageFault,aAddress,fState.PC);
   end;
  end;
-{$ifdef NoPageFaultJITTLBFlush}
- FlushTLB(true,true);
-{$else}
- FlushTLB(true);
-{$endif}
+ FlushTLB(false,{$ifdef NoPageFaultJITTLBFlush}false{$else}true{$endif});
 end;
 
 procedure TPasRISCV.THART.RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
@@ -69442,11 +69444,7 @@ begin
    SetException(TExceptionValue.InstructionGuestPageFault,aGuestAddress,fState.PC);
   end;
  end;
-{$ifdef NoPageFaultJITTLBFlush}
- FlushTLB(true,true);
-{$else}
- FlushTLB(true);
-{$endif}
+ FlushTLB(false,{$ifdef NoPageFaultJITTLBFlush}false{$else}true{$endif});
 end;
 
 function TPasRISCV.THART.GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
@@ -69716,7 +69714,7 @@ begin
  fMMUMode:=SavedMMUMode;
 end;
 
-procedure TPasRISCV.THART.FlushTLB(const aInterrupt:Boolean;const aSkipJITTLB:Boolean=false);
+procedure TPasRISCV.THART.FlushTLB(const aInterrupt,aFlushJITTLB:Boolean);
 var DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 {$ifdef PerModeTLB}
     ModeIndex:TMode;
@@ -69738,7 +69736,7 @@ begin
  DirectAccessTLBEntry^.Execute:=TPasRISCVUInt64($ffffffffffffffff);
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
- if (not aSkipJITTLB) and assigned(fJustInTimeCompiler) then begin
+ if aFlushJITTLB and assigned(fJustInTimeCompiler) then begin
   fJustInTimeCompiler.FlushJITTLB;
 {$ifdef PasRISCVJustInTimeCompilerStats}
   inc(fJustInTimeCompiler.fStatFlushTLBFull);
@@ -69749,7 +69747,7 @@ begin
  TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
 {$endif}
  if aInterrupt then begin
-  TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
+  RestartExecution;
  end;
 end;
 
@@ -69822,7 +69820,7 @@ begin
  end;
 {$ifend}
  if aInterrupt{$if defined(PasRISCVJustInTimeCompiler) and defined(SmartJITTLBFlush)} and HadExecute{$ifend} then begin
-  TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fHARTMask);
+  RestartExecution;
  end;
 end;
 
@@ -72350,7 +72348,7 @@ begin
 
   if ((Status xor OldStatus) and TPasRISCV.THART.TCSR.TMask.TStatus.MXR)<>0 then begin
    // Flush tlb on mstatus fields that affect VM like QEmu
-   FlushTLB(true);
+   FlushTLB(true,true);
   end;
 
   if THART.TMode((Status shr 11) and 3)=THART.TMode.Hypervisor then begin
@@ -72471,7 +72469,7 @@ begin
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
-  Checkinterrupts;
+  CheckInterrupts;
  end;
 end;
 
@@ -72494,7 +72492,7 @@ begin
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=Value;
    end;
-   Checkinterrupts;
+   CheckInterrupts;
   end;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
@@ -72504,7 +72502,7 @@ begin
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
-  Checkinterrupts;
+  CheckInterrupts;
  end;
 end;
 
@@ -72523,7 +72521,7 @@ begin
    CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_MEIP_MASK);
    fState.Registers[rd]:=CSRValue;
   end;
-  Checkinterrupts;
+  CheckInterrupts;
  end;
 end;
 
@@ -72546,7 +72544,7 @@ begin
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=Value;
    end;
-   Checkinterrupts;
+   CheckInterrupts;
   end;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
@@ -72557,7 +72555,7 @@ begin
    CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_SEIP_MASK);
    fState.Registers[rd]:=CSRValue;
   end;
-  Checkinterrupts;
+  CheckInterrupts;
  end;
 end;
 
@@ -72763,7 +72761,7 @@ begin
    CSRValue:=Value;
   end;
   fState.CSR.fData[TCSR.TAddress.HGATP]:=CSRValue;
-  FlushTLB(true);
+  FlushTLB(true,true);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value;
   end;
@@ -91328,7 +91326,7 @@ begin
            if rs1<>TRegister.Zero then begin
             FlushTLBPage(true,fState.Registers[rs1]);
            end else begin
-            FlushTLB(true);
+            FlushTLB(true,true);
            end;
            State.LRSC:=false;
           end;
@@ -91339,7 +91337,7 @@ begin
           if rs1<>TRegister.Zero then begin
            FlushTLBPage(true,fState.Registers[rs1]);
           end else begin
-           FlushTLB(true);
+           FlushTLB(true,true);
           end;
           State.LRSC:=false;
          end else begin
@@ -91360,7 +91358,7 @@ begin
            if rs1<>TRegister.Zero then begin
             FlushTLBPage(true,fState.Registers[rs1]);
            end else begin
-            FlushTLB(true);
+            FlushTLB(true,true);
            end;
            State.LRSC:=false;
           end;
@@ -91371,7 +91369,7 @@ begin
           if rs1<>TRegister.Zero then begin
            FlushTLBPage(true,fState.Registers[rs1]);
           end else begin
-           FlushTLB(true);
+           FlushTLB(true,true);
           end;
           State.LRSC:=false;
          end else begin
@@ -91386,7 +91384,7 @@ begin
           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
          end else if fState.Mode>=THART.TMode.Supervisor then begin
           // Flush TLB for VS-stage entries
-          FlushTLB(true);
+          FlushTLB(true,true);
           fState.LRSC:=false;
          end else begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -91405,7 +91403,7 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          end else begin
           // Flush TLB for G-stage entries
-          FlushTLB(true);
+          FlushTLB(true,true);
           fState.LRSC:=false;
          end;
          result:=4;
@@ -91416,7 +91414,7 @@ begin
          if fState.VirtualMode then begin
           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
          end else if fState.Mode>=THART.TMode.Supervisor then begin
-          FlushTLB(true);
+          FlushTLB(true,true);
           fState.LRSC:=false;
          end else begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -91434,7 +91432,7 @@ begin
           // TVM=1 in mstatus: HINVAL.GVMA traps from HS-mode
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          end else begin
-          FlushTLB(true);
+          FlushTLB(true,true);
           fState.LRSC:=false;
          end;
          result:=4;
@@ -91523,6 +91521,8 @@ begin
 
 {$ifdef MRETSRETCheckInterrupts}
               CheckInterrupts;
+{$else}
+//            RestartExecution;
 {$endif}
 
               result:=4;
@@ -91568,6 +91568,8 @@ begin
 
 {$ifdef MRETSRETCheckInterrupts}
               CheckInterrupts;
+{$else}
+//            RestartExecution;
 {$endif}
 
               result:=4;
@@ -91623,6 +91625,8 @@ begin
 
 {$ifdef MRETSRETCheckInterrupts}
               CheckInterrupts;
+{$else}
+//            RestartExecution;
 {$endif}
 
               result:=4;
@@ -97690,6 +97694,7 @@ begin
 {$if defined(PasRISCVInterruptWakeupHardening)}
    TPasMPInterlocked.Increment(fMachine.fWakeGeneration);
 {$ifend}
+// RestartExecution;
    TPasMPInterlocked.BitwiseOr(fMachine.fRunState,fMachine.fAllHARTMask);
    fMachine.fWakeUpConditionVariable.Broadcast;
   finally
@@ -98180,7 +98185,7 @@ begin
  if fState.VirtualMode<>aEnabled then begin
   SwapHypervisorRegs;
   fState.VirtualMode:=aEnabled;
-  FlushTLB(true); // Flush the TLB on all virtual mode changes like QEmu
+  FlushTLB(true,true); // Flush the TLB on all virtual mode changes like QEmu
   UpdateMMU;
 {$if defined(PasRISCVJustInTimeCompiler) and defined(JITTLBTag)}
   if assigned(fJustInTimeCompiler) then begin
@@ -98504,6 +98509,7 @@ begin
 
    if DoInterrupt then begin
     fMachine.InterruptAndWakeUp;
+//  RestartExecution;
    end;
 
   end;
@@ -98549,6 +98555,7 @@ begin
   end;
   if DoInterrupt then begin
    fMachine.InterruptAndWakeUp;
+// RestartExecution;
   end;
  end;
 end;
@@ -98559,6 +98566,7 @@ begin
  Interrupts:=InterruptsPending;
  if Interrupts<>0 then begin
   fMachine.InterruptAndWakeUp;
+//RestartExecution;
  end;
 end;
 
@@ -98609,7 +98617,7 @@ begin
 {$endif}
 
   if (fMachine.fFlushTLBHARTMask and fHARTMask)<>0 then begin
-   FlushTLB(false);
+   FlushTLB(false,true);
    TPasMPInterlocked.BitwiseAnd(fMachine.fFlushTLBHARTMask,TPasMPUInt32(not TPasMPUInt32(fHARTMask)));
   end;
 
@@ -105384,10 +105392,7 @@ begin
 
 end;
 
-
-function TPasRISCV.LoadBinaryIntoMemory(const aBinary: TMemoryStream;
- const aOffset: TPasRISCVUInt64; out aSize: TPasRISCVUInt64;
- const aCanELF: Boolean; const aObjCopy: Boolean): Boolean;
+function TPasRISCV.LoadBinaryIntoMemory(const aBinary:TMemoryStream;const aOffset:TPasRISCVUInt64;out aSize:TPasRISCVUInt64;const aCanELF:Boolean;const aObjCopy:Boolean):Boolean;
 begin
 
  result:=false;
