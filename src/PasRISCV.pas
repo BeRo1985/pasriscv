@@ -3149,8 +3149,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             { TIMSICDevice }
             TIMSICDevice=class(TBusDevice)
              public
-              const DefaultBaseAddressMachine=TPasRISCVUInt64($24000000);
-                    DefaultBaseAddressSupervisor=TPasRISCVUInt64($28000000);
+              const DefaultBaseAddressMachine=TPasRISCVUInt64($02400000);
+                    DefaultBaseAddressSupervisor=TPasRISCVUInt64($02800000);
                     DefaultSizePerHART=TPasRISCVUInt64($4000);
              private
               fAIARegFileMode:TAIARegFileMode;
