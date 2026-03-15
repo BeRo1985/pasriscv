@@ -12070,6 +12070,20 @@ begin
 end;
 {$ifend}
 
+function HexStr(const aValue:TPasRISCVUInt64;const aDigits:TPasRISCVSizeInt=16):TPasRISCVUTF8String;
+const HexChars:array[0..15] of TPasRISCVRawByteChar=('0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f');
+var Index:TPasRISCVSizeInt;
+    Value:TPasRISCVUInt8;
+begin
+ result:='';
+ for Index:=aDigits-1 downto 0 do begin
+  Value:=(aValue shr (Index shl 2)) and $f;
+  if (Value<>0) or (length(result)>0) then begin
+   result:=result+HexChars[Value];
+  end;
+ end;
+end;
+
 function FlushStream(const aStream:TStream):Boolean;
 {$if defined(fpc)}
 begin
@@ -98594,7 +98608,7 @@ begin
   end;
 {$endif}
 
-  if (fMachine.fFlushTLBHARTMask and fHARTMask)<>0 then begin
+ if (fMachine.fFlushTLBHARTMask and fHARTMask)<>0 then begin
    FlushTLB(false);
    TPasMPInterlocked.BitwiseAnd(fMachine.fFlushTLBHARTMask,TPasMPUInt32(not TPasMPUInt32(fHARTMask)));
   end;
