@@ -1945,6 +1945,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              RUNSTATE_HART_SHIFT=0;
              CLOCK_FREQUENCY=1000000;
              CLOCK_FREQUENCY_INTERVAL_100HZ=(CLOCK_FREQUENCY+50) div 100;
+             CYCLE_OVERFLOW_SHIFT=16;
              FE_ALL_EXCEPT=$3f;
              FE_INVALID=$01;
              FE_DENORM=$02;
@@ -52031,7 +52032,7 @@ begin
     JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
     if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fHART.fDirectAccessTLBCache^{$else}fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
        ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
-       (((fHART.fState.Cycle xor LastCycles) shr 16)=0) then begin
+       (((fHART.fState.Cycle xor LastCycles) shr TPasRISCV.CYCLE_OVERFLOW_SHIFT)=0) then begin
      JITTLBEntry^.Block(@fHART.fState);
     end else begin
      break;
@@ -58978,9 +58979,9 @@ begin
  EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrRegister,GuestCycleOffset,true);
  // xor eax, edx, detect changed bits (old ^ new)
  Emit2RegOp(X86_XOR,ScratchReg,TPasRISCVUInt8(ord(TX64Register.rRDX)),false);
- // shr eax, 16, isolate bits 16+ (sets ZF if no 16-bit boundary crossed)
- EmitShiftRegImm(SHIFT_SHR,ScratchReg,16,false);
- // jnz .exit, any bit 16+ changed means ~65536 cycles elapsed
+ // shr eax, 16, isolate bits TPasRISCV.CYCLE_OVERFLOW_SHIFT+ (sets ZF if no 16-bit boundary crossed)
+ EmitShiftRegImm(SHIFT_SHR,ScratchReg,TPasRISCV.CYCLE_OVERFLOW_SHIFT,false);
+ // jnz .exit, any bit TPasRISCV.CYCLE_OVERFLOW_SHIFT+ changed means ~65536 cycles elapsed
  EmitJccRel32(CC_NE,0);
  result:=fTemporaryCodeSize-4;
 end;
@@ -98649,7 +98650,7 @@ begin
      if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartJITTLBFlush} and ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
         (not fState.JITSkipExecution) and
         ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
-        (((fState.Cycle xor LastCycles) shr 16)=0) then begin
+        (((fState.Cycle xor LastCycles) shr TPasRISCV.CYCLE_OVERFLOW_SHIFT)=0) then begin
       JITTLBEntry^.Block(@fState);
       JITCodeExecuted:=true;
      end else begin
@@ -98743,7 +98744,7 @@ begin
 {$endif}
 
   until ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))<>RUNSTATE_RUNNING) or
-        (((fState.Cycle xor LastCycles) shr 16)<>0);
+        (((fState.Cycle xor LastCycles) shr TPasRISCV.CYCLE_OVERFLOW_SHIFT)<>0);
 
 {$ifdef PasRISCVJustInTimeCompiler}
 {$ifdef PasRISCVJustInTimeCompilerDebug}
