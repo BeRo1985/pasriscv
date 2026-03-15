@@ -98608,7 +98608,7 @@ begin
   end;
 {$endif}
 
- if (fMachine.fFlushTLBHARTMask and fHARTMask)<>0 then begin
+  if (fMachine.fFlushTLBHARTMask and fHARTMask)<>0 then begin
    FlushTLB(false);
    TPasMPInterlocked.BitwiseAnd(fMachine.fFlushTLBHARTMask,TPasMPUInt32(not TPasMPUInt32(fHARTMask)));
   end;
