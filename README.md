@@ -43,6 +43,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Sm1p13 (Machine Architecture v1.13)
   - Smcsrind (Machine-Level CSR Indirect Access)
   - Smcntrpmf (Counter Privilege-Mode Filtering) *(compile-time optional, see `{$define PasRISCVSmcntrpmf}`)*
+  - Smcdeleg (Counter Delegation to S-mode) + Ssccfg (S-mode Counter Configuration) *(compile-time optional, see `{$define PasRISCVSmcdeleg}`)*
   - Smrnmi (Resumable Non-Maskable Interrupts)
   - Smdbltrp (Machine-Mode Double Trap) *(compile-time optional, see `{$define PasRISCVSmdbltrp}`)*
   - Ssdbltrp (Supervisor-Mode Double Trap) *(compile-time optional, see `{$define PasRISCVSsdbltrp}`; requires Smdbltrp)*
@@ -250,6 +251,7 @@ Some features are controlled by compile-time `{$define}` directives at the top o
 | `PasRISCVSmcntrpmf` | enabled | Smcntrpmf — Counter Privilege-Mode Filtering. When enabled, the cycle counter can be inhibited per-privilege-mode via `mcyclecfg`/`minstretcfg` CSRs. The JIT uses a branchless mask (`CycleIncrementMask`) to avoid branches in hot paths, but the extra load+AND+memory-add sequence has a small cost even when counting is not inhibited. Disable by commenting out `{$define PasRISCVSmcntrpmf}` if Smcntrpmf guest support is not required. |
 | `PasRISCVSmdbltrp` | disabled | Smdbltrp — Machine-Mode Double Trap. When enabled, trapping to M-mode while `mstatus.MDT=1` triggers a double-trap: the hart is redirected to the RNMI handler (if `mnstatus.NMIE=1`) or halted. `mstatus.MDT` is set on every M-mode trap entry and cleared by MRET. Although the checks are only reached on the (rare) trap path, the MDT bit participates in the `mstatus` WARL mask even when inactive, which subtly changes CSR write behaviour. Enable by uncommenting `{$define PasRISCVSmdbltrp}`. |
 | `PasRISCVSsdbltrp` | disabled | Ssdbltrp — Supervisor-Mode Double Trap. Requires `PasRISCVSmdbltrp`. When enabled, two independent double-trap mechanisms are active: **(1) HS-mode:** if `menvcfg.DTE=1` and `mstatus.SDT=1`, a trap to HS-mode escalates to M-mode as a synchronous cause-16 exception (`mcause=16`, `mtval2=original scause`). **(2) VS-mode:** if `henvcfg.DTE=1` and `vsstatus.SDT=1`, a trap to VS-mode escalates to HS-mode as a synchronous cause-16 exception (`scause=16`, `htval=original vscause`). Both SDT bits are set on every respective trap entry (when the corresponding DTE=1) and cleared by the matching SRET. Writing SDT=1 to `mstatus`/`vsstatus` forces the corresponding SIE=0. Enable by uncommenting `{$define PasRISCVSsdbltrp}`. |
+| `PasRISCVSmcdeleg` | disabled | Smcdeleg+Ssccfg — Counter Delegation. When enabled, adds `mcounterdeleg` (0x309, MRW) and `scounterinhibit` (0x120, SRW). M-mode can delegate counters 0–31 to S-mode by setting bits in `mcounterdeleg`. S-mode (HS-mode only; VS-mode raises VirtualInstruction) can then inhibit delegated counters via `scounterinhibit`, with writes masked to bits that are set in `mcounterdeleg` (WARL). Since HPM counters 3–31 do not track real events in the emulator, the inhibition has no visible counting effect, but the CSRs are correctly accessible and Linux/OpenSBI counter-delegation setup will not trap. Enable by uncommenting `{$define PasRISCVSmcdeleg}`. |
 
 ## ISA Extension Notes
 
@@ -286,6 +288,23 @@ These extensions (ratified August 2024) add hardware-enforced detection of neste
   - The RNMI redirect, M-mode escalation, and HS-mode escalation paths are all implemented. 
 - Because the checks sit on the (relatively rare) trap entry and exit paths rather than in the per-instruction hot loop, the runtime overhead is negligible.
   - Nevertheless, the extensions change the `mstatus`/`vsstatus` WARL mask even when logically inactive, so they are guarded behind compile-time `{$define}` flags (`PasRISCVSmdbltrp` / `PasRISCVSsdbltrp`) to allow complete exclusion when not needed.
+
+### Smcdeleg / Ssccfg (Counter Delegation)
+
+**What they do in real hardware:**
+
+Smcdeleg (Machine Counter Delegation) and its companion Ssccfg (Supervisor Counter Configuration) allow M-mode to hand performance counter management to S-mode:
+
+- **`mcounterdeleg`** (0x309, MRW): a 32-bit bitmask where bit N=1 means counter N is delegated to S-mode. Delegated counters are independently controlled by S-mode; non-delegated counters remain exclusively in M-mode's domain.
+- **`scounterinhibit`** (0x120, SRW): once a counter is delegated, S-mode can prevent it from counting while in S or U privilege mode by setting the corresponding bit. Only bits corresponding to delegated counters (set in `mcounterdeleg`) are writable; all other bits read as zero (WARL). VS-mode raises a VirtualInstruction exception when accessing this CSR (it has no VS-mode shadow).
+
+Together they allow Linux's `perf` subsystem to manage performance counters from S-mode without M-mode (OpenSBI) involvement on every counter event.
+
+**What this means for the emulator:**
+
+- `mcounterdeleg` and `scounterinhibit` are fully implemented as read/write WARL CSRs with correct privilege enforcement.
+- Since HPM counters 3–31 do not track real hardware events in the emulator (they always read zero unless explicitly written by software), the inhibition logic has no observable counting side-effect — but the CSRs are correctly accessible and writable, so Linux and OpenSBI counter-delegation setup will not fault.
+- The extension is guarded behind `{$define PasRISCVSmcdeleg}` (disabled by default).
 
 ### Smepmp (Enhanced Physical Memory Protection)
 
