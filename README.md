@@ -37,6 +37,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Ssu64xl (UXLEN=64)
   - Ssstateen (Supervisor-Mode State Enable)
   - Ssstrict (No Non-Conforming Extensions)
+  - Ssqosid (Quality-of-Service Identifiers)
   - Svbare (satp Bare Mode)
   - Ss1p13 (Supervisor Architecture v1.13)
   - Sm1p13 (Machine Architecture v1.13)
@@ -241,6 +242,14 @@ Some features are controlled by compile-time `{$define}` directives at the top o
 | Define | Default | Description |
 |--------|---------|-------------|
 | `PasRISCVSmcntrpmf` | enabled | Smcntrpmf — Counter Privilege-Mode Filtering. When enabled, the cycle counter can be inhibited per-privilege-mode via `mcyclecfg`/`minstretcfg` CSRs. The JIT uses a branchless mask (`CycleIncrementMask`) to avoid branches in hot paths, but the extra load+AND+memory-add sequence has a small cost even when counting is not inhibited. Disable by commenting out `{$define PasRISCVSmcntrpmf}` if Smcntrpmf guest support is not required. |
+
+## ISA Extension Notes
+
+### Ssqosid (Quality-of-Service Identifiers)
+
+**What it does in real hardware:** Every memory and cache request issued by a hart carries two identifiers propagated from the `srmcfg` CSR — the RCID (Resource Control ID, bits 11:0) and the MCID (Monitoring Counter ID, bits 27:16). Shared resource controllers such as LLC partitioners, memory bandwidth limiters, and performance monitors use these IDs to enforce per-workload resource allocation and to attribute resource-usage statistics. The OS scheduler writes `srmcfg` on every context switch to assign the incoming task's QoS class and monitoring slot.
+
+**What this means for the emulator:** PasRISCV does not emulate any QoS-capable resource controllers, so RCID and MCID have no effect on emulator behaviour. The `srmcfg` CSR (`$181`) is fully implemented as a read/write register with correct WPRI masking (only bits 11:0 and 27:16 are writable), ensuring that guest software — including the Linux CBQRI / Ssqosid kernel driver — can discover and use the extension without taking illegal-instruction traps and without observing any data corruption on reads.
 
 ## Documentation
 
