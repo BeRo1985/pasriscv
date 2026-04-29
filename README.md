@@ -41,6 +41,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Ss1p13 (Supervisor Architecture v1.13)
   - Sm1p13 (Machine Architecture v1.13)
   - Smcsrind (Machine-Level CSR Indirect Access)
+  - Smcntrpmf (Counter Privilege-Mode Filtering) *(compile-time optional, see `{$define PasRISCVSmcntrpmf}`)*
   - Smrnmi (Resumable Non-Maskable Interrupts)
   - Sscsrind (Supervisor-Level CSR Indirect Access)
   - Smaia (Machine-Level Advanced Interrupt Architecture, when AIA is enabled)
@@ -232,6 +233,14 @@ Overall, the decision to support only Little-Endian mode in the PasRISCV emulato
 ## Usage
 
 See [pasriscvemu](https://github.com/BeRo1985/pasriscvemu) PasVulkan project for an emulator frontend that uses this library.
+
+## Compile-Time Feature Flags
+
+Some features are controlled by compile-time `{$define}` directives at the top of `src/PasRISCV.pas`. These flags exist because even when a feature is logically inactive at runtime, having the conditional checks compiled in can still impose a measurable performance overhead in hot paths (e.g. every instruction's cycle counter update in the JIT or interpreter).
+
+| Define | Default | Description |
+|--------|---------|-------------|
+| `PasRISCVSmcntrpmf` | enabled | Smcntrpmf — Counter Privilege-Mode Filtering. When enabled, the cycle counter can be inhibited per-privilege-mode via `mcyclecfg`/`minstretcfg` CSRs. The JIT uses a branchless mask (`CycleIncrementMask`) to avoid branches in hot paths, but the extra load+AND+memory-add sequence has a small cost even when counting is not inhibited. Disable by commenting out `{$define PasRISCVSmcntrpmf}` if Smcntrpmf guest support is not required. |
 
 ## Documentation
 
