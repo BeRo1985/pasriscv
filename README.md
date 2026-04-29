@@ -44,6 +44,8 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Smcsrind (Machine-Level CSR Indirect Access)
   - Smcntrpmf (Counter Privilege-Mode Filtering) *(compile-time optional, see `{$define PasRISCVSmcntrpmf}`)*
   - Smrnmi (Resumable Non-Maskable Interrupts)
+  - Smdbltrp (Machine-Mode Double Trap) *(compile-time optional, see `{$define PasRISCVSmdbltrp}`)*
+  - Ssdbltrp (Supervisor-Mode Double Trap) *(compile-time optional, see `{$define PasRISCVSsdbltrp}`; requires Smdbltrp)*
   - Sscsrind (Supervisor-Level CSR Indirect Access)
   - Smaia (Machine-Level Advanced Interrupt Architecture, when AIA is enabled)
   - Ssaia (Supervisor-Level Advanced Interrupt Architecture, when AIA is enabled)
@@ -242,6 +244,8 @@ Some features are controlled by compile-time `{$define}` directives at the top o
 | Define | Default | Description |
 |--------|---------|-------------|
 | `PasRISCVSmcntrpmf` | enabled | Smcntrpmf — Counter Privilege-Mode Filtering. When enabled, the cycle counter can be inhibited per-privilege-mode via `mcyclecfg`/`minstretcfg` CSRs. The JIT uses a branchless mask (`CycleIncrementMask`) to avoid branches in hot paths, but the extra load+AND+memory-add sequence has a small cost even when counting is not inhibited. Disable by commenting out `{$define PasRISCVSmcntrpmf}` if Smcntrpmf guest support is not required. |
+| `PasRISCVSmdbltrp` | disabled | Smdbltrp — Machine-Mode Double Trap. When enabled, trapping to M-mode while `mstatus.MDT=1` triggers a double-trap: the hart is redirected to the RNMI handler (if `mnstatus.NMIE=1`) or halted. `mstatus.MDT` is set on every M-mode trap entry and cleared by MRET. Although the checks are only reached on the (rare) trap path, the MDT bit participates in the `mstatus` WARL mask even when inactive, which subtly changes CSR write behaviour. Enable by uncommenting `{$define PasRISCVSmdbltrp}`. |
+| `PasRISCVSsdbltrp` | disabled | Ssdbltrp — Supervisor-Mode Double Trap. Requires `PasRISCVSmdbltrp`. When enabled, two independent double-trap mechanisms are active: **(1) HS-mode:** if `menvcfg.DTE=1` and `mstatus.SDT=1`, a trap to HS-mode escalates to M-mode as a synchronous cause-16 exception (`mcause=16`, `mtval2=original scause`). **(2) VS-mode:** if `henvcfg.DTE=1` and `vsstatus.SDT=1`, a trap to VS-mode escalates to HS-mode as a synchronous cause-16 exception (`scause=16`, `htval=original vscause`). Both SDT bits are set on every respective trap entry (when the corresponding DTE=1) and cleared by the matching SRET. Writing SDT=1 to `mstatus`/`vsstatus` forces the corresponding SIE=0. Enable by uncommenting `{$define PasRISCVSsdbltrp}`. |
 
 ## ISA Extension Notes
 
@@ -250,6 +254,17 @@ Some features are controlled by compile-time `{$define}` directives at the top o
 **What it does in real hardware:** Every memory and cache request issued by a hart carries two identifiers propagated from the `srmcfg` CSR — the RCID (Resource Control ID, bits 11:0) and the MCID (Monitoring Counter ID, bits 27:16). Shared resource controllers such as LLC partitioners, memory bandwidth limiters, and performance monitors use these IDs to enforce per-workload resource allocation and to attribute resource-usage statistics. The OS scheduler writes `srmcfg` on every context switch to assign the incoming task's QoS class and monitoring slot.
 
 **What this means for the emulator:** PasRISCV does not emulate any QoS-capable resource controllers, so RCID and MCID have no effect on emulator behaviour. The `srmcfg` CSR (`$181`) is fully implemented as a read/write register with correct WPRI masking (only bits 11:0 and 27:16 are writable), ensuring that guest software — including the Linux CBQRI / Ssqosid kernel driver — can discover and use the extension without taking illegal-instruction traps and without observing any data corruption on reads.
+
+### Smdbltrp / Ssdbltrp (Machine / Supervisor Double Trap)
+
+**What they do in real hardware:** These extensions (ratified August 2024) add hardware-enforced detection of nested trap conditions that would otherwise silently corrupt machine state.
+
+- **Smdbltrp** introduces `mstatus.MDT` (bit 42). Hardware sets MDT=1 on every M-mode trap entry. If a second trap to M-mode occurs while MDT is already 1, the hart detects a *machine double trap*: if `mnstatus.NMIE=1` it is redirected to the RNMI handler to allow controlled recovery; otherwise the hart enters a non-recoverable error state. MRET clears MDT. On reset, MDT is initialised to 1 (the hart starts as though it just took a trap) so that any early boot fault is caught.
+- **Ssdbltrp** introduces `mstatus.SDT` (bit 24), `vsstatus.SDT` (bit 24), `menvcfg.DTE` (bit 24), and `henvcfg.DTE` (bit 24). Two independent double-trap mechanisms apply:
+  - *HS-mode double trap:* When M-mode sets `menvcfg.DTE=1`, hardware sets `mstatus.SDT=1` on every HS-mode trap entry. If a second trap to HS-mode occurs while SDT is already 1, the fault escalates to M-mode as a synchronous exception with `mcause=16`, `mtval2` holding the original would-be `scause`. SRET and MRET clear `mstatus.SDT`.
+  - *VS-mode double trap:* When the hypervisor sets `henvcfg.DTE=1`, hardware sets `vsstatus.SDT=1` on every VS-mode trap entry. If a second trap to VS-mode occurs while `vsstatus.SDT` is already 1, the fault escalates to HS-mode as a synchronous exception with `scause=16`, `htval` holding the original would-be `vscause`. VS-mode SRET clears `vsstatus.SDT`. In both cases, writing SDT=1 to the respective status CSR also forces the corresponding SIE bit to 0.
+
+**What this means for the emulator:** Both HS-mode and VS-mode double-trap detection are fully implemented: `mstatus.MDT`, `mstatus.SDT`, `vsstatus.SDT`, `menvcfg.DTE`, and `henvcfg.DTE` are readable and writable WARL fields; double-trap detection runs on every trap entry; the RNMI redirect, M-mode escalation, and HS-mode escalation paths are all implemented. Because the checks sit on the (relatively rare) trap entry and exit paths rather than in the per-instruction hot loop, the runtime overhead is negligible. Nevertheless, the extensions change the `mstatus`/`vsstatus` WARL mask even when logically inactive, so they are guarded behind compile-time `{$define}` flags (`PasRISCVSmdbltrp` / `PasRISCVSsdbltrp`) to allow complete exclusion when not needed.
 
 ## Documentation
 
