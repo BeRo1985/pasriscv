@@ -41,6 +41,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Ss1p13 (Supervisor Architecture v1.13)
   - Sm1p13 (Machine Architecture v1.13)
   - Smcsrind (Machine-Level CSR Indirect Access)
+  - Smrnmi (Resumable Non-Maskable Interrupts)
   - Sscsrind (Supervisor-Level CSR Indirect Access)
   - Smaia (Machine-Level Advanced Interrupt Architecture, when AIA is enabled)
   - Ssaia (Supervisor-Level Advanced Interrupt Architecture, when AIA is enabled)
