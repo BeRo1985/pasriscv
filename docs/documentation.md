@@ -15,6 +15,7 @@ required to boot a RISC-V system.
 | APLIC-M               | $0c000000 | $4000     |                           | Advanced Platform Level Interrupt Controller for Machine mode (if AIA)               |
 | APLIC-S               | $0d000000 | $4000     |                           | Advanced Platform Level Interrupt Controller for Supervisor mode (if AIA)            |
 | UART                  | $10000000 | $100      | $0a                       | Universal Asynchronous Receiver/Transmitter                                          | 
+| SP805 WATCHDOG        | $10030000 | $1000     | $0e                       | ARM SP805 PrimeCell watchdog timer (`arm,sp805`); two-phase reset with IRQ then reboot |
 | SYSCON                | $11100000 | $1000     |                           | System Controller (Reset, Power off, etc.)                                           |
 
 # HID devices

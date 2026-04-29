@@ -139,6 +139,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - RTC (if RTCMode=VirtIO) — real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
     - Crypto — virtual cryptographic accelerator with CIPHER, HASH, MAC and AEAD services (VirtIO 1.2 Device ID 20)
     - Balloon — memory balloon device for dynamic memory management (VirtIO Device ID 5; inflate/deflate queues handled, actual page count tracked; no physical memory reclamation in the emulator)
+  - SP805 hardware watchdog timer (`arm,sp805` / `arm,primecell`, at `$10030000`, IRQ `$0e`; two-phase expiry: first timeout fires IRQ, second triggers machine reset if RESEN set; register-write protected by lock key `0x1ACCE551`)
   - Display mode support with three selectable backends:
     - SimpleFB — custom MMIO framebuffer (default, for baremetal and simple guests)
     - VirtIO GPU — standard VirtIO 2D GPU with EDID support (for Linux with virtio-gpu driver)
