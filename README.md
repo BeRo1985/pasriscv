@@ -50,8 +50,12 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Smaia (Machine-Level Advanced Interrupt Architecture, when AIA is enabled)
   - Ssaia (Supervisor-Level Advanced Interrupt Architecture, when AIA is enabled)
   - Supm (User-Mode Pointer Masking)
-  - Ssnpm (Supervisor-Mode Pointer Masking)
+  - Ssnpm (Supervisor-Mode Non-Privileged Pointer Masking)
+  - Smnpm (Machine-Mode Non-Privileged Pointer Masking)
+  - Smmpm (Machine-Mode Pointer Masking)
   - Sspm (Supervisor Pointer Masking Availability)
+  - Smstateen (Machine-Level State Enable)
+  - H (Hypervisor Extension)
   - Sha (Augmented Hypervisor Extension)
   - Shcounterenw (Writable hcounteren)
   - Shgatpa (hgatp SvNNx4 Mode Support)
@@ -282,6 +286,27 @@ These extensions (ratified August 2024) add hardware-enforced detection of neste
   - The RNMI redirect, M-mode escalation, and HS-mode escalation paths are all implemented. 
 - Because the checks sit on the (relatively rare) trap entry and exit paths rather than in the per-instruction hot loop, the runtime overhead is negligible.
   - Nevertheless, the extensions change the `mstatus`/`vsstatus` WARL mask even when logically inactive, so they are guarded behind compile-time `{$define}` flags (`PasRISCVSmdbltrp` / `PasRISCVSsdbltrp`) to allow complete exclusion when not needed.
+
+### Smepmp (Enhanced Physical Memory Protection)
+
+**What it does in real hardware:**
+
+Smepmp (ratified 2021) extends the baseline PMP with three new `mseccfg` control bits that tighten M-mode memory isolation:
+
+- **RLMBE** (Rule Locking Bypass Enable): when 0, locked PMP entries apply to M-mode as well, so M-mode code cannot bypass its own locked PMP rules. Provides a one-way ratchet: once RLMBE is cleared to 0, M-mode can never re-enable bypass without a reset.
+- **MMWP** (Machine-Mode Whitelist Policy): when 1, any M-mode access that does not match a PMP entry is denied (whitelist semantics), rather than allowed (default blacklist semantics). Forces explicit PMP coverage of all M-mode memory.
+- **MML** (Machine-Mode Lockdown): the most complex bit. When 1, it completely redefines the permission-encoding of all PMP entries: entries previously interpreted as S/U-mode rules are reinterpreted as M-mode rules (or shared rules), and the permission combinations that were formerly reserved become meaningful. This allows simultaneously expressing M-mode-only, S/U-mode-only, and shared read-only regions in the same PMP table. Once set, MML cannot be cleared without a reset.
+
+OpenSBI >= v1.3 uses Smepmp to enforce M-mode memory isolation by clearing RLMBE and optionally setting MMWP, hardening the security boundary between the firmware and the OS.
+
+**What this means for the emulator:**
+
+- The `mseccfg` CSR (`$747`) is implemented and writable with correct WARL masking.
+- The USEED and SSEED bits (entropy source seeding permission) are fully functional.
+- The MLPE bit (M-mode Landing Pad Enable, from Zicfilp) is functional when `{$define Zicfilp}` is active.
+- **RLMBE, MMWP, and MML are accepted as writes but not enforced**: all three bits can be set and read back correctly, but the emulator does not change its memory-access permission logic based on them.
+
+This is sufficient for a Linux guest: the guest OS never touches `mseccfg` directly. OpenSBI will attempt to use Smepmp and will not receive a trap, but the additional memory isolation it would normally provide is not active. Full enforcement is not required for functional correctness of any guest OS workload.
 
 ## Documentation
 
