@@ -44,6 +44,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Smcsrind (Machine-Level CSR Indirect Access)
   - Smcntrpmf (Counter Privilege-Mode Filtering) *(compile-time optional, see `{$define PasRISCVSmcntrpmf}`)*
   - Smcdeleg (Counter Delegation to S-mode) + Ssccfg (S-mode Counter Configuration) *(compile-time optional, see `{$define PasRISCVSmcdeleg}`)*
+  - Smepmp (Enhanced Physical Memory Protection) *(compile-time optional, see `{$define PasRISCVSmepmp}`)*
   - Smrnmi (Resumable Non-Maskable Interrupts)
   - Smdbltrp (Machine-Mode Double Trap) *(compile-time optional, see `{$define PasRISCVSmdbltrp}`)*
   - Ssdbltrp (Supervisor-Mode Double Trap) *(compile-time optional, see `{$define PasRISCVSsdbltrp}`; requires Smdbltrp)*
@@ -254,6 +255,7 @@ Some features are controlled by compile-time `{$define}` directives at the top o
 | `PasRISCVSmdbltrp` | disabled | Smdbltrp — Machine-Mode Double Trap. When enabled, trapping to M-mode while `mstatus.MDT=1` triggers a double-trap: the hart is redirected to the RNMI handler (if `mnstatus.NMIE=1`) or halted. `mstatus.MDT` is set on every M-mode trap entry and cleared by MRET. Although the checks are only reached on the (rare) trap path, the MDT bit participates in the `mstatus` WARL mask even when inactive, which subtly changes CSR write behaviour. Enable by uncommenting `{$define PasRISCVSmdbltrp}`. |
 | `PasRISCVSsdbltrp` | disabled | Ssdbltrp — Supervisor-Mode Double Trap. Requires `PasRISCVSmdbltrp`. When enabled, two independent double-trap mechanisms are active: **(1) HS-mode:** if `menvcfg.DTE=1` and `mstatus.SDT=1`, a trap to HS-mode escalates to M-mode as a synchronous cause-16 exception (`mcause=16`, `mtval2=original scause`). **(2) VS-mode:** if `henvcfg.DTE=1` and `vsstatus.SDT=1`, a trap to VS-mode escalates to HS-mode as a synchronous cause-16 exception (`scause=16`, `htval=original vscause`). Both SDT bits are set on every respective trap entry (when the corresponding DTE=1) and cleared by the matching SRET. Writing SDT=1 to `mstatus`/`vsstatus` forces the corresponding SIE=0. Enable by uncommenting `{$define PasRISCVSsdbltrp}`. |
 | `PasRISCVSmcdeleg` | disabled | Smcdeleg+Ssccfg — Counter Delegation. When enabled, adds `mcounterdeleg` (0x309, MRW) and `scounterinhibit` (0x120, SRW). M-mode can delegate counters 0–31 to S-mode by setting bits in `mcounterdeleg`. S-mode (HS-mode only; VS-mode raises VirtualInstruction) can then inhibit delegated counters via `scounterinhibit`, with writes masked to bits that are set in `mcounterdeleg` (WARL). Since HPM counters 3–31 do not track real events in the emulator, the inhibition has no visible counting effect, but the CSRs are correctly accessible and Linux/OpenSBI counter-delegation setup will not trap. Enable by uncommenting `{$define PasRISCVSmcdeleg}`. |
+| `PasRISCVSmepmp` | enabled | Smepmp — Enhanced Physical Memory Protection. When enabled, the three Smepmp bits in `mseccfg` (RLB bit 2, MMWP bit 1, MML bit 0) are writable and fully enforced. PMP entries (pmpcfg0–pmpcfg3, pmpaddr0–pmpaddr15) are checked on every TLB miss for all privilege modes. MMWP=1 enables whitelist semantics for M-mode. MML=1 activates the Smepmp permission table that redefines how R/W/X/L bits are interpreted for M-mode vs. S/U-mode access. Any write to a PMP or mseccfg CSR flushes the TLB. Disable by commenting out `{$define PasRISCVSmepmp}` if PMP enforcement is not required (e.g. for maximum interpreter throughput in a trusted environment). |
 
 ## ISA Extension Notes
 
@@ -314,20 +316,24 @@ Together they allow Linux's `perf` subsystem to manage performance counters from
 
 Smepmp (ratified 2021) extends the baseline PMP with three new `mseccfg` control bits that tighten M-mode memory isolation:
 
-- **RLMBE** (Rule Locking Bypass Enable): when 0, locked PMP entries apply to M-mode as well, so M-mode code cannot bypass its own locked PMP rules. Provides a one-way ratchet: once RLMBE is cleared to 0, M-mode can never re-enable bypass without a reset.
+- **RLB** (Rule Locking Bypass): when 1, M-mode can overwrite locked (L=1) PMP entries. Once cleared to 0 it cannot be set again (one-way ratchet), providing a write-once lock on PMP configuration.
 - **MMWP** (Machine-Mode Whitelist Policy): when 1, any M-mode access that does not match a PMP entry is denied (whitelist semantics), rather than allowed (default blacklist semantics). Forces explicit PMP coverage of all M-mode memory.
 - **MML** (Machine-Mode Lockdown): the most complex bit. When 1, it completely redefines the permission-encoding of all PMP entries: entries previously interpreted as S/U-mode rules are reinterpreted as M-mode rules (or shared rules), and the permission combinations that were formerly reserved become meaningful. This allows simultaneously expressing M-mode-only, S/U-mode-only, and shared read-only regions in the same PMP table. Once set, MML cannot be cleared without a reset.
 
-OpenSBI >= v1.3 uses Smepmp to enforce M-mode memory isolation by clearing RLMBE and optionally setting MMWP, hardening the security boundary between the firmware and the OS.
+OpenSBI >= v1.3 uses Smepmp to enforce M-mode memory isolation by clearing RLB and optionally setting MMWP, hardening the security boundary between the firmware and the OS.
 
-**What this means for the emulator:**
+**What this means for the emulator (when `{$define PasRISCVSmepmp}` is enabled):**
 
-- The `mseccfg` CSR (`$747`) is implemented and writable with correct WARL masking.
+- The `mseccfg` CSR (`$747`) is fully writable with correct WARL masking including RLB, MMWP, and MML bits.
 - The USEED and SSEED bits (entropy source seeding permission) are fully functional.
 - The MLPE bit (M-mode Landing Pad Enable, from Zicfilp) is functional when `{$define Zicfilp}` is active.
-- **RLMBE, MMWP, and MML are accepted as writes but not enforced**: all three bits can be set and read back correctly, but the emulator does not change its memory-access permission logic based on them.
-
-This is sufficient for a Linux guest: the guest OS never touches `mseccfg` directly. OpenSBI will attempt to use Smepmp and will not receive a trap, but the additional memory isolation it would normally provide is not active. Full enforcement is not required for functional correctness of any guest OS workload.
+- **PMP enforcement is fully implemented**: all PMP entries (pmpcfg0–pmpcfg3, pmpaddr0–pmpaddr15) are checked on every TLB miss for S/U-mode and M-mode accesses.
+- **MML=0 (standard PMP)**: M-mode bypasses non-locked entries; S/U-mode must have explicit R/W/X permission.
+- **MML=1 (Smepmp lockdown)**: the full Smepmp permission table is applied — M-mode and S/U-mode permissions are derived from the new encoding where L, R, W, X bits define combined M-mode / S/U-mode access rights.
+- **MMWP=1**: M-mode accesses with no matching PMP entry are denied (access fault).
+- **RLB**: tracked correctly; affects CSR write-protection of locked entries (not enforced at the TLB level beyond the standard locked-entry semantics).
+- Any write to a PMP CSR or `mseccfg` flushes the entire TLB to ensure cached translations are re-validated.
+- The extension is guarded behind `{$define PasRISCVSmepmp}` (enabled by default).
 
 ## Documentation
 
