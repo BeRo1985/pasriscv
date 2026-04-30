@@ -154,3 +154,54 @@ The system memory begins at $80000000 and its size is dynamically determined bas
 
 This dynamic memory allocation ensures flexibility and scalability, adapting to the needs of different system configurations.
 
+# VirtIO Network Device
+
+The VirtIO network device (`virtio,mmio` at `$10056000`, IRQ `$16`) provides Ethernet connectivity to the guest. Two backends are available, selected via `Configuration.VirtIONetBackend`.
+
+## NAT Userland Backend (default)
+
+The NAT backend (`VirtIONetBackend=NAT`) is a built-in userland NAT stack. The packet parsing and protocol handling (ARP, DHCP, ICMP, UDP, TCP) are purely in-memory and OS-independent. Forwarding to the host network uses OS sockets; currently implemented for Unix (Linux, macOS) via FPC `BaseUnix`. Windows support via WinSock2 is not yet implemented but is architecturally possible. It requires no TAP device, no root access, and no kernel modules. It is enabled by the compile-time flag `{$define PasRISCVEthernetDeviceNAT}` (on by default).
+
+### Guest Network Configuration
+
+| Parameter        | Value           |
+|------------------|-----------------|
+| Guest IP         | `10.0.2.15`     |
+| Subnet mask      | `255.255.255.0` |
+| Default gateway  | `10.0.2.2`      |
+| DNS server       | `10.0.2.3`      |
+| Lease time       | 86400 s         |
+
+The guest MAC address is auto-generated per session. The gateway MAC is `52:54:00:12:34:02`.
+
+### Supported Protocols
+
+| Protocol | Support                                                                                          |
+|----------|--------------------------------------------------------------------------------------------------|
+| ARP      | Replies to ARP requests for gateway IP `10.0.2.2`                                               |
+| DHCP     | Full DISCOVER/OFFER/REQUEST/ACK lease for `10.0.2.15`                                           |
+| ICMP     | Echo relay via host ping sockets (`SOCK_DGRAM`/`IPPROTO_ICMP`); no root required on Unix       |
+| UDP      | Full NAT with LRU session table (`NATUDPMaxSessions=64`); non-blocking sockets                  |
+| TCP      | Full NAT with state machine (`NATTCPMaxSessions=32`); non-blocking connect, pending-send buffer |
+
+### DNS Proxy
+
+UDP packets addressed to `10.0.2.3:53` (the virtual DNS server) are transparently redirected to the first `nameserver` entry from `/etc/resolv.conf` on the host (fallback: `8.8.8.8`). Replies are rewritten to appear to originate from `10.0.2.3`.
+
+## TUN/TAP Backend
+
+The TUN backend (`VirtIONetBackend=TUN`) is available on Unix (Linux/macOS) only and requires root or `CAP_NET_ADMIN`. It opens a host TAP interface (`/dev/net/tun`) and forwards raw Ethernet frames between the guest and the host.
+
+| Configuration key       | Default | Description                              |
+|-------------------------|---------|------------------------------------------|
+| `VirtIONetBackend`      | `0` (NAT) | `0` = NAT, `1` = TUN                  |
+| `VirtIONetTAPInterface` | `tap0`  | Name of the host TAP interface (TUN only) |
+
+The TAP interface must be created and configured on the host before starting the emulator, for example:
+
+```sh
+ip tuntap add dev tap0 mode tap
+ip addr add 10.0.2.1/24 dev tap0
+ip link set tap0 up
+```
+
