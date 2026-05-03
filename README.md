@@ -1,3 +1,7 @@
+> [!IMPORTANT]
+> The primary repository has moved to [git.rosseaux.net/BeRo1985/pasriscv](https://git.rosseaux.net/BeRo1985/pasriscv).
+> This GitHub repository is kept up-to-date via push mirroring.
+
 # PasRISCV
 
 A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor cores, memory, I/O, and much more.
