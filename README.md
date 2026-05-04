@@ -129,7 +129,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - VirtIO MMIO with following devices support
     - Block
     - Network
-      - **NAT userland backend** (default, no root required, cross-platform): A built-in userland NAT stack that proxies ARP, DHCP, ICMP, UDP, and TCP from the guest to the host network. No TAP device or special privileges are needed.
+      - **User mode networking backend** (default, no root required, cross-platform): A built-in userland network stack (similar to QEMU's `-netdev user`/slirp) that proxies ARP, DHCP, ICMP, UDP, and TCP (including IPv6) from the guest to the host network. No TAP device or special privileges are needed.
       - **TUN/TAP backend** (Linux only, requires root/CAP_NET_ADMIN): Connects directly to a host TAP interface for bridged or routed networking. Configure via `VirtIONetBackend=TUN` and `VirtIONetTAPInterface` (default: `tap0`).
     - Random/Entropy
     - 9P filesystem
