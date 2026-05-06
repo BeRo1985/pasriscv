@@ -120,6 +120,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Zihintpause (Pause Hint)
   - Zihintntl (Non-Temporal Locality Hints)
 - Multi-core SMP support
+- Strict-compliant FPU mode with precise NaN propagation, full denormal support, all IEEE 754-2008 rounding modes, and correct handling of every special case. It is separately toggleable and disabled by default to achieve maximum performance for software that does not depend on strict IEEE 754-2008 semantics, but can be enabled whenever full compliance is required. In the default fast mode, denormals may be flushed to zero and some NaN edge cases are handled less strictly, which is perfectly acceptable for the vast majority of workloads and also enables full FPU JIT support for maximum throughput. When strict mode is enabled, all floating-point operations fully adhere to IEEE 754-2008 semantics at the cost of some performance overhead, with FPU JIT compilation disabled in this mode and the emulator falls back to the interpreter for all floating-point instructions wth soft-float semantics to ensure correct handling of all edge cases.
 - Emulated peripherals
   - ACLINT
   - PLIC when AIA is not enabled (default), otherwise APLIC and IMSIC if AIA is enabled
