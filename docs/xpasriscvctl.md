@@ -20,7 +20,7 @@ This extension is intentionally minimal: it occupies one CSR in the vendor-reser
 
 Different guest workloads have different FPU compliance requirements:
 
-- **General-purpose software** (operating systems, applications, games): host-FPU execution is sufficient and provides maximum performance.
+- **General-purpose software** (operating systems, applications, games): host-FPU execution is sufficient and provides maximum performance including JIT code generation and hardware acceleration, even if it may not be fully IEEE 754-2008 compliant.
 - **Numerically sensitive software** (scientific computing, financial calculations, reproducible builds, compliance test suites): strict IEEE 754-2008 behaviour is required, including exact exception flags and deterministic results across platforms.
 
 The `Xpasriscvctl` extension allows guest firmware or an operating system to select the appropriate mode per HART at runtime, without requiring a full emulator restart or recompilation.
@@ -52,7 +52,7 @@ The `Xpasriscvctl` extension allows guest firmware or an operating system to sel
 
 | Bit | Name        | Access | Description |
 |-----|-------------|--------|-------------|
-| 0   | `SFPU`      | R/W    | **StrictCompliantFPU** — When `1`, all FP operations on this HART use the software IEEE 754-2008 compliant implementation. When `0`, the host FPU is used. |
+| 0   | `SFPU`      | R/W    | **StrictCompliantFPU** — When `1`, all FP operations on this HART use the software IEEE 754-2008 compliant soft-float implementation. When `0`, the host FPU is used and JIT host native code generation may be employed for maximum performance, but with potentially non-compliant behaviour (e.g., flush-to-zero for denormals, differing NaN payloads). |
 | 1   | `BROADCAST` | W-only | **Broadcast** — Write-only control bit. When `1` on a write, the new value of `SFPU` (bit 0) is propagated atomically to all HARTs in the machine. Always reads as `0`. |
 | 63:2 | —          | WPRI   | Reserved. Must be written as zero, reads as zero. |
 
