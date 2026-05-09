@@ -142,7 +142,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
       - FM801 (Ensoniq PCI sound card, with PCM and  OPL3 support, if SoundMode=FM801, but currently with some timing dropout issues, so CMI8738 is recommended instead if OPL3 is needed, otherwise just use VirtIO Sound which works fine and has better performance and lower latency than all hardware-emulated sound options)
       - CMI8738 (C-Media PCI sound card, ring-buffer DMA with PCM and OPL3 support, if SoundMode=CMI8738)
       - HDA (Intel High Definition Audio, it is supported by the most operating systems, if SoundMode=HDA)
-    - GPU (2D only, no 3D/virgl support yet)
+    - GPU (working 2D, not yet thoroughly tested experimental 3D/virgl support, use at your own risk)
     - Socket (vsock) — host-guest socket communication with stream and seqpacket support
     - RTC (if RTCMode=VirtIO) — real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
     - Crypto — virtual cryptographic accelerator with CIPHER, HASH, MAC and AEAD services (VirtIO 1.2 Device ID 20)
