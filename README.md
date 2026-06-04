@@ -137,6 +137,7 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - Filesystem (virtio-fs, FUSE-based host directory sharing)
     - Keyboard
     - Mouse
+    - Gamepad
     - Sound
       - VirtIO Sound (default)
       - FM801 (Ensoniq PCI sound card, with PCM and  OPL3 support, if SoundMode=FM801, but currently with some timing dropout issues, so CMI8738 is recommended instead if OPL3 is needed, otherwise just use VirtIO Sound which works fine and has better performance and lower latency than all hardware-emulated sound options)

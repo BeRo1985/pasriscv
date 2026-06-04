@@ -79,6 +79,7 @@ are required. The VirtIO devices are used to provide a standard interface for de
 | VIRTIO FS             | $1005b000 | $1000     | $1b                       | VirtIO filesystem device                      |
 | VIRTIO CRYPTO         | $1005c000 | $1000     | $1c                       | VirtIO crypto device                          |
 | VIRTIO BALLOON        | $1005d000 | $1000     | $1d                       | VirtIO balloon device                         |
+| VIRTIO INPUT GAMEPAD  | $1005e000 | $1000     | $1e                       | VirtIO gamepad input (evdev: BTN_GAMEPAD + dual sticks/triggers/D-pad) |
 
 For each VirtIO device, the MMIO region size is $1000. For the VirtIO GPU device, the guest OS allocates its own frame buffer memory ranges, so $1000 as MMIO region size remains valid for the device registers in this case.
 
