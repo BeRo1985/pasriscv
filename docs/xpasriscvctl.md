@@ -1,4 +1,4 @@
-# `Xpasriscvctl` — PasRISCV Emulator Control Extension
+# `Xpasriscvctl` - PasRISCV Emulator Control Extension
 
 **Extension name:** `xpasriscvctl`  
 **Version:** 1.0  
@@ -54,14 +54,14 @@ The `Xpasriscvctl` extension allows guest firmware or an operating system to sel
 
 | Bit | Name        | Access | Description |
 |-----|-------------|--------|-------------|
-| 0   | `SFPU`      | R/W    | **StrictCompliantFPU** — When `1`, all FP operations on this HART use the software IEEE 754-2008 compliant soft-float implementation. When `0`, the host FPU is used and JIT host native code generation may be employed for maximum performance, but with potentially non-compliant behaviour (e.g., flush-to-zero for denormals, differing NaN payloads). |
-| 1   | `BROADCAST` | W-only | **Broadcast** — Write-only control bit. When `1` on a write, the new values of `SFPU` (bit 0) and `FRMM` (bit 2) are propagated atomically to all HARTs in the machine. Always reads as `0`. |
-| 2   | `FRMM`      | R/W    | **FastRMMFixupEnabled** — When `1` (and `SFPU=0`), FP operations whose effective rounding mode is RMM (roundTiesToAway) are evaluated by the soft-float core so RMM ties round correctly, while all other rounding modes keep running on the host FPU/JIT. When `0`, RMM is approximated as round-to-nearest-even in fast mode. Has no effect while `SFPU=1` (strict mode already covers RMM). |
-| 63:3 | —          | WPRI   | Reserved. Must be written as zero, reads as zero. |
+| 0   | `SFPU`      | R/W    | **StrictCompliantFPU** - When `1`, all FP operations on this HART use the software IEEE 754-2008 compliant soft-float implementation. When `0`, the host FPU is used and JIT host native code generation may be employed for maximum performance, but with potentially non-compliant behaviour (e.g., flush-to-zero for denormals, differing NaN payloads). |
+| 1   | `BROADCAST` | W-only | **Broadcast** - Write-only control bit. When `1` on a write, the new values of `SFPU` (bit 0) and `FRMM` (bit 2) are propagated atomically to all HARTs in the machine. Always reads as `0`. |
+| 2   | `FRMM`      | R/W    | **FastRMMFixupEnabled** - When `1` (and `SFPU=0`), FP operations whose effective rounding mode is RMM (roundTiesToAway) are evaluated by the soft-float core so RMM ties round correctly, while all other rounding modes keep running on the host FPU/JIT. When `0`, RMM is approximated as round-to-nearest-even in fast mode. Has no effect while `SFPU=1` (strict mode already covers RMM). |
+| 63:3 | -          | WPRI   | Reserved. Must be written as zero, reads as zero. |
 
 ### 3.2 Reset Behaviour
 
-On reset, `mpasriscvctl` is `0x0`: `SFPU=0` (host FPU), `BROADCAST=0`, `FRMM=0`. The emulator may be started with `SFPU=1` and/or `FRMM=1` pre-set on all HARTs via configuration (`StrictCompliantFPU` / `FastRMMFixupEnabled`), in which case the reset value reflects those bits.
+On reset, `mpasriscvctl` is `0x0`: `SFPU=0` (host FPU), `BROADCAST=0`, `FRMM=0`. The emulator may be started with these bits pre-set on all HARTs via the `pasriscvemu` front-end - `SFPU=1` via the `-strictcompliantfpu` command-line option and `FRMM=1` via the `-fastrmmfixup` command-line option (or either bit via configuration / device tree, `StrictCompliantFPU` / `FastRMMFixupEnabled`) - in which case the reset value reflects those bits.
 
 ### 3.3 WARL Behaviour
 
@@ -84,9 +84,9 @@ When `SFPU=0`, all FP instructions use the host processor's FPU and are subject 
 
 ### 4.2 RMM-exact Fast Mode (FRMM)
 
-When `FRMM=1` and `SFPU=0`, the HART stays in fast (host-FPU/JIT) mode for every rounding mode except **RMM** (round-to-nearest, ties-to-max-magnitude / IEEE roundTiesToAway). Operations whose *effective* rounding mode is RMM — either a static `rm` instruction field of `0b100`, or a dynamic `rm` (`0b111`) while `frm = RMM` — are instead evaluated by the soft-float core, which rounds halfway ties to the larger magnitude as the specification requires.
+When `FRMM=1` and `SFPU=0`, the HART stays in fast (host-FPU/JIT) mode for every rounding mode except **RMM** (round-to-nearest, ties-to-max-magnitude / IEEE roundTiesToAway). Operations whose *effective* rounding mode is RMM - either a static `rm` instruction field of `0b100`, or a dynamic `rm` (`0b111`) while `frm = RMM` - are instead evaluated by the soft-float core, which rounds halfway ties to the larger magnitude as the specification requires.
 
-This covers every **scalar** operation that can produce an RMM halfway tie: `fadd`, `fsub`, `fmul`, `fdiv`, the fused multiply-add family (`fmadd`/`fmsub`/`fnmadd`/`fnmsub`), the narrowing convert `fcvt.s.d`, and the integer→float converts that can round (`fcvt.s.w`, `fcvt.s.wu`, `fcvt.s.l`, `fcvt.s.lu`, `fcvt.d.l`, `fcvt.d.lu`). It is **not** needed for: `fsqrt` (a square root is never an exact halfway tie), `fcvt.d.w`/`fcvt.d.wu` and `fcvt.d.s` (always exact), or the float→integer and `fround` (Zfa) conversions (which already round RMM exactly in fast mode). Vector floating-point is out of scope — RMM-exact vector results require full strict mode (`SFPU=1`).
+This covers every **scalar** operation that can produce an RMM halfway tie: `fadd`, `fsub`, `fmul`, `fdiv`, the fused multiply-add family (`fmadd`/`fmsub`/`fnmadd`/`fnmsub`), the narrowing convert `fcvt.s.d`, and the integer→float converts that can round (`fcvt.s.w`, `fcvt.s.wu`, `fcvt.s.l`, `fcvt.s.lu`, `fcvt.d.l`, `fcvt.d.lu`). It is **not** needed for: `fsqrt` (a square root is never an exact halfway tie), `fcvt.d.w`/`fcvt.d.wu` and `fcvt.d.s` (always exact), or the float→integer and `fround` (Zfa) conversions (which already round RMM exactly in fast mode). Vector floating-point is out of scope - RMM-exact vector results require full strict mode (`SFPU=1`).
 
 The motivation: the host FPU has no roundTiesToAway mode, so the default fast mode runs RMM in round-to-nearest-even, which differs from RMM only on exact halfway ties. `FRMM` closes that gap at the cost of running just the (uncommon) RMM operations in software, leaving all other rounding modes at full host/JIT speed.
 
@@ -177,7 +177,7 @@ csrw  0x7d0, s0
 ### 6.7 Enable RMM-exact fast mode on this HART only
 
 ```asm
-/* Set FRMM=1 (bit 2) on this HART only — keeps host-FPU/JIT speed for all
+/* Set FRMM=1 (bit 2) on this HART only - keeps host-FPU/JIT speed for all
    rounding modes except RMM, which becomes exact. Leaves SFPU untouched. */
 csrsi 0x7d0, 4
 ```
@@ -193,6 +193,7 @@ csrsi 0x7d0, 4
 | V (Vector) | All vector FP instructions listed in §4.1 are handled by per-element SoftFloat loops when `SFPU=1`. |
 | Zicsr | Required. `mpasriscvctl` is accessed via standard `csrrw`/`csrrs`/`csrrc` instructions. |
 | `-strictcompliantfpu` CLI | Sets `SFPU=1` on all HARTs at machine startup. Guest can override at runtime via `mpasriscvctl`. |
+| `-fastrmmfixup` CLI | Sets `FRMM=1` on all HARTs at machine startup (RMM-exact fast mode). Guest can override at runtime via `mpasriscvctl`. |
 
 ---
 
