@@ -469,6 +469,7 @@ end;
 procedure RunTests;
 var StringList:TStringList;
     Index:TPasRISCVInt32;
+    TestPath:string;
 begin
 
  Machine:=TPasRISCV.Create;
@@ -477,7 +478,18 @@ begin
   StringList:=TStringList.Create;
   try
 
-   GetAllBinaryFiles(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'../externals/pasriscv_software/riscv-tests/binaries/elf/'),StringList);
+   // An optional second parameter selects a single test file or another
+   // directory, otherwise the bundled riscv-tests binaries are used
+   TestPath:=ParamStr(2);
+   if length(TestPath)>0 then begin
+    if FileExists(TestPath) then begin
+     StringList.Add(TestPath);
+    end else begin
+     GetAllBinaryFiles(IncludeTrailingPathDelimiter(TestPath),StringList);
+    end;
+   end else begin
+    GetAllBinaryFiles(IncludeTrailingPathDelimiter(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))+'../externals/pasriscv_software/riscv-tests/binaries/elf/'),StringList);
+   end;
 
 // RunTest('/home/bero/Projects/GitHub/pasriscv/externals/pasriscv_software/riscv-tests/binaries/elf/rv64mi-p-access.elf');
 
