@@ -78895,8 +78895,9 @@ begin
  InstrSize:=aParameter3;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostTemp:=ClaimHostIntRegister;
- // Compute jump target: rs1 + imm
+ // Compute jump target: rs1 + imm, with the architectural low bit cleared
  EmitNativeAddi(HostTemp,HostRS1,Immediate);
+ EmitNativeAndi(HostTemp,HostTemp,TPasRISCVInt32(TPasRISCVUInt32($fffffffe)));
  // Link address: PC + pc_off + isize
  if RD<>TRegister.Zero then begin
   LinkImm:=fPCOffset+TPasRISCVInt32(InstrSize);
@@ -78908,7 +78909,7 @@ begin
  end;
  // AUIPC optimization: if RS1 was loaded by AUIPC, target PC offset is known
  if (fHostIntRegisterInfos[RS1].Flags and REG_AUIPC)<>0 then begin
-  fPCOffset:=fHostIntRegisterInfos[RS1].AUIPCOffset+Immediate;
+  fPCOffset:=TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt32(fHostIntRegisterInfos[RS1].AUIPCOffset+Immediate) and TPasRISCVUInt32($fffffffe)));
   fLinkage:=TLinkage.Jmp;
  end else begin
   fPCOffset:=0;
@@ -83378,12 +83379,18 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDivRem(const aIsRem:Boolean;const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8;const aIs64:Boolean);
 var OverflowFixup1,OverflowFixup2,DivZeroFixup:{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}TBranchLabel{$else}TPasRISCVUInt32{$endif};
     DoneFixup1,DoneFixup2:TPasRISCVUInt32;
+    CompareReg:TPasRISCVUInt8;
 begin
  if aIs64 then begin
-  EmitNativePush(aHostSrc2);
-  EmitNativeSetReg64(aHostSrc2,TPasRISCVUInt64($8000000000000000));
-  Emit2RegOp(X86_CMP,aHostSrc1,aHostSrc2,true);
-  EmitNativePop(aHostSrc2);
+  // A non-clobbering scratch register is needed here, since aHostSrc2 may alias
+  // aHostSrc1 (as in "div rd, rs1, rs1"), where overwriting aHostSrc2 with the
+  // compare constant would make the compare trivially equal
+  CompareReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or
+                                   (TPasRISCVUInt32(1) shl aHostSrc1) or
+                                   (TPasRISCVUInt32(1) shl aHostSrc2));
+  EmitNativeSetReg64(CompareReg,TPasRISCVUInt64($8000000000000000));
+  Emit2RegOp(X86_CMP,aHostSrc1,CompareReg,true);
+  FreeHostIntRegister(CompareReg);
  end else begin
   EmitImmOp(ALU_CMP,aHostSrc1,TPasRISCVInt32($80000000),false);
  end;
@@ -84950,12 +84957,13 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMulHSU(const aHostD
 var SecondReg:TPasRISCVUInt8;
 begin
  // mulhsu = mulhu(rs1, rs2) + correction for signed rs1
- EmitMulHDivRem(4,true,aHostDest,aHostSrc1,aHostSrc2,true);
  SecondReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
  while (SecondReg=aHostDest) or (SecondReg=aHostSrc1) or (SecondReg=aHostSrc2) do begin
   inc(SecondReg);
  end;
  EmitNativePush(SecondReg);
+ // The sign correction (rs1 >> 63) * rs2 must be computed before the mulhu writes
+ // into aHostDest, since aHostDest may alias aHostSrc1 or aHostSrc2
  // secondReg = arithmetic right shift of rs1 by 63 (all 0s or all 1s)
  if SecondReg<>aHostSrc1 then begin
   EmitMOVRegReg(SecondReg,aHostSrc1,true);
@@ -84963,6 +84971,7 @@ begin
  EmitShiftRegImm(SHIFT_SAR,SecondReg,63,true);
  // secondReg = secondReg & rs2 (mask: if rs1>=0 then 0, else rs2)
  EmitIMUL2(SecondReg,aHostSrc2,true);
+ EmitMulHDivRem(4,true,aHostDest,aHostSrc1,aHostSrc2,true);
  // dest = dest + secondReg
  Emit2RegOp(X86_ADD,aHostDest,SecondReg,true);
  EmitNativePop(SecondReg);
@@ -122737,7 +122746,13 @@ begin
     {$ifndef TryToForceCaseJumpTableOnCompressedLevel2}$3:{$else}$03,$0b,$13,$1b,$23,$2b,$33,$3b,$43,$4b,$53,$5b,$63,$6b,$73,$7b,$83,$8b,$93,$9b,$a3,$ab,$b3,$bb,$c3,$cb,$d3,$db,$e3,$eb,$f3,$fb:{$endif}begin
      case (aInstruction shr 7) and $1f of
       $0:begin
-       // c.nop
+       // c.lui with rd = x0: a HINT (executed as NOP) when nzimm <> 0, but reserved when nzimm = 0
+       Immediate:=SignExtend(((aInstruction shl 5) and $20000) or ((aInstruction shl 10) and $1f000),18);
+       if Immediate=0 then begin
+        SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
+        result:=2;
+        exit;
+       end;
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZcb)}
        if assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicNOP,aInstruction,0,0,0,0,2) then begin
@@ -123398,7 +123413,7 @@ begin
          exit;
         end;
 {$ifend}
-        fState.PC:=fState.Registers[rs1]-2;
+        fState.PC:=(fState.Registers[rs1] and TPasRISCVUInt64($fffffffffffffffe))-2;
 {$ifdef Zicfilp}
         // Zicfilp: Set ELP if rs1 is not x1, x5, or x7
         if (rs1<>TRegister.RA) and (rs1<>TRegister.T0) and (rs1<>TRegister.T2) then begin
@@ -123466,7 +123481,7 @@ begin
          end;
 {$ifend}
          Temporary:=fState.PC+2;
-         fState.PC:=fState.Registers[rs1]-2;
+         fState.PC:=(fState.Registers[rs1] and TPasRISCVUInt64($fffffffffffffffe))-2;
          fState.Registers[TRegister.RA]:=Temporary;
 {$ifdef Zicfilp}
          // Zicfilp: Set ELP if rs1 is not x1, x5, or x7
@@ -132782,6 +132797,12 @@ begin
          end;
          $02:begin
           // lr.w
+          if rs2<>TRegister.Zero then begin
+           // LR.W encodes rs2 as a fixed zero field
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLR,aInstruction,ord(rd),ord(rs1),0,1,4) then begin
@@ -133209,6 +133230,12 @@ begin
          end;
          $02:begin
           // lr.d
+          if rs2<>TRegister.Zero then begin
+           // LR.D encodes rs2 as a fixed zero field
+           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+           result:=4;
+           exit;
+          end;
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO)}
           if assigned(fJustInTimeCompiler) and
              fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicLR,aInstruction,ord(rd),ord(rs1),0,0,4) then begin
