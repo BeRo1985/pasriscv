@@ -12498,6 +12498,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVLENB:TPasRISCVUInt32;
               fPHandle:TPasRISCVUInt32;
               fStrictCompliantFPU:TPasMPBool32;
+              fFPUInexact:Boolean;               // Pending inexact for the current FCVT, see ExecuteInstruction
 {$ifdef PasRISCVFastRMMFixup}
               fFastRMMFixupEnabled:TPasMPBool32; // Fast-mode RMM-exact opt-in (per-HART)
               fFastRMMActive:Boolean;            // Cached: effective frm == RMM (maintained in SetFPURM)
@@ -22362,6 +22363,73 @@ begin
   else {TPasRISCVFPType.Zero:}begin
    result:=0.0;
   end;
+ end;
+end;
+
+// The following four helpers round to an integral value but keep the result in
+// the floating point format. Trunc/Floor/Ceil/Round all return an Int64 instead,
+// which silently clamps anything outside the Int64 range to the x86 "integer
+// indefinite" $8000000000000000. A range check performed on such a clamped
+// result can no longer tell whether the operand overflowed, nor in which
+// direction, so FCVT must not use them.
+
+function TruncToFloat32(const aValue:TPasRISCVFloat):TPasRISCVFloat;
+var Fraction:TPasRISCVFloat;
+begin
+ SplitFloat32(aValue,result,Fraction);
+end;
+
+function FloorToFloat32(const aValue:TPasRISCVFloat):TPasRISCVFloat;
+var Fraction:TPasRISCVFloat;
+begin
+ SplitFloat32(aValue,result,Fraction);
+ if Fraction<0.0 then begin
+  result:=result-1.0;
+ end;
+end;
+
+function CeilToFloat32(const aValue:TPasRISCVFloat):TPasRISCVFloat;
+var Fraction:TPasRISCVFloat;
+begin
+ SplitFloat32(aValue,result,Fraction);
+ if Fraction>0.0 then begin
+  result:=result+1.0;
+ end;
+end;
+
+function TruncToFloat64(const aValue:TPasRISCVDouble):TPasRISCVDouble;
+var Fraction:TPasRISCVDouble;
+begin
+ SplitFloat64(aValue,result,Fraction);
+end;
+
+function FloorToFloat64(const aValue:TPasRISCVDouble):TPasRISCVDouble;
+var Fraction:TPasRISCVDouble;
+begin
+ SplitFloat64(aValue,result,Fraction);
+ if Fraction<0.0 then begin
+  result:=result-1.0;
+ end;
+end;
+
+function CeilToFloat64(const aValue:TPasRISCVDouble):TPasRISCVDouble;
+var Fraction:TPasRISCVDouble;
+begin
+ SplitFloat64(aValue,result,Fraction);
+ if Fraction>0.0 then begin
+  result:=result+1.0;
+ end;
+end;
+
+// Trunc() yields a signed Int64, so an already range checked value at or above
+// 2^63 has to be biased down, converted, and the top bit put back by hand
+function IntegralFloatToUInt64(const aValue:TPasRISCVDouble):TPasRISCVUInt64;
+const TwoPow63=TPasRISCVDouble(9223372036854775808.0);
+begin
+ if aValue>=TwoPow63 then begin
+  result:=TPasRISCVUInt64(TPasRISCVUInt64(Trunc(aValue-TwoPow63)) or TPasRISCVUInt64($8000000000000000));
+ end else begin
+  result:=TPasRISCVUInt64(Trunc(aValue));
  end;
 end;
 
@@ -130531,19 +130599,19 @@ begin
           f32n:=RoundToNearestTiesToEven32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-          f32n:=Trunc(f32);
+          f32n:=TruncToFloat32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-          f32n:=Floor(f32);
+          f32n:=FloorToFloat32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-          f32n:=Ceil(f32);
+          f32n:=CeilToFloat32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
           f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic):begin
-          f32n:=Round(f32);
+          f32n:=RoundToNearestTiesToEven32(f32);
          end;
          else begin
           // Rounding mode values of 5 & 6 are illegal
@@ -130553,9 +130621,11 @@ begin
           exit;
          end;
         end;
-//      if f32n<>f32 then begin
-//       fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
-//      end;
+        // The rounding above is pure bit manipulation and does not touch the host
+        // FPU, so the inexact flag has to be raised here instead of being picked
+        // up from MXCSR later. Operands that are out of range raise Invalid
+        // instead and clear this again in the branches below.
+        fFPUInexact:=(f32n<>f32) and not IsFloat32NaNOrInfinite(f32);
         case (aInstruction shr 20) and $1f of
          $00:begin
           // fcvt.w.s
@@ -130579,6 +130649,7 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($ffffffff80000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat32NaN(f32) then begin
@@ -130615,6 +130686,7 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat32NaN(f32) then begin
@@ -130647,6 +130719,7 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($8000000000000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat32NaN(f32) then begin
@@ -130683,12 +130756,13 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat32NaN(f32) then begin
              fState.Registers[rd]:=High(TPasRISCVUInt64);
             end else begin
-             fState.Registers[rd]:=trunc(f32n);
+             fState.Registers[rd]:=IntegralFloatToUInt64(f32n);
             end;
            end;
           end;
@@ -130696,6 +130770,9 @@ begin
          else begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          end;
+        end;
+        if fFPUInexact then begin
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
         end;
         SetFPUExceptions;
         result:=4;
@@ -130715,19 +130792,19 @@ begin
           f64n:=RoundToNearestTiesToEven64(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-          f64n:=Trunc(f64);
+          f64n:=TruncToFloat64(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-          f64n:=Floor(f64);
+          f64n:=FloorToFloat64(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-          f64n:=Ceil(f64);
+          f64n:=CeilToFloat64(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
           f64n:=RoundToNearestTiesToMaxMagnitude64(f64);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDynamic):begin
-          f64n:=Round(f64);
+          f64n:=RoundToNearestTiesToEven64(f64);
          end;
          else begin
           // Rounding mode values of 5 & 6 are illegal
@@ -130737,9 +130814,8 @@ begin
           exit;
          end;
         end;
-//      if f64n<>f64 then begin
-//       fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
-//      end;
+        // See the note above the matching check in the single precision path
+        fFPUInexact:=(f64n<>f64) and not IsFloat64NaNOrInfinite(f64);
         case (aInstruction shr 20) and $1f of
          $00:begin
           // fcvt.w.d
@@ -130763,6 +130839,7 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($ffffffff80000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat64NaN(f64) then begin
@@ -130799,6 +130876,7 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat64NaN(f64) then begin
@@ -130831,6 +130909,7 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($8000000000000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat64NaN(f64) then begin
@@ -130867,12 +130946,13 @@ begin
             end else begin
              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
             end;
+            fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
            end else {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             if IsFloat64NaN(f64) then begin
              fState.Registers[rd]:=High(TPasRISCVUInt64);
             end else begin
-             fState.Registers[rd]:=trunc(f64n);
+             fState.Registers[rd]:=IntegralFloatToUInt64(f64n);
             end;
            end;
           end;
@@ -130983,6 +131063,9 @@ begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
          end;
         end;
+        if fFPUInexact then begin
+         fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
+        end;
         SetFPUExceptions;
         result:=4;
         exit;
@@ -131001,13 +131084,13 @@ begin
           f32n:=RoundToNearestTiesToEven32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
-          f32n:=Trunc(f32);
+          f32n:=TruncToFloat32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-          f32n:=Floor(f32);
+          f32n:=FloorToFloat32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-          f32n:=Ceil(f32);
+          f32n:=CeilToFloat32(f32);
          end;
          TPasRISCVUInt32(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
           f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
