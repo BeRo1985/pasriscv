@@ -10468,7 +10468,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                  Dirty=$80;
                                  PBMT=TPasRISCVUInt64($6000000000000000);
                                  N=TPasRISCVUInt64($8000000000000000);
-                                 Reserved=TPasRISCVUInt64($1fc0000000000000);
+                                 // Bits 58:54. Bits 60:59 are reserved for supervisor software and ignored
+                                 // per Svrsw60t59b, for both S-stage and G-stage page table entries
+                                 Reserved=TPasRISCVUInt64($07c0000000000000);
                                  PPN_MASK=TPasRISCVUInt64($3ffffffffffc00);
                                  Attr=TPasRISCVUInt64(N or PBMT);
                          end;
@@ -94893,7 +94895,7 @@ begin
    exit;
   end;
 
-  // Check reserved bits (bits 63:54 excluding PBMT/N)
+  // Check reserved bits (bits 58:54, excluding PBMT/N and the Svrsw60t59b software bits 60:59)
   if (PageTableEntry and TMMU.TPTEMasks.Reserved)<>0 then begin
    RaiseGuestPageFault(aGuestPhysical,aAccessType);
    result:=0;
@@ -141778,7 +141780,7 @@ begin
   AddISAExtension('svinval');
   AddISAExtension('svnapot');
   AddISAExtension('svpbmt');
-//AddISAExtension('svrsw60t59b');
+  AddISAExtension('svrsw60t59b');
 //AddISAExtension('svukte');
   if fConfiguration.fSVVPTC then begin
    AddISAExtension('svvptc'); // Inherently satisfied: invalid PTEs are never cached in the TLB, so invalid-to-valid transitions are visible without SFENCE.VMA
