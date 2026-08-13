@@ -77067,6 +77067,13 @@ begin
   result:=true;
   exit;
  end;
+ if RS1=TRegister.Zero then begin
+  // addi rd, x0, imm => rd = imm, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeSetReg32s(HostRD,TPasRISCVInt32(aParameter2));
+  result:=true;
+  exit;
+ end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddi(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
@@ -77080,6 +77087,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ if RS1=TRegister.Zero then begin
+  // slli rd, x0, shamt => rd = 0, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeZeroReg(HostRD);
   result:=true;
   exit;
  end;
@@ -77099,6 +77113,13 @@ begin
   result:=true;
   exit;
  end;
+ if RS1=TRegister.Zero then begin
+  // srli rd, x0, shamt => rd = 0, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeZeroReg(HostRD);
+  result:=true;
+  exit;
+ end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrli(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
@@ -77112,6 +77133,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ if RS1=TRegister.Zero then begin
+  // srai rd, x0, shamt => rd = 0, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeZeroReg(HostRD);
   result:=true;
   exit;
  end;
@@ -77163,6 +77191,13 @@ begin
   result:=true;
   exit;
  end;
+ if RS1=TRegister.Zero then begin
+  // xori rd, x0, imm => rd = imm, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeSetReg32s(HostRD,TPasRISCVInt32(aParameter2));
+  result:=true;
+  exit;
+ end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeXori(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
@@ -77179,6 +77214,13 @@ begin
   result:=true;
   exit;
  end;
+ if RS1=TRegister.Zero then begin
+  // ori rd, x0, imm => rd = imm, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeSetReg32s(HostRD,TPasRISCVInt32(aParameter2));
+  result:=true;
+  exit;
+ end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeOri(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
@@ -77192,6 +77234,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ if RS1=TRegister.Zero then begin
+  // andi rd, x0, imm => rd = 0, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeZeroReg(HostRD);
   result:=true;
   exit;
  end;
@@ -77355,6 +77404,13 @@ begin
   result:=true;
   exit;
  end;
+ if RS1=TRegister.Zero then begin
+  // addiw rd, x0, imm => rd = sign extended imm, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeSetReg32s(HostRD,TPasRISCVInt32(aParameter2));
+  result:=true;
+  exit;
+ end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeAddiW(HostRD,HostRS1,TPasRISCVInt32(aParameter2));
@@ -77368,6 +77424,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ if RS1=TRegister.Zero then begin
+  // slliw rd, x0, shamt => rd = 0, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeZeroReg(HostRD);
   result:=true;
   exit;
  end;
@@ -77387,6 +77450,13 @@ begin
   result:=true;
   exit;
  end;
+ if RS1=TRegister.Zero then begin
+  // srliw rd, x0, shamt => rd = 0, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeZeroReg(HostRD);
+  result:=true;
+  exit;
+ end;
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
  EmitNativeSrliW(HostRD,HostRS1,TPasRISCVUInt8(aParameter2));
@@ -77400,6 +77470,13 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
+  result:=true;
+  exit;
+ end;
+ if RS1=TRegister.Zero then begin
+  // sraiw rd, x0, shamt => rd = 0, so x0 needs no host register at all
+  HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+  EmitNativeZeroReg(HostRD);
   result:=true;
   exit;
  end;
