@@ -12852,6 +12852,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure RecordCTR(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
               procedure RecordCTRTrap(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
               procedure FreezeCTROnTrap(const aIsBreakpoint,aIsLCOFI:Boolean);
+              function CSRStateEnBit(const aCSR:TPasRISCVUInt64):TPasRISCVUInt64;
+              function StateEnabled(const aBit:TPasRISCVUInt64;const aInstruction:TPasRISCVUInt64):Boolean;
               function CTRStateEnabled(const aInstruction:TPasRISCVUInt64):Boolean;
               procedure CSRHandlerCTR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure ClearCTREntries;
@@ -98570,7 +98572,7 @@ var rd:TRegister;
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
- end else begin
+ end else if StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   CSRValue:=fState.CSR.Load(aCSR);
   fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
@@ -98586,7 +98588,7 @@ var rd:TRegister;
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
- end else begin
+ end else if StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   CSRValue:=fState.CSR.Load(aCSR);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -100137,23 +100139,69 @@ begin
 
 end;
 
-// Smctr: Smstateen gates the CTR state through bit 54 of the stateen registers.
-// Everything below M-mode needs mstateen0.CTR, and a virtual mode additionally
-// needs hstateen0.CTR. Raises the matching exception and returns false when the
-// access is not permitted.
-function TPasRISCV.THART.CTRStateEnabled(const aInstruction:TPasRISCVUInt64):Boolean;
-const CTRBit=TPasRISCVUInt64(1) shl 54;
+// Smstateen: which stateen0 bit, if any, guards a given CSR. Zero means the CSR
+// is not gated. Only bits whose underlying state this emulator actually has are
+// listed, the rest would gate nothing.
+function TPasRISCV.THART.CSRStateEnBit(const aCSR:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
- result:=true;
- if fState.Mode<TMode.Machine then begin
-  if (fState.CSR.fData[TCSR.TAddress.MSTATEEN0] and CTRBit)=0 then begin
-   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-   result:=false;
-  end else if fState.VirtualMode and ((fState.CSR.fData[TCSR.TAddress.HSTATEEN0] and CTRBit)=0) then begin
-   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-   result:=false;
+ case aCSR of
+  TCSR.TAddress.SSTATEEN0,TCSR.TAddress.SSTATEEN1,TCSR.TAddress.SSTATEEN2,TCSR.TAddress.SSTATEEN3,
+  TCSR.TAddress.HSTATEEN0,TCSR.TAddress.HSTATEEN1,TCSR.TAddress.HSTATEEN2,TCSR.TAddress.HSTATEEN3:begin
+   result:=TPasRISCVUInt64(1) shl 63; // SE0
+  end;
+  TCSR.TAddress.SENVCFG,TCSR.TAddress.HENVCFG:begin
+   result:=TPasRISCVUInt64(1) shl 62; // ENVCFG
+  end;
+  TCSR.TAddress.SISELECT,TCSR.TAddress.SIREG,TCSR.TAddress.SIREG2,TCSR.TAddress.SIREG3,
+  TCSR.TAddress.SIREG4,TCSR.TAddress.SIREG5,TCSR.TAddress.SIREG6,TCSR.TAddress.SIREG7,
+  TCSR.TAddress.VSISELECT,TCSR.TAddress.VSIREG:begin
+   result:=TPasRISCVUInt64(1) shl 60; // CSRIND, the Sscsrind indirect window
+  end;
+  TCSR.TAddress.STOPEI,TCSR.TAddress.VSTOPEI:begin
+   result:=TPasRISCVUInt64(1) shl 58; // IMSIC
+  end;
+  TCSR.TAddress.STOPI,TCSR.TAddress.VSTOPI:begin
+   result:=TPasRISCVUInt64(1) shl 59; // AIA
+  end;
+  TCSR.TAddress.SRMCFG:begin
+   result:=TPasRISCVUInt64(1) shl 55; // SRMCFG, Ssqosid
+  end;
+{$ifdef PasRISCVSmctrSsctr}
+  TCSR.TAddress.SCTRCTL,TCSR.TAddress.SCTRSTATUS,TCSR.TAddress.SCTRDEPTH,TCSR.TAddress.VSCTRCTL:begin
+   result:=TPasRISCVUInt64(1) shl 54; // CTR
+  end;
+{$endif}
+  else begin
+   result:=0;
   end;
  end;
+end;
+
+// Smstateen: a zero bit in mstateen0 denies the access to everything below
+// M-mode, a zero bit in hstateen0 denies it to a virtual mode with a virtual
+// instruction exception instead, and sstateen0 does the same for U-mode.
+// Raises the matching exception and returns false when the access is denied.
+function TPasRISCV.THART.StateEnabled(const aBit:TPasRISCVUInt64;const aInstruction:TPasRISCVUInt64):Boolean;
+begin
+ result:=true;
+ if (aBit=0) or (fState.Mode>=TMode.Machine) then begin
+  exit;
+ end;
+ if (fState.CSR.fData[TCSR.TAddress.MSTATEEN0] and aBit)=0 then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  result:=false;
+ end else if fState.VirtualMode and ((fState.CSR.fData[TCSR.TAddress.HSTATEEN0] and aBit)=0) then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  result:=false;
+ end else if (fState.Mode=TMode.User) and ((fState.CSR.fData[TCSR.TAddress.SSTATEEN0] and aBit)=0) then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  result:=false;
+ end;
+end;
+
+function TPasRISCV.THART.CTRStateEnabled(const aInstruction:TPasRISCVUInt64):Boolean;
+begin
+ result:=StateEnabled(TPasRISCVUInt64(1) shl 54,aInstruction);
 end;
 
 // Like CSRHandlerPrivileged, but with the Smstateen gate in front
@@ -136077,6 +136125,11 @@ begin
  if fState.VirtualMode<>aEnabled then begin
   SwapHypervisorRegs;
   fState.VirtualMode:=aEnabled;
+{$ifdef PasRISCVSmctrSsctr}
+  // Smctr: which control register governs recording depends on V as well as on
+  // the privilege mode, and a trap return sets V after SetMode has already run
+  UpdateCTRState;
+{$endif}
   FlushTLB(true,true); // Flush the TLB on all virtual mode changes like QEmu
   UpdateMMU;
 {$if defined(PasRISCVJustInTimeCompiler) and defined(JITTLBTag)}
