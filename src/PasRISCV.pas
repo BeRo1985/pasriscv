@@ -10816,6 +10816,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fStatOuterLoopIterations:TPasRISCVUInt64;
                      fStatTLBSlowHits:TPasRISCVUInt64;
                      fPCOffset:TPasRISCVInt32;
+{$ifdef PasRISCVSmctrSsctr}
+                     fCTRBranchFallthrough:TPasRISCVInt32; // fall through offset of the branch being compiled
+{$endif}
                      fInstructionCount:TPasRISCVUInt32;
                      fLRUCounter:TPasRISCVUInt32;
                      fSignalMask:TPasRISCVUInt32;
@@ -10846,6 +10849,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestCTRDataOffset:TPasRISCVInt32;
                      function GuestCTRStatusOffset:TPasRISCVInt32;
                      procedure EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32); virtual;
+                     procedure EmitCTRRecordWith(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aS1,aS2,aS3:TPasRISCVUInt8); virtual;
 {$endif}
                      function GuestCycleOffset:TPasRISCVInt32;
 {$ifdef PasRISCVSmcntrpmf}
@@ -12127,6 +12131,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMulHU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeMulHSU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
 {$ifdef PasRISCVSmctrSsctr}
+                     procedure EmitCTRRecordWith(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aS1,aS2,aS3:TPasRISCVUInt8); override;
                      procedure EmitCTRStoreEntry(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aAtPreviousIndex,aAdvance:Boolean;const aS1,aS2,aS3:TPasRISCVUInt8);
                      procedure EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32); override;
 {$endif}
@@ -75628,6 +75633,10 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32);
 begin
 end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitCTRRecordWith(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aS1,aS2,aS3:TPasRISCVUInt8);
+begin
+end;
 {$endif}
 
 function TPasRISCV.THART.TJustInTimeCompiler.GuestCycleOffset:TPasRISCVInt32;
@@ -77268,6 +77277,11 @@ begin
    if fDebugJITCounter<60 then begin
     writeln('  COMPILE BRANCH @',LowerCase(IntToHex(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),16)),' ',fDebugDisassembler.DisassembleInstruction(fBlockVirtualPC+TPasRISCVUInt64(fPCOffset),fDebugInstruction),' pcOff=',fPCOffset,' cnt=',fInstructionCount);
    end;
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+   // Smctr: the branch intrinsic emits the fall through path itself and needs to
+   // know how far it is from the branch to record the not taken case there
+   fCTRBranchFallthrough:=TPasRISCVInt32(aFallthroughOffset);
 {$endif}
    inc(fPCOffset,aFallthroughOffset);
    if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
@@ -79311,19 +79325,55 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBEQ(const aInstruction:TPa
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
+{$ifdef PasRISCVSmctrSsctr}
+    CTRS1,CTRS2,CTRS3:TPasRISCVUInt8;
+{$endif}
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2,BRANCH_NEW,false);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  EmitNativeBeq(HostRS1,HostRS2,TakenLabel,true);
 {$else}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+ FreeHostIntRegister(CTRS3);
+ FreeHostIntRegister(CTRS2);
+ FreeHostIntRegister(CTRS1);
 {$endif}
  result:=true;
 end;
@@ -79332,19 +79382,55 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBNE(const aInstruction:TPa
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
+{$ifdef PasRISCVSmctrSsctr}
+    CTRS1,CTRS2,CTRS3:TPasRISCVUInt8;
+{$endif}
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2,BRANCH_NEW,false);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  EmitNativeBne(HostRS1,HostRS2,TakenLabel,true);
 {$else}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+ FreeHostIntRegister(CTRS3);
+ FreeHostIntRegister(CTRS2);
+ FreeHostIntRegister(CTRS1);
 {$endif}
  result:=true;
 end;
@@ -79353,19 +79439,55 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLT(const aInstruction:TPa
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
+{$ifdef PasRISCVSmctrSsctr}
+    CTRS1,CTRS2,CTRS3:TPasRISCVUInt8;
+{$endif}
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2,BRANCH_NEW,false);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  EmitNativeBlt(HostRS1,HostRS2,TakenLabel,true);
 {$else}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+ FreeHostIntRegister(CTRS3);
+ FreeHostIntRegister(CTRS2);
+ FreeHostIntRegister(CTRS1);
 {$endif}
  result:=true;
 end;
@@ -79374,19 +79496,55 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGE(const aInstruction:TPa
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
+{$ifdef PasRISCVSmctrSsctr}
+    CTRS1,CTRS2,CTRS3:TPasRISCVUInt8;
+{$endif}
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2,BRANCH_NEW,false);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  EmitNativeBge(HostRS1,HostRS2,TakenLabel,true);
 {$else}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+ FreeHostIntRegister(CTRS3);
+ FreeHostIntRegister(CTRS2);
+ FreeHostIntRegister(CTRS1);
 {$endif}
  result:=true;
 end;
@@ -79395,19 +79553,55 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBLTU(const aInstruction:TP
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
+{$ifdef PasRISCVSmctrSsctr}
+    CTRS1,CTRS2,CTRS3:TPasRISCVUInt8;
+{$endif}
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2,BRANCH_NEW,false);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  EmitNativeBltu(HostRS1,HostRS2,TakenLabel,true);
 {$else}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+ FreeHostIntRegister(CTRS3);
+ FreeHostIntRegister(CTRS2);
+ FreeHostIntRegister(CTRS1);
 {$endif}
  result:=true;
 end;
@@ -79416,17 +79610,48 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicBGEU(const aInstruction:TP
 var RS1,RS2:TRegister;
     HostRS1,HostRS2:TPasRISCVUInt8;
     TakenLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
+{$ifdef PasRISCVSmctrSsctr}
+    CTRS1,CTRS2,CTRS3:TPasRISCVUInt8;
+{$endif}
 begin
  RS1:=TRegister(aParameter0);
  RS2:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
  HostRS2:=MapGuestToHostIntRegister(RS2,REG_SRC);
 {$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2,BRANCH_NEW,false);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  EmitNativeBgeu(HostRS1,HostRS2,TakenLabel,true);
 {$else}
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: claim before the branch, so any callee saved push the allocator
+ // emits lands on the common path rather than only on the fall through
+ CTRS1:=ClaimHostIntRegister;
+ CTRS2:=ClaimHostIntRegister;
+ CTRS3:=ClaimHostIntRegister;
+{$endif}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2);
+{$ifdef PasRISCVSmctrSsctr}
+ // Everything from here to EmitEnd is the fall through path
+ EmitCTRRecordWith(TCSR.TCTRType.NonTakenBranch,
+                   false,0,fPCOffset-fCTRBranchFallthrough,
+                   false,0,fPCOffset,
+                   CTRS1,CTRS2,CTRS3);
+{$endif}
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
 {$endif}
@@ -85403,13 +85628,34 @@ end;
 // tests. Everything is skipped when recording is off, which is the normal case.
 // A source or target that is not already in a register is expressed as a constant
 // offset from the guest PC.
+// Claims its own scratch registers. Not usable on a path that the surrounding
+// code can branch around, see EmitCTRRecordWith for why.
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32);
+var S1,S2,S3:TPasRISCVUInt8;
+begin
+ S1:=ClaimHostIntRegister;
+ S2:=ClaimHostIntRegister;
+ S3:=ClaimHostIntRegister;
+ EmitCTRRecordWith(aCTRType,aSourceIsRegister,aSourceReg,aSourceOffset,aTargetIsRegister,aTargetReg,aTargetOffset,S1,S2,S3);
+ FreeHostIntRegister(S3);
+ FreeHostIntRegister(S2);
+ FreeHostIntRegister(S1);
+end;
+
+// Works on registers the caller claimed. Claiming inside a conditionally reached
+// path is not safe: ClaimHostIntRegister may reclaim a callee saved register and
+// emit the matching push right there, while the block epilogue pops it on every
+// path, so a path that branches around the push would unbalance the stack.
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCTRRecordWith(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aS1,aS2,aS3:TPasRISCVUInt8);
 var S1,S2,S3:TPasRISCVUInt8;
     InhibitMask:TPasRISCVUInt64;
     InhibitIsEnable:Boolean;
     SkipFixup1,SkipFixup2,SkipFixup3,RASFixup,RASJoinFixup:TPasRISCVUInt32;
 begin
 
+ S1:=aS1;
+ S2:=aS2;
+ S3:=aS3;
  SkipFixup3:=0;
  InhibitIsEnable:=false;
  case aCTRType of
@@ -85459,9 +85705,6 @@ begin
   end;
  end;
 
- S1:=ClaimHostIntRegister;
- S2:=ClaimHostIntRegister;
- S3:=ClaimHostIntRegister;
 
  // Bail out unless recording is on for the current privilege mode
  EmitNativeLoad(S1,VMPtrRegister,GuestCTRRecordingOffset,false);
@@ -85553,10 +85796,6 @@ begin
  end;
  PatchJmpRel32(SkipFixup1);
  PatchJmpRel32(SkipFixup2);
-
- FreeHostIntRegister(S3);
- FreeHostIntRegister(S2);
- FreeHostIntRegister(S1);
 
 end;
 {$endif}
