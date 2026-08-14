@@ -10837,6 +10837,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestVectorRegisterOffset(const aVReg:TPasRISCVUInt32):TPasRISCVInt32;
 {$endif}
                      function GuestPCOffset:TPasRISCVInt32;
+{$ifdef PasRISCVSmctrSsctr}
+                     function GuestCTRRecordingOffset:TPasRISCVInt32;
+                     function GuestCTRControlOffset:TPasRISCVInt32;
+                     function GuestCTRDepthMaskOffset:TPasRISCVInt32;
+                     function GuestCTRSourceOffset:TPasRISCVInt32;
+                     function GuestCTRTargetOffset:TPasRISCVInt32;
+                     function GuestCTRDataOffset:TPasRISCVInt32;
+                     function GuestCTRStatusOffset:TPasRISCVInt32;
+                     procedure EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32); virtual;
+{$endif}
                      function GuestCycleOffset:TPasRISCVInt32;
 {$ifdef PasRISCVSmcntrpmf}
                      function GuestCycleIncrementMaskOffset:TPasRISCVInt32;
@@ -12116,6 +12126,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMulH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeMulHU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeMulHSU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+{$ifdef PasRISCVSmctrSsctr}
+                     procedure EmitCTRStoreEntry(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aAtPreviousIndex,aAdvance:Boolean;const aS1,aS2,aS3:TPasRISCVUInt8);
+                     procedure EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32); override;
+{$endif}
                      procedure EmitNativeDiv(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeDivU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeRem(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
@@ -75574,6 +75588,48 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.PC));
 end;
 
+{$ifdef PasRISCVSmctrSsctr}
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRRecordingOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CTRRecording));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRControlOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CTRControl));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRDepthMaskOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CTRDepthMask));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRSourceOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CTRSource[0]));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRTargetOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CTRTarget[0]));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRDataOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CTRData[0]));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRStatusOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CSR.fData[TCSR.TAddress.SCTRSTATUS]));
+end;
+
+// Base class has no encoder of its own, the backends override this
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32);
+begin
+end;
+{$endif}
+
 function TPasRISCV.THART.TJustInTimeCompiler.GuestCycleOffset:TPasRISCVInt32;
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.Cycle));
@@ -77162,6 +77218,10 @@ begin
     FreeAllHostFPURegisters;
     FreeAllHostVectorRegisters;
 {$endif}
+{$ifdef PasRISCVSmctrSsctr}
+    // Smctr: both ends of a JAL are constant offsets from the guest PC
+    EmitCTRRecord(fHART.CTRTypeOfJAL(TRegister(aParameter0)),false,0,fPCOffset,false,0,fPCOffset+TPasRISCVInt32(aOffset));
+{$endif}
     inc(fPCOffset,aOffset);
     inc(fInstructionCount);
     fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
@@ -77214,6 +77274,14 @@ begin
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
     FreeAllHostFPURegisters;
     FreeAllHostVectorRegisters;
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+    // Smctr: the branch intrinsic has just placed the taken label, so anything
+    // emitted here lands on the taken path. fPCOffset currently names the fall
+    // through, so the branch itself sits one fall through offset earlier.
+    EmitCTRRecord(TCSR.TCTRType.TakenBranch,
+                  false,0,fPCOffset-TPasRISCVInt32(aFallthroughOffset),
+                  false,0,(fPCOffset-TPasRISCVInt32(aFallthroughOffset))+TPasRISCVInt32(aTargetOffset));
 {$endif}
     inc(fPCOffset,aTargetOffset-aFallthroughOffset);
     inc(fInstructionCount);
@@ -79211,6 +79279,11 @@ begin
  // Compute jump target: rs1 + imm, with the architectural low bit cleared
  EmitNativeAddi(HostTemp,HostRS1,Immediate);
  EmitNativeAndi(HostTemp,HostTemp,TPasRISCVInt32(TPasRISCVUInt32($fffffffe)));
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr: record before the AUIPC shortcut below rewrites fPCOffset, and while
+ // HostTemp still holds the computed target
+ EmitCTRRecord(fHART.CTRTypeOfJALR(RD,RS1),false,0,fPCOffset,true,HostTemp,0);
+{$endif}
  // Link address: PC + pc_off + isize
  if RD<>TRegister.Zero then begin
   LinkImm:=fPCOffset+TPasRISCVInt32(InstrSize);
@@ -85265,6 +85338,228 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMulHU(const aHostDe
 begin
  EmitMulHDivRem(4,true,aHostDest,aHostSrc1,aHostSrc2,true);
 end;
+
+// Smctr: emit the store of one entry. aAtPreviousIndex selects the newest entry
+// instead of the next free one, which is what a co-routine swap under RASEMU
+// needs, and aAdvance controls whether sctrstatus.WRPTR moves on afterwards.
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCTRStoreEntry(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aAtPreviousIndex,aAdvance:Boolean;const aS1,aS2,aS3:TPasRISCVUInt8);
+begin
+
+ // aS1 = entry index, aS3 = address of the entry triple
+ EmitNativeLoad(aS1,VMPtrRegister,GuestCTRStatusOffset,true);
+ if aAtPreviousIndex then begin
+  EmitImmOp(ALU_SUB,aS1,1,true);
+ end;
+ EmitNativeLoad(aS2,VMPtrRegister,GuestCTRDepthMaskOffset,false);
+ Emit2RegOp(X86_AND,aS1,aS2,true);
+ EmitMOVRegReg(aS3,aS1,true);
+ EmitShiftRegImm(SHIFT_SHL,aS3,3,true);
+ Emit2RegOp(X86_ADD,aS3,VMPtrRegister,true);
+
+ // ctrsource, with the valid flag in bit 0
+ if aSourceIsRegister then begin
+  EmitMOVRegReg(aS2,aSourceReg,true);
+ end else begin
+  EmitNativeLoad(aS2,VMPtrRegister,GuestPCOffset,true);
+  if aSourceOffset<>0 then begin
+   EmitImmOp(ALU_ADD,aS2,aSourceOffset,true);
+  end;
+ end;
+ EmitImmOp(ALU_OR,aS2,1,true);
+ EmitNativeStore(aS2,aS3,GuestCTRSourceOffset,true);
+
+ // ctrtarget, bit 0 is the misprediction flag and stays clear
+ if aTargetIsRegister then begin
+  EmitMOVRegReg(aS2,aTargetReg,true);
+ end else begin
+  EmitNativeLoad(aS2,VMPtrRegister,GuestPCOffset,true);
+  if aTargetOffset<>0 then begin
+   EmitImmOp(ALU_ADD,aS2,aTargetOffset,true);
+  end;
+ end;
+ EmitImmOp(ALU_AND,aS2,TPasRISCVInt32(TPasRISCVUInt32($fffffffe)),true);
+ EmitNativeStore(aS2,aS3,GuestCTRTargetOffset,true);
+
+ // ctrdata, type only, the cycle count fields stay zero
+ EmitNativeSetReg32s(aS2,TPasRISCVInt32(aCTRType));
+ EmitNativeStore(aS2,aS3,GuestCTRDataOffset,true);
+
+ if aAdvance then begin
+  // Move sctrstatus.WRPTR on, leaving FROZEN and the rest alone
+  EmitImmOp(ALU_ADD,aS1,1,true);
+  EmitNativeLoad(aS2,VMPtrRegister,GuestCTRDepthMaskOffset,false);
+  Emit2RegOp(X86_AND,aS1,aS2,true);
+  EmitNativeLoad(aS2,VMPtrRegister,GuestCTRStatusOffset,true);
+  EmitImmOp(ALU_AND,aS2,TPasRISCVInt32(TPasRISCVUInt32($ffffff00)),true);
+  Emit2RegOp(X86_OR,aS1,aS2,true);
+  EmitNativeStore(aS1,VMPtrRegister,GuestCTRStatusOffset,true);
+ end;
+
+end;
+
+{$ifdef PasRISCVSmctrSsctr}
+// Smctr: append one CTR entry inline. The type is a constant at every call site,
+// so the matching inhibit bit is one too and the whole filter collapses into two
+// tests. Everything is skipped when recording is off, which is the normal case.
+// A source or target that is not already in a register is expressed as a constant
+// offset from the guest PC.
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32);
+var S1,S2,S3:TPasRISCVUInt8;
+    InhibitMask:TPasRISCVUInt64;
+    InhibitIsEnable:Boolean;
+    SkipFixup1,SkipFixup2,SkipFixup3,RASFixup,RASJoinFixup:TPasRISCVUInt32;
+begin
+
+ SkipFixup3:=0;
+ InhibitIsEnable:=false;
+ case aCTRType of
+  TCSR.TCTRType.Exception_:begin
+   InhibitMask:=TCSR.TCTRControlMasks.EXCINH;
+  end;
+  TCSR.TCTRType.Interrupt:begin
+   InhibitMask:=TCSR.TCTRControlMasks.INTRINH;
+  end;
+  TCSR.TCTRType.TrapReturn:begin
+   InhibitMask:=TCSR.TCTRControlMasks.TRETINH;
+  end;
+  TCSR.TCTRType.NonTakenBranch:begin
+   // The only type gated by an enable rather than an inhibit
+   InhibitMask:=TCSR.TCTRControlMasks.NTBREN;
+   InhibitIsEnable:=true;
+  end;
+  TCSR.TCTRType.TakenBranch:begin
+   InhibitMask:=TCSR.TCTRControlMasks.TKBRINH;
+  end;
+  TCSR.TCTRType.IndirectCall:begin
+   InhibitMask:=TCSR.TCTRControlMasks.INDCALLINH;
+  end;
+  TCSR.TCTRType.DirectCall:begin
+   InhibitMask:=TCSR.TCTRControlMasks.DIRCALLINH;
+  end;
+  TCSR.TCTRType.IndirectJump:begin
+   InhibitMask:=TCSR.TCTRControlMasks.INDJMPINH;
+  end;
+  TCSR.TCTRType.DirectJump:begin
+   InhibitMask:=TCSR.TCTRControlMasks.DIRJMPINH;
+  end;
+  TCSR.TCTRType.CoRoutineSwap:begin
+   InhibitMask:=TCSR.TCTRControlMasks.CORSWAPINH;
+  end;
+  TCSR.TCTRType.Return_:begin
+   InhibitMask:=TCSR.TCTRControlMasks.RETINH;
+  end;
+  TCSR.TCTRType.OtherIndirectJump:begin
+   InhibitMask:=TCSR.TCTRControlMasks.INDLJMPINH;
+  end;
+  TCSR.TCTRType.OtherDirectJump:begin
+   InhibitMask:=TCSR.TCTRControlMasks.DIRLJMPINH;
+  end;
+  else begin
+   exit;
+  end;
+ end;
+
+ S1:=ClaimHostIntRegister;
+ S2:=ClaimHostIntRegister;
+ S3:=ClaimHostIntRegister;
+
+ // Bail out unless recording is on for the current privilege mode
+ EmitNativeLoad(S1,VMPtrRegister,GuestCTRRecordingOffset,false);
+ EmitTEST(S1,S1,false);
+ EmitJccRel32(CC_E,0);
+ SkipFixup1:=fTemporaryCodeSize-4;
+
+ EmitNativeLoad(S1,VMPtrRegister,GuestCTRControlOffset,true);
+
+ // Return address stack emulation changes the meaning of a return and of a
+ // co-routine swap, inhibits everything that is not a call, and switches the
+ // per type filtering off. Since RASEMU is a runtime bit, both shapes have to
+ // be emitted and selected here.
+ EmitNativeSetReg64(S2,TCSR.TCTRControlMasks.RASEMU);
+ EmitTEST(S1,S2,true);
+ RASFixup:=0;
+ RASJoinFixup:=0;
+ case aCTRType of
+  TCSR.TCTRType.IndirectCall,
+  TCSR.TCTRType.DirectCall:begin
+   // Recorded either way, RASEMU only skips the filter below
+   EmitJccRel32(CC_NE,0);
+   RASFixup:=fTemporaryCodeSize-4;
+  end;
+  TCSR.TCTRType.Return_:begin
+   // Under RASEMU a return pops the most recent call instead of recording
+   EmitJccRel32(CC_E,0);
+   RASFixup:=fTemporaryCodeSize-4;
+   EmitNativeLoad(S1,VMPtrRegister,GuestCTRStatusOffset,true);
+   EmitImmOp(ALU_SUB,S1,1,true);
+   EmitNativeLoad(S2,VMPtrRegister,GuestCTRDepthMaskOffset,false);
+   Emit2RegOp(X86_AND,S1,S2,true);
+   EmitMOVRegReg(S3,S1,true);
+   EmitShiftRegImm(SHIFT_SHL,S3,3,true);
+   Emit2RegOp(X86_ADD,S3,VMPtrRegister,true);
+   // Invalidate the entry the pointer now names by clearing ctrsource.V
+   EmitNativeLoad(S2,S3,GuestCTRSourceOffset,true);
+   EmitImmOp(ALU_AND,S2,TPasRISCVInt32(TPasRISCVUInt32($fffffffe)),true);
+   EmitNativeStore(S2,S3,GuestCTRSourceOffset,true);
+   EmitNativeLoad(S2,VMPtrRegister,GuestCTRStatusOffset,true);
+   EmitImmOp(ALU_AND,S2,TPasRISCVInt32(TPasRISCVUInt32($ffffff00)),true);
+   Emit2RegOp(X86_OR,S1,S2,true);
+   EmitNativeStore(S1,VMPtrRegister,GuestCTRStatusOffset,true);
+   EmitJmpRel32(0);
+   RASJoinFixup:=fTemporaryCodeSize-4;
+   PatchJmpRel32(RASFixup);
+   RASFixup:=0;
+   EmitNativeLoad(S1,VMPtrRegister,GuestCTRControlOffset,true);
+  end;
+  TCSR.TCTRType.CoRoutineSwap:begin
+   // Under RASEMU a swap overwrites the newest entry and leaves WRPTR alone
+   EmitJccRel32(CC_E,0);
+   RASFixup:=fTemporaryCodeSize-4;
+   EmitCTRStoreEntry(aCTRType,aSourceIsRegister,aSourceReg,aSourceOffset,aTargetIsRegister,aTargetReg,aTargetOffset,true,false,S1,S2,S3);
+   EmitJmpRel32(0);
+   RASJoinFixup:=fTemporaryCodeSize-4;
+   PatchJmpRel32(RASFixup);
+   RASFixup:=0;
+   EmitNativeLoad(S1,VMPtrRegister,GuestCTRControlOffset,true);
+  end;
+  else begin
+   // Everything else is inhibited outright while RASEMU is on
+   EmitJccRel32(CC_NE,0);
+   SkipFixup3:=fTemporaryCodeSize-4;
+  end;
+ end;
+
+ // Bail out on the per type filter
+ EmitNativeSetReg64(S2,InhibitMask);
+ EmitTEST(S1,S2,true);
+ if InhibitIsEnable then begin
+  EmitJccRel32(CC_E,0);
+ end else begin
+  EmitJccRel32(CC_NE,0);
+ end;
+ SkipFixup2:=fTemporaryCodeSize-4;
+
+ if RASFixup<>0 then begin
+  PatchJmpRel32(RASFixup);
+ end;
+
+ EmitCTRStoreEntry(aCTRType,aSourceIsRegister,aSourceReg,aSourceOffset,aTargetIsRegister,aTargetReg,aTargetOffset,false,true,S1,S2,S3);
+
+ if RASJoinFixup<>0 then begin
+  PatchJmpRel32(RASJoinFixup);
+ end;
+ if SkipFixup3<>0 then begin
+  PatchJmpRel32(SkipFixup3);
+ end;
+ PatchJmpRel32(SkipFixup1);
+ PatchJmpRel32(SkipFixup2);
+
+ FreeHostIntRegister(S3);
+ FreeHostIntRegister(S2);
+ FreeHostIntRegister(S1);
+
+end;
+{$endif}
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeMulHSU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var SecondReg:TPasRISCVUInt8;
@@ -99419,10 +99714,40 @@ var Index:TPasRISCVUInt32;
     Allowed:Boolean;
 begin
 
+ Control:=fState.CTRControl;
+
+ // Return address stack emulation. Calls are pushed as usual but with all type
+ // filtering ignored, a return pops the most recent call instead of recording
+ // anything, a co-routine swap overwrites the newest entry without moving the
+ // write pointer, and every other transfer type is inhibited outright.
+ if (Control and TCSR.TCTRControlMasks.RASEMU)<>0 then begin
+  case aCTRType of
+   TCSR.TCTRType.IndirectCall,
+   TCSR.TCTRType.DirectCall:begin
+    // falls through to the ordinary push below
+   end;
+   TCSR.TCTRType.Return_:begin
+    Index:=(TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS])-1) and fState.CTRDepthMask;
+    fState.CTRSource[Index]:=fState.CTRSource[Index] and not TCSR.TCTREntryMasks.SourceValid;
+    fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]:=(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS] and not TCSR.TCTRStatusMasks.WRPTR) or TPasRISCVUInt64(Index);
+    exit;
+   end;
+   TCSR.TCTRType.CoRoutineSwap:begin
+    Index:=(TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS])-1) and fState.CTRDepthMask;
+    fState.CTRSource[Index]:=(aSource and not TPasRISCVUInt64(1)) or TCSR.TCTREntryMasks.SourceValid;
+    fState.CTRTarget[Index]:=aTarget and not TPasRISCVUInt64(1);
+    fState.CTRData[Index]:=TPasRISCVUInt64(aCTRType) and TCSR.TCTREntryMasks.DataType;
+    exit;
+   end;
+   else begin
+    exit;
+   end;
+  end;
+ end else begin
+
  // Per type filtering. Every type has an inhibit bit that suppresses recording,
  // except the not taken branch which has an enable bit instead and is therefore
  // off unless explicitly asked for.
- Control:=fState.CTRControl;
  case aCTRType of
   TCSR.TCTRType.Exception_:begin
    Allowed:=(Control and TCSR.TCTRControlMasks.EXCINH)=0;
@@ -99469,6 +99794,8 @@ begin
  end;
  if not Allowed then begin
   exit;
+ end;
+
  end;
 
  Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]) and fState.CTRDepthMask;
@@ -127507,6 +127834,35 @@ begin
             end;
            end;
           end;
+{$ifdef PasRISCVSmctrSsctr}
+          $04:begin
+           case (aInstruction shr 25) and $7f of
+            $08:begin
+             // sctrclr. This slot used to be sfence.vm, which is why that
+             // instruction was removed from the privileged specification.
+             case fState.Mode of
+              THART.TMode.User:begin
+               if fState.VirtualMode then begin
+                SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+               end else begin
+                SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+               end;
+              end;
+              else begin
+               ClearCTREntries;
+              end;
+             end;
+             result:=4;
+             exit;
+            end;
+            else begin
+             SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+             result:=4;
+             exit;
+            end;
+           end;
+          end;
+{$endif}
           $05:begin
            // wfi
            case (aInstruction shr 25) and $7f of
