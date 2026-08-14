@@ -10419,6 +10419,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      CTRControl:TPasRISCVUInt64;   // effective xctrctl for the current privilege mode
                      CTRDepthMask:TPasRISCVUInt32; // number of entries minus one
                      CTRRecording:TPasRISCVUInt32; // 1 while recording is on for the current mode and not frozen
+                     CTRLastCycle:TPasRISCVUInt64; // Cycle at the previous recorded entry, for ctrdata.CC
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
                      JITRunStatePtr:Pointer; // = @fMachine.fRunState, set once in THART.Create
@@ -10848,8 +10849,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestCTRTargetOffset:TPasRISCVInt32;
                      function GuestCTRDataOffset:TPasRISCVInt32;
                      function GuestCTRStatusOffset:TPasRISCVInt32;
+                     function GuestCTRLastCycleOffset:TPasRISCVInt32;
                      procedure EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32); virtual;
                      procedure EmitCTRRecordWith(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aS1,aS2,aS3:TPasRISCVUInt8); virtual;
+                     procedure CTRClaimScratch(out aS1,aS2,aS3:TPasRISCVUInt8); virtual;
+                     procedure CTRFreeScratch(const aS1,aS2,aS3:TPasRISCVUInt8); virtual;
 {$endif}
                      function GuestCycleOffset:TPasRISCVInt32;
 {$ifdef PasRISCVSmcntrpmf}
@@ -11988,6 +11992,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitLEA(const aDst:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aOffset:TPasRISCVInt32);
                      procedure EmitLEASIB(const aDst:TPasRISCVUInt8;const aBase:TPasRISCVUInt8;const aIndex:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitIMUL2(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
+{$ifdef PasRISCVSmctrSsctr}
+                     procedure EmitBSR(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
+{$endif}
                      procedure EmitMUL1(const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitIMUL1(const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
                      procedure EmitDIV1(const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
@@ -12132,6 +12139,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeMulHSU(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
 {$ifdef PasRISCVSmctrSsctr}
                      procedure EmitCTRRecordWith(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aS1,aS2,aS3:TPasRISCVUInt8); override;
+                     procedure CTRClaimScratch(out aS1,aS2,aS3:TPasRISCVUInt8); override;
                      procedure EmitCTRStoreEntry(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aAtPreviousIndex,aAdvance:Boolean;const aS1,aS2,aS3:TPasRISCVUInt8);
                      procedure EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32); override;
 {$endif}
@@ -12843,6 +12851,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure UpdateCTRState;
               procedure RecordCTR(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
               procedure RecordCTRTrap(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
+              procedure FreezeCTROnTrap(const aIsBreakpoint,aIsLCOFI:Boolean);
+              function CTRStateEnabled(const aInstruction:TPasRISCVUInt64):Boolean;
+              procedure CSRHandlerCTR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure ClearCTREntries;
 {$endif}
               procedure SetFPUExceptions(const aMask:TPasRISCVUInt32=$3f);
@@ -75629,6 +75640,11 @@ begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CSR.fData[TCSR.TAddress.SCTRSTATUS]));
 end;
 
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCTRLastCycleOffset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.CTRLastCycle));
+end;
+
 // Base class has no encoder of its own, the backends override this
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32);
 begin
@@ -75636,6 +75652,21 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitCTRRecordWith(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aS1,aS2,aS3:TPasRISCVUInt8);
 begin
+end;
+
+// Backends that need particular registers kept clear override this
+procedure TPasRISCV.THART.TJustInTimeCompiler.CTRClaimScratch(out aS1,aS2,aS3:TPasRISCVUInt8);
+begin
+ aS1:=ClaimHostIntRegister;
+ aS2:=ClaimHostIntRegister;
+ aS3:=ClaimHostIntRegister;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.CTRFreeScratch(const aS1,aS2,aS3:TPasRISCVUInt8);
+begin
+ FreeHostIntRegister(aS3);
+ FreeHostIntRegister(aS2);
+ FreeHostIntRegister(aS1);
 end;
 {$endif}
 
@@ -79337,9 +79368,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79355,9 +79384,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79371,9 +79398,7 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- FreeHostIntRegister(CTRS3);
- FreeHostIntRegister(CTRS2);
- FreeHostIntRegister(CTRS1);
+ CTRFreeScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  result:=true;
 end;
@@ -79394,9 +79419,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79412,9 +79435,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79428,9 +79449,7 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- FreeHostIntRegister(CTRS3);
- FreeHostIntRegister(CTRS2);
- FreeHostIntRegister(CTRS1);
+ CTRFreeScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  result:=true;
 end;
@@ -79451,9 +79470,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79469,9 +79486,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79485,9 +79500,7 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- FreeHostIntRegister(CTRS3);
- FreeHostIntRegister(CTRS2);
- FreeHostIntRegister(CTRS1);
+ CTRFreeScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  result:=true;
 end;
@@ -79508,9 +79521,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79526,9 +79537,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79542,9 +79551,7 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- FreeHostIntRegister(CTRS3);
- FreeHostIntRegister(CTRS2);
- FreeHostIntRegister(CTRS1);
+ CTRFreeScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  result:=true;
 end;
@@ -79565,9 +79572,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79583,9 +79588,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79599,9 +79602,7 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- FreeHostIntRegister(CTRS3);
- FreeHostIntRegister(CTRS2);
- FreeHostIntRegister(CTRS1);
+ CTRFreeScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  result:=true;
 end;
@@ -79622,9 +79623,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79640,9 +79639,7 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRS1:=ClaimHostIntRegister;
- CTRS2:=ClaimHostIntRegister;
- CTRS3:=ClaimHostIntRegister;
+ CTRClaimScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79654,6 +79651,9 @@ begin
 {$endif}
  EmitEnd(TLinkage.Jmp);
  PatchBranchLabel(TakenLabel);
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+ CTRFreeScratch(CTRS1,CTRS2,CTRS3);
 {$endif}
  result:=true;
 end;
@@ -83840,6 +83840,20 @@ begin
  end;
 end;
 
+{$ifdef PasRISCVSmctrSsctr}
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitBSR(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
+begin
+ // bsr dst, src, 0F BD /r, undefined for a zero source so the caller has to
+ // rule that out beforehand
+ if aIs64 or (aDst>=8) or (aSrc>=8) then begin
+  EmitREX(aIs64,aDst,0,aSrc);
+ end;
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte($bd);
+ EmitModRM(3,aDst,aSrc);
+end;
+{$endif}
+
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitIMUL2(const aDst:TPasRISCVUInt8;const aSrc:TPasRISCVUInt8;const aIs64:Boolean);
 begin
  // imul dst, src, 0F AF /r
@@ -85564,10 +85578,21 @@ begin
  EmitMulHDivRem(4,true,aHostDest,aHostSrc1,aHostSrc2,true);
 end;
 
+// The cycle count encoding needs a shift by CL, so RCX must not be one of the
+// scratch registers, and it may well be holding a mapped guest register
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.CTRClaimScratch(out aS1,aS2,aS3:TPasRISCVUInt8);
+const AvoidCL=TPasRISCVUInt32(1) shl TPasRISCVUInt32(ord(TX64Register.rRCX));
+begin
+ aS1:=ClaimHostIntRegister(AvoidCL);
+ aS2:=ClaimHostIntRegister(AvoidCL);
+ aS3:=ClaimHostIntRegister(AvoidCL);
+end;
+
 // Smctr: emit the store of one entry. aAtPreviousIndex selects the newest entry
 // instead of the next free one, which is what a co-routine swap under RASEMU
 // needs, and aAdvance controls whether sctrstatus.WRPTR moves on afterwards.
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCTRStoreEntry(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32;const aAtPreviousIndex,aAdvance:Boolean;const aS1,aS2,aS3:TPasRISCVUInt8);
+var CycleSmallFixup,CycleDoneFixup:TPasRISCVUInt32;
 begin
 
  // aS1 = entry index, aS3 = address of the entry triple
@@ -85605,8 +85630,44 @@ begin
  EmitImmOp(ALU_AND,aS2,TPasRISCVInt32(TPasRISCVUInt32($fffffffe)),true);
  EmitNativeStore(aS2,aS3,GuestCTRTargetOffset,true);
 
- // ctrdata, type only, the cycle count fields stay zero
- EmitNativeSetReg32s(aS2,TPasRISCVInt32(aCTRType));
+ // ctrdata: type plus the cycle count since the previous entry. The current
+ // cycle is the counter in memory plus the instructions this block has issued
+ // but not flushed yet, and that second part is a compile time constant, so no
+ // separate counter is needed. CCM is a 12 bit mantissa with CCE as its binary
+ // exponent, which is what the shift below produces.
+ EmitNativeLoad(aS2,VMPtrRegister,GuestCycleOffset,true);
+ if fInstructionCount<>0 then begin
+  EmitImmOp(ALU_ADD,aS2,TPasRISCVInt32(fInstructionCount),true);
+ end;
+ EmitNativeLoad(aS1,VMPtrRegister,GuestCTRLastCycleOffset,true);
+ EmitNativeStore(aS2,VMPtrRegister,GuestCTRLastCycleOffset,true);
+ Emit2RegOp(X86_SUB,aS2,aS1,true);
+
+ // A delta that fits the mantissa needs no exponent at all, which is the case
+ // for practically every pair of neighbouring control transfers
+ EmitImmOp(ALU_CMP,aS2,TPasRISCVInt32($fff),true);
+ EmitJccRel32(CC_BE,0);
+ CycleSmallFixup:=fTemporaryCodeSize-4;
+
+ // Otherwise the exponent is how far the value reaches past the mantissa
+ EmitBSR(aS1,aS2,true);
+ EmitImmOp(ALU_SUB,aS1,11,true);
+ EmitNativePush(TPasRISCVUInt8(ord(TX64Register.rRCX)));
+ EmitMOVRegReg(TPasRISCVUInt8(ord(TX64Register.rRCX)),aS1,true);
+ EmitShiftRegCL(SHIFT_SHR,aS2,true);
+ EmitNativePop(TPasRISCVUInt8(ord(TX64Register.rRCX)));
+ EmitShiftRegImm(SHIFT_SHL,aS1,28,true);
+ EmitShiftRegImm(SHIFT_SHL,aS2,16,true);
+ Emit2RegOp(X86_OR,aS2,aS1,true);
+ EmitJmpRel32(0);
+ CycleDoneFixup:=fTemporaryCodeSize-4;
+
+ PatchJmpRel32(CycleSmallFixup);
+ EmitShiftRegImm(SHIFT_SHL,aS2,16,true);
+ PatchJmpRel32(CycleDoneFixup);
+
+ EmitImmOp(ALU_AND,aS2,TPasRISCVInt32(TPasRISCVUInt32(TPasRISCV.THART.TCSR.TCTREntryMasks.DataCCM or TPasRISCV.THART.TCSR.TCTREntryMasks.DataCCE)),true);
+ EmitImmOp(ALU_OR,aS2,TPasRISCVInt32(TPasRISCV.THART.TCSR.TCTREntryMasks.DataCCV or TPasRISCVUInt64(aCTRType)),true);
  EmitNativeStore(aS2,aS3,GuestCTRDataOffset,true);
 
  if aAdvance then begin
@@ -85633,13 +85694,9 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32);
 var S1,S2,S3:TPasRISCVUInt8;
 begin
- S1:=ClaimHostIntRegister;
- S2:=ClaimHostIntRegister;
- S3:=ClaimHostIntRegister;
+ CTRClaimScratch(S1,S2,S3);
  EmitCTRRecordWith(aCTRType,aSourceIsRegister,aSourceReg,aSourceOffset,aTargetIsRegister,aTargetReg,aTargetOffset,S1,S2,S3);
- FreeHostIntRegister(S3);
- FreeHostIntRegister(S2);
- FreeHostIntRegister(S1);
+ CTRFreeScratch(S1,S2,S3);
 end;
 
 // Works on registers the caller claimed. Claiming inside a conditionally reached
@@ -95080,11 +95137,11 @@ begin
 
  fCSRHandlerMap[TCSR.TAddress.STIMECMP]:=CSRHandlerSTIMECMP; // STIMECMP
 {$ifdef PasRISCVSmctrSsctr}
- fCSRHandlerMap[TCSR.TAddress.SCTRCTL]:=CSRHandlerPrivileged;   // Ssctr: SCTRCTL
- fCSRHandlerMap[TCSR.TAddress.SCTRSTATUS]:=CSRHandlerPrivileged; // Ssctr: SCTRSTATUS
- fCSRHandlerMap[TCSR.TAddress.SCTRDEPTH]:=CSRHandlerPrivileged;  // Ssctr: SCTRDEPTH
- fCSRHandlerMap[TCSR.TAddress.VSCTRCTL]:=CSRHandlerPrivileged;   // Ssctr: VSCTRCTL
- fCSRHandlerMap[TCSR.TAddress.MCTRCTL]:=CSRHandlerPrivileged;    // Smctr: MCTRCTL
+ fCSRHandlerMap[TCSR.TAddress.SCTRCTL]:=CSRHandlerCTR;   // Ssctr: SCTRCTL
+ fCSRHandlerMap[TCSR.TAddress.SCTRSTATUS]:=CSRHandlerCTR; // Ssctr: SCTRSTATUS
+ fCSRHandlerMap[TCSR.TAddress.SCTRDEPTH]:=CSRHandlerCTR;  // Ssctr: SCTRDEPTH
+ fCSRHandlerMap[TCSR.TAddress.VSCTRCTL]:=CSRHandlerCTR;   // Ssctr: VSCTRCTL
+ fCSRHandlerMap[TCSR.TAddress.MCTRCTL]:=CSRHandlerCTR;    // Smctr: MCTRCTL
 {$endif}
  fCSRHandlerMap[TCSR.TAddress.VSTIMECMP]:=CSRHandlerVSTIMECMP; // VSTIMECMP
 
@@ -99799,6 +99856,9 @@ begin
     // most recently written one. sireg, sireg2 and sireg3 then expose its
     // ctrsource, ctrtarget and ctrdata respectively.
     $200..$2ff:begin
+     if not CTRStateEnabled(aInstruction) then begin
+      exit;
+     end;
      CTREntry:=(TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS])-
                 (TPasRISCVUInt32(ISelect-$200)+1)) and fState.CTRDepthMask;
      case aCSR of
@@ -99852,6 +99912,29 @@ begin
 end;
 
 {$ifdef PasRISCVSmctrSsctr}
+// Smctr: pack a cycle delta into the ctrdata CC fields. The count is a small
+// floating point value, a 12 bit mantissa in CCM with a 4 bit binary exponent in
+// CCE, so anything that does not fit is shifted right and the shift recorded.
+// CCV marks the result as valid.
+function EncodeCTRCycleCount(const aDelta:TPasRISCVUInt64):TPasRISCVUInt64;
+var Exponent:TPasRISCVUInt32;
+    Mantissa:TPasRISCVUInt64;
+begin
+ Mantissa:=aDelta;
+ Exponent:=0;
+ while (Mantissa>TPasRISCVUInt64($fff)) and (Exponent<15) do begin
+  Mantissa:=Mantissa shr 1;
+  inc(Exponent);
+ end;
+ if Mantissa>TPasRISCVUInt64($fff) then begin
+  // Beyond what the field can express, report the largest representable count
+  Mantissa:=TPasRISCVUInt64($fff);
+ end;
+ result:=TPasRISCVUInt64(TPasRISCVUInt64(TPasRISCVUInt64(Mantissa shl 16) and TPasRISCV.THART.TCSR.TCTREntryMasks.DataCCM) or
+                         TPasRISCVUInt64(TPasRISCVUInt64(TPasRISCVUInt64(Exponent) shl 28) and TPasRISCV.THART.TCSR.TCTREntryMasks.DataCCE) or
+                         TPasRISCV.THART.TCSR.TCTREntryMasks.DataCCV);
+end;
+
 // Smctr: classify a JAL by its link register, following the RISC-V E-trace encoding.
 // x1 and x5 are the architectural link registers.
 class function TPasRISCV.THART.CTRTypeOfJAL(const aRD:TRegister):TPasRISCVUInt32;
@@ -99975,7 +100058,9 @@ begin
     Index:=(TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS])-1) and fState.CTRDepthMask;
     fState.CTRSource[Index]:=(aSource and not TPasRISCVUInt64(1)) or TCSR.TCTREntryMasks.SourceValid;
     fState.CTRTarget[Index]:=aTarget and not TPasRISCVUInt64(1);
-    fState.CTRData[Index]:=TPasRISCVUInt64(aCTRType) and TCSR.TCTREntryMasks.DataType;
+    fState.CTRData[Index]:=(TPasRISCVUInt64(aCTRType) and TCSR.TCTREntryMasks.DataType) or
+                           EncodeCTRCycleCount(fState.Cycle-fState.CTRLastCycle);
+    fState.CTRLastCycle:=fState.Cycle;
     exit;
    end;
    else begin
@@ -100043,10 +100128,75 @@ begin
  // misprediction flag, both are free because instructions are 2 byte aligned
  fState.CTRSource[Index]:=(aSource and not TPasRISCVUInt64(1)) or TCSR.TCTREntryMasks.SourceValid;
  fState.CTRTarget[Index]:=aTarget and not TPasRISCVUInt64(1);
- fState.CTRData[Index]:=TPasRISCVUInt64(aCTRType) and TCSR.TCTREntryMasks.DataType;
+ fState.CTRData[Index]:=(TPasRISCVUInt64(aCTRType) and TCSR.TCTREntryMasks.DataType) or
+                        EncodeCTRCycleCount(fState.Cycle-fState.CTRLastCycle);
+ fState.CTRLastCycle:=fState.Cycle;
 
  Index:=(Index+1) and fState.CTRDepthMask;
  fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]:=(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS] and not TCSR.TCTRStatusMasks.WRPTR) or TPasRISCVUInt64(Index);
+
+end;
+
+// Smctr: Smstateen gates the CTR state through bit 54 of the stateen registers.
+// Everything below M-mode needs mstateen0.CTR, and a virtual mode additionally
+// needs hstateen0.CTR. Raises the matching exception and returns false when the
+// access is not permitted.
+function TPasRISCV.THART.CTRStateEnabled(const aInstruction:TPasRISCVUInt64):Boolean;
+const CTRBit=TPasRISCVUInt64(1) shl 54;
+begin
+ result:=true;
+ if fState.Mode<TMode.Machine then begin
+  if (fState.CSR.fData[TCSR.TAddress.MSTATEEN0] and CTRBit)=0 then begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+   result:=false;
+  end else if fState.VirtualMode and ((fState.CSR.fData[TCSR.TAddress.HSTATEEN0] and CTRBit)=0) then begin
+   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+   result:=false;
+  end;
+ end;
+end;
+
+// Like CSRHandlerPrivileged, but with the Smstateen gate in front
+procedure TPasRISCV.THART.CSRHandlerCTR(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+var rd:TRegister;
+    CSRValue:TPasRISCVUInt64;
+begin
+ if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else if CTRStateEnabled(aInstruction) then begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  CSRValue:=fState.CSR.Load(aCSR);
+  fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+
+// Smctr: BPFRZ and LCOFIFRZ freeze the buffer on a breakpoint exception or on a
+// local counter overflow interrupt that traps to M-mode or S-mode. Called after
+// the privilege switch, so fState.CTRControl is already the control that governs
+// the mode being entered, which is the one the specification refers to here.
+// Freezing is independent of whether recording was on, the point is to preserve
+// whatever the buffer holds for inspection.
+procedure TPasRISCV.THART.FreezeCTROnTrap(const aIsBreakpoint,aIsLCOFI:Boolean);
+var Control:TPasRISCVUInt64;
+begin
+
+ if not (aIsBreakpoint or aIsLCOFI) then begin
+  exit;
+ end;
+
+ if not ((fState.Mode=TMode.Machine) or (fState.Mode=TMode.Supervisor)) then begin
+  exit;
+ end;
+
+ Control:=fState.CTRControl;
+ if (aIsBreakpoint and ((Control and TCSR.TCTRControlMasks.BPFRZ)<>0)) or
+    (aIsLCOFI and ((Control and TCSR.TCTRControlMasks.LCOFIFRZ)<>0)) then begin
+  fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]:=fState.CSR.fData[TCSR.TAddress.SCTRSTATUS] or TCSR.TCTRStatusMasks.FROZEN;
+  UpdateCTRState;
+ end;
 
 end;
 
@@ -100109,6 +100259,7 @@ begin
   fState.CTRData[Index]:=0;
  end;
  fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]:=fState.CSR.fData[TCSR.TAddress.SCTRSTATUS] and not TCSR.TCTRStatusMasks.WRPTR;
+ fState.CTRLastCycle:=fState.Cycle;
 end;
 {$endif}
 
@@ -135719,6 +135870,7 @@ begin
 
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
 {$ifdef PasRISCVSmctrSsctr}
+     FreezeCTROnTrap(false,InterruptValue=TInterruptValue.LocalCounterOverflow);
      RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
 {$endif}
 
@@ -135759,7 +135911,8 @@ begin
 
       fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
 {$ifdef PasRISCVSmctrSsctr}
-      RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
+      FreezeCTROnTrap(false,InterruptValue=TInterruptValue.LocalCounterOverflow);
+     RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
 {$endif}
       fState.CSR.fData[TCSR.TAddress.SEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
       fState.CSR.fData[TCSR.TAddress.SCAUSE]:=(TPasRISCVUInt64(1) shl 63) or TPasRISCVUInt64(InterruptValue);
@@ -135790,7 +135943,8 @@ begin
 
       fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
 {$ifdef PasRISCVSmctrSsctr}
-      RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
+      FreezeCTROnTrap(false,InterruptValue=TInterruptValue.LocalCounterOverflow);
+     RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
 {$endif}
 
       fState.CSR.fData[TCSR.TAddress.SEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
@@ -136029,7 +136183,8 @@ begin
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+
                 ((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(16 shl 2));
 {$ifdef PasRISCVSmctrSsctr}
-     RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+     FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
+   RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
 {$endif}
 
      // Set HS-mode trap CSRs.
@@ -136071,7 +136226,8 @@ begin
 
     fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
 {$ifdef PasRISCVSmctrSsctr}
-    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+    FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
+   RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
 {$endif}
     fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
     fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
@@ -136120,7 +136276,8 @@ begin
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+
                 ((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(16 shl 2));
 {$ifdef PasRISCVSmctrSsctr}
-     RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+     FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
+   RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
 {$endif}
 
      // Set M-mode trap CSRs.
@@ -136190,7 +136347,8 @@ begin
 
     fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
 {$ifdef PasRISCVSmctrSsctr}
-    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+    FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
+   RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
 {$endif}
     fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
     fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
@@ -136253,6 +136411,7 @@ begin
 
    fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
 {$ifdef PasRISCVSmctrSsctr}
+   FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
 {$endif}
 
