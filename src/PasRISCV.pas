@@ -312,6 +312,8 @@ unit PasRISCV;
 
 {$define PasRISCVSmcdeleg} // Smcdeleg+Ssccfg: Counter delegation to S-mode (mcounterdeleg 0x309, scounterinhibit 0x120)
 
+{$define PasRISCVSmctrSsctr} // Smctr+Ssctr: Control Transfer Records (mctrctl 0x34e, sctrctl 0x14e, sctrstatus 0x14f, sctrdepth 0x15f, vsctrctl 0x24e, entries via sireg/sireg2/sireg3 at siselect 0x200..0x2ff)
+
 {$ifndef PasRISCVNoSmepmp}
  {$define PasRISCVSmepmp} // Smepmp: Enhanced Physical Memory Protection (mseccfg MML/MMWP/RLB bits + PMP access checking)
 {$endif}
@@ -9973,6 +9975,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   STVAL=$143;
                                   SIP=$144;
                                   STIMECMP=$14d;
+                                  SCTRCTL=$14e;  // Ssctr: Control Transfer Records control
+                                  SCTRSTATUS=$14f; // Ssctr: Control Transfer Records status
                                   SISELECT=$150;
                                   SIREG=$151;
                                   SIREG2=$152;
@@ -9983,6 +9987,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   SIREG7=$157;
                                   STOPEI=$15c;
                                   STIMECMPH=$15d;
+                                  SCTRDEPTH=$15f; // Ssctr: Control Transfer Records buffer depth
                                   SCOUNTOVF=$da0; // Sscofpmf: Counter overflow status
                                   SATP=$180;
                                   SRMCFG=$181;   // Ssqosid: Supervisor Resource Management Configuration
@@ -10021,6 +10026,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   VSCAUSE=$242;
                                   VSTVAL=$243;
                                   VSIP=$244;
+                                  VSCTRCTL=$24e; // Ssctr: Control Transfer Records control for VS-mode
                                   VSISELECT=$250;
                                   VSIREG=$251;
                                   VSTOPEI=$25c;
@@ -10062,6 +10068,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   MIP=$344;
                                   MTINST=$34a; // H-extension: M-level trap instruction value
                                   MTVAL2=$34b; // H-extension: M-level trap value 2 (GPA >> 2)
+                                  MCTRCTL=$34e;  // Smctr: Control Transfer Records control, sctrctl is a masked view of this
                                   MISELECT=$350;
                                   MIREG=$351;
                                   MIREG2=$352;
@@ -10206,6 +10213,76 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                          XLEN_64=TPasRISCVUInt64(TPasRISCVUInt64(2) shl 62);
                                  end;
                           end;
+{$ifdef PasRISCVSmctrSsctr}
+                          // Ssctr: Control Transfer Records. Bit positions are shared between
+                          // mctrctl, sctrctl and vsctrctl; M and MTE exist only in mctrctl and
+                          // read as zero in the supervisor and VS views.
+                          TCTRControlMasks=class
+                           public
+                            const U=TPasRISCVUInt64(1) shl 0;
+                                  S=TPasRISCVUInt64(1) shl 1;
+                                  M=TPasRISCVUInt64(1) shl 2;
+                                  RASEMU=TPasRISCVUInt64(1) shl 7;
+                                  STE=TPasRISCVUInt64(1) shl 8;
+                                  MTE=TPasRISCVUInt64(1) shl 9;
+                                  BPFRZ=TPasRISCVUInt64(1) shl 11;
+                                  LCOFIFRZ=TPasRISCVUInt64(1) shl 12;
+                                  EXCINH=TPasRISCVUInt64(1) shl 33;
+                                  INTRINH=TPasRISCVUInt64(1) shl 34;
+                                  TRETINH=TPasRISCVUInt64(1) shl 35;
+                                  NTBREN=TPasRISCVUInt64(1) shl 36;
+                                  TKBRINH=TPasRISCVUInt64(1) shl 37;
+                                  INDCALLINH=TPasRISCVUInt64(1) shl 40;
+                                  DIRCALLINH=TPasRISCVUInt64(1) shl 41;
+                                  INDJMPINH=TPasRISCVUInt64(1) shl 42;
+                                  DIRJMPINH=TPasRISCVUInt64(1) shl 43;
+                                  CORSWAPINH=TPasRISCVUInt64(1) shl 44;
+                                  RETINH=TPasRISCVUInt64(1) shl 45;
+                                  INDLJMPINH=TPasRISCVUInt64(1) shl 46;
+                                  DIRLJMPINH=TPasRISCVUInt64(1) shl 47;
+                                  // Everything the supervisor view may hold
+                                  SupervisorMask=U or S or RASEMU or STE or BPFRZ or LCOFIFRZ or
+                                                 EXCINH or INTRINH or TRETINH or NTBREN or TKBRINH or
+                                                 INDCALLINH or DIRCALLINH or INDJMPINH or DIRJMPINH or
+                                                 CORSWAPINH or RETINH or INDLJMPINH or DIRLJMPINH;
+                                  MachineMask=SupervisorMask or M or MTE;
+                                  // Any of these enables recording for the matching privilege mode
+                                  ModeEnableMask=U or S or M;
+                          end;
+                          TCTRStatusMasks=class
+                           public
+                            const WRPTR=TPasRISCVUInt64($ff);
+                                  FROZEN=TPasRISCVUInt64(1) shl 31;
+                                  Mask=WRPTR or FROZEN;
+                          end;
+                          TCTREntryMasks=class
+                           public
+                            const SourceValid=TPasRISCVUInt64(1) shl 0;
+                                  TargetMisprediction=TPasRISCVUInt64(1) shl 0;
+                                  DataType=TPasRISCVUInt64($f);
+                                  DataCCV=TPasRISCVUInt64(1) shl 15;
+                                  DataCCM=TPasRISCVUInt64($0fff0000);
+                                  DataCCE=TPasRISCVUInt64($f0000000);
+                          end;
+                          // ctrdata.TYPE, following the RISC-V E-trace encoding
+                          TCTRType=class
+                           public
+                            const None=0;
+                                  Exception_=1;
+                                  Interrupt=2;
+                                  TrapReturn=3;
+                                  NonTakenBranch=4;
+                                  TakenBranch=5;
+                                  IndirectCall=8;
+                                  DirectCall=9;
+                                  IndirectJump=10;
+                                  DirectJump=11;
+                                  CoRoutineSwap=12;
+                                  Return_=13;
+                                  OtherIndirectJump=14;
+                                  OtherDirectJump=15;
+                          end;
+{$endif}
                           TFPUExceptionMasks=class
                            public
                             const Inexact=1 shl 0;
@@ -10335,6 +10412,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      // Zicfilp: Expected landing pad state
                      ELP:TPasRISCVUInt8; // 0=NO_LP_EXPECTED, 1=LP_EXPECTED
 {$endif}
+{$ifdef PasRISCVSmctrSsctr}
+                     // Ssctr: values derived from the active xctrctl, kept next to the other
+                     // hot state so both the interpreter and the JIT can test them cheaply.
+                     // All three are recomputed by UpdateCTRState.
+                     CTRControl:TPasRISCVUInt64;   // effective xctrctl for the current privilege mode
+                     CTRDepthMask:TPasRISCVUInt32; // number of entries minus one
+                     CTRRecording:TPasRISCVUInt32; // 1 while recording is on for the current mode and not frozen
+{$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
                      JITRunStatePtr:Pointer; // = @fMachine.fRunState, set once in THART.Create
                      JITTLBPtr:Pointer; // = @fDirectAccessTLBCache[ModeBase], updated on SetMode with PerModeTLB
@@ -10354,6 +10439,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
  {$ifdef JITInlineCSRRead}
                      JITRDTIMEHelperPtr:Pointer;
  {$endif}
+{$endif}
+{$ifdef PasRISCVSmctrSsctr}
+                     // Ssctr: the entry ring buffer itself. Always the architectural maximum of
+                     // 256 entries, sctrdepth only narrows the part that is actually used. Kept
+                     // last so it does not push the hot scalars above out of cache.
+                     CTRSource:array[0..255] of TPasRISCVUInt64;
+                     CTRTarget:array[0..255] of TPasRISCVUInt64;
+                     CTRData:array[0..255] of TPasRISCVUInt64;
 {$endif}
                    end;
                    PState=^TState;
@@ -12499,6 +12592,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPHandle:TPasRISCVUInt32;
               fStrictCompliantFPU:TPasMPBool32;
               fFPUInexact:Boolean;               // Pending inexact for the current FCVT, see ExecuteInstruction
+{$ifdef PasRISCVSmctrSsctr}
+              fCTRPrevRecording:TPasRISCVUInt32;  // CTRRecording of the mode a trap is leaving
+              fCTRPrevControl:TPasRISCVUInt64;    // CTRControl of the mode a trap is leaving
+{$endif}
 {$ifdef PasRISCVFastRMMFixup}
               fFastRMMFixupEnabled:TPasMPBool32; // Fast-mode RMM-exact opt-in (per-HART)
               fFastRMMActive:Boolean;            // Cached: effective frm == RMM (maintained in SetFPURM)
@@ -12721,6 +12818,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                      const aExceptionData:TPasRISCVUInt64;
                                      const aExceptionPC:TPasRISCVUInt64);
               procedure ClearException;
+{$ifdef PasRISCVSmctrSsctr}
+              class function CTRTypeOfJAL(const aRD:TRegister):TPasRISCVUInt32; static;
+              class function CTRTypeOfJALR(const aRD,aRS1:TRegister):TPasRISCVUInt32; static;
+              procedure UpdateCTRState;
+              procedure RecordCTR(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
+              procedure RecordCTRTrap(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
+              procedure ClearCTREntries;
+{$endif}
               procedure SetFPUExceptions(const aMask:TPasRISCVUInt32=$3f);
               function FPUGetRM(const aInstruction:TPasRISCVUInt32;out aRM:TPasRISCVUInt8):boolean;
               function FastRMMActive(const aInstruction:TPasRISCVUInt32):Boolean; inline;
@@ -74498,6 +74603,29 @@ begin
    // Ssqosid: RCID[11:0] and MCID[27:16], all other bits WPRI
    result:=fData[TAddress.SRMCFG] and CSR_SRMCFG_MASK;
   end;
+{$ifdef PasRISCVSmctrSsctr}
+  TAddress.MCTRCTL:begin
+   result:=fData[TAddress.MCTRCTL] and TCTRControlMasks.MachineMask;
+  end;
+  TAddress.SCTRCTL:begin
+   // sctrctl is supervisor access to a subset of mctrctl and never exposes M or
+   // MTE. While V=1 vsctrctl substitutes for it.
+   if fHART.fState.VirtualMode then begin
+    result:=fData[TAddress.VSCTRCTL] and TCTRControlMasks.SupervisorMask;
+   end else begin
+    result:=fData[TAddress.MCTRCTL] and TCTRControlMasks.SupervisorMask;
+   end;
+  end;
+  TAddress.VSCTRCTL:begin
+   result:=fData[TAddress.VSCTRCTL] and TCTRControlMasks.SupervisorMask;
+  end;
+  TAddress.SCTRSTATUS:begin
+   result:=fData[TAddress.SCTRSTATUS] and TCTRStatusMasks.Mask;
+  end;
+  TAddress.SCTRDEPTH:begin
+   result:=fData[TAddress.SCTRDEPTH] and 7;
+  end;
+{$endif}
   TAddress.STIMECMP:begin
    result:=TPasMPInterlocked.Read(fHART.fSTIMECMP);
   end;
@@ -74546,6 +74674,44 @@ begin
    // Ssqosid: store RCID[11:0] and MCID[27:16], all other bits WPRI
    fData[TAddress.SRMCFG]:=aValue and CSR_SRMCFG_MASK;
   end;
+{$ifdef PasRISCVSmctrSsctr}
+  TAddress.MCTRCTL:begin
+   fData[TAddress.MCTRCTL]:=aValue and TCTRControlMasks.MachineMask;
+   fHART.UpdateCTRState;
+  end;
+  TAddress.SCTRCTL:begin
+   // Writing through the supervisor view must leave M and MTE untouched
+   if fHART.fState.VirtualMode then begin
+    fData[TAddress.VSCTRCTL]:=aValue and TCTRControlMasks.SupervisorMask;
+   end else begin
+    fData[TAddress.MCTRCTL]:=(fData[TAddress.MCTRCTL] and not TCTRControlMasks.SupervisorMask) or
+                             (aValue and TCTRControlMasks.SupervisorMask);
+   end;
+   fHART.UpdateCTRState;
+  end;
+  TAddress.VSCTRCTL:begin
+   fData[TAddress.VSCTRCTL]:=aValue and TCTRControlMasks.SupervisorMask;
+   fHART.UpdateCTRState;
+  end;
+  TAddress.SCTRSTATUS:begin
+   // WRPTR is WARL and has to stay inside the currently selected depth
+   fData[TAddress.SCTRSTATUS]:=(aValue and TCTRStatusMasks.FROZEN) or
+                               (aValue and TPasRISCVUInt64(fHART.fState.CTRDepthMask));
+   fHART.UpdateCTRState;
+  end;
+  TAddress.SCTRDEPTH:begin
+   // DEPTH is a 3 bit WARL field, values above 4 are not supported
+   if (aValue and 7)>4 then begin
+    fData[TAddress.SCTRDEPTH]:=4;
+   end else begin
+    fData[TAddress.SCTRDEPTH]:=aValue and 7;
+   end;
+   fHART.UpdateCTRState;
+   // A narrower buffer must not leave a write pointer behind that points outside it
+   fData[TAddress.SCTRSTATUS]:=(fData[TAddress.SCTRSTATUS] and TCTRStatusMasks.FROZEN) or
+                               (fData[TAddress.SCTRSTATUS] and TPasRISCVUInt64(fHART.fState.CTRDepthMask));
+  end;
+{$endif}
   TAddress.STIMECMP:begin
    TPasMPInterlocked.Write(fHART.fSTIMECMP,aValue);
    fData[TAddress.STIMECMP]:=aValue;
@@ -94379,6 +94545,13 @@ begin
  fCSRHandlerMap[TCSR.TAddress.SEED]:=CSRHandlerSEED; // SEED (Zkr): only csrrw/csrrwi allowed; csrr raises IllegalInstruction
 
  fCSRHandlerMap[TCSR.TAddress.STIMECMP]:=CSRHandlerSTIMECMP; // STIMECMP
+{$ifdef PasRISCVSmctrSsctr}
+ fCSRHandlerMap[TCSR.TAddress.SCTRCTL]:=CSRHandlerPrivileged;   // Ssctr: SCTRCTL
+ fCSRHandlerMap[TCSR.TAddress.SCTRSTATUS]:=CSRHandlerPrivileged; // Ssctr: SCTRSTATUS
+ fCSRHandlerMap[TCSR.TAddress.SCTRDEPTH]:=CSRHandlerPrivileged;  // Ssctr: SCTRDEPTH
+ fCSRHandlerMap[TCSR.TAddress.VSCTRCTL]:=CSRHandlerPrivileged;   // Ssctr: VSCTRCTL
+ fCSRHandlerMap[TCSR.TAddress.MCTRCTL]:=CSRHandlerPrivileged;    // Smctr: MCTRCTL
+{$endif}
  fCSRHandlerMap[TCSR.TAddress.VSTIMECMP]:=CSRHandlerVSTIMECMP; // VSTIMECMP
 
  fCSRHandlerMap[TCSR.TAddress.SATP]:=CSRHandlerSATP; // SATP
@@ -94515,6 +94688,10 @@ begin
 
   fCSRHandlerMap[TCSR.TAddress.MIREG]:=CSRHandlerIndirect; // MIREG
   fCSRHandlerMap[TCSR.TAddress.SIREG]:=CSRHandlerIndirect; // SIREG
+{$ifdef PasRISCVSmctrSsctr}
+ fCSRHandlerMap[TCSR.TAddress.SIREG2]:=CSRHandlerIndirect; // Ssctr: SIREG2 exposes ctrtarget
+ fCSRHandlerMap[TCSR.TAddress.SIREG3]:=CSRHandlerIndirect; // Ssctr: SIREG3 exposes ctrdata
+{$endif}
   fCSRHandlerMap[TCSR.TAddress.VSIREG]:=CSRHandlerIndirect; // VSIREG (H-extension)
 
  end else begin
@@ -94548,6 +94725,17 @@ begin
   fCSRHandlerMap[TCSR.TAddress.MPASRISCVCTL]:=CSRHandlerMPASRISCVCTL; // mpasriscvctl (PasRISCV custom M-mode)
 
  end;
+
+{$ifdef PasRISCVSmctrSsctr}
+ // Smctr and Ssctr reach their entry registers through Sscsrind, which is an
+ // extension in its own right and does not depend on AIA. The indirect window
+ // therefore has to exist even on a machine built without AIA, where the block
+ // above has just marked it illegal.
+ fCSRHandlerMap[TCSR.TAddress.SISELECT]:=CSRHandlerPrivileged; // SISELECT
+ fCSRHandlerMap[TCSR.TAddress.SIREG]:=CSRHandlerIndirect;      // SIREG exposes ctrsource
+ fCSRHandlerMap[TCSR.TAddress.SIREG2]:=CSRHandlerIndirect;     // SIREG2 exposes ctrtarget
+ fCSRHandlerMap[TCSR.TAddress.SIREG3]:=CSRHandlerIndirect;     // SIREG3 exposes ctrdata
+{$endif}
 
 {$ifdef PasRISCVJustInTimeCompiler}
  if fMachine.fJITEnabled then begin
@@ -94725,8 +94913,20 @@ begin
   end;
 {$ifend}
 
+{$ifdef PasRISCVSmctrSsctr}
+  // Smctr: a trap has to be judged by the mode it is leaving, so keep that state
+  // around before the switch overwrites it
+  fCTRPrevRecording:=fState.CTRRecording;
+  fCTRPrevControl:=fState.CTRControl;
+{$endif}
+
   // Update the current privilege mode
   fState.Mode:=aMode;
+
+{$ifdef PasRISCVSmctrSsctr}
+  // Ssctr: whether recording is on depends on the privilege mode
+  UpdateCTRState;
+{$endif}
 
 {$ifdef PerModeTLB}
   // Per-mode TLB: no data TLB flush needed, just update mode base and JIT pointers
@@ -98923,6 +99123,10 @@ var rd:TRegister;
     ISelect,CSRValue,Reg:TPasRISCVUInt64;
     Mode:TPasRISCV.THART.TMode;
     AIARegFileMode:TPasRISCV.TAIARegFileMode;
+{$ifdef PasRISCVSmctrSsctr}
+    CTREntry:TPasRISCVUInt32;
+    CTRPtr:PPasRISCVUInt64;
+{$endif}
 begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -98935,6 +99139,10 @@ begin
     ISelect:=fState.CSR.fData[TCSR.TAddress.MISELECT];
     OK:=true;
    end;
+{$ifdef PasRISCVSmctrSsctr}
+   TCSR.TAddress.SIREG2,
+   TCSR.TAddress.SIREG3,
+{$endif}
    TCSR.TAddress.SIREG:begin
     if fState.VirtualMode then begin
      // V=1: sireg access uses VS context (siselect already swapped to VS value)
@@ -99052,6 +99260,50 @@ begin
       end;
      end;
     end;
+{$ifdef PasRISCVSmctrSsctr}
+    // Ssctr: siselect 0x200..0x2ff selects one CTR entry, with 0x200 naming the
+    // most recently written one. sireg, sireg2 and sireg3 then expose its
+    // ctrsource, ctrtarget and ctrdata respectively.
+    $200..$2ff:begin
+     CTREntry:=(TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS])-
+                (TPasRISCVUInt32(ISelect-$200)+1)) and fState.CTRDepthMask;
+     case aCSR of
+      TCSR.TAddress.SIREG:begin
+       CTRPtr:=@fState.CTRSource[CTREntry];
+       OK:=true;
+      end;
+      TCSR.TAddress.SIREG2:begin
+       CTRPtr:=@fState.CTRTarget[CTREntry];
+       OK:=true;
+      end;
+      TCSR.TAddress.SIREG3:begin
+       CTRPtr:=@fState.CTRData[CTREntry];
+       OK:=true;
+      end;
+      else begin
+       CTRPtr:=nil;
+       OK:=false;
+      end;
+     end;
+     if OK then begin
+      CSRValue:=CTRPtr^;
+      case aOperation of
+       TCSROperation.Swap:begin
+        CTRPtr^:=aRHS;
+       end;
+       TCSROperation.SetBits:begin
+        CTRPtr^:=CSRValue or aRHS;
+       end;
+       TCSROperation.ClearBits:begin
+        CTRPtr^:=CSRValue and not aRHS;
+       end;
+      end;
+      {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+       fState.Registers[rd]:=CSRValue;
+      end;
+     end;
+    end;
+{$endif}
     else begin
      OK:=false;
     end;
@@ -99064,6 +99316,235 @@ begin
   end;
  end;
 end;
+
+{$ifdef PasRISCVSmctrSsctr}
+// Smctr: classify a JAL by its link register, following the RISC-V E-trace encoding.
+// x1 and x5 are the architectural link registers.
+class function TPasRISCV.THART.CTRTypeOfJAL(const aRD:TRegister):TPasRISCVUInt32;
+begin
+ if (aRD=TRegister.RA) or (aRD=TRegister.T0) then begin
+  result:=TCSR.TCTRType.DirectCall;
+ end else if aRD=TRegister.Zero then begin
+  result:=TCSR.TCTRType.DirectJump;
+ end else begin
+  // Writes a return address, but to a register the return address stack does not track
+  result:=TCSR.TCTRType.OtherDirectJump;
+ end;
+end;
+
+// Smctr: classify a JALR from both of its registers. This is the table that lets a
+// profiler tell calls, returns and co-routine swaps apart.
+class function TPasRISCV.THART.CTRTypeOfJALR(const aRD,aRS1:TRegister):TPasRISCVUInt32;
+var RDIsLink,RS1IsLink:Boolean;
+begin
+ RDIsLink:=(aRD=TRegister.RA) or (aRD=TRegister.T0);
+ RS1IsLink:=(aRS1=TRegister.RA) or (aRS1=TRegister.T0);
+ if RDIsLink then begin
+  if RS1IsLink and (aRD<>aRS1) then begin
+   // Pops one link register and pushes the other
+   result:=TCSR.TCTRType.CoRoutineSwap;
+  end else begin
+   result:=TCSR.TCTRType.IndirectCall;
+  end;
+ end else if aRD=TRegister.Zero then begin
+  if RS1IsLink then begin
+   result:=TCSR.TCTRType.Return_;
+  end else begin
+   result:=TCSR.TCTRType.IndirectJump;
+  end;
+ end else begin
+  result:=TCSR.TCTRType.OtherIndirectJump;
+ end;
+end;
+
+// Ssctr: recompute everything that depends on the active xctrctl, sctrdepth and the
+// current privilege mode, so that the recording path itself stays a single flag test.
+// Must be called after any write to those CSRs and after every privilege mode change.
+procedure TPasRISCV.THART.UpdateCTRState;
+var Control:TPasRISCVUInt64;
+    Depth:TPasRISCVUInt32;
+    Enabled:Boolean;
+begin
+
+ // VS and VU are governed by vsctrctl, everything else by mctrctl, of which
+ // sctrctl is only the supervisor visible subset
+ if fState.VirtualMode then begin
+  Control:=fState.CSR.fData[TCSR.TAddress.VSCTRCTL] and TCSR.TCTRControlMasks.SupervisorMask;
+ end else begin
+  Control:=fState.CSR.fData[TCSR.TAddress.MCTRCTL] and TCSR.TCTRControlMasks.MachineMask;
+ end;
+
+ case fState.Mode of
+  TMode.User:begin
+   Enabled:=(Control and TCSR.TCTRControlMasks.U)<>0;
+  end;
+  TMode.Supervisor:begin
+   Enabled:=(Control and TCSR.TCTRControlMasks.S)<>0;
+  end;
+  TMode.Machine:begin
+   // M is only ever set through mctrctl, so this stays off with Ssctr alone
+   Enabled:=(Control and TCSR.TCTRControlMasks.M)<>0;
+  end;
+  else begin
+   Enabled:=false;
+  end;
+ end;
+
+ if (fState.CSR.fData[TCSR.TAddress.SCTRSTATUS] and TCSR.TCTRStatusMasks.FROZEN)<>0 then begin
+  Enabled:=false;
+ end;
+
+ // sctrdepth.DEPTH is a 3 bit WARL field encoding 16 to 256 entries
+ Depth:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRDEPTH]) and 7;
+ if Depth>4 then begin
+  Depth:=4;
+ end;
+
+ fState.CTRControl:=Control;
+ fState.CTRDepthMask:=(TPasRISCVUInt32(16) shl Depth)-1;
+ if Enabled then begin
+  fState.CTRRecording:=1;
+ end else begin
+  fState.CTRRecording:=0;
+ end;
+
+end;
+
+// Ssctr: append one entry. Callers must have checked fState.CTRRecording and the
+// per type inhibit bit in fState.CTRControl beforehand, since that check is what
+// the JIT inlines.
+procedure TPasRISCV.THART.RecordCTR(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
+var Index:TPasRISCVUInt32;
+    Control:TPasRISCVUInt64;
+    Allowed:Boolean;
+begin
+
+ // Per type filtering. Every type has an inhibit bit that suppresses recording,
+ // except the not taken branch which has an enable bit instead and is therefore
+ // off unless explicitly asked for.
+ Control:=fState.CTRControl;
+ case aCTRType of
+  TCSR.TCTRType.Exception_:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.EXCINH)=0;
+  end;
+  TCSR.TCTRType.Interrupt:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.INTRINH)=0;
+  end;
+  TCSR.TCTRType.TrapReturn:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.TRETINH)=0;
+  end;
+  TCSR.TCTRType.NonTakenBranch:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.NTBREN)<>0;
+  end;
+  TCSR.TCTRType.TakenBranch:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.TKBRINH)=0;
+  end;
+  TCSR.TCTRType.IndirectCall:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.INDCALLINH)=0;
+  end;
+  TCSR.TCTRType.DirectCall:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.DIRCALLINH)=0;
+  end;
+  TCSR.TCTRType.IndirectJump:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.INDJMPINH)=0;
+  end;
+  TCSR.TCTRType.DirectJump:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.DIRJMPINH)=0;
+  end;
+  TCSR.TCTRType.CoRoutineSwap:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.CORSWAPINH)=0;
+  end;
+  TCSR.TCTRType.Return_:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.RETINH)=0;
+  end;
+  TCSR.TCTRType.OtherIndirectJump:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.INDLJMPINH)=0;
+  end;
+  TCSR.TCTRType.OtherDirectJump:begin
+   Allowed:=(Control and TCSR.TCTRControlMasks.DIRLJMPINH)=0;
+  end;
+  else begin
+   Allowed:=false;
+  end;
+ end;
+ if not Allowed then begin
+  exit;
+ end;
+
+ Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]) and fState.CTRDepthMask;
+
+ // Bit 0 of ctrsource carries the valid flag and bit 0 of ctrtarget the
+ // misprediction flag, both are free because instructions are 2 byte aligned
+ fState.CTRSource[Index]:=(aSource and not TPasRISCVUInt64(1)) or TCSR.TCTREntryMasks.SourceValid;
+ fState.CTRTarget[Index]:=aTarget and not TPasRISCVUInt64(1);
+ fState.CTRData[Index]:=TPasRISCVUInt64(aCTRType) and TCSR.TCTREntryMasks.DataType;
+
+ Index:=(Index+1) and fState.CTRDepthMask;
+ fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]:=(fState.CSR.fData[TCSR.TAddress.SCTRSTATUS] and not TCSR.TCTRStatusMasks.WRPTR) or TPasRISCVUInt64(Index);
+
+end;
+
+// Smctr: record a trap. Called after the privilege switch, so it works off the
+// state SetMode saved for the mode being left. MTE and STE additionally allow a
+// trap into M or S mode to be recorded even when that mode does not record itself.
+procedure TPasRISCV.THART.RecordCTRTrap(const aCTRType:TPasRISCVUInt32;const aSource,aTarget:TPasRISCVUInt64);
+var SavedControl:TPasRISCVUInt64;
+    SavedRecording:TPasRISCVUInt32;
+    Allowed:Boolean;
+begin
+
+ if fCTRPrevRecording=0 then begin
+  exit;
+ end;
+
+ // MTE and STE only govern traps into a mode, not the return out of one
+ if (aCTRType=TCSR.TCTRType.Exception_) or (aCTRType=TCSR.TCTRType.Interrupt) then begin
+  case fState.Mode of
+   TMode.Machine:begin
+    Allowed:=((fCTRPrevControl and TCSR.TCTRControlMasks.M)<>0) or
+             ((fCTRPrevControl and TCSR.TCTRControlMasks.MTE)<>0);
+   end;
+   TMode.Supervisor:begin
+    Allowed:=((fCTRPrevControl and TCSR.TCTRControlMasks.S)<>0) or
+             ((fCTRPrevControl and TCSR.TCTRControlMasks.STE)<>0);
+   end;
+   else begin
+    Allowed:=true;
+   end;
+  end;
+  if not Allowed then begin
+   exit;
+  end;
+ end;
+
+ // RecordCTR filters on the live control, which already belongs to the target
+ // mode here, so lend it the one the trap started in for the duration of the call
+ SavedControl:=fState.CTRControl;
+ SavedRecording:=fState.CTRRecording;
+ fState.CTRControl:=fCTRPrevControl;
+ fState.CTRRecording:=fCTRPrevRecording;
+ try
+  RecordCTR(aCTRType,aSource,aTarget);
+ finally
+  fState.CTRControl:=SavedControl;
+  fState.CTRRecording:=SavedRecording;
+ end;
+
+end;
+
+// Ssctr: what the SCTRCLR instruction does, for all depths rather than just the
+// currently selected one
+procedure TPasRISCV.THART.ClearCTREntries;
+var Index:TPasRISCVUInt32;
+begin
+ for Index:=0 to 255 do begin
+  fState.CTRSource[Index]:=0;
+  fState.CTRTarget[Index]:=0;
+  fState.CTRData[Index]:=0;
+ end;
+ fState.CSR.fData[TCSR.TAddress.SCTRSTATUS]:=fState.CSR.fData[TCSR.TAddress.SCTRSTATUS] and not TCSR.TCTRStatusMasks.WRPTR;
+end;
+{$endif}
 
 procedure TPasRISCV.THART.SetFPUExceptions(const aMask:TPasRISCVUInt32=$3f);
 var Exceptions:TPasRISCVUInt32;
@@ -123362,6 +123843,12 @@ begin
       exit;
      end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+     // c.j expands to jal x0, so it is always a plain direct jump
+     if fState.CTRRecording<>0 then begin
+      RecordCTR(TCSR.TCTRType.DirectJump,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+     end;
+{$endif}
      inc(fState.PC,TPasRISCVUInt64(Immediate)-2);
      result:=2;
      exit;
@@ -123382,6 +123869,11 @@ begin
        exit;
       end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+      if fState.CTRRecording<>0 then begin
+       RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+      end;
+{$endif}
       inc(fState.PC,TPasRISCVUInt64(Immediate)-2);
      end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -123391,6 +123883,11 @@ begin
        exit;
       end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+      if fState.CTRRecording<>0 then begin
+       RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+2);
+      end;
+{$endif}
      end;
      result:=2;
      exit;
@@ -123411,6 +123908,11 @@ begin
        exit;
       end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+      if fState.CTRRecording<>0 then begin
+       RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+      end;
+{$endif}
       inc(fState.PC,TPasRISCVUInt64(Immediate)-2);
      end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -123420,6 +123922,11 @@ begin
        exit;
       end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+      if fState.CTRRecording<>0 then begin
+       RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+2);
+      end;
+{$endif}
      end;
      result:=2;
      exit;
@@ -123560,6 +124067,12 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(CTRTypeOfJALR(TRegister.Zero,rs1),fState.PC,
+                   fState.Registers[rs1] and TPasRISCVUInt64($fffffffffffffffe));
+        end;
+{$endif}
         fState.PC:=(fState.Registers[rs1] and TPasRISCVUInt64($fffffffffffffffe))-2;
 {$ifdef Zicfilp}
         // Zicfilp: Set ELP if rs1 is not x1, x5, or x7
@@ -123628,6 +124141,12 @@ begin
          end;
 {$ifend}
          Temporary:=fState.PC+2;
+{$ifdef PasRISCVSmctrSsctr}
+         if fState.CTRRecording<>0 then begin
+          RecordCTR(CTRTypeOfJALR(TRegister.RA,rs1),fState.PC,
+                    fState.Registers[rs1] and TPasRISCVUInt64($fffffffffffffffe));
+         end;
+{$endif}
          fState.PC:=(fState.Registers[rs1] and TPasRISCVUInt64($fffffffffffffffe))-2;
          fState.Registers[TRegister.RA]:=Temporary;
 {$ifdef Zicfilp}
@@ -126242,6 +126761,11 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+        end;
+{$endif}
         inc(fState.PC,Immediate-4);
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -126251,6 +126775,12 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        // A not taken branch records the fall through as its target
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+4);
+        end;
+{$endif}
        end;
        result:=4;
        exit;
@@ -126269,6 +126799,11 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+        end;
+{$endif}
         inc(fState.PC,Immediate-4);
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -126278,6 +126813,12 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        // A not taken branch records the fall through as its target
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+4);
+        end;
+{$endif}
        end;
        result:=4;
        exit;
@@ -126296,6 +126837,11 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+        end;
+{$endif}
         inc(fState.PC,Immediate-4);
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -126305,6 +126851,12 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        // A not taken branch records the fall through as its target
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+4);
+        end;
+{$endif}
        end;
        result:=4;
        exit;
@@ -126323,6 +126875,11 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+        end;
+{$endif}
         inc(fState.PC,Immediate-4);
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -126332,6 +126889,12 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        // A not taken branch records the fall through as its target
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+4);
+        end;
+{$endif}
        end;
        result:=4;
        exit;
@@ -126350,6 +126913,11 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+        end;
+{$endif}
         inc(fState.PC,Immediate-4);
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -126359,6 +126927,12 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        // A not taken branch records the fall through as its target
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+4);
+        end;
+{$endif}
        end;
        result:=4;
        exit;
@@ -126377,6 +126951,11 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.TakenBranch,fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+        end;
+{$endif}
         inc(fState.PC,Immediate-4);
        end else begin
 {$if defined(PasRISCVJustInTimeCompiler) and true}
@@ -126386,6 +126965,12 @@ begin
          exit;
         end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+        // A not taken branch records the fall through as its target
+        if fState.CTRRecording<>0 then begin
+         RecordCTR(TCSR.TCTRType.NonTakenBranch,fState.PC,fState.PC+4);
+        end;
+{$endif}
        end;
        result:=4;
        exit;
@@ -126414,6 +126999,12 @@ begin
       exit;
      end;
 {$ifend}
+{$ifdef PasRISCVSmctrSsctr}
+     if fState.CTRRecording<>0 then begin
+      RecordCTR(CTRTypeOfJALR(rd,rs1),fState.PC,
+                (fState.Registers[rs1]+TPasRISCVUInt64(Immediate)) and TPasRISCVUInt64($fffffffffffffffe));
+     end;
+{$endif}
      fState.PC:=((fState.Registers[rs1]+TPasRISCVUInt64(Immediate)) and TPasRISCVUInt64($fffffffffffffffe))-4;
      {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
       fState.Registers[rd]:=Temporary;
@@ -126476,6 +127067,11 @@ begin
      {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
       fState.Registers[rd]:=fState.PC+4;
      end;
+{$ifdef PasRISCVSmctrSsctr}
+     if fState.CTRRecording<>0 then begin
+      RecordCTR(CTRTypeOfJAL(rd),fState.PC,fState.PC+TPasRISCVUInt64(Immediate));
+     end;
+{$endif}
      inc(fState.PC,TPasRISCVUInt64(Immediate)-4);
      result:=4;
      exit;
@@ -126710,6 +127306,9 @@ begin
 {$endif}
 
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
+{$ifdef PasRISCVSmctrSsctr}
+              RecordCTRTrap(TCSR.TCTRType.TrapReturn,fState.PC,fState.CSR.fData[TCSR.TAddress.SEPC]);
+{$endif}
               fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
 
 {$ifdef MRETSRETCheckInterrupts}
@@ -126764,6 +127363,9 @@ begin
               end;
 
               // Set PC to CSR.SEPC
+{$ifdef PasRISCVSmctrSsctr}
+              RecordCTRTrap(TCSR.TCTRType.TrapReturn,fState.PC,fState.CSR.fData[TCSR.TAddress.SEPC]);
+{$endif}
               fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
 
 {$ifdef MRETSRETCheckInterrupts}
@@ -126836,6 +127438,9 @@ begin
               end;
 
               // Set PC to CSR.MEPC
+{$ifdef PasRISCVSmctrSsctr}
+              RecordCTRTrap(TCSR.TCTRType.TrapReturn,fState.PC,fState.CSR.fData[TCSR.TAddress.MEPC]);
+{$endif}
               fState.PC:=fState.CSR.fData[TCSR.TAddress.MEPC]-4;
 
 {$ifdef MRETSRETCheckInterrupts}
@@ -134518,6 +135123,9 @@ begin
      SetMode(THART.TMode.Machine);
 
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
+{$ifdef PasRISCVSmctrSsctr}
+     RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
+{$endif}
 
      fState.CSR.fData[TCSR.TAddress.MEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
 
@@ -134555,6 +135163,9 @@ begin
       SetMode(THART.TMode.Supervisor);
 
       fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
+{$ifdef PasRISCVSmctrSsctr}
+      RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
+{$endif}
       fState.CSR.fData[TCSR.TAddress.SEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
       fState.CSR.fData[TCSR.TAddress.SCAUSE]:=(TPasRISCVUInt64(1) shl 63) or TPasRISCVUInt64(InterruptValue);
       fState.CSR.fData[TCSR.TAddress.STVAL]:=0;
@@ -134583,6 +135194,9 @@ begin
       SetMode(THART.TMode.Supervisor);
 
       fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+TPasRISCVUInt64(ord(fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*TPasRISCVUInt64(InterruptValue)*4);
+{$ifdef PasRISCVSmctrSsctr}
+      RecordCTRTrap(TCSR.TCTRType.Interrupt,PC,fState.PC);
+{$endif}
 
       fState.CSR.fData[TCSR.TAddress.SEPC]:=PC and TPasRISCVUInt64($fffffffffffffffe);
 
@@ -134819,6 +135433,9 @@ begin
      // Vectored mode: BASE + 4*cause; direct mode: BASE.
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+
                 ((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(16 shl 2));
+{$ifdef PasRISCVSmctrSsctr}
+     RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+{$endif}
 
      // Set HS-mode trap CSRs.
      fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
@@ -134858,6 +135475,9 @@ begin
     // V remains 1
 
     fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+{$ifdef PasRISCVSmctrSsctr}
+    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+{$endif}
     fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
     fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
     fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.ExceptionData;
@@ -134904,6 +135524,9 @@ begin
      // In vectored mode (MTVEC[0]=1): BASE + 4*cause; in direct mode: BASE.
      fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+
                 ((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(16 shl 2));
+{$ifdef PasRISCVSmctrSsctr}
+     RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+{$endif}
 
      // Set M-mode trap CSRs.
      fState.CSR.fData[TCSR.TAddress.MEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
@@ -134971,6 +135594,9 @@ begin
     SetMode(THART.TMode.Supervisor);
 
     fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+{$ifdef PasRISCVSmctrSsctr}
+    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+{$endif}
     fState.CSR.fData[TCSR.TAddress.SEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
     fState.CSR.fData[TCSR.TAddress.SCAUSE]:=TPasRISCVUInt32(fState.ExceptionValue);
     fState.CSR.fData[TCSR.TAddress.STVAL]:=fState.ExceptionData;
@@ -135031,6 +135657,9 @@ begin
    SetMode(THART.TMode.Machine);
 
    fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+{$ifdef PasRISCVSmctrSsctr}
+   RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
+{$endif}
 
    fState.CSR.fData[TCSR.TAddress.MEPC]:=fState.ExceptionPC and TPasRISCVUInt64($fffffffffffffffe);
 
@@ -141857,8 +142486,13 @@ begin
   AddISAExtension('sm1p13');
   AddISAExtension('supm');
   AddISAExtension('svade');
+{$ifdef PasRISCVSmctrSsctr}
+  AddISAExtension('smctr');
+  AddISAExtension('ssctr');
+{$else}
 //AddISAExtension('smctr');
 //AddISAExtension('ssctr');
+{$endif}
   AddISAExtension('svadu');
   AddISAExtension('svinval');
   AddISAExtension('svnapot');
