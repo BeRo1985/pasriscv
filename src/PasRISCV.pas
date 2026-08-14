@@ -10420,6 +10420,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      CTRDepthMask:TPasRISCVUInt32; // number of entries minus one
                      CTRRecording:TPasRISCVUInt32; // 1 while recording is on for the current mode and not frozen
                      CTRLastCycle:TPasRISCVUInt64; // Cycle at the previous recorded entry, for ctrdata.CC
+                     CTRArmed:TPasRISCVUInt32;     // 1 while any mode has recording enabled, drives whether the JIT emits CTR code at all
 {$endif}
 {$ifdef PasRISCVJustInTimeCompiler}
                      JITRunStatePtr:Pointer; // = @fMachine.fRunState, set once in THART.Create
@@ -79370,7 +79371,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79386,7 +79393,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBeq(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79400,7 +79413,9 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ end;
 {$endif}
  result:=true;
 end;
@@ -79421,7 +79436,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79437,7 +79458,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBne(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79451,7 +79478,9 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ end;
 {$endif}
  result:=true;
 end;
@@ -79472,7 +79501,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79488,7 +79523,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBlt(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79502,7 +79543,9 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ end;
 {$endif}
  result:=true;
 end;
@@ -79523,7 +79566,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79539,7 +79588,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBge(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79553,7 +79608,9 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ end;
 {$endif}
  result:=true;
 end;
@@ -79574,7 +79631,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79590,7 +79653,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBltu(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79604,7 +79673,9 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ end;
 {$endif}
  result:=true;
 end;
@@ -79625,7 +79696,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2,BRANCH_NEW,false);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79641,7 +79718,13 @@ begin
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr: claim before the branch, so any callee saved push the allocator
  // emits lands on the common path rather than only on the fall through
- CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRClaimScratch(CTRS1,CTRS2,CTRS3);
+ end else begin
+  CTRS1:=0;
+  CTRS2:=0;
+  CTRS3:=0;
+ end;
 {$endif}
  TakenLabel:=EmitNativeBgeu(HostRS1,HostRS2);
 {$ifdef PasRISCVSmctrSsctr}
@@ -79655,7 +79738,9 @@ begin
  PatchBranchLabel(TakenLabel);
 {$endif}
 {$ifdef PasRISCVSmctrSsctr}
- CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ if fHART.fState.CTRArmed<>0 then begin
+  CTRFreeScratch(CTRS1,CTRS2,CTRS3);
+ end;
 {$endif}
  result:=true;
 end;
@@ -85696,6 +85781,9 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCTRRecord(const aCTRType:TPasRISCVUInt32;const aSourceIsRegister:Boolean;const aSourceReg:TPasRISCVUInt8;const aSourceOffset:TPasRISCVInt32;const aTargetIsRegister:Boolean;const aTargetReg:TPasRISCVUInt8;const aTargetOffset:TPasRISCVInt32);
 var S1,S2,S3:TPasRISCVUInt8;
 begin
+ if fHART.fState.CTRArmed=0 then begin
+  exit;
+ end;
  CTRClaimScratch(S1,S2,S3);
  EmitCTRRecordWith(aCTRType,aSourceIsRegister,aSourceReg,aSourceOffset,aTargetIsRegister,aTargetReg,aTargetOffset,S1,S2,S3);
  CTRFreeScratch(S1,S2,S3);
@@ -85711,6 +85799,12 @@ var S1,S2,S3:TPasRISCVUInt8;
     InhibitIsEnable:Boolean;
     SkipFixup1,SkipFixup2,SkipFixup3,RASFixup,RASJoinFixup:TPasRISCVUInt32;
 begin
+
+ // Nothing is emitted at all while no mode records, which keeps blocks short and
+ // the code buffer small in the normal case. Arming throws the blocks away.
+ if fHART.fState.CTRArmed=0 then begin
+  exit;
+ end;
 
  S1:=aS1;
  S2:=aS2;
@@ -99981,7 +100075,7 @@ end;
 // Must be called after any write to those CSRs and after every privilege mode change.
 procedure TPasRISCV.THART.UpdateCTRState;
 var Control:TPasRISCVUInt64;
-    Depth:TPasRISCVUInt32;
+    Depth,Armed:TPasRISCVUInt32;
     Enabled:Boolean;
 begin
 
@@ -100025,6 +100119,25 @@ begin
   fState.CTRRecording:=1;
  end else begin
   fState.CTRRecording:=0;
+ end;
+
+ // Whether any mode records at all decides whether compiled code carries the
+ // recording sequence. This is deliberately mode independent, otherwise every
+ // privilege switch would invalidate the block cache. It only ever changes on a
+ // write to one of the control registers, which is rare, so throwing the blocks
+ // away then is cheap and keeps the disabled case free of any emitted CTR code.
+ Armed:=0;
+ if ((fState.CSR.fData[TCSR.TAddress.MCTRCTL] and TCSR.TCTRControlMasks.ModeEnableMask)<>0) or
+    ((fState.CSR.fData[TCSR.TAddress.VSCTRCTL] and TCSR.TCTRControlMasks.ModeEnableMask)<>0) then begin
+  Armed:=1;
+ end;
+ if fState.CTRArmed<>Armed then begin
+  fState.CTRArmed:=Armed;
+{$ifdef PasRISCVJustInTimeCompiler}
+  if assigned(fJustInTimeCompiler) then begin
+   fJustInTimeCompiler.ClearBlocks;
+  end;
+{$endif}
  end;
 
 end;
