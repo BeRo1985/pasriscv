@@ -420,6 +420,7 @@ unit PasRISCV;
 {$define PasRISCVStrictCompliantFPU}
 
 {$define PasRISCVFastRMMFixup} // Optional: RMM-exact fast mode via selective soft-float fallback (needs PasRISCVStrictCompliantFPU)
+{$define PasRISCVJITFPUInvalidFlag} // Optional: let the JIT raise NV for invalid arithmetic FP operations, from the host invalid flag
 
 {$undef MRETSRETCheckInterrupts}
 
@@ -1816,6 +1817,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        destructor Destroy; override;
        procedure GenerateMACAddress;
        procedure Shutdown; virtual;
+       // Called when the guest resets its network controller, in particular on a guest
+       // reboot. A backend that carries per-boot state has to drop it here, otherwise
+       // the freshly booted guest meets connections and address leases it knows nothing
+       // about. Backends without such state keep the empty default.
+       procedure Reset; virtual;
        procedure WritePacket(const aBuffer:Pointer;const aBufferSize:TPasRISCVSizeInt); virtual;
       public
        property MACAddress:TMACAddress read fMACAddress write fMACAddress;
@@ -2532,6 +2538,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fIPv6RATickCount:TPasRISCVInt32;
        fIPv6FragmentReassemblyTable:TIPv6FragmentReassemblyTable;
        fUserModeTickCount:TPasRISCVUInt32;
+       // Set by Reset from the HART thread, serviced by the network thread. The session
+       // tables belong to that thread, so the guest side only posts a request.
+       fResetPending:TPasMPUInt32;
        function UserModeIPChecksum(const aData:Pointer;const aSize:TPasRISCVSizeInt):TPasRISCVUInt16;
        function UserModeTCPUDPChecksum(const aSourceIP,aDestinationIP:TIPv4Address;const aProtocol:TPasRISCVUInt8;const aData:Pointer;const aSize:TPasRISCVSizeInt):TPasRISCVUInt16;
        procedure InjectToGuest(const aData:Pointer;const aSize:TPasRISCVSizeInt);
@@ -2589,10 +2598,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure PollTCPv6Sockets;
        procedure SendRouterAdvertisement(const aDestMAC:TPasRISCVEthernetDevice.TMACAddress;const aDestIPv6:TIPv6Address);
        procedure ThreadProc;
+       procedure ProcessReset;
       public
        constructor Create; reintroduce;
        destructor Destroy; override;
        procedure Shutdown; override;
+       procedure Reset; override;
        procedure Start;
        procedure WritePacket(const aBuffer:Pointer;const aBufferSize:TPasRISCVSizeInt); override;
        procedure AddPortForward(const aSpec:TPasRISCVRawByteString);
@@ -10431,6 +10442,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
  {$endif}
                      JITHART:THART;
                      JITSkipExecution:TPasMPBool32;
+ {$ifdef PasRISCVJustInTimeCompilerFPU}
+                     // Canonical NaN constants for the JIT NaN fixup of arithmetic FP results.
+                     // Read through the VM pointer so the fixup needs neither a scratch register
+                     // nor stack access: it has to run inside the static rounding mode window,
+                     // where RSP points at the saved MXCSR and a register spill would clobber it.
+                     // The single-precision one is stored already NaN-boxed, so one 64 bit load
+                     // yields the final register value. Written once in THART.Init.
+                     JITCanonicalNaNF32:TPasRISCVUInt64;
+                     JITCanonicalNaNF64:TPasRISCVUInt64;
+ {$endif}
  {$ifdef PasRISCVJustInTimeCompilerSideExit}
                      JITDataTLBFillPtr:Pointer;
                      JITScratch:TPasRISCVPtrUInt;
@@ -10837,6 +10858,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestIntRegisterOffset(const aGuestRegister:TRegister):TPasRISCVInt32;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
                      function GuestFPURegisterOffset(const aGuestRegister:TFPURegister):TPasRISCVInt32;
+                     function GuestJITCanonicalNaNF32Offset:TPasRISCVInt32;
+                     function GuestJITCanonicalNaNF64Offset:TPasRISCVInt32;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      function GuestVectorRegisterOffset(const aVReg:TPasRISCVUInt32):TPasRISCVInt32;
@@ -11930,6 +11953,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            X86_PREFIX_F3=TPasRISCVUInt8($f3);
                            X86_VEX3=TPasRISCVUInt8($c4);
                            X86_SSE_UCOMISS=TPasRISCVUInt8($2e);
+                           X86_SSE_COMISS=TPasRISCVUInt8($2f); // signaling form, raises the invalid flag for a quiet NaN too
                            X86_SSE_CVTTSI=TPasRISCVUInt8($2c);
                            X86_SSE_CVT2SI=TPasRISCVUInt8($2d);
                            X86_SSE_CVTSI=TPasRISCVUInt8($2a);
@@ -12349,6 +12373,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFMaxD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFCvtSD(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
                      procedure EmitNativeFCvtDS(const aHostDest,aHostSrc:TPasRISCVUInt8); override;
+                     procedure EmitNativeFCmpS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,aSetCondition:TPasRISCVUInt8;const aSignaling:Boolean);
+                     procedure EmitNativeFCmpD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,aSetCondition:TPasRISCVUInt8;const aSignaling:Boolean);
                      procedure EmitNativeFEqS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFEqD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeFLtS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8); override;
@@ -12628,6 +12654,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fFastRMMFixupEnabled:TPasMPBool32; // Fast-mode RMM-exact opt-in (per-HART)
               fFastRMMActive:Boolean;            // Cached: effective frm == RMM (maintained in SetFPURM)
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+              fJITFPUInvalidFlagEnabled:TPasMPBool32; // JIT NV-from-host-flag opt-in (per-HART)
+{$endif}
               fBus:TBus;
               fAIARegFiles:TAIARegFiles;
 {$ifdef AIAIPrio}
@@ -12860,6 +12889,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure ClearCTREntries;
 {$endif}
               procedure SetFPUExceptions(const aMask:TPasRISCVUInt32=$3f);
+{$ifdef PasRISCVJITFPUInvalidFlag}
+              procedure SetFPUExceptionsFromJIT;
+{$endif}
               function FPUGetRM(const aInstruction:TPasRISCVUInt32;out aRM:TPasRISCVUInt8):boolean;
               function FastRMMActive(const aInstruction:TPasRISCVUInt32):Boolean; inline;
               procedure Breakpoint(const aInstruction:TPasRISCVUInt32);
@@ -13672,6 +13704,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVFastRMMFixup}
               fFastRMMFixupEnabled:Boolean;
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+              fJITFPUInvalidFlagEnabled:Boolean;
+{$endif}
 
               fSVVPTC:Boolean;
 
@@ -13899,6 +13934,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef PasRISCVFastRMMFixup}
               property FastRMMFixupEnabled:Boolean read fFastRMMFixupEnabled write fFastRMMFixupEnabled;
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+              property JITFPUInvalidFlagEnabled:Boolean read fJITFPUInvalidFlagEnabled write fJITFPUInvalidFlagEnabled;
+{$endif}
 
               property SVVPTC:Boolean read fSVVPTC write fSVVPTC;
 
@@ -13945,6 +13983,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
 {$ifdef PasRISCVFastRMMFixup}
        fFastRMMFixupEnabled:boolean;
+{$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+       fJITFPUInvalidFlagEnabled:boolean;
 {$endif}
 
        fGlobalLock:TPasMPMultipleReaderSingleWriterSpinLock;
@@ -14211,6 +14252,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
 {$ifdef PasRISCVFastRMMFixup}
        property FastRMMFixupEnabled:boolean read fFastRMMFixupEnabled write fFastRMMFixupEnabled;
+{$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+       property JITFPUInvalidFlagEnabled:boolean read fJITFPUInvalidFlagEnabled write fJITFPUInvalidFlagEnabled;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -14999,6 +15043,11 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
 
 {$if defined(cpu386) or defined(cpux86_64) or defined(cpuamd64) or defined(cpux64)}
 var X86ToRISCVFPUExceptionLookUpTable:array[0..TPasRISCV.FE_ALL_EXCEPT] of TPasRISCVUInt8;
+{$ifdef PasRISCVJITFPUInvalidFlag}
+// Same translation, but with the host invalid flag mapped to NV. Only the JIT block
+// epilog may use this one, see TPasRISCV.THART.SetFPUExceptionsFromJIT.
+var X86ToRISCVFPUExceptionWithInvalidLookUpTable:array[0..TPasRISCV.FE_ALL_EXCEPT] of TPasRISCVUInt8;
+{$endif}
 {$ifend}
 
 {$if defined(PasRISCVCPUDebug)}
@@ -15028,6 +15077,12 @@ begin
    Mask:=Mask or TPasRISCV.THART.TCSR.TFPUExceptionMasks.Inexact;
   end;
   X86ToRISCVFPUExceptionLookUpTable[Exceptions]:=Mask;
+{$ifdef PasRISCVJITFPUInvalidFlag}
+  if (Exceptions and TPasRISCV.FE_INVALID)<>0 then begin // Invalid
+   Mask:=Mask or TPasRISCV.THART.TCSR.TFPUExceptionMasks.Invalid;
+  end;
+  X86ToRISCVFPUExceptionWithInvalidLookUpTable[Exceptions]:=Mask;
+{$endif}
  end;
 end;
 {$ifend}
@@ -23252,6 +23307,179 @@ begin
  result:=rs1.IsSignalingNaN or rs2.IsSignalingNaN or rs3.IsSignalingNaN;
 end;
 
+// Invalid operation predicates for the single and double precision fast path, the
+// counterparts of the half precision ones above.
+//
+// The host invalid flag is deliberately not carried over into fflags: see
+// InitializeX86ToRISCVFPUExceptionLookUpTable, where FE_INVALID is left out because
+// feq.s compares its operands with a plain host compare and a quiet NaN operand would
+// then raise a false NV. NV therefore has to be derived from the operands. All of these
+// predicates are evaluated only once the result is already known to be a NaN, which is
+// the cold path of the instructions in question.
+
+function CheckF32IsSignalingNaN(const aBits:TPasRISCVUInt32):boolean; inline;
+begin
+ // Exponent all ones and quiet bit clear, with a nonzero mantissa
+ result:=((aBits and TPasRISCVUInt32($7fc00000))=TPasRISCVUInt32($7f800000)) and
+         ((aBits and TPasRISCVUInt32($003fffff))<>0);
+end;
+
+function CheckF32IsInfinity(const aBits:TPasRISCVUInt32):boolean; inline;
+begin
+ result:=(aBits and TPasRISCVUInt32($7fffffff))=TPasRISCVUInt32($7f800000);
+end;
+
+function CheckF32IsZero(const aBits:TPasRISCVUInt32):boolean; inline;
+begin
+ result:=(aBits and TPasRISCVUInt32($7fffffff))=0;
+end;
+
+function CheckF32IsNaN(const aBits:TPasRISCVUInt32):boolean; inline;
+begin
+ result:=(aBits and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000);
+end;
+
+function CheckF32HasSignalingNaN1(const aRS1:TPasRISCVUInt64):boolean;
+begin
+ result:=CheckF32IsSignalingNaN(ReadNormalizedFloatUI32(aRS1));
+end;
+
+function CheckF32HasSignalingNaN2(const aRS1,aRS2:TPasRISCVUInt64):boolean;
+begin
+ result:=CheckF32IsSignalingNaN(ReadNormalizedFloatUI32(aRS1)) or
+         CheckF32IsSignalingNaN(ReadNormalizedFloatUI32(aRS2));
+end;
+
+function CheckF32HasSignalingNaN3(const aRS1,aRS2,aRS3:TPasRISCVUInt64):boolean;
+begin
+ result:=CheckF32IsSignalingNaN(ReadNormalizedFloatUI32(aRS1)) or
+         CheckF32IsSignalingNaN(ReadNormalizedFloatUI32(aRS2)) or
+         CheckF32IsSignalingNaN(ReadNormalizedFloatUI32(aRS3));
+end;
+
+// Addition of two infinities of opposite sign. aSubtract selects fsub, where the second
+// operand is negated first, so there equal signs are the invalid combination.
+function CheckF32IsInvalidAddOp(const aRS1,aRS2:TPasRISCVUInt64;const aSubtract:boolean):boolean;
+var rs1,rs2:TPasRISCVUInt32;
+begin
+ rs1:=ReadNormalizedFloatUI32(aRS1);
+ rs2:=ReadNormalizedFloatUI32(aRS2);
+ result:=CheckF32IsInfinity(rs1) and CheckF32IsInfinity(rs2) and
+         ((((rs1 xor rs2) and TPasRISCVUInt32($80000000))=0)=aSubtract);
+end;
+
+function CheckF32IsInvalidMulOp(const aRS1,aRS2:TPasRISCVUInt64):boolean;
+var rs1,rs2:TPasRISCVUInt32;
+begin
+ rs1:=ReadNormalizedFloatUI32(aRS1);
+ rs2:=ReadNormalizedFloatUI32(aRS2);
+ result:=(CheckF32IsInfinity(rs1) and CheckF32IsZero(rs2)) or
+         (CheckF32IsZero(rs1) and CheckF32IsInfinity(rs2));
+end;
+
+function CheckF32IsInvalidDivOp(const aRS1,aRS2:TPasRISCVUInt64):boolean;
+var rs1,rs2:TPasRISCVUInt32;
+begin
+ rs1:=ReadNormalizedFloatUI32(aRS1);
+ rs2:=ReadNormalizedFloatUI32(aRS2);
+ result:=(CheckF32IsZero(rs1) and CheckF32IsZero(rs2)) or
+         (CheckF32IsInfinity(rs1) and CheckF32IsInfinity(rs2));
+end;
+
+function CheckF32IsInvalidFMAOp(const aRS1,aRS2,aRS3:TPasRISCVUInt64;const aProductSignEqualMeansInvalid:boolean):boolean;
+var rs1,rs2,rs3:TPasRISCVUInt32;
+    ProductIsInf:boolean;
+begin
+ rs1:=ReadNormalizedFloatUI32(aRS1);
+ rs2:=ReadNormalizedFloatUI32(aRS2);
+ rs3:=ReadNormalizedFloatUI32(aRS3);
+ result:=(CheckF32IsInfinity(rs1) and CheckF32IsZero(rs2)) or
+         (CheckF32IsZero(rs1) and CheckF32IsInfinity(rs2));
+ if not result then begin
+  ProductIsInf:=(CheckF32IsInfinity(rs1) and (not (CheckF32IsNaN(rs2) or CheckF32IsZero(rs2)))) or
+                (CheckF32IsInfinity(rs2) and (not (CheckF32IsNaN(rs1) or CheckF32IsZero(rs1))));
+  if ProductIsInf and CheckF32IsInfinity(rs3) then begin
+   if aProductSignEqualMeansInvalid then begin
+    result:=((rs1 xor rs2) and TPasRISCVUInt32($80000000))=(rs3 and TPasRISCVUInt32($80000000));
+   end else begin
+    result:=((rs1 xor rs2) and TPasRISCVUInt32($80000000))<>(rs3 and TPasRISCVUInt32($80000000));
+   end;
+  end;
+ end;
+end;
+
+function CheckF64IsSignalingNaN(const aBits:TPasRISCVUInt64):boolean; inline;
+begin
+ result:=((aBits and TPasRISCVUInt64($7ff8000000000000))=TPasRISCVUInt64($7ff0000000000000)) and
+         ((aBits and TPasRISCVUInt64($0007ffffffffffff))<>0);
+end;
+
+function CheckF64IsInfinity(const aBits:TPasRISCVUInt64):boolean; inline;
+begin
+ result:=(aBits and TPasRISCVUInt64($7fffffffffffffff))=TPasRISCVUInt64($7ff0000000000000);
+end;
+
+function CheckF64IsZero(const aBits:TPasRISCVUInt64):boolean; inline;
+begin
+ result:=(aBits and TPasRISCVUInt64($7fffffffffffffff))=0;
+end;
+
+function CheckF64IsNaN(const aBits:TPasRISCVUInt64):boolean; inline;
+begin
+ result:=(aBits and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000);
+end;
+
+function CheckF64HasSignalingNaN1(const aRS1:TPasRISCVUInt64):boolean;
+begin
+ result:=CheckF64IsSignalingNaN(aRS1);
+end;
+
+function CheckF64HasSignalingNaN2(const aRS1,aRS2:TPasRISCVUInt64):boolean;
+begin
+ result:=CheckF64IsSignalingNaN(aRS1) or CheckF64IsSignalingNaN(aRS2);
+end;
+
+function CheckF64HasSignalingNaN3(const aRS1,aRS2,aRS3:TPasRISCVUInt64):boolean;
+begin
+ result:=CheckF64IsSignalingNaN(aRS1) or CheckF64IsSignalingNaN(aRS2) or CheckF64IsSignalingNaN(aRS3);
+end;
+
+function CheckF64IsInvalidAddOp(const aRS1,aRS2:TPasRISCVUInt64;const aSubtract:boolean):boolean;
+begin
+ result:=CheckF64IsInfinity(aRS1) and CheckF64IsInfinity(aRS2) and
+         ((((aRS1 xor aRS2) and TPasRISCVUInt64($8000000000000000))=0)=aSubtract);
+end;
+
+function CheckF64IsInvalidMulOp(const aRS1,aRS2:TPasRISCVUInt64):boolean;
+begin
+ result:=(CheckF64IsInfinity(aRS1) and CheckF64IsZero(aRS2)) or
+         (CheckF64IsZero(aRS1) and CheckF64IsInfinity(aRS2));
+end;
+
+function CheckF64IsInvalidDivOp(const aRS1,aRS2:TPasRISCVUInt64):boolean;
+begin
+ result:=(CheckF64IsZero(aRS1) and CheckF64IsZero(aRS2)) or
+         (CheckF64IsInfinity(aRS1) and CheckF64IsInfinity(aRS2));
+end;
+
+function CheckF64IsInvalidFMAOp(const aRS1,aRS2,aRS3:TPasRISCVUInt64;const aProductSignEqualMeansInvalid:boolean):boolean;
+var ProductIsInf:boolean;
+begin
+ result:=(CheckF64IsInfinity(aRS1) and CheckF64IsZero(aRS2)) or
+         (CheckF64IsZero(aRS1) and CheckF64IsInfinity(aRS2));
+ if not result then begin
+  ProductIsInf:=(CheckF64IsInfinity(aRS1) and (not (CheckF64IsNaN(aRS2) or CheckF64IsZero(aRS2)))) or
+                (CheckF64IsInfinity(aRS2) and (not (CheckF64IsNaN(aRS1) or CheckF64IsZero(aRS1))));
+  if ProductIsInf and CheckF64IsInfinity(aRS3) then begin
+   if aProductSignEqualMeansInvalid then begin
+    result:=((aRS1 xor aRS2) and TPasRISCVUInt64($8000000000000000))=(aRS3 and TPasRISCVUInt64($8000000000000000));
+   end else begin
+    result:=((aRS1 xor aRS2) and TPasRISCVUInt64($8000000000000000))<>(aRS3 and TPasRISCVUInt64($8000000000000000));
+   end;
+  end;
+ end;
+end;
+
 { TPasRISCVDynamicQueue<T> }
 
 procedure TPasRISCVDynamicQueue<T>.Initialize;
@@ -29945,6 +30173,10 @@ procedure TPasRISCVEthernetDevice.Shutdown;
 begin
 end;
 
+procedure TPasRISCVEthernetDevice.Reset;
+begin
+end;
+
 procedure TPasRISCVEthernetDevice.WritePacket(const aBuffer:Pointer;const aBufferSize:TPasRISCVSizeInt);
 begin
 end;
@@ -30146,6 +30378,8 @@ begin
  fSendQueueWriteIndex:=0;
 
  fIPIDCounter:=1;
+
+ fResetPending:=0;
 
  FillChar(fGuestMAC,SizeOf(fGuestMAC),#0);
 
@@ -30427,6 +30661,74 @@ begin
 
 end;
 
+procedure TPasRISCVEthernetDeviceUserModeNetworking.Reset;
+begin
+ // Runs on the HART thread, so it only posts the request and wakes the network thread,
+ // which owns the session tables and does the actual teardown in ProcessReset.
+ TPasMPInterlocked.Write(fResetPending,TPasMPUInt32(1));
+ if assigned(fWakeEvent) then begin
+  fWakeEvent.SetEvent;
+ end;
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ProcessReset;
+var Index:TPasRISCVInt32;
+begin
+
+ // Everything below belonged to the previous boot of the guest. A rebooted guest knows
+ // nothing about the old connections, and a DHCP lease still held for its MAC makes it
+ // wait for the lease to expire instead of being served right away, which is what
+ // "networking only comes back after a while" after a reboot looks like.
+
+ while fTCPActiveCount>0 do begin
+  // No RST: the peer that would receive it is the guest, and it is already gone
+  CloseTCPSession(fTCPActiveIndices[fTCPActiveCount-1],false);
+ end;
+ while fUDPActiveCount>0 do begin
+  CloseUDPSession(fUDPActiveIndices[fUDPActiveCount-1]);
+ end;
+ while fICMPActiveCount>0 do begin
+  CloseICMPSession(fICMPActiveIndices[fICMPActiveCount-1]);
+ end;
+
+ while fTCPv6ActiveCount>0 do begin
+  CloseTCPv6Session(fTCPv6ActiveIndices[fTCPv6ActiveCount-1],false);
+ end;
+ while fUDPv6ActiveCount>0 do begin
+  CloseUDPv6Session(fUDPv6ActiveIndices[fUDPv6ActiveCount-1]);
+ end;
+ while fICMPv6ActiveCount>0 do begin
+  CloseICMPv6Session(fICMPv6ActiveIndices[fICMPv6ActiveCount-1]);
+ end;
+
+ for Index:=0 to High(fIPv6FragmentReassemblyTable) do begin
+  ClearIPv6FragmentReassemblyEntry(Index);
+ end;
+
+ fToCloseCount:=0;
+
+ FillChar(fDHCPLeases,SizeOf(fDHCPLeases),#0);
+ FillChar(fGuestMAC,SizeOf(fGuestMAC),#0);
+
+ // Frames the guest queued before the reset are stale as well
+ fLock.Acquire;
+ try
+  while fSendQueueReadIndex<>fSendQueueWriteIndex do begin
+   if assigned(fSendQueue[fSendQueueReadIndex].Data) then begin
+    try
+     FreeMem(fSendQueue[fSendQueueReadIndex].Data);
+    finally
+     fSendQueue[fSendQueueReadIndex].Data:=nil;
+    end;
+   end;
+   fSendQueueReadIndex:=(fSendQueueReadIndex+1) and SendQueueMask;
+  end;
+ finally
+  fLock.Release;
+ end;
+
+end;
+
 procedure TPasRISCVEthernetDeviceUserModeNetworking.Start;
 begin
  if not assigned(fThread) then begin
@@ -30488,6 +30790,12 @@ var Packet:TSendPacket;
 begin
 
  while not fThread.Terminated do begin
+
+  // A reset posted by the guest side is serviced here, where the session tables are
+  // owned, before any socket of the previous boot is looked at again
+  if TPasMPInterlocked.Exchange(fResetPending,TPasMPUInt32(0))<>0 then begin
+   ProcessReset;
+  end;
 
 {$ifdef PasRISCVNATSocketSelect}
 
@@ -61996,6 +62304,11 @@ end;
 procedure TPasRISCV.TVirtIONetDevice.DeviceReset;
 begin
  inherited DeviceReset;
+ // The guest resets the controller on reboot and on driver reload. Tell the backend, so
+ // it does not carry connections and DHCP leases of the previous boot into the new one.
+ if assigned(fEthernetDevice) then begin
+  fEthernetDevice.Reset;
+ end;
 end;
 
 function TPasRISCV.TVirtIONetDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
@@ -71167,7 +71480,14 @@ begin
  FillChar(aPressed^,CountMaximumPressedKeys,#0);
  p:=aPressed;
  for CodeHi:=0 to 7 do begin
-  Keys:=TPasMPInterlocked.Exchange(fKeysPressed[CodeHi],0) or TPasMPInterlocked.Read(fKeysPressedRow[CodeHi]);
+  // fKeysPressed is the live state of what is held down right now and has to survive
+  // being reported. fKeysPressedRow only latches keys that went down since the previous
+  // report, so that a press which is already over by the time the guest reads is still
+  // delivered once, and that latch is the one to consume here.
+  // Consuming the live state instead left every key in the never cleared latch, so the
+  // guest saw it as held forever; and because the key up path then found the live bit
+  // already cleared, it skipped the interrupt that would have reported the release.
+  Keys:=TPasMPInterlocked.Read(fKeysPressed[CodeHi]) or TPasMPInterlocked.Exchange(fKeysPressedRow[CodeHi],0);
   if Keys<>0 then begin
    for CodeLo:=0 to 31 do begin
     if (Keys and (1 shl CodeLo))<>0 then begin
@@ -75592,6 +75912,16 @@ function TPasRISCV.THART.TJustInTimeCompiler.GuestFPURegisterOffset(const aGuest
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.FPURegisters[aGuestRegister]));
 end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITCanonicalNaNF32Offset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITCanonicalNaNF32));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITCanonicalNaNF64Offset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITCanonicalNaNF64));
+end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerVector}
@@ -75730,7 +76060,11 @@ end;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
 class procedure TPasRISCV.THART.TJustInTimeCompiler.SetFPUExceptionHelper(aHART:Pointer);
 begin
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ THART(aHART).SetFPUExceptionsFromJIT;
+{$else}
  THART(aHART).SetFPUExceptions;
+{$endif}
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.GuestSetFPUExceptionHelperAbsoluteOffset:TPasRISCVUInt64;
@@ -84633,39 +84967,49 @@ begin
  EmitSSE2Op($66,$56,aXMMReg,aScratchXMM);
 end;
 
+// RISC-V requires every NaN produced by an arithmetic FP operation to be the canonical
+// NaN. x86 instead propagates the payload of a NaN input and produces its own default
+// NaN ($ffc00000 / $fff8000000000000, sign bit set) on an invalid operation, so the
+// result has to be rewritten whenever it is a NaN.
+// The fixup sits behind a short branch and loads the constant through the VM pointer
+// rather than materializing it in a scratch register: a NaN result is rare, so the
+// common path stays at two instructions, the sequence is shorter (which matters
+// because the JIT ends a block by emitted code size), and above all no register is
+// claimed. A claim may spill via PUSH, and these emitters run inside the static
+// rounding mode window where RSP points at the saved MXCSR.
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCanonicalizeF32NaN(const aXMMReg:TPasRISCVUInt8);
-var ScratchGPR,ScratchGPR2:TPasRISCVUInt8;
+var BranchFixup:TPasRISCVSizeInt;
 begin
- // UCOMISS xmm, xmm, sets PF=1 if xmm is NaN (unordered compare with itself)
+ // UCOMISS xmm, xmm, sets PF=1 if xmm is NaN (unordered compare with itself). Only a
+ // quiet NaN can reach here, since neither RISC-V nor x86 hand back a signaling NaN
+ // from an arithmetic operation, so UCOMISS raises no invalid flag of its own.
  if aXMMReg>=8 then begin
   EmitREX(false,aXMMReg,0,aXMMReg);
  end;
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_SSE_UCOMISS);
  EmitModRM(3,aXMMReg,aXMMReg);
- ScratchGPR:=ClaimHostIntRegister;
- EmitSSE2MovXMMToGPR(ScratchGPR,aXMMReg,false);
- ScratchGPR2:=ClaimHostIntRegister;
- EmitMOVRegImm32(ScratchGPR2,$7fc00000);
- EmitCMOVCC($0a,ScratchGPR,ScratchGPR2,false); // CMOVP: replace with canonical NaN if PF=1
- EmitSSE2MovGPRToXMM(aXMMReg,ScratchGPR,false);
- FreeHostIntRegister(ScratchGPR2);
- FreeHostIntRegister(ScratchGPR);
+ // JNP rel8 over the fixup. Its body is a single MOVSD, so rel8 always reaches and no
+ // short-to-far promotion can ever be needed.
+ EmitByte(TPasRISCVUInt8($70 or CC_NP));
+ BranchFixup:=fTemporaryCodeSize;
+ EmitByte(0);
+ // The constant is stored already NaN-boxed, so the 64 bit load yields the final value
+ EmitFPULoad(aXMMReg,VMPtrRegister,GuestJITCanonicalNaNF32Offset,true);
+ fTemporaryCode[BranchFixup]:=TPasRISCVUInt8(TPasRISCVUInt32(TPasRISCVInt32(fTemporaryCodeSize-BranchFixup-1)));
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCanonicalizeF64NaN(const aXMMReg:TPasRISCVUInt8);
-var ScratchGPR,ScratchGPR2:TPasRISCVUInt8;
+var BranchFixup:TPasRISCVSizeInt;
 begin
  // UCOMISD xmm, xmm, sets PF=1 if xmm is NaN (unordered compare with itself)
  EmitSSE2Op($66,$2e,aXMMReg,aXMMReg);
- ScratchGPR:=ClaimHostIntRegister;
- EmitSSE2MovXMMToGPR(ScratchGPR,aXMMReg,true);
- ScratchGPR2:=ClaimHostIntRegister;
- EmitMOVRegImm64(ScratchGPR2,TPasRISCVUInt64($7ff8000000000000));
- EmitCMOVCC($0a,ScratchGPR,ScratchGPR2,true); // CMOVP: replace with canonical NaN if PF=1
- EmitSSE2MovGPRToXMM(aXMMReg,ScratchGPR,true);
- FreeHostIntRegister(ScratchGPR2);
- FreeHostIntRegister(ScratchGPR);
+ // JNP rel8 over the fixup, see EmitCanonicalizeF32NaN
+ EmitByte(TPasRISCVUInt8($70 or CC_NP));
+ BranchFixup:=fTemporaryCodeSize;
+ EmitByte(0);
+ EmitFPULoad(aXMMReg,VMPtrRegister,GuestJITCanonicalNaNF64Offset,true);
+ fTemporaryCode[BranchFixup]:=TPasRISCVUInt8(TPasRISCVUInt32(TPasRISCVInt32(fTemporaryCodeSize-BranchFixup-1)));
 end;
 
 // Zfa FLI constant tables (RISC-V Zfa spec, 32 entries indexed 0-31)
@@ -88648,6 +88992,8 @@ begin
   EmitSSE2Op($f3,$58,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
+ // Before the NaN box: the fixup writes the low 32 bits via MOVD and would clear it again
+ EmitCanonicalizeF32NaN(aHostDest);
  EmitNaNBox32(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
 end;
@@ -88667,6 +89013,7 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,true);
   FreeHostFPURegister(ScratchXMM);
  end;
+ EmitCanonicalizeF64NaN(aHostDest);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSubS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -88683,6 +89030,7 @@ begin
   EmitSSE2Op($f3,$5c,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
+ EmitCanonicalizeF32NaN(aHostDest);
  EmitNaNBox32(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
 end;
@@ -88702,6 +89050,7 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,true);
   FreeHostFPURegister(ScratchXMM);
  end;
+ EmitCanonicalizeF64NaN(aHostDest);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMulS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -88718,6 +89067,7 @@ begin
   EmitSSE2Op($f3,$59,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
+ EmitCanonicalizeF32NaN(aHostDest);
  EmitNaNBox32(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
 end;
@@ -88737,6 +89087,7 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,true);
   FreeHostFPURegister(ScratchXMM);
  end;
+ EmitCanonicalizeF64NaN(aHostDest);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFDivS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -88753,6 +89104,7 @@ begin
   EmitSSE2Op($f3,$5e,ScratchXMM,aHostSrc2);
   EmitFPUMov(aHostDest,ScratchXMM,false);
  end;
+ EmitCanonicalizeF32NaN(aHostDest);
  EmitNaNBox32(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
 end;
@@ -88772,12 +89124,14 @@ begin
   EmitFPUMov(aHostDest,ScratchXMM,true);
   FreeHostFPURegister(ScratchXMM);
  end;
+ EmitCanonicalizeF64NaN(aHostDest);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSqrtS(const aHostDest,aHostSrc:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
  EmitSSE2Op($f3,$51,aHostDest,aHostSrc);
+ EmitCanonicalizeF32NaN(aHostDest);
  ScratchXMM:=ClaimHostFPURegister;
  EmitNaNBox32(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
@@ -88786,6 +89140,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSqrtD(const aHostDest,aHostSrc:TPasRISCVUInt8);
 begin
  EmitSSE2Op($f2,$51,aHostDest,aHostSrc);
+ EmitCanonicalizeF64NaN(aHostDest);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFSgnjS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
@@ -88908,7 +89263,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,NotEqualFixup,EqualDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimHostFPURegister;
  TempReg1:=ClaimHostIntRegister;
@@ -88923,10 +89278,27 @@ begin
  EmitJccRel32(CC_P,0);
  NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MINSS
- if aHostDest<>aHostSrc1 then begin
-  EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
- end;
- EmitSSE2Op($f3,$5d,aHostDest,aHostSrc2);
+ // Normal path. Computed in the scratch, because the destination may be the same host
+ // register as rs2, which a move of rs1 into it would clobber.
+ // ZF still holds what the compare above produced, and since the unordered case has
+ // already branched away, ZF=1 means the operands really are equal. The only way two
+ // equal values can differ in their bit pattern is +0 against -0, and for these
+ // instructions RISC-V orders -0 below +0. ORing the two patterns yields -0 whenever
+ // either side is -0, ANDing yields +0 whenever either side is +0, and for any other
+ // equal pair the patterns are identical anyway, so one instruction covers both.
+ EmitJccRel32(CC_NE,0);
+ NotEqualFixup:=fTemporaryCodeSize-4;
+ EmitFPUMov(ScratchXMM,aHostSrc1,false);
+ EmitSSE2Op(-1,$56,ScratchXMM,aHostSrc2);
+ EmitJmpRel32(0);
+ EqualDoneFixup:=fTemporaryCodeSize-4;
+ // .not_equal:
+ PatchJmpRel32(NotEqualFixup);
+ EmitFPUMov(ScratchXMM,aHostSrc1,false);
+ EmitSSE2Op($f3,$5d,ScratchXMM,aHostSrc2);
+ // .equal_done:
+ PatchJmpRel32(EqualDoneFixup);
+ EmitFPUMov(aHostDest,ScratchXMM,false);
  EmitJmpRel32(0);
  NormalDoneFixup:=fTemporaryCodeSize-4;
  // .nan_case: at least one operand is NaN
@@ -88978,7 +89350,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,NotEqualFixup,EqualDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimHostFPURegister;
  TempReg1:=ClaimHostIntRegister;
@@ -88988,10 +89360,27 @@ begin
  EmitJccRel32(CC_P,0);
  NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MINSD
- if aHostDest<>aHostSrc1 then begin
-  EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
- end;
- EmitSSE2Op($f2,$5d,aHostDest,aHostSrc2);
+ // Normal path. Computed in the scratch, because the destination may be the same host
+ // register as rs2, which a move of rs1 into it would clobber.
+ // ZF still holds what the compare above produced, and since the unordered case has
+ // already branched away, ZF=1 means the operands really are equal. The only way two
+ // equal values can differ in their bit pattern is +0 against -0, and for these
+ // instructions RISC-V orders -0 below +0. ORing the two patterns yields -0 whenever
+ // either side is -0, ANDing yields +0 whenever either side is +0, and for any other
+ // equal pair the patterns are identical anyway, so one instruction covers both.
+ EmitJccRel32(CC_NE,0);
+ NotEqualFixup:=fTemporaryCodeSize-4;
+ EmitFPUMov(ScratchXMM,aHostSrc1,true);
+ EmitSSE2Op($66,$56,ScratchXMM,aHostSrc2);
+ EmitJmpRel32(0);
+ EqualDoneFixup:=fTemporaryCodeSize-4;
+ // .not_equal:
+ PatchJmpRel32(NotEqualFixup);
+ EmitFPUMov(ScratchXMM,aHostSrc1,true);
+ EmitSSE2Op($f2,$5d,ScratchXMM,aHostSrc2);
+ // .equal_done:
+ PatchJmpRel32(EqualDoneFixup);
+ EmitFPUMov(aHostDest,ScratchXMM,true);
  EmitJmpRel32(0);
  NormalDoneFixup:=fTemporaryCodeSize-4;
  // .nan_case: at least one operand is NaN
@@ -89032,7 +89421,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMaxS(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,NotEqualFixup,EqualDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimHostFPURegister;
  TempReg1:=ClaimHostIntRegister;
@@ -89047,10 +89436,27 @@ begin
  EmitJccRel32(CC_P,0);
  NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MAXSS
- if aHostDest<>aHostSrc1 then begin
-  EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
- end;
- EmitSSE2Op($f3,$5f,aHostDest,aHostSrc2);
+ // Normal path. Computed in the scratch, because the destination may be the same host
+ // register as rs2, which a move of rs1 into it would clobber.
+ // ZF still holds what the compare above produced, and since the unordered case has
+ // already branched away, ZF=1 means the operands really are equal. The only way two
+ // equal values can differ in their bit pattern is +0 against -0, and for these
+ // instructions RISC-V orders -0 below +0. ORing the two patterns yields -0 whenever
+ // either side is -0, ANDing yields +0 whenever either side is +0, and for any other
+ // equal pair the patterns are identical anyway, so one instruction covers both.
+ EmitJccRel32(CC_NE,0);
+ NotEqualFixup:=fTemporaryCodeSize-4;
+ EmitFPUMov(ScratchXMM,aHostSrc1,false);
+ EmitSSE2Op(-1,$54,ScratchXMM,aHostSrc2);
+ EmitJmpRel32(0);
+ EqualDoneFixup:=fTemporaryCodeSize-4;
+ // .not_equal:
+ PatchJmpRel32(NotEqualFixup);
+ EmitFPUMov(ScratchXMM,aHostSrc1,false);
+ EmitSSE2Op($f3,$5f,ScratchXMM,aHostSrc2);
+ // .equal_done:
+ PatchJmpRel32(EqualDoneFixup);
+ EmitFPUMov(aHostDest,ScratchXMM,false);
  EmitJmpRel32(0);
  NormalDoneFixup:=fTemporaryCodeSize-4;
  // .nan_case: at least one operand is NaN
@@ -89102,7 +89508,7 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMaxD(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
     TempReg1:TPasRISCVUInt8;
-    NaNCaseFixup,NormalDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
+    NaNCaseFixup,NormalDoneFixup,NotEqualFixup,EqualDoneFixup,RS1NaNFixup,RS1OKDoneFixup,BothNaNFixup,RS2OKDoneFixup:TPasRISCVUInt32;
 begin
  ScratchXMM:=ClaimHostFPURegister;
  TempReg1:=ClaimHostIntRegister;
@@ -89112,10 +89518,27 @@ begin
  EmitJccRel32(CC_P,0);
  NaNCaseFixup:=fTemporaryCodeSize-4;
  // Normal path: MAXSD
- if aHostDest<>aHostSrc1 then begin
-  EmitSSE2Op($66,$28,aHostDest,aHostSrc1);
- end;
- EmitSSE2Op($f2,$5f,aHostDest,aHostSrc2);
+ // Normal path. Computed in the scratch, because the destination may be the same host
+ // register as rs2, which a move of rs1 into it would clobber.
+ // ZF still holds what the compare above produced, and since the unordered case has
+ // already branched away, ZF=1 means the operands really are equal. The only way two
+ // equal values can differ in their bit pattern is +0 against -0, and for these
+ // instructions RISC-V orders -0 below +0. ORing the two patterns yields -0 whenever
+ // either side is -0, ANDing yields +0 whenever either side is +0, and for any other
+ // equal pair the patterns are identical anyway, so one instruction covers both.
+ EmitJccRel32(CC_NE,0);
+ NotEqualFixup:=fTemporaryCodeSize-4;
+ EmitFPUMov(ScratchXMM,aHostSrc1,true);
+ EmitSSE2Op($66,$54,ScratchXMM,aHostSrc2);
+ EmitJmpRel32(0);
+ EqualDoneFixup:=fTemporaryCodeSize-4;
+ // .not_equal:
+ PatchJmpRel32(NotEqualFixup);
+ EmitFPUMov(ScratchXMM,aHostSrc1,true);
+ EmitSSE2Op($f2,$5f,ScratchXMM,aHostSrc2);
+ // .equal_done:
+ PatchJmpRel32(EqualDoneFixup);
+ EmitFPUMov(aHostDest,ScratchXMM,true);
  EmitJmpRel32(0);
  NormalDoneFixup:=fTemporaryCodeSize-4;
  // .nan_case: at least one operand is NaN
@@ -89202,70 +89625,70 @@ begin
  PatchJmpRel32(ParityFixup);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLtS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
+// Shared body of the ordered comparisons. COMIS and UCOMIS set the very same flags, they
+// differ only in the exception: flt and fle are signaling comparisons in RISC-V and have
+// to raise NV for any NaN operand, so they use COMIS, while the quiet Zfa forms fltq and
+// fleq raise it only for a signaling NaN and stay on UCOMIS. feq is quiet as well and has
+// its own emitter. Note that the raised host flag only reaches fflags when the JIT is
+// allowed to carry it over, see SetFPUExceptionsFromJIT.
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCmpS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,aSetCondition:TPasRISCVUInt8;const aSignaling:Boolean);
 var ParityFixup:TPasRISCVUInt32;
 begin
  EmitNativeZeroReg(aHostIntDest);
- // UCOMISS frs1, frs2
+ // COMISS/UCOMISS frs1, frs2
  if (aHostFPUSrc1>=8) or (aHostFPUSrc2>=8) then begin
   EmitREX(false,aHostFPUSrc1,0,aHostFPUSrc2);
  end;
  EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_UCOMISS);
+ if aSignaling then begin
+  EmitByte(X86_SSE_COMISS);
+ end else begin
+  EmitByte(X86_SSE_UCOMISS);
+ end;
  EmitModRM(3,aHostFPUSrc1,aHostFPUSrc2);
  // JP skip (PF=1 means NaN, result stays 0)
  EmitJccRel32(CC_P,0);
  ParityFixup:=fTemporaryCodeSize-4;
- // SETB rd (CF=1 means frs1 < frs2)
- EmitSETCC(CC_B,aHostIntDest);
+ // SETB for lt (CF=1), SETBE for le (CF=1 or ZF=1)
+ EmitSETCC(aSetCondition,aHostIntDest);
  PatchJmpRel32(ParityFixup);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCmpD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,aSetCondition:TPasRISCVUInt8;const aSignaling:Boolean);
+var ParityFixup:TPasRISCVUInt32;
+begin
+ EmitNativeZeroReg(aHostIntDest);
+ // COMISD/UCOMISD frs1, frs2
+ if aSignaling then begin
+  EmitSSE2Op($66,X86_SSE_COMISS,aHostFPUSrc1,aHostFPUSrc2);
+ end else begin
+  EmitSSE2Op($66,X86_SSE_UCOMISS,aHostFPUSrc1,aHostFPUSrc2);
+ end;
+ // JP skip (PF=1 means NaN, result stays 0)
+ EmitJccRel32(CC_P,0);
+ ParityFixup:=fTemporaryCodeSize-4;
+ EmitSETCC(aSetCondition,aHostIntDest);
+ PatchJmpRel32(ParityFixup);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLtS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
+begin
+ EmitNativeFCmpS(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_B,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLtD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
-var ParityFixup:TPasRISCVUInt32;
 begin
- EmitNativeZeroReg(aHostIntDest);
- // UCOMISD frs1, frs2
- EmitSSE2Op($66,$2e,aHostFPUSrc1,aHostFPUSrc2);
- // JP skip (PF=1 means NaN, result stays 0)
- EmitJccRel32(CC_P,0);
- ParityFixup:=fTemporaryCodeSize-4;
- // SETB rd (CF=1 means frs1 < frs2)
- EmitSETCC(CC_B,aHostIntDest);
- PatchJmpRel32(ParityFixup);
+ EmitNativeFCmpD(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_B,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLeS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
-var ParityFixup:TPasRISCVUInt32;
 begin
- EmitNativeZeroReg(aHostIntDest);
- // UCOMISS frs1, frs2
- if (aHostFPUSrc1>=8) or (aHostFPUSrc2>=8) then begin
-  EmitREX(false,aHostFPUSrc1,0,aHostFPUSrc2);
- end;
- EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_SSE_UCOMISS);
- EmitModRM(3,aHostFPUSrc1,aHostFPUSrc2);
- // JP skip (PF=1 means NaN, result stays 0)
- EmitJccRel32(CC_P,0);
- ParityFixup:=fTemporaryCodeSize-4;
- // SETBE rd (CF=1 or ZF=1 means frs1 <= frs2)
- EmitSETCC(CC_BE,aHostIntDest);
- PatchJmpRel32(ParityFixup);
+ EmitNativeFCmpS(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_BE,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLeD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
-var ParityFixup:TPasRISCVUInt32;
 begin
- EmitNativeZeroReg(aHostIntDest);
- // UCOMISD frs1, frs2
- EmitSSE2Op($66,$2e,aHostFPUSrc1,aHostFPUSrc2);
- // JP skip (PF=1 means NaN, result stays 0)
- EmitJccRel32(CC_P,0);
- ParityFixup:=fTemporaryCodeSize-4;
- // SETBE rd (CF=1 or ZF=1 means frs1 <= frs2)
- EmitSETCC(CC_BE,aHostIntDest);
- PatchJmpRel32(ParityFixup);
+ EmitNativeFCmpD(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_BE,true);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtWS(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8;const aTruncate:boolean);
@@ -91034,13 +91457,20 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMinH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM,ScratchXMM2:TPasRISCVUInt8;
 begin
+ // Widen to single and use the single precision emitter, the same way the Zfa forms
+ // fminm.h/fmaxm.h already do. A bare MINSS/MAXSS would not do: it returns the second
+ // operand whenever either one is a NaN, while RISC-V wants the operand that is not a
+ // NaN, and the canonical NaN only when both are. It would also raise the host invalid
+ // flag for a quiet NaN operand, where RISC-V raises NV only for a signaling one.
+ // The round trip through single is exact for half precision values, and a canonical
+ // single NaN converts back to the canonical half precision NaN.
  ScratchXMM:=ClaimHostFPURegister;
  ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM,aHostSrc1,false);
  EmitNativeFCvtSH(ScratchXMM,ScratchXMM);
  EmitFPUMov(ScratchXMM2,aHostSrc2,false);
  EmitNativeFCvtSH(ScratchXMM2,ScratchXMM2);
- EmitSSE2Op($f3,$5d,ScratchXMM,ScratchXMM2);
+ EmitNativeFMinS(ScratchXMM,ScratchXMM,ScratchXMM2);
  EmitNativeFCvtHS(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM2);
  FreeHostFPURegister(ScratchXMM);
@@ -91049,13 +91479,20 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFMaxH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var ScratchXMM,ScratchXMM2:TPasRISCVUInt8;
 begin
+ // Widen to single and use the single precision emitter, the same way the Zfa forms
+ // fminm.h/fmaxm.h already do. A bare MINSS/MAXSS would not do: it returns the second
+ // operand whenever either one is a NaN, while RISC-V wants the operand that is not a
+ // NaN, and the canonical NaN only when both are. It would also raise the host invalid
+ // flag for a quiet NaN operand, where RISC-V raises NV only for a signaling one.
+ // The round trip through single is exact for half precision values, and a canonical
+ // single NaN converts back to the canonical half precision NaN.
  ScratchXMM:=ClaimHostFPURegister;
  ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM,aHostSrc1,false);
  EmitNativeFCvtSH(ScratchXMM,ScratchXMM);
  EmitFPUMov(ScratchXMM2,aHostSrc2,false);
  EmitNativeFCvtSH(ScratchXMM2,ScratchXMM2);
- EmitSSE2Op($f3,$5f,ScratchXMM,ScratchXMM2);
+ EmitNativeFMaxS(ScratchXMM,ScratchXMM,ScratchXMM2);
  EmitNativeFCvtHS(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM2);
  FreeHostFPURegister(ScratchXMM);
@@ -91318,7 +91755,7 @@ begin
   TempReg:=ClaimHostIntRegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,false);
   // UCOMISS: check for NaN (sets PF if unordered)
-  EmitSSE2Op($00,$2e,ScratchXMM,aHostSrc2);
+  EmitSSE2Op(-1,$2e,ScratchXMM,aHostSrc2);
   // JP .is_nan
   EmitJccRel32(CC_P,0);
   NaNFixup:=fTemporaryCodeSize-4;
@@ -91344,7 +91781,7 @@ begin
   TempReg2:=ClaimHostIntRegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,false);
   // UCOMISS: check for NaN (sets PF if unordered)
-  EmitSSE2Op($00,$2e,ScratchXMM,aHostSrc2);
+  EmitSSE2Op(-1,$2e,ScratchXMM,aHostSrc2);
   // JP .is_nan
   EmitJccRel32(CC_P,0);
   NaNFixup:=fTemporaryCodeSize-4;
@@ -91392,7 +91829,7 @@ begin
   TempReg:=ClaimHostIntRegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,false);
   // UCOMISS: check for NaN (sets PF if unordered)
-  EmitSSE2Op($00,$2e,ScratchXMM,aHostSrc2);
+  EmitSSE2Op(-1,$2e,ScratchXMM,aHostSrc2);
   // JP .is_nan
   EmitJccRel32(CC_P,0);
   NaNFixup:=fTemporaryCodeSize-4;
@@ -91418,7 +91855,7 @@ begin
   TempReg2:=ClaimHostIntRegister;
   EmitFPUMov(ScratchXMM,aHostSrc1,false);
   // UCOMISS: check for NaN (sets PF if unordered)
-  EmitSSE2Op($00,$2e,ScratchXMM,aHostSrc2);
+  EmitSSE2Op(-1,$2e,ScratchXMM,aHostSrc2);
   // JP .is_nan
   EmitJccRel32(CC_P,0);
   NaNFixup:=fTemporaryCodeSize-4;
@@ -91672,22 +92109,22 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLeqS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
 begin
- EmitNativeFLeS(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2);
+ EmitNativeFCmpS(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_BE,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLtqS(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
 begin
- EmitNativeFLtS(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2);
+ EmitNativeFCmpS(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_B,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLeqD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
 begin
- EmitNativeFLeD(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2);
+ EmitNativeFCmpD(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_BE,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFLtqD(const aHostIntDest,aHostFPUSrc1,aHostFPUSrc2:TPasRISCVUInt8);
 begin
- EmitNativeFLtD(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2);
+ EmitNativeFCmpD(aHostIntDest,aHostFPUSrc1,aHostFPUSrc2,CC_B,false);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtModWD(const aHostIntDest,aHostFPUSrc:TPasRISCVUInt8);
@@ -94975,6 +95412,9 @@ begin
  fFastRMMFixupEnabled:=fMachine.fFastRMMFixupEnabled;
  fFastRMMActive:=false;
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ fJITFPUInvalidFlagEnabled:=fMachine.fJITFPUInvalidFlagEnabled;
+{$endif}
 
  fHARTID:=aHARTID;
 
@@ -95498,6 +95938,9 @@ begin
  fFastRMMFixupEnabled:=fMachine.fFastRMMFixupEnabled;
  fFastRMMActive:=false;
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ fJITFPUInvalidFlagEnabled:=fMachine.fJITFPUInvalidFlagEnabled;
+{$endif}
 
  if fMachine.fAIA then begin
   for AIARegFileMode:=Low(TAIARegFileMode) to High(TAIARegFileMode) do begin
@@ -95510,6 +95953,12 @@ begin
  end;
 
  FillChar(fState,SizeOf(TState),#0);
+{$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
+ // Constants for the JIT NaN fixup, restored right after the FillChar above. Set
+ // unconditionally, so they do not depend on the JIT already existing at this point.
+ fState.JITCanonicalNaNF32:=TPasRISCVUInt64($ffffffff7fc00000); // NaN-boxed canonical f32 NaN
+ fState.JITCanonicalNaNF64:=TPasRISCVUInt64($7ff8000000000000); // canonical f64 NaN
+{$ifend}
  fState.CSR.Init(self);
  fState.Mode:=TPasRISCV.THART.TMode.Machine;
 {$ifdef PerModeTLB}
@@ -100434,6 +100883,32 @@ begin
  end;
 end;
 
+{$ifdef PasRISCVJITFPUInvalidFlag}
+// Flag transfer at the end of a JIT block. Same as SetFPUExceptions, except that with
+// JITFPUInvalidFlagEnabled the host invalid flag is carried into NV as well.
+//
+// That is sound only from here. The interpreter must not use it, because feq.s compares
+// its operands with a plain host compare and would raise a false NV for a quiet NaN
+// operand. Every FP form the JIT emits, in contrast, raises the host flag exactly where
+// RISC-V wants NV: the signaling comparisons flt and fle use COMIS while feq and the
+// quiet Zfa forms use UCOMIS, CMPSS is never emitted, MINSS/MAXSS run only once both
+// operands are known not to be NaN, and the conversions signal precisely on NaN and out
+// of range operands.
+procedure TPasRISCV.THART.SetFPUExceptionsFromJIT;
+var Exceptions:TPasRISCVUInt32;
+begin
+ Exceptions:=fetestexcept(FE_ALL_EXCEPT);
+ if Exceptions<>0 then begin
+  if fJITFPUInvalidFlagEnabled then begin
+   fState.CSR.fData[TCSR.TAddress.FFLAGS]:=fState.CSR.fData[TCSR.TAddress.FFLAGS] or (X86ToRISCVFPUExceptionWithInvalidLookUpTable[Exceptions] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
+  end else begin
+   fState.CSR.fData[TCSR.TAddress.FFLAGS]:=fState.CSR.fData[TCSR.TAddress.FFLAGS] or (X86ToRISCVFPUExceptionLookUpTable[Exceptions] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
+  end;
+  feclearexcept(FE_ALL_EXCEPT);
+ end;
+end;
+{$endif}
+
 function TPasRISCV.THART.FPUGetRM(const aInstruction:TPasRISCVUInt32;out aRM:TPasRISCVUInt8):boolean;
 begin
  aRM:=TPasRISCVUInt8((aInstruction shr 12) and 7);
@@ -100724,17 +101199,23 @@ begin
   exit;
  end;
  rd:=TRegister((aInstruction shr 7) and $1f);
- CSRValue:=TPasRISCVUInt64(ord(fStrictCompliantFPU)){$ifdef PasRISCVFastRMMFixup} or (TPasRISCVUInt64(ord(fFastRMMFixupEnabled)) shl 2){$endif};
+ CSRValue:=TPasRISCVUInt64(ord(fStrictCompliantFPU)){$ifdef PasRISCVFastRMMFixup} or (TPasRISCVUInt64(ord(fFastRMMFixupEnabled)) shl 2){$endif}{$ifdef PasRISCVJITFPUInvalidFlag} or (TPasRISCVUInt64(ord(fJITFPUInvalidFlagEnabled)) shl 3){$endif};
  NewValue:=CSROperation(aOperation,CSRValue,aRHS);
  fStrictCompliantFPU:=(NewValue and 1)<>0;
 {$ifdef PasRISCVFastRMMFixup}
  fFastRMMFixupEnabled:=(NewValue and 4)<>0;
+{$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ fJITFPUInvalidFlagEnabled:=(NewValue and 8)<>0;
 {$endif}
  if (NewValue and 2)<>0 then begin
   for Index:=0 to fMachine.fCountHARTs-1 do begin
    fMachine.fHARTs[Index].fStrictCompliantFPU:=fStrictCompliantFPU;
 {$ifdef PasRISCVFastRMMFixup}
    fMachine.fHARTs[Index].fFastRMMFixupEnabled:=fFastRMMFixupEnabled;
+{$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+   fMachine.fHARTs[Index].fJITFPUInvalidFlagEnabled:=fJITFPUInvalidFlagEnabled;
 {$endif}
   end;
   fMachine.FlushTLB;
@@ -129149,9 +129630,18 @@ begin
          fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin // Any NaN -> canonicalize
+         // Any NaN result becomes the canonical NaN. Whether NV is raised is decided
+         // from the operands, not from the result: a quiet NaN operand alone must leave
+         // fflags untouched, while a signaling operand, a 0*inf product or an
+         // inf + (-inf) sum must set it. The host invalid flag cannot serve for this,
+         // it is not carried over into fflags, see
+         // InitializeX86ToRISCVFPUExceptionLookUpTable.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
           fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF32HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF32IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,false) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129181,9 +129671,13 @@ begin
 {$ifend}
          fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin // Any NaN -> canonicalize
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF64HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF64IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,false) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129273,9 +129767,18 @@ begin
          fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin // Any NaN -> canonicalize
+         // Any NaN result becomes the canonical NaN. Whether NV is raised is decided
+         // from the operands, not from the result: a quiet NaN operand alone must leave
+         // fflags untouched, while a signaling operand, a 0*inf product or an
+         // inf + (-inf) sum must set it. The host invalid flag cannot serve for this,
+         // it is not carried over into fflags, see
+         // InitializeX86ToRISCVFPUExceptionLookUpTable.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
           fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF32HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF32IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,true) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129305,9 +129808,13 @@ begin
 {$ifend}
          fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,-fState.FPURegisters[frs3].f64);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin // Any NaN -> canonicalize
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF64HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF64IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,true) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129423,9 +129930,18 @@ begin
          fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(-ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64)); // fnmsub = c-a*b = FMA(-a,b,c)
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin // Any NaN -> canonicalize
+         // Any NaN result becomes the canonical NaN. Whether NV is raised is decided
+         // from the operands, not from the result: a quiet NaN operand alone must leave
+         // fflags untouched, while a signaling operand, a 0*inf product or an
+         // inf + (-inf) sum must set it. The host invalid flag cannot serve for this,
+         // it is not carried over into fflags, see
+         // InitializeX86ToRISCVFPUExceptionLookUpTable.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
           fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF32HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF32IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,true) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129455,9 +129971,13 @@ begin
 {$ifend}
          fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(-fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64); // fnmsub = c-a*b = FMA(-a,b,c)
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin // Any NaN -> canonicalize
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF64HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF64IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,true) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129485,7 +130005,9 @@ begin
           exit;
          end;
 {$ifend}
-         if CheckF16IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,false) then begin
+         // fnmsub.h computes (-a*b)+c, so the sum is inf + (-inf) exactly when the
+         // product sign and the addend sign agree, the opposite of fmadd
+         if CheckF16IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,true) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
@@ -129548,9 +130070,18 @@ begin
          fState.FPURegisters[frd].ui32:=fState.FPURegisters[frd].ui32 xor TPasRISCVUInt32($80000000); // negate: -(a*b+c)
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin // Any NaN -> canonicalize
+         // Any NaN result becomes the canonical NaN. Whether NV is raised is decided
+         // from the operands, not from the result: a quiet NaN operand alone must leave
+         // fflags untouched, while a signaling operand, a 0*inf product or an
+         // inf + (-inf) sum must set it. The host invalid flag cannot serve for this,
+         // it is not carried over into fflags, see
+         // InitializeX86ToRISCVFPUExceptionLookUpTable.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
           fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF32HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF32IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,false) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129581,9 +130112,13 @@ begin
          fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64);
          fState.FPURegisters[frd].ui64:=fState.FPURegisters[frd].ui64 xor TPasRISCVUInt64($8000000000000000); // negate: -(a*b+c)
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin // Any NaN -> canonicalize
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          if CheckF64HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) or
+             CheckF64IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,false) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129611,7 +130146,9 @@ begin
           exit;
          end;
 {$ifend}
-         if CheckF16IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,true) then begin
+         // fnmadd.h computes (-a*b)-c, so both addends are negated and the invalid
+         // combination stays the one of fmadd: differing signs
+         if CheckF16IsInvalidFMAOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64,false) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
@@ -129669,18 +130206,20 @@ begin
           exit;
          end;
 {$ifend}
-         //if IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)) and IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64)) then begin
-         if IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)) and IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64)) and (IsFloat32Negative(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64))<>IsFloat32Negative(ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64))) then begin
-          fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-         end else begin
-          fState.FPURegisters[frd].f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)+ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64);
+         fState.FPURegisters[frd].f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)+ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64);
 {$ifndef PasRISCVNewFPUNaNHandling}
-          if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
+         // The host keeps the payload of a NaN operand and uses $ffc00000 as its own
+         // default NaN, both of which RISC-V forbids, so any NaN result is rewritten to
+         // the canonical NaN. NV is derived from the operands, the host invalid flag is
+         // not carried over into fflags.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
+          fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
+          if CheckF32HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF32IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,false) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
           end;
-{$endif}
          end;
+{$endif}
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
          SetFPUExceptions;
          fState.CSR.SetFSDirty;
@@ -129706,18 +130245,17 @@ begin
           exit;
          end;
 {$ifend}
-         //if IsFloat64Infinite(fState.FPURegisters[frs1].f64) and IsFloat64Infinite(fState.FPURegisters[frs2].f64) then begin
-         if IsFloat64Infinite(fState.FPURegisters[frs1].f64) and IsFloat64Infinite(fState.FPURegisters[frs2].f64) and (IsFloat64Negative(fState.FPURegisters[frs1].f64)<>IsFloat64Negative(fState.FPURegisters[frs2].f64)) then begin
-          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-         end else begin
-          fState.FPURegisters[frd].f64:=fState.FPURegisters[frs1].f64+fState.FPURegisters[frs2].f64;
+         fState.FPURegisters[frd].f64:=fState.FPURegisters[frs1].f64+fState.FPURegisters[frs2].f64;
 {$ifndef PasRISCVNewFPUNaNHandling}
-          if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
+          if CheckF64HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF64IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,false) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
           end;
-{$endif}
          end;
+{$endif}
          SetFPUExceptions;
          fState.CSR.SetFSDirty;
          result:=4;
@@ -129780,18 +130318,20 @@ begin
           exit;
          end;
 {$ifend}
-         //if IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)) and IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64)) then begin
-         if IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)) and IsFloat32Infinite(ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64)) and (IsFloat32Negative(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64))=IsFloat32Negative(ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64))) then begin
-          fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-         end else begin
-          fState.FPURegisters[frd].f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)-ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64);
+         fState.FPURegisters[frd].f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)-ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64);
 {$ifndef PasRISCVNewFPUNaNHandling}
-          if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
+         // The host keeps the payload of a NaN operand and uses $ffc00000 as its own
+         // default NaN, both of which RISC-V forbids, so any NaN result is rewritten to
+         // the canonical NaN. NV is derived from the operands, the host invalid flag is
+         // not carried over into fflags.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
+          fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
+          if CheckF32HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF32IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,true) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
           end;
-{$endif}
          end;
+{$endif}
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
          SetFPUExceptions;
          fState.CSR.SetFSDirty;
@@ -129817,18 +130357,17 @@ begin
           exit;
          end;
 {$ifend}
-       //if IsFloat64Infinite(fState.FPURegisters[frs1].f64) and IsFloat64Infinite(fState.FPURegisters[frs2].f64) then begin
-         if IsFloat64Infinite(fState.FPURegisters[frs1].f64) and IsFloat64Infinite(fState.FPURegisters[frs2].f64) and (IsFloat64Negative(fState.FPURegisters[frs1].f64)=IsFloat64Negative(fState.FPURegisters[frs2].f64)) then begin
-          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-         end else begin
-          fState.FPURegisters[frd].f64:=fState.FPURegisters[frs1].f64-fState.FPURegisters[frs2].f64;
+         fState.FPURegisters[frd].f64:=fState.FPURegisters[frs1].f64-fState.FPURegisters[frs2].f64;
 {$ifndef PasRISCVNewFPUNaNHandling}
-          if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
+          if CheckF64HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF64IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,true) then begin
            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
           end;
-{$endif}
          end;
+{$endif}
          SetFPUExceptions;
          fState.CSR.SetFSDirty;
          result:=4;
@@ -129893,8 +130432,16 @@ begin
 {$ifend}
          fState.FPURegisters[frd].f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)*ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+         // The host keeps the payload of a NaN operand and uses $ffc00000 as its own
+         // default NaN, both of which RISC-V forbids, so any NaN result is rewritten to
+         // the canonical NaN. NV is derived from the operands, the host invalid flag is
+         // not carried over into fflags.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
+          fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
+          if CheckF32HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF32IsInvalidMulOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
@@ -129924,8 +130471,13 @@ begin
 {$ifend}
          fState.FPURegisters[frd].f64:=fState.FPURegisters[frs1].f64*fState.FPURegisters[frs2].f64;
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
+          if CheckF64HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF64IsInvalidMulOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -129992,8 +130544,16 @@ begin
 {$ifend}
          fState.FPURegisters[frd].f32:=ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64)/ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64);
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if fState.FPURegisters[frd].ui32=TPasRISCVUInt32($7fc00000) then begin // Canonical NaN
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+         // The host keeps the payload of a NaN operand and uses $ffc00000 as its own
+         // default NaN, both of which RISC-V forbids, so any NaN result is rewritten to
+         // the canonical NaN. NV is derived from the operands, the host invalid flag is
+         // not carried over into fflags.
+         if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
+          fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
+          if CheckF32HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF32IsInvalidDivOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
@@ -130023,8 +130583,13 @@ begin
 {$ifend}
          fState.FPURegisters[frd].f64:=fState.FPURegisters[frs1].f64/fState.FPURegisters[frs2].f64;
 {$ifndef PasRISCVNewFPUNaNHandling}
-         if fState.FPURegisters[frd].ui64=TPasRISCVUInt64($7ff8000000000000) then begin // Canonical NaN
-          fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+         // See the single-precision case: canonicalize, and derive NV from the operands
+         if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
+          if CheckF64HasSignalingNaN2(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) or
+             CheckF64IsInvalidDivOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) then begin
+           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+          end;
          end;
 {$endif}
          SetFPUExceptions;
@@ -131575,6 +132140,17 @@ begin
           fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000); // Canonical NaN
          end else begin
           fState.FPURegisters[frd].f32:=sqrt(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64));
+{$ifndef PasRISCVNewFPUNaNHandling}
+          // A NaN operand reaches this branch, the comparison above is false for NaN,
+          // and the host square root keeps its payload. Only a signaling operand raises
+          // NV here, a negative operand is already handled above.
+          if (fState.FPURegisters[frd].ui32 and TPasRISCVUInt32($7fffffff))>TPasRISCVUInt32($7f800000) then begin
+           fState.FPURegisters[frd].ui32:=TPasRISCVUInt32($7fc00000);
+           if CheckF32HasSignalingNaN1(fState.FPURegisters[frs1].ui64) then begin
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end;
+          end;
+{$endif}
          end;
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
          SetFPUExceptions;
@@ -131610,6 +132186,15 @@ begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000); // Canonical NaN
          end else begin
           fState.FPURegisters[frd].f64:=sqrt(fState.FPURegisters[frs1].f64);
+{$ifndef PasRISCVNewFPUNaNHandling}
+          // See fsqrt.s: canonicalize, only a signaling operand raises NV here
+          if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
+           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7ff8000000000000);
+           if CheckF64HasSignalingNaN1(fState.FPURegisters[frs1].ui64) then begin
+            fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
+           end;
+          end;
+{$endif}
          end;
          SetFPUExceptions;
          fState.CSR.SetFSDirty;
@@ -141563,6 +142148,11 @@ begin
 {$ifdef PasRISCVFastRMMFixup}
  fFastRMMFixupEnabled:=true; // RMM-exact fast mode on by default (negligible cost, RMM is rare)
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ // Off by default: it makes the JIT report NV for invalid arithmetic operations, which
+ // the fast path otherwise leaves out, at the price of trusting the host invalid flag
+ fJITFPUInvalidFlagEnabled:=false;
+{$endif}
 
  fSVVPTC:=false;
 
@@ -141763,6 +142353,9 @@ begin
 
 {$ifdef PasRISCVFastRMMFixup}
  fFastRMMFixupEnabled:=aConfiguration.fFastRMMFixupEnabled;
+{$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ fJITFPUInvalidFlagEnabled:=aConfiguration.fJITFPUInvalidFlagEnabled;
 {$endif}
 
  fVirtIOBlockEnabled:=aConfiguration.fVirtIOBlockEnabled;
@@ -142065,6 +142658,9 @@ begin
 {$ifdef PasRISCVFastRMMFixup}
  fFastRMMFixupEnabled:=aNode.GetBool('FastRMMFixupEnabled',fFastRMMFixupEnabled);
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ fJITFPUInvalidFlagEnabled:=aNode.GetBool('JITFPUInvalidFlagEnabled',fJITFPUInvalidFlagEnabled);
+{$endif}
  fSVVPTC:=aNode.GetBool('SVVPTC',fSVVPTC);
  fVirtIOBlockEnabled:=aNode.GetBool('VirtIOBlockEnabled',fVirtIOBlockEnabled);
  fVirtIOBlockMQ:=aNode.GetBool('VirtIOBlockMQ',fVirtIOBlockMQ);
@@ -142292,6 +142888,9 @@ begin
 {$ifdef PasRISCVFastRMMFixup}
  aNode.SetBool('FastRMMFixupEnabled',fFastRMMFixupEnabled);
 {$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ aNode.SetBool('JITFPUInvalidFlagEnabled',fJITFPUInvalidFlagEnabled);
+{$endif}
  aNode.SetBool('SVVPTC',fSVVPTC);
  aNode.SetBool('VirtIOBlockEnabled',fVirtIOBlockEnabled);
  aNode.SetBool('VirtIOBlockMQ',fVirtIOBlockMQ);
@@ -142416,6 +143015,9 @@ begin
 
 {$ifdef PasRISCVFastRMMFixup}
  fFastRMMFixupEnabled:=fConfiguration.fFastRMMFixupEnabled;
+{$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ fJITFPUInvalidFlagEnabled:=fConfiguration.fJITFPUInvalidFlagEnabled;
 {$endif}
 
  fCountHARTs:=fConfiguration.fCountHARTs;
