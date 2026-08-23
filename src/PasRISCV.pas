@@ -2009,7 +2009,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              UserModeTCPMaxRTO=6000;
              UserModeTCPKeepaliveTicks=300;
              UserModeTCPConnectTimeoutTicks=300;
-             UserModeTCPIdleTimeoutTicks=30000;
+             // Starting value for the UserModeTCPIdleTimeoutTicks property, which is what
+             // the code actually reads - the configuration can set anything else. Counted
+             // in ticks, i.e. poll rounds, so about ten minutes while the network thread
+             // keeps its nominal rate. It used to be 30000, around half a minute, which is
+             // very short for a NAT: Linux conntrack holds an established entry for days
+             // and consumer boxes for hours, so an idle but perfectly legitimate
+             // connection - an ssh session between keystrokes, IMAP IDLE, a websocket
+             // without pings - was being torn down while still in use.
+             DefaultUserModeTCPIdleTimeoutTicks=600000;
              UserModeTCPMaxDataPayload=1460;
              UserModeTCPv6MaxDataPayload=1440;
              UserModeTCPOutOfOrderQueueSize=4;
@@ -2523,6 +2531,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fFilterLAN:Boolean;
        fUserModeIPv6Enabled:Boolean;
        fUserModeTracerouteEnabled:Boolean;
+       fUserModeTCPIdleTimeoutTicks:TPasRISCVUInt32;
        fIPv6GatewayAddress:TIPv6Address;
        fIPv6GatewayLinkLocal:TIPv6Address;
        fIPv6GuestAddress:TIPv6Address;
@@ -2563,6 +2572,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure SendICMPDestinationUnreachable(const aIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt);
        procedure SendICMPTimeExceeded(const aIPHeader:PIPv4Header;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
        procedure SendICMPUDPPortUnreachable(const aUDPSession:PUDPSession);
+       procedure SendTCPResetToGuest(const aIPHeader:PIPv4Header;const aTCPHeader:PTCPHeader;const aSegmentPayloadSize:TPasRISCVSizeInt);
        procedure HandleICMP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt);
        procedure HandleUDP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aUDPData:Pointer;const aUDPSize:TPasRISCVSizeInt);
        procedure ParseTCPOptions(const aOptions:Pointer;const aOptionsSize:TPasRISCVSizeInt;out aResult:TUserModeTCPParsedOptions);
@@ -2625,6 +2635,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property FilterLAN:Boolean read fFilterLAN write fFilterLAN;
        property UserModeIPv6Enabled:Boolean read fUserModeIPv6Enabled write fUserModeIPv6Enabled;
        property UserModeTracerouteEnabled:Boolean read fUserModeTracerouteEnabled write fUserModeTracerouteEnabled;
+       property UserModeTCPIdleTimeoutTicks:TPasRISCVUInt32 read fUserModeTCPIdleTimeoutTicks write fUserModeTCPIdleTimeoutTicks;
      end;
 {$endif}
 
@@ -13771,6 +13782,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fUserModeIPv6Enabled:Boolean;
               fUserModeTracerouteEnabled:Boolean;
+              fUserModeTCPIdleTimeoutTicks:TPasRISCVUInt32;
 
               fLRSCMaximumCycles:TPasRISCVUInt64;
 
@@ -14002,6 +14014,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               property UserModeIPv6Enabled:Boolean read fUserModeIPv6Enabled write fUserModeIPv6Enabled;
               property UserModeTracerouteEnabled:Boolean read fUserModeTracerouteEnabled write fUserModeTracerouteEnabled;
+              property UserModeTCPIdleTimeoutTicks:TPasRISCVUInt32 read fUserModeTCPIdleTimeoutTicks write fUserModeTCPIdleTimeoutTicks;
 
               property LRSCMaximumCycles:TPasRISCVUInt64 read fLRSCMaximumCycles write fLRSCMaximumCycles;
 
@@ -30576,6 +30589,8 @@ begin
  // rather than the truth about the path.
  fUserModeTracerouteEnabled:=false;
 
+ fUserModeTCPIdleTimeoutTicks:=DefaultUserModeTCPIdleTimeoutTicks;
+
 end;
 
 destructor TPasRISCVEthernetDeviceUserModeNetworking.Destroy;
@@ -32156,6 +32171,81 @@ begin
          (not UserModeTCPSequenceLessThan(aLast,aValue));
 end;
 
+// Tells the guest that a connection is gone. Without it a session the NAT has
+// dropped - on its idle timeout, or because it no longer knows the tuple - simply
+// goes quiet: the guest keeps the socket open and waits for its own TCP timeout,
+// which turns a clean error into a hang. RFC 793 picks the sequence numbers by
+// whether the offending segment carried an ACK.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.SendTCPResetToGuest(const aIPHeader:PIPv4Header;const aTCPHeader:PTCPHeader;const aSegmentPayloadSize:TPasRISCVSizeInt);
+const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
+var TotalSize:TPasRISCVSizeInt;
+    ResponseEthernet:PEthernetHeader;
+    ResponseIP:PIPv4Header;
+    ResponseTCP:PTCPHeader;
+    ConsumedSequenceNumbers:TPasRISCVUInt32;
+begin
+
+ // Never answer a reset with a reset, that is how two ends end up shouting at each other
+ if (aTCPHeader^.Flags and TCPFlagRST)<>0 then begin
+  exit;
+ end;
+
+ TotalSize:=UserModeEtherHeaderSize+UserModeIPv4HeaderSize+UserModeTCPHeaderSize;
+
+ FillChar(fFrameBuffer[0],TotalSize,#0);
+
+ ResponseEthernet:=PEthernetHeader(@fFrameBuffer[0]);
+ ResponseIP:=PIPv4Header(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize)));
+ ResponseTCP:=PTCPHeader(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize+UserModeIPv4HeaderSize)));
+
+ ResponseEthernet^.DestinationMAC:=fGuestMAC;
+ ResponseEthernet^.SourceMAC:=GatewayMAC;
+ ResponseEthernet^.EthernetType:=TRNLEndianness.HostToNet16(EtherTypeIPv4);
+
+ ResponseIP^.VersionIHL:=$45;
+ ResponseIP^.DSCP_ECN:=0;
+ ResponseIP^.TotalLength:=TRNLEndianness.HostToNet16(TPasRISCVUInt16(UserModeIPv4HeaderSize+UserModeTCPHeaderSize));
+
+ inc(fIPIDCounter);
+
+ ResponseIP^.Identification:=TRNLEndianness.HostToNet16(fIPIDCounter);
+ ResponseIP^.FlagsFragment:=0;
+ ResponseIP^.TTL:=64;
+ ResponseIP^.Protocol:=IPProtocolTCP;
+ ResponseIP^.HeaderChecksum:=0;
+ ResponseIP^.SourceIP:=aIPHeader^.DestinationIP;
+ ResponseIP^.DestinationIP:=aIPHeader^.SourceIP;
+ ResponseIP^.HeaderChecksum:=UserModeIPChecksum(ResponseIP,UserModeIPv4HeaderSize);
+
+ ResponseTCP^.SourcePort:=aTCPHeader^.DestinationPort;
+ ResponseTCP^.DestinationPort:=aTCPHeader^.SourcePort;
+ ResponseTCP^.DataOffset:=$50;
+ ResponseTCP^.WindowSize:=0;
+ ResponseTCP^.Checksum:=0;
+ ResponseTCP^.UrgentPtr:=0;
+
+ if (aTCPHeader^.Flags and TCPFlagACK)<>0 then begin
+  // The segment told us where it thinks we are, so answer from exactly there
+  ResponseTCP^.SequenceNumber:=aTCPHeader^.AcknowledgmentNumber;
+  ResponseTCP^.AcknowledgmentNumber:=0;
+  ResponseTCP^.Flags:=TCPFlagRST;
+ end else begin
+  // Nothing to go on, so acknowledge everything it sent and reset from zero
+  ConsumedSequenceNumbers:=TPasRISCVUInt32(aSegmentPayloadSize);
+  if (aTCPHeader^.Flags and (TCPFlagSYN or TCPFlagFIN))<>0 then begin
+   inc(ConsumedSequenceNumbers);
+  end;
+  ResponseTCP^.SequenceNumber:=0;
+  ResponseTCP^.AcknowledgmentNumber:=TRNLEndianness.HostToNet32(TRNLEndianness.NetToHost32(aTCPHeader^.SequenceNumber)+ConsumedSequenceNumbers);
+  ResponseTCP^.Flags:=TCPFlagRST or TCPFlagACK;
+ end;
+
+ ResponseTCP^.Checksum:=UserModeTCPUDPChecksum(aIPHeader^.DestinationIP,aIPHeader^.SourceIP,IPProtocolTCP,ResponseTCP,UserModeTCPHeaderSize);
+
+ InjectToGuest(@fFrameBuffer[0],TotalSize);
+
+end;
+
 procedure TPasRISCVEthernetDeviceUserModeNetworking.HandleTCP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aTCPData:Pointer;const aTCPSize:TPasRISCVSizeInt);
 {$if defined(Windows)}
 const UserModeMsgNoSigPipe=0;
@@ -32403,6 +32493,9 @@ begin
 
  SessionIndex:=FindTCPSession(aIPHeader^.SourceIP,TCPHeader^.SourcePort,EffectiveDestinationIP,TCPHeader^.DestinationPort);
  if SessionIndex<0 then begin
+  // A segment for a tuple we no longer know. Dropping it silently leaves the guest
+  // waiting on a connection that is never coming back, so say so instead.
+  SendTCPResetToGuest(aIPHeader,TCPHeader,PayloadSize);
   exit;
  end;
 
@@ -34564,7 +34657,11 @@ begin
 
 {$endif}
 
-      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPSession^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketSelectWriteError(TCPSession^.SocketFileDescriptor,WriteSet,ErrorSet,0)>0{$endif} then begin
+      // poll, not select: with one host socket per session the descriptors run past
+      // FD_SETSIZE after roughly a thousand connections, and select cannot see those
+      // at all - the connect would never be noticed as completed and the session would
+      // die on its connect timeout while the host side was long since established.
+      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPSession^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketPollWriteError(TCPSession^.SocketFileDescriptor,0)>0{$endif} then begin
 
        SocketError:=0;
 
@@ -34630,7 +34727,11 @@ begin
 
      inc(TCPSession^.IdleTickCount);
      if (((TCPSession^.State=UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=UserModeTCPConnectTimeoutTicks)) or
-         ((TCPSession^.State<>UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=UserModeTCPIdleTimeoutTicks))) then begin
+         ((TCPSession^.State<>UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks))) then begin
+
+      // The guest still thinks this connection exists. Tearing it down without a
+      // word leaves it hanging until its own timeout, so send a reset first.
+      SendTCPToGuest(SessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
 
       if Length(fToClose)<=fToCloseCount then begin
        if Length(fToClose)=0 then begin
@@ -34938,7 +35039,7 @@ begin
 
      inc(TCPSession^.IdleTickCount);
 
-     if TCPSession^.IdleTickCount>=UserModeTCPIdleTimeoutTicks then begin
+     if TCPSession^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
 
       if Length(fToClose)<=fToCloseCount then begin
        if Length(fToClose)=0 then begin
@@ -37943,7 +38044,8 @@ begin
 
  {$endif}
 
-      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPv6Session^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketSelectWriteError(TCPv6Session^.SocketFileDescriptor,WriteSet,ErrorSet,0)>0{$endif} then begin
+      // poll rather than select, for the same FD_SETSIZE reason as in PollTCPSockets
+      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPv6Session^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketPollWriteError(TCPv6Session^.SocketFileDescriptor,0)>0{$endif} then begin
 
        SocketError:=0;
 
@@ -38053,7 +38155,7 @@ begin
     UserModeTCPStateEstablished,UserModeTCPStateGuestFinSent,UserModeTCPStateCloseWait:begin
 
      inc(TCPv6Session^.IdleTickCount);
-     if TCPv6Session^.IdleTickCount>=UserModeTCPIdleTimeoutTicks then begin
+     if TCPv6Session^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
 
       if length(fToClose)<=fToCloseCount then begin
        SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
@@ -38297,7 +38399,7 @@ begin
     UserModeTCPStateFINWait1,UserModeTCPStateFINWait2,UserModeTCPStateClosing:begin
      // Half-close states after active close: only need idle timeout.
      inc(TCPv6Session^.IdleTickCount);
-     if TCPv6Session^.IdleTickCount>=UserModeTCPIdleTimeoutTicks then begin
+     if TCPv6Session^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
       if length(fToClose)<=fToCloseCount then begin
        SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
       end;
@@ -142484,6 +142586,7 @@ begin
  fNetworkHostForwards:='';
  fUserModeIPv6Enabled:=true;
  fUserModeTracerouteEnabled:=false;
+ fUserModeTCPIdleTimeoutTicks:=TPasRISCVEthernetDeviceUserModeNetworking.DefaultUserModeTCPIdleTimeoutTicks;
 
  fVirtIORandomGeneratorBase:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultBaseAddress;
  fVirtIORandomGeneratorSize:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultSize;
@@ -142707,6 +142810,7 @@ begin
  fNetworkHostForwards:=aConfiguration.fNetworkHostForwards;
  fUserModeIPv6Enabled:=aConfiguration.fUserModeIPv6Enabled;
  fUserModeTracerouteEnabled:=aConfiguration.fUserModeTracerouteEnabled;
+ fUserModeTCPIdleTimeoutTicks:=aConfiguration.fUserModeTCPIdleTimeoutTicks;
 
  fVirtIORandomGeneratorBase:=aConfiguration.fVirtIORandomGeneratorBase;
  fVirtIORandomGeneratorSize:=aConfiguration.fVirtIORandomGeneratorSize;
@@ -143005,6 +143109,7 @@ begin
  fNetworkHostForwards:=aNode.GetString('NetworkHostForwards',fNetworkHostForwards);
  fUserModeIPv6Enabled:=aNode.GetBool('UserModeIPv6Enabled',fUserModeIPv6Enabled);
  fUserModeTracerouteEnabled:=aNode.GetBool('UserModeTracerouteEnabled',fUserModeTracerouteEnabled);
+ fUserModeTCPIdleTimeoutTicks:=aNode.GetUInt32('UserModeTCPIdleTimeoutTicks',fUserModeTCPIdleTimeoutTicks);
 
  // VirtIO Random Generator
  fVirtIORandomGeneratorBase:=aNode.GetUInt64('VirtIORandomGeneratorBase',fVirtIORandomGeneratorBase);
@@ -143236,6 +143341,7 @@ begin
  aNode.SetString('NetworkHostForwards',fNetworkHostForwards);
  aNode.SetBool('UserModeIPv6Enabled',fUserModeIPv6Enabled);
  aNode.SetBool('UserModeTracerouteEnabled',fUserModeTracerouteEnabled);
+ aNode.SetUInt32('UserModeTCPIdleTimeoutTicks',fUserModeTCPIdleTimeoutTicks);
 
  // VirtIO Random Generator
  aNode.SetUInt64('VirtIORandomGeneratorBase',fVirtIORandomGeneratorBase);
@@ -143683,6 +143789,7 @@ begin
    fEthernetDevice:=TPasRISCVEthernetDeviceUserModeNetworking.Create;
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeIPv6Enabled:=fConfiguration.fUserModeIPv6Enabled;
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeTracerouteEnabled:=fConfiguration.fUserModeTracerouteEnabled;
+   TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeTCPIdleTimeoutTicks:=fConfiguration.fUserModeTCPIdleTimeoutTicks;
    if Length(fConfiguration.fNetworkHostForwards)>0 then begin
     HostForwardsRemaining:=fConfiguration.fNetworkHostForwards+';';
     repeat
@@ -143706,6 +143813,7 @@ begin
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).Isolated:=true;
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeIPv6Enabled:=fConfiguration.fUserModeIPv6Enabled;
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeTracerouteEnabled:=fConfiguration.fUserModeTracerouteEnabled;
+   TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeTCPIdleTimeoutTicks:=fConfiguration.fUserModeTCPIdleTimeoutTicks;
    if Length(fConfiguration.fNetworkHostForwards)>0 then begin
     HostForwardsRemaining:=fConfiguration.fNetworkHostForwards+';';
     repeat
