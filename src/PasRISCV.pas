@@ -1980,6 +1980,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              UserModeDHCPLeaseTimeTicks=TPasRISCVUInt32(UserModeDHCPLeaseTimeSeconds*100);
              UserModeDHCPConflictTimeSeconds=600;
              UserModeDHCPConflictTicks=TPasRISCVUInt32(UserModeDHCPConflictTimeSeconds*100);
+             // Every ...Ticks constant below is counted in these, and one of them is a
+             // hundredth of a second of real time. That used to be one turn of the poll
+             // loop instead, which is not a unit of anything: the loop waits 1 ms while
+             // there is traffic and 10 ms when there is none, so the same constant meant
+             // one thing on a quiet link and a tenth of that on a busy one, before any
+             // question of host load. The values themselves say plainly which of the two
+             // was meant - the DNS timeout is 3000 and conntrack's is 30 seconds, the
+             // TIME_WAIT is 6000 and 2*MSL is 60 seconds - so the rate is pinned there.
+             UserModeTickFrequency=100;
+             // Ceiling on how far one round may carry the clock forward. After a stall
+             // that has nothing to do with the network - a suspended host, a breakpoint
+             // held for a minute - the sessions should catch up over the next rounds
+             // rather than have every timer in the table expire in the same instant.
+             UserModeMaximumTickAdvance=1000;
              UserModeICMPMaxSessions=4096;
              UserModeUDPMaxSessions=65536;
              UserModeTCPMaxSessions=65536;
@@ -2022,8 +2036,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              UserModeTCPConnectTimeoutTicks=300;
              // Starting value for the UserModeTCPIdleTimeoutTicks property, which is what
              // the code actually reads - the configuration can set anything else. Counted
-             // in ticks, i.e. poll rounds, so about ten minutes while the network thread
-             // keeps its nominal rate. It used to be 30000, around half a minute, which is
+             // in ticks, so a hundred minutes. It used to be 30000, five minutes, which is
              // very short for a NAT: Linux conntrack holds an established entry for days
              // and consumer boxes for hours, so an idle but perfectly legitimate
              // connection - an ssh session between keystrokes, IMAP IDLE, a websocket
@@ -2048,8 +2061,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              // all this has to do.
              UserModeTCPEvictionScanLimit=256;
              // An established session is only taken away from the guest after this
-             // much silence - a minute at the nominal tick rate. Finished sessions
-             // and stalled half-open ones are reclaimed without waiting.
+             // much silence, a minute. Finished sessions and stalled half-open ones
+             // are reclaimed without waiting.
              UserModeTCPEvictionMinimumIdleTicks=6000;
              UserModeTCPOutOfOrderQueueSize=4;
              UserModeICMPIdleTimeoutTicks=300;
@@ -2598,6 +2611,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fIPv6RATickCount:TPasRISCVInt32;
        fIPv6FragmentReassemblyTable:TIPv6FragmentReassemblyTable;
        fUserModeTickCount:TPasRISCVUInt32;
+       // Monotonic time of the last tick advance, already expressed in ticks, and how
+       // many ticks the round currently being served is worth. Every per session timer
+       // steps by the latter instead of by one, which is what decouples the timeouts
+       // from the rate of the poll loop.
+       fUserModeTickTime:TPasRISCVUInt64;
+       fUserModeTickDelta:TPasRISCVUInt32;
        // Set by Reset from the HART thread, serviced by the network thread. The session
        // tables belong to that thread, so the guest side only posts a request.
        fResetPending:TPasMPUInt32;
@@ -2638,6 +2657,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function AppendTCPPendingData(const aTCPSession:PTCPSession;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
        function AppendTCPv6PendingData(const aTCPv6Session:PTCPv6Session;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
        procedure SendTCPToGuest(const aSessionIndex:TPasRISCVInt32;const aFlags:TPasRISCVUInt8;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
+       procedure AdvanceUserModeTicks;
        function FindEvictableTCPSession:TPasRISCVInt32;
        function FindEvictableTCPv6Session:TPasRISCVInt32;
        function FindTCPSession(const aGuestSourceIP:TIPv4Address;const aGuestSourcePort:TPasRISCVUInt16;const aDestinationIP:TIPv4Address;const aDestinationPort:TPasRISCVUInt16):TPasRISCVInt32;
@@ -31075,7 +31095,7 @@ begin
 
   until not assigned(Packet.Data);
 
-  inc(fUserModeTickCount);
+  AdvanceUserModeTicks;
 
   PollICMPSockets;
   PollUDPSockets;
@@ -31086,7 +31106,7 @@ begin
    PollICMPv6Sockets;
    PollUDPv6Sockets;
    PollTCPv6Sockets;
-   inc(fIPv6RATickCount);
+   inc(fIPv6RATickCount,fUserModeTickDelta);
    if fIPv6RATickCount>=20000 then begin
     fIPv6RATickCount:=0;
     SendRouterAdvertisement(AllNodesMulticastMAC,AllNodesMulticastIPv6);
@@ -33256,7 +33276,7 @@ begin
 
    end else begin
 
-    inc(SessionItem^.TickCount);
+    inc(SessionItem^.TickCount,fUserModeTickDelta);
     if SessionItem^.TickCount>=UserModeICMPIdleTimeoutTicks then begin
      if length(fToClose)<=fToCloseCount then begin
       if length(fToClose)=0 then begin
@@ -33964,7 +33984,7 @@ begin
 
    end else begin
 
-    inc(SessionItem^.TickCount);
+    inc(SessionItem^.TickCount,fUserModeTickDelta);
     if SessionItem^.TickCount>=IfThen(SessionItem^.OriginalDestinationPort=53,UserModeUDPDNSIdleTimeoutTicks,UserModeUDPIdleTimeoutTicks) then begin
      if length(fToClose)<=fToCloseCount then begin
       if length(fToClose)=0 then begin
@@ -34053,6 +34073,37 @@ begin
   end;
 
  end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.AdvanceUserModeTicks;
+var CurrentTickTime,ElapsedTicks:TPasRISCVUInt64;
+begin
+
+ CurrentTickTime:=GetCurrentFrequencyTime(UserModeTickFrequency);
+
+ if fUserModeTickTime=0 then begin
+  // First round, so there is nothing to measure against yet
+  fUserModeTickTime:=CurrentTickTime;
+  fUserModeTickDelta:=0;
+  exit;
+ end;
+
+ if CurrentTickTime<=fUserModeTickTime then begin
+  // The loop is running faster than the tick, which is the normal case while there
+  // is traffic: nothing has aged yet, so nothing steps
+  fUserModeTickDelta:=0;
+  exit;
+ end;
+
+ ElapsedTicks:=CurrentTickTime-fUserModeTickTime;
+ if ElapsedTicks>UserModeMaximumTickAdvance then begin
+  ElapsedTicks:=UserModeMaximumTickAdvance;
+ end;
+
+ inc(fUserModeTickTime,ElapsedTicks);
+ fUserModeTickDelta:=TPasRISCVUInt32(ElapsedTicks);
+ inc(fUserModeTickCount,fUserModeTickDelta);
 
 end;
 
@@ -34540,7 +34591,7 @@ begin
  PortForward:=@fPortForwards[aPortForwardIndex];
  WriteIndex:=0;
  for ReadIndex:=0 to Length(PortForward^.UDPPeers)-1 do begin
-  inc(PortForward^.UDPPeers[ReadIndex].TickCount);
+  inc(PortForward^.UDPPeers[ReadIndex].TickCount,fUserModeTickDelta);
   if PortForward^.UDPPeers[ReadIndex].TickCount<UserModeUDPPortForwardPeerIdleTimeoutTicks then begin
    if WriteIndex<>ReadIndex then begin
     PortForward^.UDPPeers[WriteIndex]:=PortForward^.UDPPeers[ReadIndex];
@@ -34625,7 +34676,7 @@ begin
  WriteIndex:=0;
 
  for ReadIndex:=0 to Length(PortForward^.UDPv6Peers)-1 do begin
-  inc(PortForward^.UDPv6Peers[ReadIndex].TickCount);
+  inc(PortForward^.UDPv6Peers[ReadIndex].TickCount,fUserModeTickDelta);
   if PortForward^.UDPv6Peers[ReadIndex].TickCount<UserModeUDPPortForwardPeerIdleTimeoutTicks then begin
    if WriteIndex<>ReadIndex then begin
     PortForward^.UDPv6Peers[WriteIndex]:=PortForward^.UDPv6Peers[ReadIndex];
@@ -35063,11 +35114,11 @@ begin
       end;
 
 {    end else begin
-      inc(TCPSession^.TickCount);}
+      inc(TCPSession^.TickCount,fUserModeTickDelta);}
      end;
 
      if (not SessionClosed) and (TCPSession^.State=UserModeTCPStateConnecting) then begin
-      inc(TCPSession^.TickCount);
+      inc(TCPSession^.TickCount,fUserModeTickDelta);
       if TCPSession^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
        if Length(fToClose)<=fToCloseCount then begin
         if Length(fToClose)=0 then begin
@@ -35085,7 +35136,7 @@ begin
 
     UserModeTCPStateSynAckSent,UserModeTCPStateEstablished,UserModeTCPStateGuestFinSent,UserModeTCPStateCloseWait:begin
 
-     inc(TCPSession^.IdleTickCount);
+     inc(TCPSession^.IdleTickCount,fUserModeTickDelta);
      if (((TCPSession^.State=UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=UserModeTCPConnectTimeoutTicks)) or
          ((TCPSession^.State<>UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks))) then begin
 
@@ -35236,7 +35287,7 @@ begin
 
       end else begin
 
-       inc(TCPSession^.TickCount);
+       inc(TCPSession^.TickCount,fUserModeTickDelta);
 
        if (TCPSession^.State=UserModeTCPStateSynAckSent) and (TCPSession^.TickCount>=TCPSession^.RTO) then begin
 
@@ -35337,7 +35388,7 @@ begin
     end;
 
     UserModeTCPStateLastAck:begin
-     inc(TCPSession^.TickCount);
+     inc(TCPSession^.TickCount,fUserModeTickDelta);
 
      if TCPSession^.TickCount>=TCPSession^.RTO then begin
 
@@ -35381,7 +35432,7 @@ begin
 
     UserModeTCPStateInboundSynSent:begin
 
-     inc(TCPSession^.TickCount);
+     inc(TCPSession^.TickCount,fUserModeTickDelta);
 
      if TCPSession^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
 
@@ -35405,7 +35456,7 @@ begin
 
      // Half-close states after active close: only need idle timeout.
 
-     inc(TCPSession^.IdleTickCount);
+     inc(TCPSession^.IdleTickCount,fUserModeTickDelta);
 
      if TCPSession^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
 
@@ -35429,7 +35480,7 @@ begin
 
      // Wait 2×MSL before closing the session.
 
-     inc(TCPSession^.TimeWaitTickCount);
+     inc(TCPSession^.TimeWaitTickCount,fUserModeTickDelta);
 
      if TCPSession^.TimeWaitTickCount>=UserModeTCPTimeWaitTicks then begin
 
@@ -36811,7 +36862,7 @@ begin
 
    end else begin
 
-    inc(SessionItem^.TickCount);
+    inc(SessionItem^.TickCount,fUserModeTickDelta);
     if SessionItem^.TickCount>=UserModeICMPIdleTimeoutTicks then begin
      if length(fToClose)<=fToCloseCount then begin
       if length(fToClose)=0 then begin
@@ -37312,7 +37363,7 @@ begin
 
    end else begin
 
-    inc(SessionItem^.TickCount);
+    inc(SessionItem^.TickCount,fUserModeTickDelta);
     if SessionItem^.TickCount>=IfThen(SessionItem^.OriginalDestinationPort=53,UserModeUDPDNSIdleTimeoutTicks,UserModeUDPIdleTimeoutTicks) then begin
      if length(fToClose)<=fToCloseCount then begin
       if length(fToClose)=0 then begin
@@ -38475,7 +38526,7 @@ begin
      end;
 
      if (not SessionClosed) and (TCPv6Session^.State=UserModeTCPStateConnecting) then begin
-      inc(TCPv6Session^.TickCount);
+      inc(TCPv6Session^.TickCount,fUserModeTickDelta);
       if TCPv6Session^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
 
        if length(fToClose)<=fToCloseCount then begin
@@ -38492,7 +38543,7 @@ begin
 
     UserModeTCPStateSynAckSent:begin
 
-     inc(TCPv6Session^.IdleTickCount);
+     inc(TCPv6Session^.IdleTickCount,fUserModeTickDelta);
 
      if TCPv6Session^.IdleTickCount>=UserModeTCPConnectTimeoutTicks then begin
 
@@ -38506,7 +38557,7 @@ begin
 
      end else begin
 
-      inc(TCPv6Session^.TickCount);
+      inc(TCPv6Session^.TickCount,fUserModeTickDelta);
       if TCPv6Session^.TickCount>=TCPv6Session^.RTO then begin
 
        TCPv6Session^.TickCount:=0;
@@ -38547,7 +38598,7 @@ begin
 
     UserModeTCPStateEstablished,UserModeTCPStateGuestFinSent,UserModeTCPStateCloseWait:begin
 
-     inc(TCPv6Session^.IdleTickCount);
+     inc(TCPv6Session^.IdleTickCount,fUserModeTickDelta);
      if TCPv6Session^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
 
       if length(fToClose)<=fToCloseCount then begin
@@ -38687,7 +38738,7 @@ begin
 
       end else begin
 
-       inc(TCPv6Session^.TickCount);
+       inc(TCPv6Session^.TickCount,fUserModeTickDelta);
 
        if (TCPv6Session^.RetransmitSize>0) and (TCPv6Session^.TickCount>=TCPv6Session^.RTO) then begin
 
@@ -38750,7 +38801,7 @@ begin
 
     UserModeTCPStateInboundSynSent:begin
 
-     inc(TCPv6Session^.TickCount);
+     inc(TCPv6Session^.TickCount,fUserModeTickDelta);
 
      if TCPv6Session^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
 
@@ -38767,7 +38818,7 @@ begin
 
     UserModeTCPStateLastAck:begin
 
-     inc(TCPv6Session^.TickCount);
+     inc(TCPv6Session^.TickCount,fUserModeTickDelta);
 
      if TCPv6Session^.TickCount>=TCPv6Session^.RTO then begin
 
@@ -38799,7 +38850,7 @@ begin
 
     UserModeTCPStateFINWait1,UserModeTCPStateFINWait2,UserModeTCPStateClosing:begin
      // Half-close states after active close: only need idle timeout.
-     inc(TCPv6Session^.IdleTickCount);
+     inc(TCPv6Session^.IdleTickCount,fUserModeTickDelta);
      if TCPv6Session^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
       if length(fToClose)<=fToCloseCount then begin
        SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
@@ -38812,7 +38863,7 @@ begin
 
     UserModeTCPStateTimeWait:begin
      // Wait 2×MSL before closing the session.
-     inc(TCPv6Session^.TimeWaitTickCount);
+     inc(TCPv6Session^.TimeWaitTickCount,fUserModeTickDelta);
      if TCPv6Session^.TimeWaitTickCount>=UserModeTCPTimeWaitTicks then begin
       if length(fToClose)<=fToCloseCount then begin
        SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
