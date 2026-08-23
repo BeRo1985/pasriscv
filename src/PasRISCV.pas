@@ -2612,6 +2612,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure SendICMPTimeExceeded(const aIPHeader:PIPv4Header;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
        procedure SendICMPUDPPortUnreachable(const aUDPSession:PUDPSession);
        procedure SendTCPResetToGuest(const aIPHeader:PIPv4Header;const aTCPHeader:PTCPHeader;const aSegmentPayloadSize:TPasRISCVSizeInt);
+       procedure SendTCPv6ResetToGuest(const aIPv6Header:PIPv6Header;const aTCPHeader:PTCPHeader;const aSegmentPayloadSize:TPasRISCVSizeInt);
        procedure HandleICMP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt);
        procedure HandleUDP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aUDPData:Pointer;const aUDPSize:TPasRISCVSizeInt);
        procedure ParseTCPOptions(const aOptions:Pointer;const aOptionsSize:TPasRISCVSizeInt;out aResult:TUserModeTCPParsedOptions);
@@ -32295,6 +32296,71 @@ begin
 
 end;
 
+// The IPv6 twin of the above, for the same reason and with the same sequence number
+// rules - everything about a reset that is built without a session is identical, only
+// the two headers it is wrapped in differ.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.SendTCPv6ResetToGuest(const aIPv6Header:PIPv6Header;const aTCPHeader:PTCPHeader;const aSegmentPayloadSize:TPasRISCVSizeInt);
+const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
+var TotalSize:TPasRISCVSizeInt;
+    ResponseEthernet:PEthernetHeader;
+    ResponseIPv6:PIPv6Header;
+    ResponseTCP:PTCPHeader;
+    ConsumedSequenceNumbers:TPasRISCVUInt32;
+begin
+
+ // Never answer a reset with a reset, that is how two ends end up shouting at each other
+ if (aTCPHeader^.Flags and TCPFlagRST)<>0 then begin
+  exit;
+ end;
+
+ TotalSize:=UserModeEtherHeaderSize+UserModeIPv6HeaderSize+UserModeTCPHeaderSize;
+
+ FillChar(fFrameBuffer[0],TotalSize,#0);
+
+ ResponseEthernet:=PEthernetHeader(@fFrameBuffer[0]);
+ ResponseIPv6:=PIPv6Header(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize)));
+ ResponseTCP:=PTCPHeader(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize+UserModeIPv6HeaderSize)));
+
+ ResponseEthernet^.DestinationMAC:=fGuestMAC;
+ ResponseEthernet^.SourceMAC:=GatewayMAC;
+ ResponseEthernet^.EthernetType:=TRNLEndianness.HostToNet16(EtherTypeIPv6);
+
+ ResponseIPv6^.VersionTrafficClassFlow:=TRNLEndianness.HostToNet32(TPasRISCVUInt32($60000000));
+ ResponseIPv6^.PayloadLength:=TRNLEndianness.HostToNet16(TPasRISCVUInt16(UserModeTCPHeaderSize));
+ ResponseIPv6^.NextHeader:=IPProtocolTCP;
+ ResponseIPv6^.HopLimit:=64;
+ ResponseIPv6^.SourceAddress:=aIPv6Header^.DestinationAddress;
+ ResponseIPv6^.DestinationAddress:=aIPv6Header^.SourceAddress;
+
+ ResponseTCP^.SourcePort:=aTCPHeader^.DestinationPort;
+ ResponseTCP^.DestinationPort:=aTCPHeader^.SourcePort;
+ ResponseTCP^.DataOffset:=$50;
+ ResponseTCP^.WindowSize:=0;
+ ResponseTCP^.Checksum:=0;
+ ResponseTCP^.UrgentPtr:=0;
+
+ if (aTCPHeader^.Flags and TCPFlagACK)<>0 then begin
+  // The segment told us where it thinks we are, so answer from exactly there
+  ResponseTCP^.SequenceNumber:=aTCPHeader^.AcknowledgmentNumber;
+  ResponseTCP^.AcknowledgmentNumber:=0;
+  ResponseTCP^.Flags:=TCPFlagRST;
+ end else begin
+  // Nothing to go on, so acknowledge everything it sent and reset from zero
+  ConsumedSequenceNumbers:=TPasRISCVUInt32(aSegmentPayloadSize);
+  if (aTCPHeader^.Flags and (TCPFlagSYN or TCPFlagFIN))<>0 then begin
+   inc(ConsumedSequenceNumbers);
+  end;
+  ResponseTCP^.SequenceNumber:=0;
+  ResponseTCP^.AcknowledgmentNumber:=TRNLEndianness.HostToNet32(TRNLEndianness.NetToHost32(aTCPHeader^.SequenceNumber)+ConsumedSequenceNumbers);
+  ResponseTCP^.Flags:=TCPFlagRST or TCPFlagACK;
+ end;
+
+ ResponseTCP^.Checksum:=UserModeIPv6PseudoHeaderChecksum(aIPv6Header^.DestinationAddress,aIPv6Header^.SourceAddress,IPProtocolTCP,ResponseTCP,UserModeTCPHeaderSize);
+
+ InjectToGuest(@fFrameBuffer[0],TotalSize);
+
+end;
+
 procedure TPasRISCVEthernetDeviceUserModeNetworking.HandleTCP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aTCPData:Pointer;const aTCPSize:TPasRISCVSizeInt);
 {$if defined(Windows)}
 const UserModeMsgNoSigPipe=0;
@@ -32472,6 +32538,11 @@ begin
   TCPSession^.SocketFileDescriptor:=RNLSocketCreate(RNL_SOCKET_TYPE_STREAM,RNL_IPV4);
 {$endif}
   if TCPSession^.SocketFileDescriptor=RNL_SOCKET_NULL then begin
+   // Out of host descriptors, almost always EMFILE. The guest cannot be given the
+   // connection, but it can be told so: without the reset it waits out its connect
+   // timer for every attempt, and a host that has run out of file descriptors is
+   // exactly the situation in which the guest is retrying hardest.
+   SendTCPResetToGuest(aIPHeader,TCPHeader,PayloadSize);
    fTCPFreeList.Enqueue(SessionIndex);
    exit;
   end;
@@ -32492,6 +32563,9 @@ begin
 {$else}
    RNLSocketDestroy(TCPSession^.SocketFileDescriptor);
 {$endif}
+   // The connect failed outright rather than going pending, so there is a definite
+   // answer to give instead of silence
+   SendTCPResetToGuest(aIPHeader,TCPHeader,PayloadSize);
    fTCPFreeList.Enqueue(SessionIndex);
    exit;
   end;
@@ -37647,8 +37721,9 @@ begin
    if EvictionIndex>=0 then begin
     CloseTCPv6Session(EvictionIndex,true);
    end else begin
-    // No RST for the refusal here: the IPv4 path has a reset builder that works
-    // without a session, the IPv6 path does not have one yet
+    // Everything in the table is genuinely in use, so refuse out loud rather than
+    // leaving the guest to its connect timer
+    SendTCPv6ResetToGuest(aIPv6Header,TCPHeader,PayloadSize);
     exit;
    end;
   end;
@@ -37699,6 +37774,8 @@ begin
 {$endif}
 
   if TCPv6Session^.SocketFileDescriptor=RNL_SOCKET_NULL then begin
+   // Out of host descriptors, almost always EMFILE - see the IPv4 path
+   SendTCPv6ResetToGuest(aIPv6Header,TCPHeader,PayloadSize);
    fTCPv6FreeList.Enqueue(NewSessionIndex);
    exit;
   end;
@@ -37720,6 +37797,9 @@ begin
 {$else}
    RNLSocketDestroy(TCPv6Session^.SocketFileDescriptor);
 {$endif}
+   // The connect failed outright rather than going pending, so there is a definite
+   // answer to give instead of silence
+   SendTCPv6ResetToGuest(aIPv6Header,TCPHeader,PayloadSize);
    fTCPv6FreeList.Enqueue(NewSessionIndex);
    exit;
   end;
@@ -37750,6 +37830,9 @@ begin
  end;
 
  if SessionIndex<0 then begin
+  // A segment for a tuple we no longer know. Dropping it silently leaves the guest
+  // waiting on a connection that is never coming back, so say so instead.
+  SendTCPv6ResetToGuest(aIPv6Header,TCPHeader,PayloadSize);
   exit;
  end;
 
