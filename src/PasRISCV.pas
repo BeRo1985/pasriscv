@@ -2038,6 +2038,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              // still fits is accepted regardless of the announced window, so closing it
              // early never costs a segment.
              UserModeTCPWindowMinimumAdvertise=UserModeTCPMaxDataPayload;
+             // When the session table is full, a new connection used to be dropped on
+             // the floor: no session, no answer, and the guest waited out its connect
+             // timeout while the table stayed full of entries that were finished or
+             // had not been touched in minutes. One of those is reclaimed instead.
+             // The scan is bounded and starts where the last one stopped, so a guest
+             // that hammers a saturated table cannot turn every SYN into a full sweep
+             // of the table; it finds a good entry rather than the best one, which is
+             // all this has to do.
+             UserModeTCPEvictionScanLimit=256;
+             // An established session is only taken away from the guest after this
+             // much silence - a minute at the nominal tick rate. Finished sessions
+             // and stalled half-open ones are reclaimed without waiting.
+             UserModeTCPEvictionMinimumIdleTicks=6000;
              UserModeTCPOutOfOrderQueueSize=4;
              UserModeICMPIdleTimeoutTicks=300;
              UserModeUDPDNSIdleTimeoutTicks=3000;
@@ -2550,6 +2563,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fTCPActiveIndices:TPasRISCVInt32DynamicArray;
        fTCPActiveCount:TPasRISCVInt32;
        fTCPActiveCapacity:TPasRISCVInt32;
+       fTCPEvictionCursor:TPasRISCVInt32;
        fIsolated:Boolean;
        fICMPSocketAvailable:Boolean;
        fFilterLAN:Boolean;
@@ -2580,6 +2594,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fTCPv6ActiveIndices:TPasRISCVInt32DynamicArray;
        fTCPv6ActiveCount:TPasRISCVInt32;
        fTCPv6ActiveCapacity:TPasRISCVInt32;
+       fTCPv6EvictionCursor:TPasRISCVInt32;
        fIPv6RATickCount:TPasRISCVInt32;
        fIPv6FragmentReassemblyTable:TIPv6FragmentReassemblyTable;
        fUserModeTickCount:TPasRISCVUInt32;
@@ -2622,6 +2637,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function AppendTCPPendingData(const aTCPSession:PTCPSession;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
        function AppendTCPv6PendingData(const aTCPv6Session:PTCPv6Session;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
        procedure SendTCPToGuest(const aSessionIndex:TPasRISCVInt32;const aFlags:TPasRISCVUInt8;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
+       function FindEvictableTCPSession:TPasRISCVInt32;
+       function FindEvictableTCPv6Session:TPasRISCVInt32;
        function FindTCPSession(const aGuestSourceIP:TIPv4Address;const aGuestSourcePort:TPasRISCVUInt16;const aDestinationIP:TIPv4Address;const aDestinationPort:TPasRISCVUInt16):TPasRISCVInt32;
        procedure CloseTCPSession(const aSessionIndex:TPasRISCVInt32;const aSendRST:Boolean);
        procedure PollTCPSockets;
@@ -32299,6 +32316,7 @@ var TCPHeader:PTCPHeader;
     SessionIndex:TPasRISCVInt32;
     Index:TPasRISCVInt32;
     ExtraIndex:TPasRISCVInt32;
+    EvictionIndex:TPasRISCVInt32;
     SentBytes:TPasRISCVSizeInt;
     TrimLength:TPasRISCVSizeInt;
     AcceptedBytes:TPasRISCVSizeInt;
@@ -32423,7 +32441,18 @@ begin
   end;
 
   if (UserModeTCPMaxSessions>0) and (fTCPActiveCount>=UserModeTCPMaxSessions) then begin
-   exit;
+   EvictionIndex:=FindEvictableTCPSession;
+   if EvictionIndex>=0 then begin
+    // The evicted guest gets an RST, so it finds out at once instead of waiting for
+    // a connection that no longer exists on this side
+    CloseTCPSession(EvictionIndex,true);
+   end else begin
+    // Everything in the table is genuinely in use, so refuse the new connection out
+    // loud - connect() then fails immediately rather than after the guest's own
+    // timeout, and the difference between "busy" and "black hole" stays visible
+    SendTCPResetToGuest(aIPHeader,TCPHeader,PayloadSize);
+    exit;
+   end;
   end;
 
   if not fTCPFreeList.Dequeue(SessionIndex) then begin
@@ -33953,6 +33982,149 @@ begin
 
 end;
 
+function TPasRISCVEthernetDeviceUserModeNetworking.FindEvictableTCPSession:TPasRISCVInt32;
+var Index,Position,ScanCount,SessionIndex,Rank,BestRank:TPasRISCVInt32;
+    BestIdleTickCount:TPasRISCVUInt32;
+    TCPSession:PTCPSession;
+begin
+
+ // Picks the entry the guest will miss least, in three tiers: a session that is
+ // already tearing down has nothing left to lose, a half-open connect that has been
+ // waiting long enough is most likely never going to complete, and only then a real
+ // connection - and that one only after it has been silent for a good while. Within
+ // a tier the least recently used wins, which is what IdleTickCount already tracks
+ // since every segment in either direction resets it.
+
+ result:=-1;
+
+ if fTCPActiveCount<=0 then begin
+  exit;
+ end;
+
+ ScanCount:=fTCPActiveCount;
+ if ScanCount>UserModeTCPEvictionScanLimit then begin
+  ScanCount:=UserModeTCPEvictionScanLimit;
+ end;
+
+ BestRank:=high(TPasRISCVInt32);
+ BestIdleTickCount:=0;
+
+ for Index:=0 to ScanCount-1 do begin
+
+  Position:=(fTCPEvictionCursor+Index) mod fTCPActiveCount;
+  SessionIndex:=fTCPActiveIndices[Position];
+  TCPSession:=@fTCPSessionArray[SessionIndex];
+
+  case TCPSession^.State of
+   UserModeTCPStateClosed,
+   UserModeTCPStateTimeWait,
+   UserModeTCPStateClosing,
+   UserModeTCPStateLastAck,
+   UserModeTCPStateFINWait1,
+   UserModeTCPStateFINWait2:begin
+    Rank:=0;
+   end;
+   UserModeTCPStateConnecting,
+   UserModeTCPStateSynAckSent,
+   UserModeTCPStateInboundSynSent:begin
+    if TCPSession^.IdleTickCount>=(UserModeTCPConnectTimeoutTicks shr 1) then begin
+     Rank:=1;
+    end else begin
+     Rank:=-1;
+    end;
+   end;
+   else begin
+    if TCPSession^.IdleTickCount>=UserModeTCPEvictionMinimumIdleTicks then begin
+     Rank:=2;
+    end else begin
+     Rank:=-1;
+    end;
+   end;
+  end;
+
+  if Rank>=0 then begin
+   if (Rank<BestRank) or
+      ((Rank=BestRank) and (TCPSession^.IdleTickCount>BestIdleTickCount)) then begin
+    BestRank:=Rank;
+    BestIdleTickCount:=TCPSession^.IdleTickCount;
+    result:=SessionIndex;
+   end;
+  end;
+
+ end;
+
+ fTCPEvictionCursor:=(fTCPEvictionCursor+ScanCount) mod fTCPActiveCount;
+
+end;
+
+function TPasRISCVEthernetDeviceUserModeNetworking.FindEvictableTCPv6Session:TPasRISCVInt32;
+var Index,Position,ScanCount,SessionIndex,Rank,BestRank:TPasRISCVInt32;
+    BestIdleTickCount:TPasRISCVUInt32;
+    TCPv6Session:PTCPv6Session;
+begin
+
+ result:=-1;
+
+ if fTCPv6ActiveCount<=0 then begin
+  exit;
+ end;
+
+ ScanCount:=fTCPv6ActiveCount;
+ if ScanCount>UserModeTCPEvictionScanLimit then begin
+  ScanCount:=UserModeTCPEvictionScanLimit;
+ end;
+
+ BestRank:=high(TPasRISCVInt32);
+ BestIdleTickCount:=0;
+
+ for Index:=0 to ScanCount-1 do begin
+
+  Position:=(fTCPv6EvictionCursor+Index) mod fTCPv6ActiveCount;
+  SessionIndex:=fTCPv6ActiveIndices[Position];
+  TCPv6Session:=@fTCPv6SessionArray[SessionIndex];
+
+  case TCPv6Session^.State of
+   UserModeTCPStateClosed,
+   UserModeTCPStateTimeWait,
+   UserModeTCPStateClosing,
+   UserModeTCPStateLastAck,
+   UserModeTCPStateFINWait1,
+   UserModeTCPStateFINWait2:begin
+    Rank:=0;
+   end;
+   UserModeTCPStateConnecting,
+   UserModeTCPStateSynAckSent,
+   UserModeTCPStateInboundSynSent:begin
+    if TCPv6Session^.IdleTickCount>=(UserModeTCPConnectTimeoutTicks shr 1) then begin
+     Rank:=1;
+    end else begin
+     Rank:=-1;
+    end;
+   end;
+   else begin
+    if TCPv6Session^.IdleTickCount>=UserModeTCPEvictionMinimumIdleTicks then begin
+     Rank:=2;
+    end else begin
+     Rank:=-1;
+    end;
+   end;
+  end;
+
+  if Rank>=0 then begin
+   if (Rank<BestRank) or
+      ((Rank=BestRank) and (TCPv6Session^.IdleTickCount>BestIdleTickCount)) then begin
+    BestRank:=Rank;
+    BestIdleTickCount:=TCPv6Session^.IdleTickCount;
+    result:=SessionIndex;
+   end;
+  end;
+
+ end;
+
+ fTCPv6EvictionCursor:=(fTCPv6EvictionCursor+ScanCount) mod fTCPv6ActiveCount;
+
+end;
+
 function TPasRISCVEthernetDeviceUserModeNetworking.TCPReceiveWindow(const aPendingSize:TPasRISCVSizeInt):TPasRISCVUInt16;
 var FreeSpace:TPasRISCVSizeInt;
 begin
@@ -34727,6 +34899,7 @@ var SessionIndex:TPasRISCVInt32;
     ForwardIndex:TPasRISCVInt32;
     NewSessionIndex:TPasRISCVInt32;
     ExtraIndex:TPasRISCVInt32;
+    EvictionIndex:TPasRISCVInt32;
     NewTCPSession:PTCPSession;
     AcceptPeerIPAddressBytes:TIPv4Address;
     NewTCPKey:TUserModeTCPKey;
@@ -35243,12 +35416,17 @@ begin
 {$endif}
 
      if (UserModeTCPMaxSessions>0) and (fTCPActiveCount>=UserModeTCPMaxSessions) then begin
+      EvictionIndex:=FindEvictableTCPSession;
+      if EvictionIndex>=0 then begin
+       CloseTCPSession(EvictionIndex,true);
+      end else begin
 {$ifdef PasRISCVUseRNLNetworkInstance}
-      fRNLNetwork.SocketDestroy(AcceptedSocket);
+       fRNLNetwork.SocketDestroy(AcceptedSocket);
 {$else}
-      RNLSocketDestroy(AcceptedSocket);
+       RNLSocketDestroy(AcceptedSocket);
 {$endif}
-      continue;
+       continue;
+      end;
      end;
 
      if not fTCPFreeList.Dequeue(NewSessionIndex) then begin
@@ -37371,6 +37549,7 @@ var TCPHeader:PTCPHeader;
     TCPv6Session:PTCPv6Session;
     TCPv6Key:TUserModeTCPv6Key;
     NewSessionIndex:TPasRISCVInt32;
+    EvictionIndex:TPasRISCVInt32;
     DestinationAddress:TRNLAddress;
     HasValidAcknowledgment:Boolean;
     HasPayloadOrFIN:Boolean;
@@ -37464,7 +37643,14 @@ begin
   end;
 
   if (UserModeTCPv6MaxSessions>0) and (fTCPv6ActiveCount>=UserModeTCPv6MaxSessions) then begin
-   exit;
+   EvictionIndex:=FindEvictableTCPv6Session;
+   if EvictionIndex>=0 then begin
+    CloseTCPv6Session(EvictionIndex,true);
+   end else begin
+    // No RST for the refusal here: the IPv4 path has a reset builder that works
+    // without a session, the IPv6 path does not have one yet
+    exit;
+   end;
   end;
 
   if not fTCPv6FreeList.Dequeue(NewSessionIndex) then begin
@@ -38125,6 +38311,7 @@ var SessionIndex:TPasRISCVInt32;
     ForwardIndex:TPasRISCVInt32;
     NewSessionIndex:TPasRISCVInt32;
     ExtraIndex:TPasRISCVInt32;
+    EvictionIndex:TPasRISCVInt32;
     NewTCPv6Session:PTCPv6Session;
     NewTCPv6Key:TUserModeTCPv6Key;
     PortForwardItem:PUserModePortForward;
@@ -38592,12 +38779,17 @@ begin
 {$endif}
 
      if (UserModeTCPv6MaxSessions>0) and (fTCPv6ActiveCount>=UserModeTCPv6MaxSessions) then begin
+      EvictionIndex:=FindEvictableTCPv6Session;
+      if EvictionIndex>=0 then begin
+       CloseTCPv6Session(EvictionIndex,true);
+      end else begin
 {$ifdef PasRISCVUseRNLNetworkInstance}
-      fRNLNetwork.SocketDestroy(AcceptedSocket);
+       fRNLNetwork.SocketDestroy(AcceptedSocket);
 {$else}
-      RNLSocketDestroy(AcceptedSocket);
+       RNLSocketDestroy(AcceptedSocket);
 {$endif}
-      continue;
+       continue;
+      end;
      end;
 
      if not fTCPv6FreeList.Dequeue(NewSessionIndex) then begin
