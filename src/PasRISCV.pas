@@ -1986,7 +1986,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              UserModeICMPv6MaxSessions=4096;
              UserModeUDPv6MaxSessions=65536;
              UserModeTCPv6MaxSessions=65536;
-             UserModeTCPPendingBufferSize=4096;
+             // How much guest data the NAT is willing to hold on to while the host
+             // socket refuses to take any more, and at the same time what the receive
+             // window announced to the guest is computed from, so that the two cannot
+             // drift apart. They used to: the window was a constant 65535 while only
+             // 4096 bytes could really be buffered, so a guest that believed the window
+             // and filled it had everything past the first 4 KiB dropped without even
+             // an ACK, and had to wait out its retransmit timer for each such segment.
+             // The buffer is allocated on demand and grows only as far as a session
+             // really needs it, so a connection that never backs up costs nothing at
+             // all - less than the 4 KiB every session used to carry inline.
+             UserModeTCPPendingBufferInitialSize=4096;
+             UserModeTCPPendingBufferSize=65536;
              UserModeTCPWindowSize=TPasRISCVUInt16(65535);
              UserModeTCPStateClosed=TPasRISCVUInt8(0);
              UserModeTCPStateConnecting=TPasRISCVUInt8(1);
@@ -2020,6 +2031,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              DefaultUserModeTCPIdleTimeoutTicks=600000;
              UserModeTCPMaxDataPayload=1460;
              UserModeTCPv6MaxDataPayload=1440;
+             // Below this much free space the window is announced as closed instead of
+             // dribbling out the last few bytes of a nearly full buffer, which would
+             // only invite the guest to keep sending tiny segments - the receiver side
+             // of the silly window syndrome avoidance in RFC 1122, 4.2.3.3. Whatever
+             // still fits is accepted regardless of the announced window, so closing it
+             // early never costs a segment.
+             UserModeTCPWindowMinimumAdvertise=UserModeTCPMaxDataPayload;
              UserModeTCPOutOfOrderQueueSize=4;
              UserModeICMPIdleTimeoutTicks=300;
              UserModeUDPDNSIdleTimeoutTicks=3000;
@@ -2371,6 +2389,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              Data:array[0..UserModeTCPMaxDataPayload-1] of TPasRISCVUInt8;
             end;
             PUserModeTCPOutOfOrderEntry=^TUserModeTCPOutOfOrderEntry;
+            TUserModeTCPPendingBuffer=array[0..UserModeTCPPendingBufferSize-1] of TPasRISCVUInt8;
+            PUserModeTCPPendingBuffer=^TUserModeTCPPendingBuffer;
             TUserModeTCPParsedOptions=record
              WindowScale:TPasRISCVUInt8;
              MSS:TPasRISCVUInt16;
@@ -2392,8 +2412,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              DestinationPort:TPasRISCVUInt16;
              ServerSeq:TPasRISCVUInt32;
              ServerAck:TPasRISCVUInt32;
-             PendingData:array[0..UserModeTCPPendingBufferSize-1] of TPasRISCVUInt8;
+             PendingData:PUserModeTCPPendingBuffer;
              PendingSize:TPasRISCVSizeInt;
+             PendingCapacity:TPasRISCVSizeInt;
+             LastAdvertisedWindow:TPasRISCVUInt16;
              TickCount:TPasRISCVUInt32;
              IdleTickCount:TPasRISCVUInt32;
              TimeWaitTickCount:TPasRISCVUInt32;
@@ -2429,8 +2451,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              DestinationPort:TPasRISCVUInt16;
              ServerSeq:TPasRISCVUInt32;
              ServerAck:TPasRISCVUInt32;
-             PendingData:array[0..UserModeTCPPendingBufferSize-1] of TPasRISCVUInt8;
+             PendingData:PUserModeTCPPendingBuffer;
              PendingSize:TPasRISCVSizeInt;
+             PendingCapacity:TPasRISCVSizeInt;
+             LastAdvertisedWindow:TPasRISCVUInt16;
              TickCount:TPasRISCVUInt32;
              IdleTickCount:TPasRISCVUInt32;
              TimeWaitTickCount:TPasRISCVUInt32;
@@ -2594,6 +2618,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure ForwardUDP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aUDPHeader:PUDPHeader;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
        procedure PollUDPSockets;
        procedure InitHostDNS;
+       function TCPReceiveWindow(const aPendingSize:TPasRISCVSizeInt):TPasRISCVUInt16;
+       function AppendTCPPendingData(const aTCPSession:PTCPSession;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
+       function AppendTCPv6PendingData(const aTCPv6Session:PTCPv6Session;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
        procedure SendTCPToGuest(const aSessionIndex:TPasRISCVInt32;const aFlags:TPasRISCVUInt8;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
        function FindTCPSession(const aGuestSourceIP:TIPv4Address;const aGuestSourcePort:TPasRISCVUInt16;const aDestinationIP:TIPv4Address;const aDestinationPort:TPasRISCVUInt16):TPasRISCVInt32;
        procedure CloseTCPSession(const aSessionIndex:TPasRISCVInt32;const aSendRST:Boolean);
@@ -30726,6 +30753,11 @@ begin
    FreeMem(fTCPSessionArray[fTCPActiveIndices[Index]].RetransmitData);
    fTCPSessionArray[fTCPActiveIndices[Index]].RetransmitData:=nil;
   end;
+  if assigned(fTCPSessionArray[fTCPActiveIndices[Index]].PendingData) then begin
+   FreeMem(fTCPSessionArray[fTCPActiveIndices[Index]].PendingData);
+   fTCPSessionArray[fTCPActiveIndices[Index]].PendingData:=nil;
+   fTCPSessionArray[fTCPActiveIndices[Index]].PendingCapacity:=0;
+  end;
  end;
 
 end;
@@ -32446,7 +32478,9 @@ begin
   inc(fTCPISNCounter,$10001);
 
   TCPSession^.ServerAck:=SequenceNumber+1;
+  TCPSession^.PendingData:=nil;
   TCPSession^.PendingSize:=0;
+  TCPSession^.PendingCapacity:=0;
   TCPSession^.TickCount:=0;
   TCPSession^.GuestWindowSize:=TRNLEndianness.NetToHost16(TCPHeader^.WindowSize);
   if DataOffsetBytes>UserModeTCPHeaderSize then begin
@@ -32651,9 +32685,7 @@ begin
      if SentBytes>=PayloadSize then begin
       AcceptedBytes:=PayloadSize;
      end else begin
-      if (TCPSession^.PendingSize+PayloadSize-SentBytes)<=UserModeTCPPendingBufferSize then begin
-       Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+SentBytes))^,TCPSession^.PendingData[TCPSession^.PendingSize],PayloadSize-SentBytes);
-       inc(TCPSession^.PendingSize,PayloadSize-SentBytes);
+      if AppendTCPPendingData(TCPSession,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+SentBytes)),PayloadSize-SentBytes) then begin
        AcceptedBytes:=PayloadSize;
       end else begin
        AcceptedBytes:=SentBytes;
@@ -32722,9 +32754,7 @@ begin
      if SentBytes>=PayloadSize then begin
       AcceptedBytes:=PayloadSize;
      end else begin
-      if (TCPSession^.PendingSize+PayloadSize-SentBytes)<=UserModeTCPPendingBufferSize then begin
-       Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+SentBytes))^,TCPSession^.PendingData[0],PayloadSize-SentBytes);
-       TCPSession^.PendingSize:=PayloadSize-SentBytes;
+      if AppendTCPPendingData(TCPSession,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+SentBytes)),PayloadSize-SentBytes) then begin
        AcceptedBytes:=PayloadSize;
       end else begin
        AcceptedBytes:=SentBytes;
@@ -32733,9 +32763,7 @@ begin
 
     end else begin
 
-     if (TCPSession^.PendingSize+PayloadSize)<=UserModeTCPPendingBufferSize then begin
-      Move(PayloadPointer^,TCPSession^.PendingData[TCPSession^.PendingSize],PayloadSize);
-      inc(TCPSession^.PendingSize,PayloadSize);
+     if AppendTCPPendingData(TCPSession,PayloadPointer,PayloadSize) then begin
       AcceptedBytes:=PayloadSize;
      end;
 
@@ -32744,6 +32772,11 @@ begin
     if AcceptedBytes>0 then begin
      inc(TCPSession^.ServerAck,AcceptedBytes);
      TCPSession^.IdleTickCount:=0;
+     SendTCPToGuest(SessionIndex,TCPFlagACK,nil,0);
+    end else begin
+     // Nothing fit, so the guest sent past the window it was given - answer anyway,
+     // both to carry the current (closed) window back and to serve as the reply to a
+     // window probe, instead of leaving the guest to its retransmit timer.
      SendTCPToGuest(SessionIndex,TCPFlagACK,nil,0);
     end;
 
@@ -32768,18 +32801,14 @@ begin
          if SentBytes>=OutOfOrderQueueItem^.Size then begin
           AcceptedBytes:=OutOfOrderQueueItem^.Size;
          end else begin
-          if (TCPSession^.PendingSize+OutOfOrderQueueItem^.Size-SentBytes)<=UserModeTCPPendingBufferSize then begin
-           Move(OutOfOrderQueueItem^.Data[SentBytes],TCPSession^.PendingData[0],OutOfOrderQueueItem^.Size-SentBytes);
-           TCPSession^.PendingSize:=OutOfOrderQueueItem^.Size-SentBytes;
+          if AppendTCPPendingData(TCPSession,@OutOfOrderQueueItem^.Data[SentBytes],OutOfOrderQueueItem^.Size-SentBytes) then begin
            AcceptedBytes:=OutOfOrderQueueItem^.Size;
           end else begin
            AcceptedBytes:=SentBytes;
           end;
          end;
         end else begin
-         if (TCPSession^.PendingSize+OutOfOrderQueueItem^.Size)<=UserModeTCPPendingBufferSize then begin
-          Move(OutOfOrderQueueItem^.Data[0],TCPSession^.PendingData[TCPSession^.PendingSize],OutOfOrderQueueItem^.Size);
-          inc(TCPSession^.PendingSize,OutOfOrderQueueItem^.Size);
+         if AppendTCPPendingData(TCPSession,@OutOfOrderQueueItem^.Data[0],OutOfOrderQueueItem^.Size) then begin
           AcceptedBytes:=OutOfOrderQueueItem^.Size;
          end;
         end;
@@ -33924,6 +33953,85 @@ begin
 
 end;
 
+function TPasRISCVEthernetDeviceUserModeNetworking.TCPReceiveWindow(const aPendingSize:TPasRISCVSizeInt):TPasRISCVUInt16;
+var FreeSpace:TPasRISCVSizeInt;
+begin
+ // What the guest is allowed to have in flight towards us: exactly the room that is
+ // still left in the pending buffer, never a fixed number, so a segment that the
+ // guest was invited to send is a segment that can also be stored.
+ FreeSpace:=UserModeTCPPendingBufferSize-aPendingSize;
+ if FreeSpace<UserModeTCPWindowMinimumAdvertise then begin
+  result:=0;
+ end else if FreeSpace>UserModeTCPWindowSize then begin
+  result:=UserModeTCPWindowSize;
+ end else begin
+  result:=TPasRISCVUInt16(FreeSpace);
+ end;
+end;
+
+function TPasRISCVEthernetDeviceUserModeNetworking.AppendTCPPendingData(const aTCPSession:PTCPSession;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
+var NewCapacity:TPasRISCVSizeInt;
+begin
+ // Takes guest data the host socket would not accept yet, or says that it cannot.
+ // Only a guest that ignores the announced window can be told no, since the window
+ // is derived from precisely this buffer.
+ if aSize<=0 then begin
+  result:=true;
+  exit;
+ end;
+ if (aTCPSession^.PendingSize+aSize)>UserModeTCPPendingBufferSize then begin
+  result:=false;
+  exit;
+ end;
+ if (aTCPSession^.PendingSize+aSize)>aTCPSession^.PendingCapacity then begin
+  NewCapacity:=aTCPSession^.PendingCapacity;
+  if NewCapacity<UserModeTCPPendingBufferInitialSize then begin
+   NewCapacity:=UserModeTCPPendingBufferInitialSize;
+  end;
+  while NewCapacity<(aTCPSession^.PendingSize+aSize) do begin
+   inc(NewCapacity,NewCapacity);
+  end;
+  if NewCapacity>UserModeTCPPendingBufferSize then begin
+   NewCapacity:=UserModeTCPPendingBufferSize;
+  end;
+  ReallocMem(aTCPSession^.PendingData,NewCapacity);
+  aTCPSession^.PendingCapacity:=NewCapacity;
+ end;
+ Move(aData^,aTCPSession^.PendingData^[aTCPSession^.PendingSize],aSize);
+ inc(aTCPSession^.PendingSize,aSize);
+ result:=true;
+end;
+
+function TPasRISCVEthernetDeviceUserModeNetworking.AppendTCPv6PendingData(const aTCPv6Session:PTCPv6Session;const aData:Pointer;const aSize:TPasRISCVSizeInt):Boolean;
+var NewCapacity:TPasRISCVSizeInt;
+begin
+ if aSize<=0 then begin
+  result:=true;
+  exit;
+ end;
+ if (aTCPv6Session^.PendingSize+aSize)>UserModeTCPPendingBufferSize then begin
+  result:=false;
+  exit;
+ end;
+ if (aTCPv6Session^.PendingSize+aSize)>aTCPv6Session^.PendingCapacity then begin
+  NewCapacity:=aTCPv6Session^.PendingCapacity;
+  if NewCapacity<UserModeTCPPendingBufferInitialSize then begin
+   NewCapacity:=UserModeTCPPendingBufferInitialSize;
+  end;
+  while NewCapacity<(aTCPv6Session^.PendingSize+aSize) do begin
+   inc(NewCapacity,NewCapacity);
+  end;
+  if NewCapacity>UserModeTCPPendingBufferSize then begin
+   NewCapacity:=UserModeTCPPendingBufferSize;
+  end;
+  ReallocMem(aTCPv6Session^.PendingData,NewCapacity);
+  aTCPv6Session^.PendingCapacity:=NewCapacity;
+ end;
+ Move(aData^,aTCPv6Session^.PendingData^[aTCPv6Session^.PendingSize],aSize);
+ inc(aTCPv6Session^.PendingSize,aSize);
+ result:=true;
+end;
+
 procedure TPasRISCVEthernetDeviceUserModeNetworking.SendTCPToGuest(const aSessionIndex:TPasRISCVInt32;const aFlags:TPasRISCVUInt8;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
 const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
 var TotalSize:TPasRISCVSizeInt;
@@ -33981,7 +34089,8 @@ begin
  ResponseTCP^.AcknowledgmentNumber:=TRNLEndianness.HostToNet32(TCPSession^.ServerAck);
  ResponseTCP^.DataOffset:=TPasRISCVUInt8(((UserModeTCPHeaderSize+OptionsSize) shr 2) shl 4);
  ResponseTCP^.Flags:=aFlags;
- ResponseTCP^.WindowSize:=TRNLEndianness.HostToNet16(UserModeTCPWindowSize);
+ TCPSession^.LastAdvertisedWindow:=TCPReceiveWindow(TCPSession^.PendingSize);
+ ResponseTCP^.WindowSize:=TRNLEndianness.HostToNet16(TCPSession^.LastAdvertisedWindow);
  ResponseTCP^.Checksum:=0;
  ResponseTCP^.UrgentPtr:=0;
 
@@ -34097,6 +34206,10 @@ begin
 
  if assigned(TCPSession^.RetransmitData) then begin
   FreeMem(TCPSession^.RetransmitData);
+ end;
+
+ if assigned(TCPSession^.PendingData) then begin
+  FreeMem(TCPSession^.PendingData);
  end;
 
  FillChar(Key,SizeOf(TUserModeTCPKey),#0);
@@ -34751,17 +34864,25 @@ begin
          (TCPSession^.State<>UserModeTCPStateGuestFinSent) then begin
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
-       SentBytes:=fRNLNetwork.SendStream(TCPSession^.SocketFileDescriptor,TCPSession^.PendingData[0],TCPSession^.PendingSize);
+       SentBytes:=fRNLNetwork.SendStream(TCPSession^.SocketFileDescriptor,TCPSession^.PendingData^[0],TCPSession^.PendingSize);
 {$else}
-       SentBytes:=RNLSocketSendStream(TCPSession^.SocketFileDescriptor,TCPSession^.PendingData[0],TCPSession^.PendingSize);
+       SentBytes:=RNLSocketSendStream(TCPSession^.SocketFileDescriptor,TCPSession^.PendingData^[0],TCPSession^.PendingSize);
 {$endif}
 
        if SentBytes>0 then begin
         if SentBytes<TCPSession^.PendingSize then begin
-         Move(TCPSession^.PendingData[SentBytes],TCPSession^.PendingData[0],TCPSession^.PendingSize-SentBytes);
+         Move(TCPSession^.PendingData^[SentBytes],TCPSession^.PendingData^[0],TCPSession^.PendingSize-SentBytes);
         end;
         dec(TCPSession^.PendingSize,SentBytes);
         TCPSession^.IdleTickCount:=0;
+        // The window we last announced was shut and there is room again now, so tell
+        // the guest - otherwise it sits in its persist timer waiting for space it has
+        // already been given back.
+        if (TCPSession^.LastAdvertisedWindow=0) and
+           (TCPSession^.State=UserModeTCPStateEstablished) and
+           (TCPReceiveWindow(TCPSession^.PendingSize)>0) then begin
+         SendTCPToGuest(SessionIndex,TCPFlagACK,nil,0);
+        end;
        end;
       end;
 
@@ -35155,7 +35276,9 @@ begin
      NewTCPSession^.ServerSeq:=fTCPISNCounter;
      inc(fTCPISNCounter,$10001);
      NewTCPSession^.ServerAck:=0;
+     NewTCPSession^.PendingData:=nil;
      NewTCPSession^.PendingSize:=0;
+     NewTCPSession^.PendingCapacity:=0;
      NewTCPSession^.TickCount:=0;
      NewTCPSession^.GuestWindowSize:=UserModeTCPWindowSize;
      NewTCPSession^.RetransmitData:=nil;
@@ -37079,7 +37202,8 @@ begin
  ResponseTCP^.AcknowledgmentNumber:=TRNLEndianness.HostToNet32(TCPv6Session^.ServerAck);
  ResponseTCP^.DataOffset:=TPasRISCVUInt8(((UserModeTCPHeaderSize+OptionsSize) shr 2) shl 4);
  ResponseTCP^.Flags:=aFlags;
- ResponseTCP^.WindowSize:=TRNLEndianness.HostToNet16(UserModeTCPWindowSize);
+ TCPv6Session^.LastAdvertisedWindow:=TCPReceiveWindow(TCPv6Session^.PendingSize);
+ ResponseTCP^.WindowSize:=TRNLEndianness.HostToNet16(TCPv6Session^.LastAdvertisedWindow);
  ResponseTCP^.Checksum:=0;
  ResponseTCP^.UrgentPtr:=0;
 
@@ -37203,6 +37327,10 @@ begin
 
  if assigned(TCPv6Session^.RetransmitData) then begin
   FreeMem(TCPv6Session^.RetransmitData);
+ end;
+
+ if assigned(TCPv6Session^.PendingData) then begin
+  FreeMem(TCPv6Session^.PendingData);
  end;
 
  FillChar(Key,SizeOf(TUserModeTCPv6Key),#0);
@@ -37562,9 +37690,7 @@ begin
      if SentBytes>=PayloadSize then begin
       AcceptedBytes:=PayloadSize;
      end else begin
-      if (TCPv6Session^.PendingSize+PayloadSize-SentBytes)<=UserModeTCPPendingBufferSize then begin
-       Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+TPasRISCVPtrUInt(SentBytes)))^,TCPv6Session^.PendingData[0],PayloadSize-SentBytes);
-       TCPv6Session^.PendingSize:=PayloadSize-SentBytes;
+      if AppendTCPv6PendingData(TCPv6Session,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+TPasRISCVPtrUInt(SentBytes))),PayloadSize-SentBytes) then begin
        AcceptedBytes:=PayloadSize;
       end else begin
        AcceptedBytes:=SentBytes;
@@ -37723,9 +37849,7 @@ begin
      if SentBytes>=PayloadSize then begin
       AcceptedBytes:=PayloadSize;
      end else begin
-      if (TCPv6Session^.PendingSize+PayloadSize-SentBytes)<=UserModeTCPPendingBufferSize then begin
-       Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+TPasRISCVPtrUInt(SentBytes)))^,TCPv6Session^.PendingData[0],PayloadSize-SentBytes);
-       TCPv6Session^.PendingSize:=PayloadSize-SentBytes;
+      if AppendTCPv6PendingData(TCPv6Session,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(PayloadPointer)+TPasRISCVPtrUInt(SentBytes))),PayloadSize-SentBytes) then begin
        AcceptedBytes:=PayloadSize;
       end else begin
        AcceptedBytes:=SentBytes;
@@ -37734,9 +37858,7 @@ begin
 
     end else begin
 
-     if (TCPv6Session^.PendingSize+PayloadSize)<=UserModeTCPPendingBufferSize then begin
-      Move(PayloadPointer^,TCPv6Session^.PendingData[TCPv6Session^.PendingSize],PayloadSize);
-      inc(TCPv6Session^.PendingSize,PayloadSize);
+     if AppendTCPv6PendingData(TCPv6Session,PayloadPointer,PayloadSize) then begin
       AcceptedBytes:=PayloadSize;
      end;
 
@@ -37745,6 +37867,11 @@ begin
     if AcceptedBytes>0 then begin
      TCPv6Session^.ServerAck:=TCPv6Session^.ServerAck+TPasRISCVUInt32(AcceptedBytes);
      TCPv6Session^.IdleTickCount:=0;
+     SendTCPv6ToGuest(SessionIndex,TCPFlagACK,nil,0);
+    end else begin
+     // Nothing fit, so the guest sent past the window it was given - answer anyway,
+     // both to carry the current (closed) window back and to serve as the reply to a
+     // window probe, instead of leaving the guest to its retransmit timer.
      SendTCPv6ToGuest(SessionIndex,TCPFlagACK,nil,0);
     end;
 
@@ -37769,18 +37896,14 @@ begin
          if SentBytes>=OutOfOrderQueueItem^.Size then begin
           AcceptedBytes:=OutOfOrderQueueItem^.Size;
          end else begin
-          if (TCPv6Session^.PendingSize+OutOfOrderQueueItem^.Size-SentBytes)<=UserModeTCPPendingBufferSize then begin
-           Move(OutOfOrderQueueItem^.Data[SentBytes],TCPv6Session^.PendingData[0],OutOfOrderQueueItem^.Size-SentBytes);
-           TCPv6Session^.PendingSize:=OutOfOrderQueueItem^.Size-SentBytes;
+          if AppendTCPv6PendingData(TCPv6Session,@OutOfOrderQueueItem^.Data[SentBytes],OutOfOrderQueueItem^.Size-SentBytes) then begin
            AcceptedBytes:=OutOfOrderQueueItem^.Size;
           end else begin
            AcceptedBytes:=SentBytes;
           end;
          end;
         end else begin
-         if (TCPv6Session^.PendingSize+OutOfOrderQueueItem^.Size)<=UserModeTCPPendingBufferSize then begin
-          Move(OutOfOrderQueueItem^.Data[0],TCPv6Session^.PendingData[TCPv6Session^.PendingSize],OutOfOrderQueueItem^.Size);
-          inc(TCPv6Session^.PendingSize,OutOfOrderQueueItem^.Size);
+         if AppendTCPv6PendingData(TCPv6Session,@OutOfOrderQueueItem^.Data[0],OutOfOrderQueueItem^.Size) then begin
           AcceptedBytes:=OutOfOrderQueueItem^.Size;
          end;
         end;
@@ -38171,17 +38294,25 @@ begin
          (TCPv6Session^.State<>UserModeTCPStateGuestFinSent) then begin
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
-       SentBytes:=fRNLNetwork.SendStream(TCPv6Session^.SocketFileDescriptor,TCPv6Session^.PendingData[0],TCPv6Session^.PendingSize);
+       SentBytes:=fRNLNetwork.SendStream(TCPv6Session^.SocketFileDescriptor,TCPv6Session^.PendingData^[0],TCPv6Session^.PendingSize);
 {$else}
-       SentBytes:=RNLSocketSendStream(TCPv6Session^.SocketFileDescriptor,TCPv6Session^.PendingData[0],TCPv6Session^.PendingSize);
+       SentBytes:=RNLSocketSendStream(TCPv6Session^.SocketFileDescriptor,TCPv6Session^.PendingData^[0],TCPv6Session^.PendingSize);
 {$endif}
 
        if SentBytes>0 then begin
         if SentBytes<TCPv6Session^.PendingSize then begin
-         Move(TCPv6Session^.PendingData[SentBytes],TCPv6Session^.PendingData[0],TCPv6Session^.PendingSize-SentBytes);
+         Move(TCPv6Session^.PendingData^[SentBytes],TCPv6Session^.PendingData^[0],TCPv6Session^.PendingSize-SentBytes);
         end;
         dec(TCPv6Session^.PendingSize,SentBytes);
         TCPv6Session^.IdleTickCount:=0;
+        // The window we last announced was shut and there is room again now, so tell
+        // the guest - otherwise it sits in its persist timer waiting for space it has
+        // already been given back.
+        if (TCPv6Session^.LastAdvertisedWindow=0) and
+           (TCPv6Session^.State=UserModeTCPStateEstablished) and
+           (TCPReceiveWindow(TCPv6Session^.PendingSize)>0) then begin
+         SendTCPv6ToGuest(SessionIndex,TCPFlagACK,nil,0);
+        end;
        end;
 
       end;
@@ -38489,7 +38620,9 @@ begin
      NewTCPv6Session^.ServerSeq:=fTCPISNCounter;
      inc(fTCPISNCounter,$10001);
      NewTCPv6Session^.ServerAck:=0;
+     NewTCPv6Session^.PendingData:=nil;
      NewTCPv6Session^.PendingSize:=0;
+     NewTCPv6Session^.PendingCapacity:=0;
      NewTCPv6Session^.TickCount:=0;
      NewTCPv6Session^.GuestWindowSize:=UserModeTCPWindowSize;
      NewTCPv6Session^.RetransmitData:=nil;
