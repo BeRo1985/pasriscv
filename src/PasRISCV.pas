@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-08-23-17-07-0000                       *
+ *                        Version 2026-08-23-21-47-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -1925,6 +1925,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              ICMPTypeDestinationUnreachable=TPasRISCVUInt8(3);
              ICMPTypeTimeExceeded=TPasRISCVUInt8(11);
              ICMPCodeHostUnreachable=TPasRISCVUInt8(1);
+             ICMPCodeTTLExceededInTransit=TPasRISCVUInt8(0);
+             ICMPCodePortUnreachable=TPasRISCVUInt8(3);
+             // Linux errno for a refused datagram, i.e. an ICMP port unreachable came
+             // back for the socket. Only consulted when the traceroute option put the
+             // socket into IP_RECVERR mode in the first place.
+             UserModeErrnoConnectionRefused=111;
              TCPFlagFIN=TPasRISCVUInt8($01);
              TCPFlagSYN=TPasRISCVUInt8($02);
              TCPFlagRST=TPasRISCVUInt8($04);
@@ -2516,6 +2522,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fICMPSocketAvailable:Boolean;
        fFilterLAN:Boolean;
        fUserModeIPv6Enabled:Boolean;
+       fUserModeTracerouteEnabled:Boolean;
        fIPv6GatewayAddress:TIPv6Address;
        fIPv6GatewayLinkLocal:TIPv6Address;
        fIPv6GuestAddress:TIPv6Address;
@@ -2554,6 +2561,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure DispatchIPv4Frame(const aEthHeader:PEthernetHeader;const aIPData:Pointer;const aIPSize:TPasRISCVSizeInt);
        procedure EmulateICMPEchoReply(const aIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt);
        procedure SendICMPDestinationUnreachable(const aIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt);
+       procedure SendICMPTimeExceeded(const aIPHeader:PIPv4Header;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
+       procedure SendICMPUDPPortUnreachable(const aUDPSession:PUDPSession);
        procedure HandleICMP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt);
        procedure HandleUDP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aUDPData:Pointer;const aUDPSize:TPasRISCVSizeInt);
        procedure ParseTCPOptions(const aOptions:Pointer;const aOptionsSize:TPasRISCVSizeInt;out aResult:TUserModeTCPParsedOptions);
@@ -2615,6 +2624,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        property Isolated:Boolean read fIsolated write fIsolated;
        property FilterLAN:Boolean read fFilterLAN write fFilterLAN;
        property UserModeIPv6Enabled:Boolean read fUserModeIPv6Enabled write fUserModeIPv6Enabled;
+       property UserModeTracerouteEnabled:Boolean read fUserModeTracerouteEnabled write fUserModeTracerouteEnabled;
      end;
 {$endif}
 
@@ -13760,6 +13770,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fNetworkMode:TNetworkMode;
 
               fUserModeIPv6Enabled:Boolean;
+              fUserModeTracerouteEnabled:Boolean;
 
               fLRSCMaximumCycles:TPasRISCVUInt64;
 
@@ -13990,6 +14001,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property NetworkMode:TNetworkMode read fNetworkMode write fNetworkMode;
 
               property UserModeIPv6Enabled:Boolean read fUserModeIPv6Enabled write fUserModeIPv6Enabled;
+              property UserModeTracerouteEnabled:Boolean read fUserModeTracerouteEnabled write fUserModeTracerouteEnabled;
 
               property LRSCMaximumCycles:TPasRISCVUInt64 read fLRSCMaximumCycles write fLRSCMaximumCycles;
 
@@ -30558,6 +30570,11 @@ begin
  fTCPv6ActiveCapacity:=0;
  fIPv6RATickCount:=19999;
  fUserModeIPv6Enabled:=true;
+ // Off by default: the user mode NAT terminates every connection at the host, so
+ // there are no real hops. Answering the TTL ladder ourselves makes traceroute
+ // show the gateway and then the destination - useful, but a deliberate fiction
+ // rather than the truth about the path.
+ fUserModeTracerouteEnabled:=false;
 
 end;
 
@@ -31184,6 +31201,8 @@ begin
 end;
 
 procedure TPasRISCVEthernetDeviceUserModeNetworking.DispatchIPv4Frame(const aEthHeader:PEthernetHeader;const aIPData:Pointer;const aIPSize:TPasRISCVSizeInt);
+const TracerouteGatewayIP:TIPv4Address=(10,0,2,2);
+      TracerouteDNSIP:TIPv4Address=(10,0,2,3);
 var IPHeader:PIPv4Header;
     HeaderLength:TPasRISCVSizeInt;
     TotalLength:TPasRISCVSizeInt;
@@ -31227,6 +31246,20 @@ begin
  PayloadSize:=TotalLength-HeaderLength;
 
  if (IPHeader^.DestinationIP[0]>=224) and (IPHeader^.DestinationIP[0]<=239) then begin
+  exit;
+ end;
+
+ // A router decrements the TTL of what it forwards and reports an expiry back to
+ // the sender; this NAT does neither, because it terminates every connection at
+ // the host and there are no hops of its own. With the option on we answer the
+ // TTL ladder as the gateway, which is what makes traceroute show anything at
+ // all. Packets addressed to the gateway or the DNS server are for us, not
+ // forwarded, so they keep passing regardless of their TTL.
+ if fUserModeTracerouteEnabled and
+    (IPHeader^.TTL<=1) and
+    not (CompareMem(@IPHeader^.DestinationIP,@TracerouteGatewayIP,4) or
+         CompareMem(@IPHeader^.DestinationIP,@TracerouteDNSIP,4)) then begin
+  SendICMPTimeExceeded(IPHeader,PayloadData,PayloadSize);
   exit;
  end;
 
@@ -31473,6 +31506,82 @@ begin
  Move(aIPHeader^,OrigIPCopy^,UserModeIPv4HeaderSize);
 
  Move(aICMPData^,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(OrigIPCopy)+UserModeIPv4HeaderSize))^,OrigDataSize);
+
+ ResponseICMP^.Checksum:=UserModeIPChecksum(ResponseICMP,ICMPPayloadSize);
+
+ InjectToGuest(@fFrameBuffer[0],TotalSize);
+
+end;
+
+// Answers an expired TTL as the gateway would. The source is the gateway address,
+// because that is the hop that dropped it - using the original destination here
+// would make traceroute print the target for every hop.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.SendICMPTimeExceeded(const aIPHeader:PIPv4Header;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
+const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
+      GatewayIP:TIPv4Address=(10,0,2,2);
+var OrigDataSize:TPasRISCVSizeInt;
+    ICMPPayloadSize:TPasRISCVSizeInt;
+    TotalSize:TPasRISCVSizeInt;
+    ResponseEthernet:PEthernetHeader;
+    ResponseIP:PIPv4Header;
+    ResponseICMP:PICMPHeader;
+    OrigIPCopy:PIPv4Header;
+begin
+
+ // RFC 792: the original IP header plus the first 8 bytes of its payload, which is
+ // what the sender needs to match the reply to the probe it sent
+ OrigDataSize:=aPayloadSize;
+ if OrigDataSize>8 then begin
+  OrigDataSize:=8;
+ end;
+ if OrigDataSize<0 then begin
+  OrigDataSize:=0;
+ end;
+
+ ICMPPayloadSize:=UserModeICMPHeaderSize+UserModeIPv4HeaderSize+OrigDataSize;
+
+ TotalSize:=UserModeEtherHeaderSize+UserModeIPv4HeaderSize+ICMPPayloadSize;
+
+ FillChar(fFrameBuffer[0],TotalSize,#0);
+
+ ResponseEthernet:=PEthernetHeader(@fFrameBuffer[0]);
+
+ ResponseIP:=PIPv4Header(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize)));
+
+ ResponseICMP:=PICMPHeader(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize+UserModeIPv4HeaderSize)));
+
+ OrigIPCopy:=PIPv4Header(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize+UserModeIPv4HeaderSize+UserModeICMPHeaderSize)));
+
+ ResponseEthernet^.DestinationMAC:=fGuestMAC;
+ ResponseEthernet^.SourceMAC:=GatewayMAC;
+ ResponseEthernet^.EthernetType:=TRNLEndianness.HostToNet16(EtherTypeIPv4);
+
+ ResponseIP^.VersionIHL:=$45;
+ ResponseIP^.DSCP_ECN:=0;
+ ResponseIP^.TotalLength:=TRNLEndianness.HostToNet16(TPasRISCVUInt16(UserModeIPv4HeaderSize+ICMPPayloadSize));
+
+ inc(fIPIDCounter);
+
+ ResponseIP^.Identification:=TRNLEndianness.HostToNet16(fIPIDCounter);
+ ResponseIP^.FlagsFragment:=0;
+ ResponseIP^.TTL:=64;
+ ResponseIP^.Protocol:=IPProtocolICMP;
+ ResponseIP^.HeaderChecksum:=0;
+ ResponseIP^.SourceIP:=GatewayIP;
+ ResponseIP^.DestinationIP:=aIPHeader^.SourceIP;
+ ResponseIP^.HeaderChecksum:=UserModeIPChecksum(ResponseIP,UserModeIPv4HeaderSize);
+
+ ResponseICMP^.ICMPType:=ICMPTypeTimeExceeded;
+ ResponseICMP^.Code:=ICMPCodeTTLExceededInTransit;
+ ResponseICMP^.Checksum:=0;
+ ResponseICMP^.Identifier:=0;
+ ResponseICMP^.Sequence:=0;
+
+ Move(aIPHeader^,OrigIPCopy^,UserModeIPv4HeaderSize);
+
+ if OrigDataSize>0 then begin
+  Move(aPayload^,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(OrigIPCopy)+UserModeIPv4HeaderSize))^,OrigDataSize);
+ end;
 
  ResponseICMP^.Checksum:=UserModeIPChecksum(ResponseICMP,ICMPPayloadSize);
 
@@ -33284,6 +33393,16 @@ begin
 {$else}
  RNLSocketSetNonBlock(SessionItem^.SocketFileDescriptor);
 {$endif}
+ if fUserModeTracerouteEnabled then begin
+  // Without this Linux drops ICMP errors for an unconnected datagram socket, so the
+  // port unreachable that ends a UDP traceroute would never become visible. Only
+  // requested when the option is on, so ordinary UDP keeps its previous behaviour.
+{$ifdef PasRISCVUseRNLNetworkInstance}
+  fRNLNetwork.SocketSetOption(SessionItem^.SocketFileDescriptor,RNL_SOCKET_OPTION_RECVERR,1);
+{$else}
+  RNLSocketSetRecvErr(SessionItem^.SocketFileDescriptor);
+{$endif}
+ end;
 
  SessionItem^.GuestSourcePort:=aGuestSourcePort;
  SessionItem^.Active:=true;
@@ -33404,6 +33523,86 @@ begin
 {$endif}
 end;
 
+// The destination of a UDP probe answers an unused port with an ICMP port
+// unreachable, but that reply lands on the host's stack, not on the guest's. This
+// rebuilds it for the guest from what the session already knows, which is what
+// lets a UDP traceroute recognise that it has arrived instead of running to its
+// hop limit.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.SendICMPUDPPortUnreachable(const aUDPSession:PUDPSession);
+const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
+var ICMPPayloadSize:TPasRISCVSizeInt;
+    TotalSize:TPasRISCVSizeInt;
+    ResponseEthernet:PEthernetHeader;
+    ResponseIP:PIPv4Header;
+    ResponseICMP:PICMPHeader;
+    OrigIPCopy:PIPv4Header;
+    OrigUDPCopy:PUDPHeader;
+begin
+
+ // RFC 792 wants the offending IP header plus its first 8 bytes, which for UDP is
+ // exactly the UDP header. traceroute matches the probe by the port in there.
+ ICMPPayloadSize:=UserModeICMPHeaderSize+UserModeIPv4HeaderSize+UserModeUDPHeaderSize;
+
+ TotalSize:=UserModeEtherHeaderSize+UserModeIPv4HeaderSize+ICMPPayloadSize;
+
+ FillChar(fFrameBuffer[0],TotalSize,#0);
+
+ ResponseEthernet:=PEthernetHeader(@fFrameBuffer[0]);
+ ResponseIP:=PIPv4Header(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize)));
+ ResponseICMP:=PICMPHeader(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize+UserModeIPv4HeaderSize)));
+ OrigIPCopy:=PIPv4Header(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(@fFrameBuffer[0])+UserModeEtherHeaderSize+UserModeIPv4HeaderSize+UserModeICMPHeaderSize)));
+ OrigUDPCopy:=PUDPHeader(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(OrigIPCopy)+UserModeIPv4HeaderSize)));
+
+ ResponseEthernet^.DestinationMAC:=fGuestMAC;
+ ResponseEthernet^.SourceMAC:=GatewayMAC;
+ ResponseEthernet^.EthernetType:=TRNLEndianness.HostToNet16(EtherTypeIPv4);
+
+ ResponseIP^.VersionIHL:=$45;
+ ResponseIP^.DSCP_ECN:=0;
+ ResponseIP^.TotalLength:=TRNLEndianness.HostToNet16(TPasRISCVUInt16(UserModeIPv4HeaderSize+ICMPPayloadSize));
+
+ inc(fIPIDCounter);
+
+ ResponseIP^.Identification:=TRNLEndianness.HostToNet16(fIPIDCounter);
+ ResponseIP^.FlagsFragment:=0;
+ ResponseIP^.TTL:=64;
+ ResponseIP^.Protocol:=IPProtocolICMP;
+ ResponseIP^.HeaderChecksum:=0;
+ // The host that refused the port is the one reporting it
+ ResponseIP^.SourceIP:=aUDPSession^.OriginalDestinationIP;
+ ResponseIP^.DestinationIP:=aUDPSession^.GuestSourceIP;
+ ResponseIP^.HeaderChecksum:=UserModeIPChecksum(ResponseIP,UserModeIPv4HeaderSize);
+
+ ResponseICMP^.ICMPType:=ICMPTypeDestinationUnreachable;
+ ResponseICMP^.Code:=ICMPCodePortUnreachable;
+ ResponseICMP^.Checksum:=0;
+ ResponseICMP^.Identifier:=0;
+ ResponseICMP^.Sequence:=0;
+
+ // Rebuild the probe as the guest sent it
+ OrigIPCopy^.VersionIHL:=$45;
+ OrigIPCopy^.DSCP_ECN:=0;
+ OrigIPCopy^.TotalLength:=TRNLEndianness.HostToNet16(TPasRISCVUInt16(UserModeIPv4HeaderSize+UserModeUDPHeaderSize));
+ OrigIPCopy^.Identification:=0;
+ OrigIPCopy^.FlagsFragment:=0;
+ OrigIPCopy^.TTL:=1;
+ OrigIPCopy^.Protocol:=IPProtocolUDP;
+ OrigIPCopy^.HeaderChecksum:=0;
+ OrigIPCopy^.SourceIP:=aUDPSession^.GuestSourceIP;
+ OrigIPCopy^.DestinationIP:=aUDPSession^.OriginalDestinationIP;
+ OrigIPCopy^.HeaderChecksum:=UserModeIPChecksum(OrigIPCopy,UserModeIPv4HeaderSize);
+
+ OrigUDPCopy^.SourcePort:=TRNLEndianness.HostToNet16(aUDPSession^.GuestSourcePort);
+ OrigUDPCopy^.DestinationPort:=TRNLEndianness.HostToNet16(aUDPSession^.OriginalDestinationPort);
+ OrigUDPCopy^.Length:=TRNLEndianness.HostToNet16(TPasRISCVUInt16(UserModeUDPHeaderSize));
+ OrigUDPCopy^.Checksum:=0;
+
+ ResponseICMP^.Checksum:=UserModeIPChecksum(ResponseICMP,ICMPPayloadSize);
+
+ InjectToGuest(@fFrameBuffer[0],TotalSize);
+
+end;
+
 procedure TPasRISCVEthernetDeviceUserModeNetworking.PollUDPSockets;
 const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
       DNSProxyIP:TIPv4Address=($0a,$00,$02,$03);
@@ -33429,6 +33628,7 @@ var SessionIndex:TPasRISCVInt32;
     ReplySourcePort:TPasRISCVUInt16;
     SenderAddress:TRNLAddress;
     SenderIPBytes:TIPv4Address;
+    UDPSocketError:TPasRISCVInt32;
 begin
 
  fToCloseCount:=0;
@@ -33440,6 +33640,21 @@ begin
   SessionItem:=@fUDPSessionArray[SessionIndex];
 
   if SessionItem^.Active then begin
+
+   // With IP_RECVERR the kernel records an incoming ICMP error in SO_ERROR, where
+   // reading it also clears it. Only asked for when the option is on, and only a
+   // refused port is turned into something the guest can see.
+   if fUserModeTracerouteEnabled then begin
+    UDPSocketError:=0;
+    if {$ifdef PasRISCVUseRNLNetworkInstance}
+       fRNLNetwork.SocketGetOption(SessionItem^.SocketFileDescriptor,RNL_SOCKET_OPTION_ERROR,UDPSocketError)
+       {$else}
+       RNLSocketGetError(SessionItem^.SocketFileDescriptor,UDPSocketError)
+       {$endif} and
+       (UDPSocketError=UserModeErrnoConnectionRefused) then begin
+     SendICMPUDPPortUnreachable(SessionItem);
+    end;
+   end;
 
    SenderAddress:=RNL_ADDRESS_EMPTY;
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -142268,6 +142483,7 @@ begin
  fVirtIONetTAPInterface:='tap0';
  fNetworkHostForwards:='';
  fUserModeIPv6Enabled:=true;
+ fUserModeTracerouteEnabled:=false;
 
  fVirtIORandomGeneratorBase:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultBaseAddress;
  fVirtIORandomGeneratorSize:=TPasRISCV.TVirtIORandomGeneratorDevice.DefaultSize;
@@ -142490,6 +142706,7 @@ begin
  fVirtIONetTAPInterface:=aConfiguration.fVirtIONetTAPInterface;
  fNetworkHostForwards:=aConfiguration.fNetworkHostForwards;
  fUserModeIPv6Enabled:=aConfiguration.fUserModeIPv6Enabled;
+ fUserModeTracerouteEnabled:=aConfiguration.fUserModeTracerouteEnabled;
 
  fVirtIORandomGeneratorBase:=aConfiguration.fVirtIORandomGeneratorBase;
  fVirtIORandomGeneratorSize:=aConfiguration.fVirtIORandomGeneratorSize;
@@ -142787,6 +143004,7 @@ begin
  fVirtIONetTAPInterface:=aNode.GetString('VirtIONetTAPInterface',fVirtIONetTAPInterface);
  fNetworkHostForwards:=aNode.GetString('NetworkHostForwards',fNetworkHostForwards);
  fUserModeIPv6Enabled:=aNode.GetBool('UserModeIPv6Enabled',fUserModeIPv6Enabled);
+ fUserModeTracerouteEnabled:=aNode.GetBool('UserModeTracerouteEnabled',fUserModeTracerouteEnabled);
 
  // VirtIO Random Generator
  fVirtIORandomGeneratorBase:=aNode.GetUInt64('VirtIORandomGeneratorBase',fVirtIORandomGeneratorBase);
@@ -143017,6 +143235,7 @@ begin
  aNode.SetString('VirtIONetTAPInterface',fVirtIONetTAPInterface);
  aNode.SetString('NetworkHostForwards',fNetworkHostForwards);
  aNode.SetBool('UserModeIPv6Enabled',fUserModeIPv6Enabled);
+ aNode.SetBool('UserModeTracerouteEnabled',fUserModeTracerouteEnabled);
 
  // VirtIO Random Generator
  aNode.SetUInt64('VirtIORandomGeneratorBase',fVirtIORandomGeneratorBase);
@@ -143463,6 +143682,7 @@ begin
 {$ifdef PasRISCVEthernetDeviceUserModeNetworking}
    fEthernetDevice:=TPasRISCVEthernetDeviceUserModeNetworking.Create;
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeIPv6Enabled:=fConfiguration.fUserModeIPv6Enabled;
+   TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeTracerouteEnabled:=fConfiguration.fUserModeTracerouteEnabled;
    if Length(fConfiguration.fNetworkHostForwards)>0 then begin
     HostForwardsRemaining:=fConfiguration.fNetworkHostForwards+';';
     repeat
@@ -143485,6 +143705,7 @@ begin
    fEthernetDevice:=TPasRISCVEthernetDeviceUserModeNetworking.Create;
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).Isolated:=true;
    TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeIPv6Enabled:=fConfiguration.fUserModeIPv6Enabled;
+   TPasRISCVEthernetDeviceUserModeNetworking(fEthernetDevice).UserModeTracerouteEnabled:=fConfiguration.fUserModeTracerouteEnabled;
    if Length(fConfiguration.fNetworkHostForwards)>0 then begin
     HostForwardsRemaining:=fConfiguration.fNetworkHostForwards+';';
     repeat
