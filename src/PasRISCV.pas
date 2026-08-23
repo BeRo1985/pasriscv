@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-08-23-08-09-0000                       *
+ *                        Version 2026-08-23-08-30-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -8529,6 +8529,17 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     SHA256_DIGEST_SIZE=32;
                     SHA384_DIGEST_SIZE=48;
                     SHA512_DIGEST_SIZE=64;
+                    // Wire layout of virtio-crypto requests, per the specification and
+                    // confirmed against what the Linux driver actually puts on the queues:
+                    //   control: virtio_crypto_ctrl_header is 16 bytes, the op union that
+                    //            follows is 56, so variable data (keys) starts at 72
+                    //   data:    virtio_crypto_op_header is 24 bytes (session_id is a le64
+                    //            at offset 8), the op union is 48, so variable data (IV, AAD,
+                    //            payload) starts at 72 as well
+                    CRYPTO_CTRL_HEADER_SIZE=16;
+                    CRYPTO_CTRL_REQUEST_SIZE=72;  // also the offset of the variable part
+                    CRYPTO_DATA_HEADER_SIZE=24;
+                    CRYPTO_DATA_REQUEST_SIZE=72;  // also the offset of the variable part
                     CRYPTO_BUFFER_SIZE=65536;
                     MAX_PADDED_SIZE=65792;     // CRYPTO_BUFFER_SIZE + 256 (max SHA-512 padding with HMAC overhead)
                     MAX_HMAC_INNER_SIZE=65664; // 128 + CRYPTO_BUFFER_SIZE
@@ -65206,9 +65217,9 @@ var Algo,KeyLen,Op:TPasRISCVUInt32;
     Session:PCryptoSession;
     ResponseSize:TPasRISCVUInt64;
 begin
- // Read cipher session params: algo(4) + key_len(4) + op(4) + padding(4) = 16 bytes at offset 8 (after ctrl header)
- if aReadSize<24 then begin
-  // Minimum: ctrl_header(8) + cipher_session_flf(16)
+ // cipher_session_para: algo(4) + key_len(4) + op(4) + padding(4), right after the 16 byte ctrl header
+ if aReadSize<CRYPTO_CTRL_REQUEST_SIZE then begin
+  // Minimum: the fixed part of virtio_crypto_op_ctrl_req
   FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR; // status at offset 8 in create_session_input
   ResponseSize:=16;
@@ -65219,12 +65230,12 @@ begin
   end;
   exit;
  end;
- Algo:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-       (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- KeyLen:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-         (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- Op:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
-     (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
+ Algo:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
+       (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
+ KeyLen:=TPasRISCVUInt32(fReceiveBuffer[20]) or (TPasRISCVUInt32(fReceiveBuffer[21]) shl 8) or
+         (TPasRISCVUInt32(fReceiveBuffer[22]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[23]) shl 24);
+ Op:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
+     (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
  FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
@@ -65240,8 +65251,8 @@ begin
    fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   end else begin
    // Copy key from variable-length portion if present
-   if (KeyLen>0) and (aReadSize>=24+KeyLen) then begin
-    Move(fReceiveBuffer[24],Session^.CipherKey[0],KeyLen);
+   if (KeyLen>0) and (aReadSize>=CRYPTO_CTRL_REQUEST_SIZE+KeyLen) then begin
+    Move(fReceiveBuffer[CRYPTO_CTRL_REQUEST_SIZE],Session^.CipherKey[0],KeyLen);
    end;
    // session_id (le64) at offset 0, status at offset 8
    fSendBuffer[0]:=TPasRISCVUInt8(SessionID);
@@ -65269,7 +65280,7 @@ var Algo,HashResultLen:TPasRISCVUInt32;
     Session:PCryptoSession;
     ResponseSize:TPasRISCVUInt64;
 begin
- if aReadSize<16 then begin
+ if aReadSize<CRYPTO_CTRL_REQUEST_SIZE then begin
   FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=16;
@@ -65280,10 +65291,10 @@ begin
   end;
   exit;
  end;
- Algo:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-       (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- HashResultLen:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-                (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
+ Algo:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
+       (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
+ HashResultLen:=TPasRISCVUInt32(fReceiveBuffer[20]) or (TPasRISCVUInt32(fReceiveBuffer[21]) shl 8) or
+                (TPasRISCVUInt32(fReceiveBuffer[22]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[23]) shl 24);
  FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
@@ -65317,7 +65328,7 @@ var Algo,HashResultLen,AuthKeyLen:TPasRISCVUInt32;
     Session:PCryptoSession;
     ResponseSize:TPasRISCVUInt64;
 begin
- if aReadSize<24 then begin
+ if aReadSize<CRYPTO_CTRL_REQUEST_SIZE then begin
   FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=16;
@@ -65328,12 +65339,12 @@ begin
   end;
   exit;
  end;
- Algo:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-       (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- HashResultLen:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-                (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- AuthKeyLen:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
-             (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
+ Algo:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
+       (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
+ HashResultLen:=TPasRISCVUInt32(fReceiveBuffer[20]) or (TPasRISCVUInt32(fReceiveBuffer[21]) shl 8) or
+                (TPasRISCVUInt32(fReceiveBuffer[22]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[23]) shl 24);
+ AuthKeyLen:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
+             (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
  FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
@@ -65349,7 +65360,7 @@ begin
    fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   end else begin
    if (AuthKeyLen>0) and (aReadSize>=24+AuthKeyLen) then begin
-    Move(fReceiveBuffer[24],Session^.MacKey[0],AuthKeyLen);
+    Move(fReceiveBuffer[CRYPTO_CTRL_REQUEST_SIZE],Session^.MacKey[0],AuthKeyLen);
    end;
    fSendBuffer[0]:=TPasRISCVUInt8(SessionID);
    fSendBuffer[1]:=TPasRISCVUInt8(SessionID shr 8);
@@ -65376,7 +65387,7 @@ var Algo,KeyLen,TagLen,AADLen,Op:TPasRISCVUInt32;
     Session:PCryptoSession;
     ResponseSize:TPasRISCVUInt64;
 begin
- if aReadSize<28 then begin
+ if aReadSize<CRYPTO_CTRL_REQUEST_SIZE then begin
   FillChar(fSendBuffer[0],16,#0);
   fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=16;
@@ -65387,16 +65398,16 @@ begin
   end;
   exit;
  end;
- Algo:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-       (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- KeyLen:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-         (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- TagLen:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
-         (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
- AADLen:=TPasRISCVUInt32(fReceiveBuffer[20]) or (TPasRISCVUInt32(fReceiveBuffer[21]) shl 8) or
+ Algo:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
+       (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
+ KeyLen:=TPasRISCVUInt32(fReceiveBuffer[20]) or (TPasRISCVUInt32(fReceiveBuffer[21]) shl 8) or
          (TPasRISCVUInt32(fReceiveBuffer[22]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[23]) shl 24);
- Op:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
-     (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
+ TagLen:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
+         (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
+ AADLen:=TPasRISCVUInt32(fReceiveBuffer[28]) or (TPasRISCVUInt32(fReceiveBuffer[29]) shl 8) or
+         (TPasRISCVUInt32(fReceiveBuffer[30]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[31]) shl 24);
+ Op:=TPasRISCVUInt32(fReceiveBuffer[32]) or (TPasRISCVUInt32(fReceiveBuffer[33]) shl 8) or
+     (TPasRISCVUInt32(fReceiveBuffer[34]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[35]) shl 24);
  FillChar(fSendBuffer[0],16,#0);
  SessionID:=AllocSession;
  if SessionID<0 then begin
@@ -65414,8 +65425,8 @@ begin
    FreeSession(SessionID);
    fSendBuffer[8]:=VIRTIO_CRYPTO_ERR;
   end else begin
-   if (KeyLen>0) and (aReadSize>=28+KeyLen) then begin
-    Move(fReceiveBuffer[28],Session^.AEADKey[0],KeyLen);
+   if (KeyLen>0) and (aReadSize>=CRYPTO_CTRL_REQUEST_SIZE+KeyLen) then begin
+    Move(fReceiveBuffer[CRYPTO_CTRL_REQUEST_SIZE],Session^.AEADKey[0],KeyLen);
    end;
    fSendBuffer[0]:=TPasRISCVUInt8(SessionID);
    fSendBuffer[1]:=TPasRISCVUInt8(SessionID shr 8);
@@ -65440,7 +65451,7 @@ procedure TPasRISCV.TVirtIOCryptoDevice.HandleDestroySession(const aQueueIndex,a
 var SessionID:TPasRISCVUInt64;
     ResponseSize:TPasRISCVUInt64;
 begin
- if aReadSize<16 then begin
+ if aReadSize<CRYPTO_CTRL_REQUEST_SIZE then begin
   FillChar(fSendBuffer[0],1,#0);
   fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
   ResponseSize:=1;
@@ -65451,10 +65462,11 @@ begin
   end;
   exit;
  end;
- SessionID:=TPasRISCVUInt64(fReceiveBuffer[8]) or (TPasRISCVUInt64(fReceiveBuffer[9]) shl 8) or
-            (TPasRISCVUInt64(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt64(fReceiveBuffer[11]) shl 24) or
-            (TPasRISCVUInt64(fReceiveBuffer[12]) shl 32) or (TPasRISCVUInt64(fReceiveBuffer[13]) shl 40) or
-            (TPasRISCVUInt64(fReceiveBuffer[14]) shl 48) or (TPasRISCVUInt64(fReceiveBuffer[15]) shl 56);
+ // virtio_crypto_destroy_session_req.session_id, after the 16 byte ctrl header
+ SessionID:=TPasRISCVUInt64(fReceiveBuffer[16]) or (TPasRISCVUInt64(fReceiveBuffer[17]) shl 8) or
+            (TPasRISCVUInt64(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt64(fReceiveBuffer[19]) shl 24) or
+            (TPasRISCVUInt64(fReceiveBuffer[20]) shl 32) or (TPasRISCVUInt64(fReceiveBuffer[21]) shl 40) or
+            (TPasRISCVUInt64(fReceiveBuffer[22]) shl 48) or (TPasRISCVUInt64(fReceiveBuffer[23]) shl 56);
  FillChar(fSendBuffer[0],1,#0);
  if (SessionID<MAX_SESSIONS) and fSessions[SessionID].Active then begin
   FreeSession(SessionID);
@@ -65528,8 +65540,8 @@ begin
   end;
   exit;
  end;
- // Parse cipher_data_flf: iv_len(4) + src_data_len(4) + dst_data_len(4) starting at offset 8
- if aReadSize<20 then begin
+ // virtio_crypto_cipher_para: iv_len(4) + src_data_len(4) + dst_data_len(4), after the 24 byte op header
+ if aReadSize<CRYPTO_DATA_REQUEST_SIZE then begin
   if aWriteSize>=1 then begin
    fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
@@ -65540,14 +65552,14 @@ begin
   end;
   exit;
  end;
- InitVectorLength:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-                   (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-                   (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- DestDataLength:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
-                 (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
+ InitVectorLength:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
+                   (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
+ SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[28]) or (TPasRISCVUInt32(fReceiveBuffer[29]) shl 8) or
+                   (TPasRISCVUInt32(fReceiveBuffer[30]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[31]) shl 24);
+ DestDataLength:=TPasRISCVUInt32(fReceiveBuffer[32]) or (TPasRISCVUInt32(fReceiveBuffer[33]) shl 8) or
+                 (TPasRISCVUInt32(fReceiveBuffer[34]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[35]) shl 24);
  // Variable-length data: iv[InitVectorLength] + src_data[SourceDataLength]
- DataOffset:=20+InitVectorLength; // offset where src_data begins
+ DataOffset:=CRYPTO_DATA_REQUEST_SIZE+InitVectorLength; // where src_data begins
  if (DestDataLength+1)>CRYPTO_BUFFER_SIZE then begin
   if aWriteSize>=1 then begin
    fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
@@ -65574,7 +65586,7 @@ begin
  if (SourceDataLength>0) and (DestDataLength>0) and ((DataOffset+SourceDataLength)<=aReadSize) then begin
   AESCipherOp(aEncrypt,Session^.CipherAlgo,
               @Session^.CipherKey[0],Session^.CipherKeyLen,
-              @fReceiveBuffer[20],InitVectorLength,
+              @fReceiveBuffer[CRYPTO_DATA_REQUEST_SIZE],InitVectorLength,
               @fReceiveBuffer[DataOffset],SourceDataLength,
               @fSendBuffer[0],DestDataLength);
  end;
@@ -65610,7 +65622,7 @@ begin
   end;
   exit;
  end;
- if aReadSize<16 then begin
+ if aReadSize<CRYPTO_DATA_REQUEST_SIZE then begin
   if aWriteSize>=1 then begin
    fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
@@ -65622,11 +65634,11 @@ begin
   exit;
  end;
  // hash_data_flf: src_data_len(4) + hash_result_len(4) at offset 8
- SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-                   (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- HashResultLength:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-                   (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- DataOffset:=16;
+ SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
+                   (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
+ HashResultLength:=TPasRISCVUInt32(fReceiveBuffer[28]) or (TPasRISCVUInt32(fReceiveBuffer[29]) shl 8) or
+                   (TPasRISCVUInt32(fReceiveBuffer[30]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[31]) shl 24);
+ DataOffset:=CRYPTO_DATA_REQUEST_SIZE;
  if (HashResultLength+1)>CRYPTO_BUFFER_SIZE then begin
   if aWriteSize>=1 then begin
    fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
@@ -65735,7 +65747,7 @@ begin
   end;
   exit;
  end;
- if aReadSize<16 then begin
+ if aReadSize<CRYPTO_DATA_REQUEST_SIZE then begin
   if aWriteSize>=1 then begin
    fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
@@ -65747,11 +65759,11 @@ begin
   exit;
  end;
  // mac_data_flf same as hash_data_flf
- SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-                   (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- MacResultLength:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-                  (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- DataOffset:=16;
+ SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
+                   (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
+ MacResultLength:=TPasRISCVUInt32(fReceiveBuffer[28]) or (TPasRISCVUInt32(fReceiveBuffer[29]) shl 8) or
+                  (TPasRISCVUInt32(fReceiveBuffer[30]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[31]) shl 24);
+ DataOffset:=CRYPTO_DATA_REQUEST_SIZE;
  if (MacResultLength+1)>CRYPTO_BUFFER_SIZE then begin
   if aWriteSize>=1 then begin
    fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
@@ -65836,7 +65848,7 @@ begin
   exit;
  end;
  // aead_data_flf: iv_len(4) + aad_len(4) + src_data_len(4) + dst_data_len(4) + tag_len(4)
- if aReadSize<28 then begin
+ if aReadSize<CRYPTO_DATA_REQUEST_SIZE then begin
   if aWriteSize>=1 then begin
    fSendBuffer[0]:=VIRTIO_CRYPTO_ERR;
    if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],1) and
@@ -65847,17 +65859,18 @@ begin
   end;
   exit;
  end;
- InitVectorLength:=TPasRISCVUInt32(fReceiveBuffer[8]) or (TPasRISCVUInt32(fReceiveBuffer[9]) shl 8) or
-                   (TPasRISCVUInt32(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[11]) shl 24);
- AssocDataLength:=TPasRISCVUInt32(fReceiveBuffer[12]) or (TPasRISCVUInt32(fReceiveBuffer[13]) shl 8) or
-                  (TPasRISCVUInt32(fReceiveBuffer[14]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[15]) shl 24);
- SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[16]) or (TPasRISCVUInt32(fReceiveBuffer[17]) shl 8) or
-                   (TPasRISCVUInt32(fReceiveBuffer[18]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[19]) shl 24);
- DestDataLength:=TPasRISCVUInt32(fReceiveBuffer[20]) or (TPasRISCVUInt32(fReceiveBuffer[21]) shl 8) or
-                 (TPasRISCVUInt32(fReceiveBuffer[22]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[23]) shl 24);
- TagLength:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
-            (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
- DataOffset:=28+InitVectorLength+AssocDataLength;
+ InitVectorLength:=TPasRISCVUInt32(fReceiveBuffer[24]) or (TPasRISCVUInt32(fReceiveBuffer[25]) shl 8) or
+                   (TPasRISCVUInt32(fReceiveBuffer[26]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[27]) shl 24);
+ AssocDataLength:=TPasRISCVUInt32(fReceiveBuffer[28]) or (TPasRISCVUInt32(fReceiveBuffer[29]) shl 8) or
+                  (TPasRISCVUInt32(fReceiveBuffer[30]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[31]) shl 24);
+ SourceDataLength:=TPasRISCVUInt32(fReceiveBuffer[32]) or (TPasRISCVUInt32(fReceiveBuffer[33]) shl 8) or
+                   (TPasRISCVUInt32(fReceiveBuffer[34]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[35]) shl 24);
+ DestDataLength:=TPasRISCVUInt32(fReceiveBuffer[36]) or (TPasRISCVUInt32(fReceiveBuffer[37]) shl 8) or
+                 (TPasRISCVUInt32(fReceiveBuffer[38]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[39]) shl 24);
+ // virtio_crypto_aead_para carries only iv_len, aad_len, src_data_len and
+ // dst_data_len - the tag length belongs to the session, not to the request
+ TagLength:=Session^.AEADTagLen;
+ DataOffset:=CRYPTO_DATA_REQUEST_SIZE+InitVectorLength+AssocDataLength;
  ResponseSize:=DestDataLength+1;
  if ResponseSize>CRYPTO_BUFFER_SIZE then begin
   if aWriteSize>=1 then begin
@@ -65895,7 +65908,7 @@ begin
     end;
     AESCipherOp(true,VIRTIO_CRYPTO_CIPHER_AES_CTR,
                 @Session^.AEADKey[0],Session^.AEADKeyLen,
-                @fReceiveBuffer[28],InitVectorLength,
+                @fReceiveBuffer[CRYPTO_DATA_REQUEST_SIZE],InitVectorLength,
                 @fReceiveBuffer[DataOffset],PlaintextLength,
                 @fSendBuffer[0],PlaintextLength);
     CiphertextOffset:=PlaintextLength;
@@ -65937,7 +65950,7 @@ begin
     end;
     AESCipherOp(true,VIRTIO_CRYPTO_CIPHER_AES_CTR, // CTR: encrypt=decrypt
                 @Session^.AEADKey[0],Session^.AEADKeyLen,
-                @fReceiveBuffer[28],InitVectorLength,
+                @fReceiveBuffer[CRYPTO_DATA_REQUEST_SIZE],InitVectorLength,
                 @fReceiveBuffer[DataOffset],PlaintextLength,
                 @fSendBuffer[0],PlaintextLength);
    end;
@@ -65958,15 +65971,17 @@ procedure TPasRISCV.TVirtIOCryptoDevice.HandleDataQueue(const aQueueIndex,aDescr
 var Opcode:TPasRISCVUInt32;
     SessionID:TPasRISCVUInt64;
 begin
- if aReadSize<8 then begin
+ if aReadSize<CRYPTO_DATA_REQUEST_SIZE then begin
   NotifyDeviceNeedsReset;
   exit;
  end;
- // data header: opcode(4) + session_id/flag(4)
+ // virtio_crypto_op_header: opcode(4) algo(4) session_id(8) flag(4) padding(4)
  Opcode:=TPasRISCVUInt32(fReceiveBuffer[0]) or (TPasRISCVUInt32(fReceiveBuffer[1]) shl 8) or
          (TPasRISCVUInt32(fReceiveBuffer[2]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[3]) shl 24);
- SessionID:=TPasRISCVUInt32(fReceiveBuffer[4]) or (TPasRISCVUInt32(fReceiveBuffer[5]) shl 8) or
-            (TPasRISCVUInt32(fReceiveBuffer[6]) shl 16) or (TPasRISCVUInt32(fReceiveBuffer[7]) shl 24);
+ SessionID:=TPasRISCVUInt64(fReceiveBuffer[8]) or (TPasRISCVUInt64(fReceiveBuffer[9]) shl 8) or
+            (TPasRISCVUInt64(fReceiveBuffer[10]) shl 16) or (TPasRISCVUInt64(fReceiveBuffer[11]) shl 24) or
+            (TPasRISCVUInt64(fReceiveBuffer[12]) shl 32) or (TPasRISCVUInt64(fReceiveBuffer[13]) shl 40) or
+            (TPasRISCVUInt64(fReceiveBuffer[14]) shl 48) or (TPasRISCVUInt64(fReceiveBuffer[15]) shl 56);
  case Opcode of
   VIRTIO_CRYPTO_CIPHER_ENCRYPT:begin
    HandleCipherOp(aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize,SessionID,true);
