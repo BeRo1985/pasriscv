@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-08-23-08-30-0000                       *
+ *                        Version 2026-08-23-17-07-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -2045,6 +2045,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              IPv6ExtHeaderAuthentication=TPasRISCVUInt8(51);
              IPv6ExtHeaderESP=TPasRISCVUInt8(50);
              UserModeIPv6MaxExtensionHeaders=16;
+             // A reassembled IPv6 packet is dispatched again, and its first header can be
+             // another fragment header, so reassembly can nest. Each level only strips the
+             // 8 byte fragment header, so the guest can drive the nesting as deep as the
+             // frame size allows - this caps the self-recursion on the network thread stack.
+             UserModeIPv6MaxReassemblyDepth=8;
              UserModeIPv6FragmentReassemblyTimeoutTicks=3000;
              UserModeIPv6FragmentReassemblyMaxEntries=64;
 {$if not declared(IPPROTO_ICMPV6)}
@@ -2578,8 +2583,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function UserModeIsPrivateIPv6(const aAddr:TIPv6Address):Boolean;
        procedure ClearIPv6FragmentReassemblyEntry(const aIndex:TPasRISCVInt32);
        procedure ExpireIPv6FragmentReassemblies;
-       procedure HandleIPv6Fragment(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt;const aFragmentHeaderOffset,aNextHeaderFieldOffset:TPasRISCVSizeInt);
-       procedure DispatchIPv6Frame(const aEthHeader:PEthernetHeader;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt);
+       procedure HandleIPv6Fragment(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt;const aFragmentHeaderOffset,aNextHeaderFieldOffset:TPasRISCVSizeInt;const aReassemblyDepth:TPasRISCVSizeInt);
+       procedure DispatchIPv6Frame(const aEthHeader:PEthernetHeader;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt;const aReassemblyDepth:TPasRISCVSizeInt=0);
        procedure HandleNDP(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aICMPv6Data:Pointer;const aICMPv6Size:TPasRISCVSizeInt);
        procedure HandleICMPv6(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aICMPv6Data:Pointer;const aICMPv6Size:TPasRISCVSizeInt);
        function FindOrCreateICMPv6Session(const aGuestIdentifier:TPasRISCVUInt16;const aGuestSourceIP:TIPv6Address;const aDestinationIP:TIPv6Address;const aOriginalIPv6Header:PIPv6Header;const aICMPv6Data:Pointer;const aICMPv6Size:TPasRISCVSizeInt):TPasRISCVInt32;
@@ -34958,7 +34963,7 @@ begin
  end;
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.HandleIPv6Fragment(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt;const aFragmentHeaderOffset,aNextHeaderFieldOffset:TPasRISCVSizeInt);
+procedure TPasRISCVEthernetDeviceUserModeNetworking.HandleIPv6Fragment(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt;const aFragmentHeaderOffset,aNextHeaderFieldOffset:TPasRISCVSizeInt;const aReassemblyDepth:TPasRISCVSizeInt);
 var FragmentHeader:PIPv6FragmentHeader;
     Entry:^TIPv6FragmentReassemblyEntry;
     EntryIndex:TPasRISCVInt32;
@@ -35138,7 +35143,7 @@ begin
 
  ClearIPv6FragmentReassemblyEntry(EntryIndex);
 
- DispatchIPv6Frame(aEthHeader,@ReassembledPacket[0],TotalSize);
+ DispatchIPv6Frame(aEthHeader,@ReassembledPacket[0],TotalSize,aReassemblyDepth+1);
 
 end;
 
@@ -35170,7 +35175,7 @@ begin
 
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.DispatchIPv6Frame(const aEthHeader:PEthernetHeader;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt);
+procedure TPasRISCVEthernetDeviceUserModeNetworking.DispatchIPv6Frame(const aEthHeader:PEthernetHeader;const aIPv6Data:Pointer;const aIPv6Size:TPasRISCVSizeInt;const aReassemblyDepth:TPasRISCVSizeInt=0);
 var IPv6Header:PIPv6Header;
     IPv6PayloadLength:TPasRISCVSizeInt;
     EffectiveIPv6Size:TPasRISCVSizeInt;
@@ -35184,6 +35189,11 @@ var IPv6Header:PIPv6Header;
 begin
 
  if not fUserModeIPv6Enabled then begin
+  exit;
+ end;
+
+ // Nested fragmentation would otherwise recurse here without bound
+ if aReassemblyDepth>UserModeIPv6MaxReassemblyDepth then begin
   exit;
  end;
 
@@ -35232,7 +35242,7 @@ begin
    end;
 
    IPv6ExtHeaderFragment:begin
-    HandleIPv6Fragment(aEthHeader,IPv6Header,aIPv6Data,EffectiveIPv6Size,ExtOffset,NextHeaderFieldOffset);
+    HandleIPv6Fragment(aEthHeader,IPv6Header,aIPv6Data,EffectiveIPv6Size,ExtOffset,NextHeaderFieldOffset,aReassemblyDepth);
     exit;
 {   if (ExtOffset+8)>aIPv6Size then begin
      exit;
