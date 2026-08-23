@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-06-06-15-58-0000                       *
+ *                        Version 2026-08-23-08-09-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -8844,6 +8844,25 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     REG_CLEAR_ALARM=$14;
                     REG_ALARM_STATUS=$18;
                     REG_CLEAR_INTERRUPT=$1c;
+             public
+              type { TAlarmThread }
+                   // The alarm has to fire while the guest is doing nothing at all.
+                   // hwclock arms it and then blocks in select() on /dev/rtc0, so no
+                   // further MMIO access happens and an alarm that is only evaluated
+                   // on register access would never go off. This thread sleeps until
+                   // the deadline instead and raises the interrupt on its own.
+                   TAlarmThread=class(TPasMPThread)
+                    private
+                     fDevice:TGoldfishRTCDevice;
+                     fEvent:TEvent;
+                    protected
+                     procedure Execute; override;
+                    public
+                     constructor Create(const aDevice:TGoldfishRTCDevice); reintroduce;
+                     destructor Destroy; override;
+                     procedure Shutdown;
+                     procedure Wake;
+                   end;
              private
               fIRQ:TPasRISCVUInt64;
               fTickOffset:TPasRISCVInt64;   // ns offset so that GetCount returns ns since epoch
@@ -8852,6 +8871,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fAlarmRunning:Boolean;
               fIRQEnabled:Boolean;
               fIRQPending:Boolean;
+              fLock:TPasMPCriticalSection; // alarm state is touched by the HART and by fAlarmThread
+              fAlarmThread:TAlarmThread;
               function GetCount:TPasRISCVUInt64;
               procedure UpdateIRQ;
               procedure CheckAlarm;
@@ -34322,6 +34343,13 @@ begin
 
         inc(TCPSession^.ServerSeq);
 
+        // The SYN consumes a sequence number of its own and is not held in the
+        // retransmit buffer, so the base has to move with it. Without this the
+        // base stays one behind for the whole connection and every retransmission
+        // goes out shifted by one byte, which the guest silently discards. The
+        // transfer then stalls the first time a segment needs repeating.
+        TCPSession^.RetransmitSeqBase:=TCPSession^.ServerSeq;
+
         TCPSession^.State:=UserModeTCPStateSynAckSent;
         TCPSession^.SynFinRetransmitCount:=0;
         TCPSession^.RTO:=UserModeTCPInitialRTO;
@@ -34414,13 +34442,13 @@ begin
       // advertises (avoids guest-side TCP packet storms / 100% CPU).
       if TCPSession^.RetransmitSize>=UserModeTCPRetransmitBufferMax then begin
 
-       ReceiveLength:=-1;
+       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
       end else if TCPSession^.RetransmitSize>=TCPSession^.GuestWindowSize then begin
 
-       ReceiveLength:=-1;
+       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
@@ -34481,7 +34509,10 @@ begin
        TCPSession^.TickCount:=0;
        TCPSession^.IdleTickCount:=0;
 
-      end else if ReceiveLength=0 then begin
+      end else if ReceiveLength<0 then begin
+
+       // RNL reports the orderly shutdown of the far side as -1 and a
+       // "nothing to read right now" as 0, so only a negative value is a close
 
        SendTCPToGuest(SessionIndex,TCPFlagFIN or TCPFlagACK,nil,0);
        inc(TCPSession^.ServerSeq);
@@ -37826,13 +37857,13 @@ begin
       // advertises (avoids guest-side TCP packet storms / 100% CPU).
       if TCPv6Session^.RetransmitSize>=UserModeTCPRetransmitBufferMax then begin
 
-       ReceiveLength:=-1;
+       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
       end else if TCPv6Session^.RetransmitSize>=TCPv6Session^.GuestWindowSize then begin
 
-       ReceiveLength:=-1;
+       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
@@ -37893,7 +37924,10 @@ begin
        TCPv6Session^.TickCount:=0;
        TCPv6Session^.IdleTickCount:=0;
 
-      end else if ReceiveLength=0 then begin
+      end else if ReceiveLength<0 then begin
+
+       // RNL reports the orderly shutdown of the far side as -1 and a
+       // "nothing to read right now" as 0, so only a negative value is a close
 
        SendTCPv6ToGuest(SessionIndex,TCPFlagFIN or TCPFlagACK,nil,0);
        inc(TCPv6Session^.ServerSeq);
@@ -69476,11 +69510,103 @@ begin
  fAlarmRunning:=false;
  fIRQEnabled:=false;
  fIRQPending:=false;
+ fLock:=TPasMPCriticalSection.Create;
+ fAlarmThread:=TAlarmThread.Create(self);
 end;
 
 destructor TPasRISCV.TGoldfishRTCDevice.Destroy;
 begin
+ if assigned(fAlarmThread) then begin
+  fAlarmThread.Shutdown;
+  FreeAndNil(fAlarmThread);
+ end;
+ FreeAndNil(fLock);
  inherited Destroy;
+end;
+
+{ TPasRISCV.TGoldfishRTCDevice.TAlarmThread }
+
+constructor TPasRISCV.TGoldfishRTCDevice.TAlarmThread.Create(const aDevice:TGoldfishRTCDevice);
+begin
+ fDevice:=aDevice;
+ fEvent:=TEvent.Create(nil,false,false,'');
+ inherited Create(false);
+end;
+
+destructor TPasRISCV.TGoldfishRTCDevice.TAlarmThread.Destroy;
+begin
+ Shutdown;
+ FreeAndNil(fEvent);
+ inherited Destroy;
+end;
+
+procedure TPasRISCV.TGoldfishRTCDevice.TAlarmThread.Shutdown;
+begin
+ if not Finished then begin
+  Terminate;
+  fEvent.SetEvent;
+  WaitFor;
+ end;
+end;
+
+procedure TPasRISCV.TGoldfishRTCDevice.TAlarmThread.Wake;
+begin
+ fEvent.SetEvent;
+end;
+
+procedure TPasRISCV.TGoldfishRTCDevice.TAlarmThread.Execute;
+var Now,Deadline,RemainingNanoseconds:TPasRISCVUInt64;
+    WaitMilliseconds:TPasRISCVInt64;
+    Armed,Fired:Boolean;
+begin
+
+ NameThreadForDebugging('TPasRISCV.TGoldfishRTCDevice.TAlarmThread');
+
+ while not Terminated do begin
+
+  Fired:=false;
+  WaitMilliseconds:=1000; // nothing armed, just come back now and then
+
+  fDevice.fLock.Acquire;
+  try
+   Armed:=fDevice.fAlarmRunning;
+   Deadline:=fDevice.fAlarmNext;
+   if Armed then begin
+    Now:=fDevice.GetCount;
+    if Now>=Deadline then begin
+     fDevice.fAlarmRunning:=false;
+     fDevice.fIRQPending:=true;
+     fDevice.UpdateIRQ;
+     Fired:=true;
+    end else begin
+     RemainingNanoseconds:=Deadline-Now;
+     // round up, so a sub-millisecond remainder does not spin
+     WaitMilliseconds:=TPasRISCVInt64((RemainingNanoseconds+999999) div 1000000);
+     if WaitMilliseconds<1 then begin
+      WaitMilliseconds:=1;
+     end else if WaitMilliseconds>1000 then begin
+      WaitMilliseconds:=1000;
+     end;
+    end;
+   end;
+  finally
+   fDevice.fLock.Release;
+  end;
+
+  if Fired then begin
+   // the guest is most likely parked in WFI waiting for exactly this
+   fDevice.fMachine.InterruptAndWakeUp;
+   continue;
+  end;
+
+  if Terminated then begin
+   break;
+  end;
+
+  fEvent.WaitFor(TPasRISCVUInt32(WaitMilliseconds));
+
+ end;
+
 end;
 
 function TPasRISCV.TGoldfishRTCDevice.GetCount:TPasRISCVUInt64;
@@ -69497,6 +69623,7 @@ begin
  end;
 end;
 
+// Caller must hold fLock: the alarm thread touches the same state.
 procedure TPasRISCV.TGoldfishRTCDevice.CheckAlarm;
 begin
  if fAlarmRunning and (GetCount>=fAlarmNext) then begin
@@ -69510,34 +69637,39 @@ function TPasRISCV.TGoldfishRTCDevice.Load(const aAddress:TPasRISCVUInt64;const 
 var Address:TPasRISCVUInt64;
     Count:TPasRISCVUInt64;
 begin
- if fAlarmRunning then begin
-  CheckAlarm;
- end;
- Address:=aAddress-fBase;
- case Address of
-  REG_TIME_LOW:begin
-   Count:=GetCount;
-   fTimeHigh:=TPasRISCVUInt32(Count shr 32);
-   result:=TPasRISCVUInt32(Count);
+ fLock.Acquire;
+ try
+  if fAlarmRunning then begin
+   CheckAlarm;
   end;
-  REG_TIME_HIGH:begin
-   result:=fTimeHigh;
+  Address:=aAddress-fBase;
+  case Address of
+   REG_TIME_LOW:begin
+    Count:=GetCount;
+    fTimeHigh:=TPasRISCVUInt32(Count shr 32);
+    result:=TPasRISCVUInt32(Count);
+   end;
+   REG_TIME_HIGH:begin
+    result:=fTimeHigh;
+   end;
+   REG_ALARM_LOW:begin
+    result:=TPasRISCVUInt32(fAlarmNext);
+   end;
+   REG_ALARM_HIGH:begin
+    result:=TPasRISCVUInt32(fAlarmNext shr 32);
+   end;
+   REG_IRQ_ENABLED:begin
+    result:=ord(fIRQEnabled);
+   end;
+   REG_ALARM_STATUS:begin
+    result:=ord(fAlarmRunning);
+   end;
+   else begin
+    result:=0;
+   end;
   end;
-  REG_ALARM_LOW:begin
-   result:=TPasRISCVUInt32(fAlarmNext);
-  end;
-  REG_ALARM_HIGH:begin
-   result:=TPasRISCVUInt32(fAlarmNext shr 32);
-  end;
-  REG_IRQ_ENABLED:begin
-   result:=ord(fIRQEnabled);
-  end;
-  REG_ALARM_STATUS:begin
-   result:=ord(fAlarmRunning);
-  end;
-  else begin
-   result:=0;
-  end;
+ finally
+  fLock.Release;
  end;
 end;
 
@@ -69545,40 +69677,58 @@ procedure TPasRISCV.TGoldfishRTCDevice.Store(const aAddress:TPasRISCVUInt64;cons
 var Address:TPasRISCVUInt64;
     Current,NewTime:TPasRISCVUInt64;
 begin
- Address:=aAddress-fBase;
- case Address of
-  REG_TIME_LOW:begin
-   Current:=GetCount;
-   NewTime:=(Current and TPasRISCVUInt64($ffffffff00000000)) or TPasRISCVUInt64(TPasRISCVUInt32(aValue));
-   fTickOffset:=fTickOffset+TPasRISCVInt64(NewTime)-TPasRISCVInt64(Current);
+
+ fLock.Acquire;
+ try
+  Address:=aAddress-fBase;
+  case Address of
+   REG_TIME_LOW:begin
+    Current:=GetCount;
+    NewTime:=(Current and TPasRISCVUInt64($ffffffff00000000)) or TPasRISCVUInt64(TPasRISCVUInt32(aValue));
+    fTickOffset:=fTickOffset+TPasRISCVInt64(NewTime)-TPasRISCVInt64(Current);
+   end;
+   REG_TIME_HIGH:begin
+    Current:=GetCount;
+    NewTime:=(Current and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(TPasRISCVUInt32(aValue)) shl 32);
+    fTickOffset:=fTickOffset+TPasRISCVInt64(NewTime)-TPasRISCVInt64(Current);
+   end;
+   REG_ALARM_LOW:begin
+    fAlarmNext:=(fAlarmNext and TPasRISCVUInt64($ffffffff00000000)) or TPasRISCVUInt64(TPasRISCVUInt32(aValue));
+    // Writing ALARM_LOW activates the alarm
+    fAlarmRunning:=true;
+    CheckAlarm;
+   end;
+   REG_ALARM_HIGH:begin
+    fAlarmNext:=(fAlarmNext and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(TPasRISCVUInt32(aValue)) shl 32);
+   end;
+   REG_IRQ_ENABLED:begin
+    fIRQEnabled:=(aValue and 1)<>0;
+    UpdateIRQ;
+   end;
+   REG_CLEAR_ALARM:begin
+    fAlarmRunning:=false;
+    fAlarmNext:=0;
+   end;
+   REG_CLEAR_INTERRUPT:begin
+    fIRQPending:=false;
+    UpdateIRQ;
+   end;
   end;
-  REG_TIME_HIGH:begin
-   Current:=GetCount;
-   NewTime:=(Current and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(TPasRISCVUInt32(aValue)) shl 32);
-   fTickOffset:=fTickOffset+TPasRISCVInt64(NewTime)-TPasRISCVInt64(Current);
-  end;
-  REG_ALARM_LOW:begin
-   fAlarmNext:=(fAlarmNext and TPasRISCVUInt64($ffffffff00000000)) or TPasRISCVUInt64(TPasRISCVUInt32(aValue));
-   // Writing ALARM_LOW activates the alarm
-   fAlarmRunning:=true;
-   CheckAlarm;
-  end;
-  REG_ALARM_HIGH:begin
-   fAlarmNext:=(fAlarmNext and TPasRISCVUInt64($00000000ffffffff)) or (TPasRISCVUInt64(TPasRISCVUInt32(aValue)) shl 32);
-  end;
-  REG_IRQ_ENABLED:begin
-   fIRQEnabled:=(aValue and 1)<>0;
-   UpdateIRQ;
-  end;
-  REG_CLEAR_ALARM:begin
-   fAlarmRunning:=false;
-   fAlarmNext:=0;
-  end;
-  REG_CLEAR_INTERRUPT:begin
-   fIRQPending:=false;
-   UpdateIRQ;
+ finally
+  fLock.Release;
+ end;
+
+ // Anything that changed the deadline or the enable has to reach the thread,
+ // otherwise it keeps sleeping on the old one
+ if assigned(fAlarmThread) then begin
+  case Address of
+   REG_ALARM_LOW,REG_ALARM_HIGH,REG_IRQ_ENABLED,REG_CLEAR_ALARM,REG_CLEAR_INTERRUPT,
+   REG_TIME_LOW,REG_TIME_HIGH:begin
+    fAlarmThread.Wake;
+   end;
   end;
  end;
+
 end;
 
 
@@ -133927,7 +134077,7 @@ begin
           // fli.s (Zfa): load floating-point immediate from table
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLIS,aInstruction,ord(frd),0,0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLIS,aInstruction,ord(frd),(aInstruction shr 15) and $1f,0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -133970,7 +134120,7 @@ begin
           // fli.d (Zfa): load floating-point immediate from table
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa)}
           if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLID,aInstruction,ord(frd),0,0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLID,aInstruction,ord(frd),(aInstruction shr 15) and $1f,0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
@@ -134023,7 +134173,7 @@ begin
           // fli.h (Zfa): load floating-point immediate from table
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerFPU) and defined(PasRISCVJustInTimeCompilerZfa) and defined(PasRISCVJustInTimeCompilerZfh)}
           if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fFPUEnabled and
-             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLIH,aInstruction,ord(frd),0,0,0,4) then begin
+             fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicFLIH,aInstruction,ord(frd),(aInstruction shr 15) and $1f,0,0,4) then begin
            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
            exit;
           end;
