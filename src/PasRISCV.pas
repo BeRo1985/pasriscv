@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-08-23-21-47-0000                       *
+ *                        Version 2026-08-25-00-38-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -506,7 +506,68 @@ unit PasRISCV;
  {$ifend}
 {$endif}
 
+// Whether the user mode NAT asks the operating system which sockets have something to
+// say, or simply asks every session in turn the way it did before.
+//
+// PasRISCVNATReadiness is the feature: types, fields, methods and call sites of the
+// readiness set all hang off it. It is on unless PasRISCVNATReadinessForceFullScan says
+// otherwise, and with it off what remains is the plain brute-force sweep - every
+// session visited in every round - with the two-pass split still in place, since that
+// is a separate thing.
+//
+// Having a way to switch it off matters for three reasons. A target where no readiness
+// mechanism works at all needs a way out. A fallback nobody can select is a fallback
+// nobody has run. And it is the only honest way to measure what the readiness set is
+// worth, because it puts both answers on one machine on one day instead of against a
+// remembered number.
+{$ifndef PasRISCVNATReadinessForceFullScan}
+ {$define PasRISCVNATReadiness}
+{$endif}
 
+// Diagnostics: rare paths that only speak when something is already wrong, such as a
+// worker thread saying why it died or a ring buffer saying that it refused a nonsensical
+// request. They are on by default - a thread that vanishes without a word is a defect in
+// any build. Define PasRISCVNoDiagnostics to compile them out entirely.
+//
+// Note that these must never simply writeln: on Windows a GUI build has no console and
+// the write faults there. See ReportLine.
+{$ifndef PasRISCVNoDiagnostics}
+ {$define PasRISCVDiagnostics}
+{$endif}
+
+{$ifdef PasRISCVNATReadiness}
+
+// Which readiness mechanism it uses. This is the only place that names a platform for
+// it; everything below asks for the strategy, never for the operating system. A new
+// target needs a line here and nothing else, unless it brings a mechanism of its own -
+// kqueue on the BSDs would be the obvious next one, and would slot in beside the epoll
+// branch.
+//
+// PasRISCVNATReadinessPoll is the portable floor: an interest list held by us and handed
+// to one poll call. It is what every target gets that has nothing better, and it is
+// deliberately kept working rather than left to rot - define
+// PasRISCVNATReadinessForcePoll to select it even where something better exists, which
+// is how it gets tested without needing one of those targets to hand.
+// Windows comes first and ignores that override: there is no POSIX poll there, so
+// WSAPoll is its array backend whether one wants it or not.
+{$if defined(Windows)}
+ {$define PasRISCVNATReadinessWSAPoll}
+{$elseif defined(PasRISCVNATReadinessForcePoll)}
+ {$define PasRISCVNATReadinessPoll}
+{$elseif defined(linux) or defined(android)}
+ {$define PasRISCVNATReadinessEpoll}
+{$else}
+ {$define PasRISCVNATReadinessPoll}
+{$ifend}
+
+// Everything that is not a kernel-resident interest list keeps its own array and
+// hands the whole thing over on every wait. Only the call and the descriptor layout
+// differ between those, which is why they share almost all of the code.
+{$if defined(PasRISCVNATReadinessWSAPoll) or defined(PasRISCVNATReadinessPoll)}
+ {$define PasRISCVNATReadinessArray}
+{$ifend}
+
+{$endif}
 
 interface
 
@@ -732,6 +793,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
      PPPasRISCVSizeInt=^PPasRISCVSizeInt;
      PPasRISCVSizeInt=^TPasRISCVSizeInt;
      TPasRISCVSizeInt=TPasRISCVPtrInt;
+
+{$if defined(PasRISCVNATReadinessWSAPoll)}
+     // WSAPOLLFD and WSAPoll, declared here rather than taken from a unit: WSAPoll is
+     // Vista and later, so it is resolved from ws2_32.dll at run time and the code
+     // falls back to the descriptor-by-descriptor scan when it is not there. Same
+     // approach RNL already uses for getaddrinfo and friends.
+     PUserModeWinPollFD=^TUserModeWinPollFD;
+     TUserModeWinPollFD=record
+      Socket:TPasRISCVPtrUInt;
+      Events:TPasRISCVInt16;
+      ReturnedEvents:TPasRISCVInt16;
+     end;
+     TUserModeWSAPoll=function(aFDArray:PUserModeWinPollFD;aCount:TPasRISCVUInt32;aTimeout:TPasRISCVInt32):TPasRISCVInt32; stdcall;
+{$ifend}
 
      PPPasRISCVNativeUInt=^PPasRISCVNativeUInt;
      PPasRISCVNativeUInt=^TPasRISCVNativeUInt;
@@ -2065,7 +2140,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              // much silence, a minute. Finished sessions and stalled half-open ones
              // are reclaimed without waiting.
              UserModeTCPEvictionMinimumIdleTicks=6000;
+             // The largest a single reserve request can legitimately be: one receive
+             // buffer's worth. Anything above it did not come from a receive.
+             UserModeTCPReserveMaximumRequest=65536;
              UserModeTCPOutOfOrderQueueSize=4;
+{$ifdef PasRISCVNATReadiness}
+             // How many ready descriptors one readiness round may collect. Not a limit
+             // on how many sessions may be armed - all of them are - only on how many
+             // are handed back at once. The backends are level triggered, so anything
+             // that does not fit is reported again in the next round rather than lost,
+             // and at a round every millisecond this ceiling is far above any real load.
+             UserModeReadinessMaxEvents=4096;
+{$endif}
              UserModeICMPIdleTimeoutTicks=300;
              UserModeUDPDNSIdleTimeoutTicks=3000;
              UserModeUDPIdleTimeoutTicks=24000;
@@ -2347,6 +2433,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              OriginalIPHeader:TIPv4Header;
              OriginalICMPHeader:TICMPHeader;
              TickCount:TPasRISCVUInt32;
+             QueuedForClose:Boolean;
+{$ifdef PasRISCVNATReadiness}
+             ReadinessTag:TPasRISCVUInt64;
+             ReadinessArmed:Boolean;
+             ReadinessRound:TPasRISCVUInt32;
+{$endif}
             end;
             PICMPSession=^TICMPSession;
             TUDPSession=record
@@ -2359,6 +2451,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              OriginalDestinationIP:TIPv4Address;
              OriginalDestinationPort:TPasRISCVUInt16;
              TickCount:TPasRISCVUInt32;
+             // Same meaning as in TTCPSession; see there.
+             QueuedForClose:Boolean;
+{$ifdef PasRISCVNATReadiness}
+             ReadinessTag:TPasRISCVUInt64;
+             ReadinessArmed:Boolean;
+             ReadinessRound:TPasRISCVUInt32;
+{$endif}
             end;
             PUDPSession=^TUDPSession;
             TICMPv6Session=record
@@ -2371,6 +2470,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              OriginalIPv6Header:TIPv6Header;
              OriginalICMPv6Prefix:array[0..UserModeICMPv6OriginalPrefixSize-1] of TPasRISCVUInt8;
              TickCount:TPasRISCVUInt32;
+             QueuedForClose:Boolean;
+{$ifdef PasRISCVNATReadiness}
+             ReadinessTag:TPasRISCVUInt64;
+             ReadinessArmed:Boolean;
+             ReadinessRound:TPasRISCVUInt32;
+{$endif}
             end;
             PICMPv6Session=^TICMPv6Session;
             TUDPv6Session=record
@@ -2383,6 +2488,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              OriginalDestinationIP:TIPv6Address;
              OriginalDestinationPort:TPasRISCVUInt16;
              TickCount:TPasRISCVUInt32;
+             QueuedForClose:Boolean;
+{$ifdef PasRISCVNATReadiness}
+             ReadinessTag:TPasRISCVUInt64;
+             ReadinessArmed:Boolean;
+             ReadinessRound:TPasRISCVUInt32;
+{$endif}
             end;
             PUDPv6Session=^TUDPv6Session;
             TUserModePortForwardUDPPeer=record
@@ -2423,6 +2534,66 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             // copying tens of megabytes on the network thread, and five thousand idle
             // connections cost thirty megabytes of buffers nobody had asked for. It is
             // allocated on the first out-of-order segment instead.
+{$ifdef PasRISCVNATReadiness}
+            // What one descriptor reported. The tag is whatever the caller armed it
+            // with - here a session kind, index and generation packed into 64 bits, so
+            // an event can be routed without searching for its owner.
+            TUserModeReadinessEvent=record
+             Tag:TPasRISCVUInt64;
+             Readable:Boolean;
+             Writable:Boolean;
+             Failed:Boolean;
+            end;
+            PUserModeReadinessEvent=^TUserModeReadinessEvent;
+            TUserModeReadinessEvents=array of TUserModeReadinessEvent;
+            // Asking the operating system which descriptors have something to say,
+            // instead of asking every descriptor in turn.
+            //
+            // Linux gets epoll: the interest list lives in the kernel, so a wait costs
+            // one call and returns only what is ready. Everywhere else the interest
+            // list is ours and every wait hands the whole array over - still one call
+            // instead of one per session, which is the expensive part, but the cost
+            // grows with the table rather than with what happened.
+            //
+            // Windows has no epoll. WSAPoll is the closest thing and is used here, but
+            // with one documented catch: it does not report a failed connection
+            // attempt. A socket still connecting is therefore never left to WSAPoll
+            // alone - see the connect path, which keeps asking select there.
+            TUserModeReadinessSet=record
+             private
+{$ifdef PasRISCVNATReadinessEpoll}
+              fEpollHandle:TPasRISCVInt32;
+              fRawEvents:array of EPoll_Event;
+{$endif}
+{$ifdef PasRISCVNATReadinessArray}
+{$ifdef PasRISCVNATReadinessWSAPoll}
+              fPollFDs:array of TUserModeWinPollFD;
+{$else}
+              fPollFDs:array of pollfd;
+{$endif}
+              fTags:array of TPasRISCVUInt64;
+              fCount:TPasRISCVInt32;
+{$endif}
+              fEvents:TUserModeReadinessEvents;
+              fEventCount:TPasRISCVInt32;
+              fCapacity:TPasRISCVInt32;
+             public
+              // Which of the three backends this build actually compiled in. The
+              // strategy symbols are defines and therefore unit-local, so nothing
+              // outside can ask the preprocessor - it has to ask the unit. Without
+              // this a forced-poll build is indistinguishable from an epoll one from
+              // the outside, and a test for the fallback silently measures epoll.
+              class function BackendName:string; static;
+              procedure Initialize(const aMaxEvents:TPasRISCVInt32);
+              procedure Finalize;
+              function Available:Boolean;
+              function Arm(const aSocket:TRNLSocket;const aTag:TPasRISCVUInt64;const aWantWrite:Boolean):Boolean;
+              function Modify(const aSocket:TRNLSocket;const aTag:TPasRISCVUInt64;const aWantWrite:Boolean):Boolean;
+              function Disarm(const aSocket:TRNLSocket):Boolean;
+              function Wait(const aTimeoutMilliseconds:TPasRISCVInt32):TPasRISCVInt32;
+              function Event(const aIndex:TPasRISCVInt32):TUserModeReadinessEvent;
+            end;
+{$endif}
             TUserModeTCPOutOfOrderQueue=array[0..UserModeTCPOutOfOrderQueueSize-1] of TUserModeTCPOutOfOrderEntry;
             PUserModeTCPOutOfOrderQueue=^TUserModeTCPOutOfOrderQueue;
             TUserModeTCPPendingBuffer=array[0..UserModeTCPPendingBufferSize-1] of TPasRISCVUInt8;
@@ -2478,6 +2649,31 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              GuestSACKPermitted:Boolean;
              GuestTimestampEnabled:Boolean;
              LastGuestTimestampValue:TPasRISCVUInt32;
+             // Already on this round's close list. The readiness pass and the clock
+             // pass are separate calls, so the local "closed" flag of one cannot warn
+             // the other - without this a session could be queued twice and closed
+             // twice, the second time on an entry that no longer exists.
+             QueuedForClose:Boolean;
+{$ifdef PasRISCVNATReadiness}
+             // What the readiness set hands back for this session: the slot index in
+             // the low half and the slot's generation in the high half. The generation
+             // is what makes a stale event harmless - a slot can be closed and handed
+             // to a new connection, and an event still carrying the old generation is
+             // then dropped instead of servicing a stranger's socket.
+             ReadinessTag:TPasRISCVUInt64;
+             // Cleared when arming failed. Such a session is not in the set and would
+             // never be visited, so its presence switches the whole pass back to the
+             // full scan - slow, but not silently stalled.
+             ReadinessArmed:Boolean;
+             // Mirrors the write interest currently registered, so that appending to
+             // the pending buffer costs a syscall only when the interest really changes
+             // rather than on every append.
+             ReadinessWantWrite:Boolean;
+             // Which round last serviced this session. Guards against being visited
+             // twice in one round, which happens where a platform's gap forces an extra
+             // sweep beside the event list.
+             ReadinessRound:TPasRISCVUInt32;
+{$endif}
             end;
             PTCPSession=^TTCPSession;
             TTCPv6Session=record
@@ -2523,6 +2719,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              GuestSACKPermitted:Boolean;
              GuestTimestampEnabled:Boolean;
              LastGuestTimestampValue:TPasRISCVUInt32;
+             // The IPv4 twins of these carry the same meaning; see TTCPSession.
+             QueuedForClose:Boolean;
+{$ifdef PasRISCVNATReadiness}
+             ReadinessTag:TPasRISCVUInt64;
+             ReadinessArmed:Boolean;
+             ReadinessWantWrite:Boolean;
+             ReadinessRound:TPasRISCVUInt32;
+{$endif}
             end;
             PTCPv6Session=^TTCPv6Session;
             TIPv6FragmentReassemblyEntry=record
@@ -2619,6 +2823,48 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fTCPActiveCount:TPasRISCVInt32;
        fTCPActiveCapacity:TPasRISCVInt32;
        fTCPEvictionCursor:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadiness}
+       // The kernel is asked once which sessions have something to say, instead of
+       // every session being asked in turn. Before this the readiness pass cost two
+       // syscalls per session per round - at fifteen hundred idle connections and a
+       // round every millisecond, three million calls a second for nothing.
+       fTCPReadiness:TUserModeReadinessSet;
+       // Kept beside the sessions rather than inside them: the record is cleared with
+       // FillChar when a slot is reused, which would reset a generation held in it and
+       // defeat the point of having one.
+       fTCPGenerations:TPasRISCVUInt32DynamicArray;
+       // How many live sessions could not be armed. Normally zero; while it is not,
+       // the readiness pass falls back to the full scan.
+       fTCPUnarmedCount:TPasRISCVInt32;
+       fTCPReadinessRound:TPasRISCVUInt32;
+       // The IPv6 twins. A separate set rather than a shared one: the tag would
+       // otherwise have to carry which table it belongs to, and the two tables are
+       // serviced by separate passes anyway.
+       fTCPv6Readiness:TUserModeReadinessSet;
+       fTCPv6Generations:TPasRISCVUInt32DynamicArray;
+       fTCPv6UnarmedCount:TPasRISCVInt32;
+       fTCPv6ReadinessRound:TPasRISCVUInt32;
+       // And the four datagram tables. Written out per table rather than folded into
+       // one generic mechanism: each is a handful of trivially checkable lines, and
+       // this is the code that already cost a day to a defect nobody could see by
+       // reading it. Clarity is worth the repetition here.
+       fUDPReadiness:TUserModeReadinessSet;
+       fUDPGenerations:TPasRISCVUInt32DynamicArray;
+       fUDPUnarmedCount:TPasRISCVInt32;
+       fUDPReadinessRound:TPasRISCVUInt32;
+       fUDPv6Readiness:TUserModeReadinessSet;
+       fUDPv6Generations:TPasRISCVUInt32DynamicArray;
+       fUDPv6UnarmedCount:TPasRISCVInt32;
+       fUDPv6ReadinessRound:TPasRISCVUInt32;
+       fICMPReadiness:TUserModeReadinessSet;
+       fICMPGenerations:TPasRISCVUInt32DynamicArray;
+       fICMPUnarmedCount:TPasRISCVInt32;
+       fICMPReadinessRound:TPasRISCVUInt32;
+       fICMPv6Readiness:TUserModeReadinessSet;
+       fICMPv6Generations:TPasRISCVUInt32DynamicArray;
+       fICMPv6UnarmedCount:TPasRISCVInt32;
+       fICMPv6ReadinessRound:TPasRISCVUInt32;
+{$endif}
        fIsolated:Boolean;
        fICMPSocketAvailable:Boolean;
        fFilterLAN:Boolean;
@@ -2683,9 +2929,25 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure HandleDHCP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aUDPHeader:PUDPHeader;const aDHCPData:Pointer;const aDHCPSize:TPasRISCVSizeInt);
        function FindOrCreateICMPSession(const aGuestIdentifier:TPasRISCVUInt16;const aGuestSourceIP:TIPv4Address;const aOriginalIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt):TRNLSocket;
        procedure CloseICMPSession(const aSessionIndex:TPasRISCVInt32);
+{$ifdef PasRISCVNATReadiness}
+       procedure ArmICMPReadiness(const aSessionIndex:TPasRISCVInt32);
+       procedure DisarmICMPReadiness(const aSessionIndex:TPasRISCVInt32);
+{$endif}
+       procedure ServiceICMPSession(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ServiceICMPReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+{$endif}
        procedure PollICMPSockets;
        function FindOrCreateUDPSession(const aGuestSourcePort:TPasRISCVUInt16;const aGuestSourceIP:TIPv4Address;const aOriginalDestinationIP:TIPv4Address;const aOriginalDestinationPort:TPasRISCVUInt16):TPasRISCVInt32;
        procedure CloseUDPSession(const aSessionIndex:TPasRISCVInt32);
+{$ifdef PasRISCVNATReadiness}
+       procedure ArmUDPReadiness(const aSessionIndex:TPasRISCVInt32);
+       procedure DisarmUDPReadiness(const aSessionIndex:TPasRISCVInt32);
+{$endif}
+       procedure ServiceUDPSession(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ServiceUDPReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+{$endif}
        function FindUDPPortForwardPeer(const aPortForwardIndex:TPasRISCVInt32;const aRemoteIP:TPasRISCVUInt32;const aRemotePort:TPasRISCVUInt16):TPasRISCVInt32;
        procedure TouchUDPPortForwardPeer(const aPortForwardIndex:TPasRISCVInt32;const aRemoteIP:TPasRISCVUInt32;const aRemotePort:TPasRISCVUInt16);
        procedure AgeUDPPortForwardPeers(const aPortForwardIndex:TPasRISCVInt32);
@@ -2704,6 +2966,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function FindEvictableTCPv6Session:TPasRISCVInt32;
        function FindTCPSession(const aGuestSourceIP:TIPv4Address;const aGuestSourcePort:TPasRISCVUInt16;const aDestinationIP:TIPv4Address;const aDestinationPort:TPasRISCVUInt16):TPasRISCVInt32;
        procedure CloseTCPSession(const aSessionIndex:TPasRISCVInt32;const aSendRST:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ArmTCPReadiness(const aSessionIndex:TPasRISCVInt32;const aWantWrite:Boolean);
+       procedure DisarmTCPReadiness(const aSessionIndex:TPasRISCVInt32);
+       procedure UpdateTCPReadinessWrite(const aTCPSession:PTCPSession;const aWantWrite:Boolean);
+{$endif}
+       procedure ServiceTCPSession(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ServiceTCPReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+{$endif}
        procedure PollTCPSockets;
        function UserModeIPv6PseudoHeaderChecksum(const aSourceIP,aDestinationIP:TIPv6Address;const aNextHeader:TPasRISCVUInt8;const aData:Pointer;const aSize:TPasRISCVSizeInt):TPasRISCVUInt16;
        function UserModeIsPrivateIPv6(const aAddr:TIPv6Address):Boolean;
@@ -2715,22 +2986,54 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure HandleICMPv6(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aICMPv6Data:Pointer;const aICMPv6Size:TPasRISCVSizeInt);
        function FindOrCreateICMPv6Session(const aGuestIdentifier:TPasRISCVUInt16;const aGuestSourceIP:TIPv6Address;const aDestinationIP:TIPv6Address;const aOriginalIPv6Header:PIPv6Header;const aICMPv6Data:Pointer;const aICMPv6Size:TPasRISCVSizeInt):TPasRISCVInt32;
        procedure CloseICMPv6Session(const aSessionIndex:TPasRISCVInt32);
+{$ifdef PasRISCVNATReadiness}
+       procedure ArmICMPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+       procedure DisarmICMPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+{$endif}
+       procedure ServiceICMPv6Session(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ServiceICMPv6ReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+{$endif}
        procedure PollICMPv6Sockets;
        procedure HandleDHCPv6(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aUDPHeader:PUDPHeader;const aDHCPv6Data:Pointer;const aDHCPv6Size:TPasRISCVSizeInt);
        procedure HandleUDPv6(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aUDPData:Pointer;const aUDPSize:TPasRISCVSizeInt);
        function FindOrCreateUDPv6Session(const aGuestSourcePort:TPasRISCVUInt16;const aGuestSourceIP:TIPv6Address;const aOriginalDestinationIP:TIPv6Address;const aOriginalDestinationPort:TPasRISCVUInt16):TPasRISCVInt32;
        procedure CloseUDPv6Session(const aSessionIndex:TPasRISCVInt32);
+{$ifdef PasRISCVNATReadiness}
+       procedure ArmUDPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+       procedure DisarmUDPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+{$endif}
+       procedure ServiceUDPv6Session(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ServiceUDPv6ReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+{$endif}
        procedure ForwardUDPv6(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aUDPHeader:PUDPHeader;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
        procedure PollUDPv6Sockets;
        procedure SendTCPv6ToGuest(const aSessionIndex:TPasRISCVInt32;const aFlags:TPasRISCVUInt8;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
        function FindTCPv6Session(const aGuestSourceIP:TIPv6Address;const aGuestSourcePort:TPasRISCVUInt16;const aDestinationIP:TIPv6Address;const aDestinationPort:TPasRISCVUInt16):TPasRISCVInt32;
        procedure CloseTCPv6Session(const aSessionIndex:TPasRISCVInt32;const aSendRST:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ArmTCPv6Readiness(const aSessionIndex:TPasRISCVInt32;const aWantWrite:Boolean);
+       procedure DisarmTCPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+       procedure UpdateTCPv6ReadinessWrite(const aTCPv6Session:PTCPv6Session;const aWantWrite:Boolean);
+{$endif}
+       procedure ServiceTCPv6Session(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
+{$ifdef PasRISCVNATReadiness}
+       procedure ServiceTCPv6ReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+{$endif}
        procedure HandleTCPv6(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aTCPData:Pointer;const aTCPSize:TPasRISCVSizeInt);
        procedure PollTCPv6Sockets;
        procedure SendRouterAdvertisement(const aDestMAC:TPasRISCVEthernetDevice.TMACAddress;const aDestIPv6:TIPv6Address);
        procedure ThreadProc;
        procedure ProcessReset;
       public
+       constructor Create; reintroduce;
+       destructor Destroy; override;
+       procedure Shutdown; override;
+       procedure Reset; override;
+       procedure Start;
+       procedure WritePacket(const aBuffer:Pointer;const aBufferSize:TPasRISCVSizeInt); override;
+       procedure AddPortForward(const aSpec:TPasRISCVRawByteString);
        // The retransmit ring is pure arithmetic over a block of memory and holds no
        // state of its own, so it lives out here where it can be driven directly - the
        // wrap cases are almost unreachable through the network path, because a
@@ -2739,13 +3042,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        class procedure RetransmitBufferReserve(var aData:Pointer;var aCapacity,aHead:TPasRISCVSizeInt;const aSize,aNeeded:TPasRISCVSizeInt); static;
        class procedure RetransmitBufferAppend(const aData:Pointer;const aCapacity,aHead,aSize:TPasRISCVSizeInt;const aSource:Pointer;const aLength:TPasRISCVSizeInt); static;
        class procedure RetransmitBufferFetch(const aData:Pointer;const aCapacity,aHead,aOffset:TPasRISCVSizeInt;const aDestination:Pointer;const aLength:TPasRISCVSizeInt); static;
-       constructor Create; reintroduce;
-       destructor Destroy; override;
-       procedure Shutdown; override;
-       procedure Reset; override;
-       procedure Start;
-       procedure WritePacket(const aBuffer:Pointer;const aBufferSize:TPasRISCVSizeInt); override;
-       procedure AddPortForward(const aSpec:TPasRISCVRawByteString);
        property Isolated:Boolean read fIsolated write fIsolated;
        property FilterLAN:Boolean read fFilterLAN write fFilterLAN;
        property UserModeIPv6Enabled:Boolean read fUserModeIPv6Enabled write fUserModeIPv6Enabled;
@@ -15347,6 +15643,43 @@ begin
  end;
 end;
 {$ifend}
+
+{$ifdef PasRISCVDiagnostics}
+// One line of diagnostics, on a path that is safe everywhere.
+//
+// writeln to ErrOutput is NOT harmless on Windows: a GUI build has no console, and the
+// write faults there rather than being discarded. Whether one is attached is a runtime
+// property - the same binary can be started from a console - so it is asked rather than
+// assumed, and without one the text goes to the debugger channel, which is always
+// available.
+//
+// IsConsole is not universal, hence the fallback: on Windows the standard error handle
+// answers the same question, and everywhere else a console is assumed, which is the safe
+// guess where there is no debugger channel to divert to anyway.
+procedure ReportLine(const aText:string);
+var HasConsole:Boolean;
+{$if defined(Windows) and not declared(IsConsole)}
+    ErrorHandle:THandle;
+{$ifend}
+begin
+{$if declared(IsConsole)}
+ HasConsole:=IsConsole;
+{$elseif defined(Windows)}
+ ErrorHandle:=GetStdHandle(STD_ERROR_HANDLE);
+ HasConsole:=(ErrorHandle<>0) and (ErrorHandle<>INVALID_HANDLE_VALUE);
+{$else}
+ HasConsole:=true;
+{$ifend}
+ if HasConsole then begin
+  writeln(ErrOutput,aText);
+  Flush(ErrOutput);
+ end else begin
+{$if defined(Windows)}
+  OutputDebugString(PChar(aText));
+{$ifend}
+ end;
+end;
+{$endif}
 
 procedure FastDecodeDate(const aDate:TPasRISCVInt32;out aYear,aMonth,aDay:TPasRISCVInt32); // Epoch is 0000-Mar-01
 var n1,c,nc,n2,z,ny,n3,j:TPasRISCVUInt32;
@@ -30593,6 +30926,35 @@ begin
  fTCPActiveCount:=0;
  fTCPActiveCapacity:=0;
 
+{$ifdef PasRISCVNATReadiness}
+ fUDPReadiness.Initialize(UserModeReadinessMaxEvents);
+ SetLength(fUDPGenerations,UserModeUDPMaxSessions);
+ fUDPUnarmedCount:=0;
+ fUDPReadinessRound:=1;
+
+ fUDPv6Readiness.Initialize(UserModeReadinessMaxEvents);
+ SetLength(fUDPv6Generations,UserModeUDPv6MaxSessions);
+ fUDPv6UnarmedCount:=0;
+ fUDPv6ReadinessRound:=1;
+
+ fICMPReadiness.Initialize(UserModeReadinessMaxEvents);
+ SetLength(fICMPGenerations,UserModeICMPMaxSessions);
+ fICMPUnarmedCount:=0;
+ fICMPReadinessRound:=1;
+
+ fICMPv6Readiness.Initialize(UserModeReadinessMaxEvents);
+ SetLength(fICMPv6Generations,UserModeICMPv6MaxSessions);
+ fICMPv6UnarmedCount:=0;
+ fICMPv6ReadinessRound:=1;
+
+ fTCPReadiness.Initialize(UserModeReadinessMaxEvents);
+ SetLength(fTCPGenerations,UserModeTCPMaxSessions);
+ fTCPUnarmedCount:=0;
+ // Starts at one, and a wrap skips zero, so that a freshly cleared session record -
+ // whose stamp is zero - never looks as though it had already been serviced.
+ fTCPReadinessRound:=1;
+{$endif}
+
  fToClose:=nil;
  fToCloseCount:=0;
 
@@ -30709,6 +31071,14 @@ begin
  fTCPv6ActiveIndices:=nil;
  fTCPv6ActiveCount:=0;
  fTCPv6ActiveCapacity:=0;
+
+{$ifdef PasRISCVNATReadiness}
+ fTCPv6Readiness.Initialize(UserModeReadinessMaxEvents);
+ SetLength(fTCPv6Generations,UserModeTCPv6MaxSessions);
+ fTCPv6UnarmedCount:=0;
+ fTCPv6ReadinessRound:=1;
+{$endif}
+
  fIPv6RATickCount:=19999;
  fUserModeIPv6Enabled:=true;
  // Off by default: the user mode NAT terminates every connection at the host, so
@@ -30775,6 +31145,24 @@ begin
  fTCPActiveIndices:=nil;
  fTCPActiveCount:=0;
  fTCPActiveCapacity:=0;
+{$ifdef PasRISCVNATReadiness}
+ fTCPReadiness.Finalize;
+ fTCPGenerations:=nil;
+ fTCPUnarmedCount:=0;
+
+ fUDPReadiness.Finalize;
+ fUDPGenerations:=nil;
+ fUDPUnarmedCount:=0;
+ fUDPv6Readiness.Finalize;
+ fUDPv6Generations:=nil;
+ fUDPv6UnarmedCount:=0;
+ fICMPReadiness.Finalize;
+ fICMPGenerations:=nil;
+ fICMPUnarmedCount:=0;
+ fICMPv6Readiness.Finalize;
+ fICMPv6Generations:=nil;
+ fICMPv6UnarmedCount:=0;
+{$endif}
 
  fUDPFreeList.Finalize;
  FreeAndNil(fUDPSessions);
@@ -30799,6 +31187,11 @@ begin
  fTCPv6ActiveIndices:=nil;
  fTCPv6ActiveCount:=0;
  fTCPv6ActiveCapacity:=0;
+{$ifdef PasRISCVNATReadiness}
+ fTCPv6Readiness.Finalize;
+ fTCPv6Generations:=nil;
+ fTCPv6UnarmedCount:=0;
+{$endif}
 
  fUDPv6FreeList.Finalize;
  FreeAndNil(fUDPv6Sessions);
@@ -31046,195 +31439,222 @@ var Packet:TSendPacket;
 {$endif}
 begin
 
- while not fThread.Terminated do begin
+{$ifdef PasRISCVDiagnostics}
+ // TThread stores an escaping exception in FatalException and lets the thread end
+ // quietly. For this thread that means networking simply stops - no message, no
+ // reset, nothing in the log - and from the guest it is indistinguishable from a
+ // network that has gone unreachable. Saying so costs nothing and turns a silent
+ // disappearance into something that can be read.
+ try
+{$endif}
 
-  // A reset posted by the guest side is serviced here, where the session tables are
-  // owned, before any socket of the previous boot is looked at again
-  if TPasMPInterlocked.Exchange(fResetPending,TPasMPUInt32(0))<>0 then begin
-   ProcessReset;
-  end;
+  while not fThread.Terminated do begin
+
+   // A reset posted by the guest side is serviced here, where the session tables are
+   // owned, before any socket of the previous boot is looked at again
+   if TPasMPInterlocked.Exchange(fResetPending,TPasMPUInt32(0))<>0 then begin
+    ProcessReset;
+   end;
 
 {$ifdef PasRISCVNATSocketSelect}
 
-  SelectReadSet.Clear;
-  SelectWriteSet.Clear;
-  SelectMaxSocket:=0;
-  SelectHasSockets:=false;
-  SelectCount:=0;
-  MustWait:=false;
+   SelectReadSet.Clear;
+   SelectWriteSet.Clear;
+   SelectMaxSocket:=0;
+   SelectHasSockets:=false;
+   SelectCount:=0;
+   MustWait:=false;
 
-  for SelectIndex:=0 to fICMPActiveCount-1 do begin
-   SelectSessionIndex:=fICMPActiveIndices[SelectIndex];
-   SelectICMPSession:=fICMPSessionArray[SelectSessionIndex];
-   if SelectICMPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
-    if SelectCount<FD_SETSIZE then begin
-     inc(SelectCount);
-     SelectReadSet.Add(SelectICMPSession^.SocketFileDescriptor);
-     if SelectICMPSession^.SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=SelectICMPSession^.SocketFileDescriptor;
-     end;
-     SelectHasSockets:=true;
-    end else begin
-     MustWait:=true;
-    end;
-   end;
-  end;
-
-  for SelectIndex:=0 to fUDPActiveCount-1 do begin
-   SelectSessionIndex:=fUDPActiveIndices[SelectIndex];
-   SelectUDPSession:=fUDPSessionArray[SelectSessionIndex];
-   if SelectUDPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
-    if SelectCount<FD_SETSIZE then begin
-     inc(SelectCount);
-     SelectReadSet.Add(SelectUDPSession^.SocketFileDescriptor);
-     if SelectUDPSession^.SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=SelectUDPSession^.SocketFileDescriptor;
-     end;
-     SelectHasSockets:=true;
-    end else begin
-     MustWait:=true;
-    end;
-   end;
-  end;
-
-  for SelectIndex:=0 to fTCPActiveCount-1 do begin
-   SelectSessionIndex:=fTCPActiveIndices[SelectIndex];
-   SelectTCPSession:=fTCPSessionArray[SelectSessionIndex];
-   if SelectTCPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
-    if SelectCount<FD_SETSIZE then begin
-     inc(SelectCount);
-     if SelectTCPSession^.State=UserModeTCPStateConnecting then begin
-      SelectWriteSet.Add(SelectTCPSession^.SocketFileDescriptor);
+   for SelectIndex:=0 to fICMPActiveCount-1 do begin
+    SelectSessionIndex:=fICMPActiveIndices[SelectIndex];
+    SelectICMPSession:=fICMPSessionArray[SelectSessionIndex];
+    if SelectICMPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+     if SelectCount<FD_SETSIZE then begin
+      inc(SelectCount);
+      SelectReadSet.Add(SelectICMPSession^.SocketFileDescriptor);
+      if SelectICMPSession^.SocketFileDescriptor>SelectMaxSocket then begin
+       SelectMaxSocket:=SelectICMPSession^.SocketFileDescriptor;
+      end;
+      SelectHasSockets:=true;
      end else begin
-      SelectReadSet.Add(SelectTCPSession^.SocketFileDescriptor);
+      MustWait:=true;
      end;
-     if SelectTCPSession^.SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=SelectTCPSession^.SocketFileDescriptor;
-     end;
-     SelectHasSockets:=true;
-    end else begin
-     MustWait:=true;
     end;
    end;
-  end;
 
-  for SelectIndex:=0 to fUDPv6ActiveCount-1 do begin
-   SelectSessionIndex:=fUDPv6ActiveIndices[SelectIndex];
-   SelectUDPv6Session:=fUDPv6SessionArray[SelectSessionIndex];
-   if SelectUDPv6Session^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
-    if SelectCount<FD_SETSIZE then begin
-     inc(SelectCount);
-     SelectReadSet.Add(SelectUDPv6Session^.SocketFileDescriptor);
-     if SelectUDPv6Session^.SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=SelectUDPv6Session^.SocketFileDescriptor;
-     end;
-     SelectHasSockets:=true;
-    end else begin
-     MustWait:=true;
-    end;
-   end;
-  end;
-
-  for SelectIndex:=0 to fTCPv6ActiveCount-1 do begin
-   SelectSessionIndex:=fTCPv6ActiveIndices[SelectIndex];
-   SelectTCPv6Session:=fTCPv6SessionArray[SelectSessionIndex];
-   if SelectTCPv6Session^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
-    if SelectCount<FD_SETSIZE then begin
-     inc(SelectCount);
-     if SelectTCPv6Session^.State=UserModeTCPStateConnecting then begin
-      SelectWriteSet.Add(SelectTCPv6Session^.SocketFileDescriptor);
+   for SelectIndex:=0 to fUDPActiveCount-1 do begin
+    SelectSessionIndex:=fUDPActiveIndices[SelectIndex];
+    SelectUDPSession:=fUDPSessionArray[SelectSessionIndex];
+    if SelectUDPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+     if SelectCount<FD_SETSIZE then begin
+      inc(SelectCount);
+      SelectReadSet.Add(SelectUDPSession^.SocketFileDescriptor);
+      if SelectUDPSession^.SocketFileDescriptor>SelectMaxSocket then begin
+       SelectMaxSocket:=SelectUDPSession^.SocketFileDescriptor;
+      end;
+      SelectHasSockets:=true;
      end else begin
-      SelectReadSet.Add(SelectTCPv6Session^.SocketFileDescriptor);
+      MustWait:=true;
      end;
-     if SelectTCPv6Session^.SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=SelectTCPv6Session^.SocketFileDescriptor;
-     end;
-     SelectHasSockets:=true;
-    end else begin
-     MustWait:=true;
     end;
    end;
-  end;
 
-  for SelectIndex:=0 to fPortForwardCount-1 do begin
-   SelectForwardItem:=@fPortForwards[SelectIndex];
-   if SelectForwardItem^.ListenFileDescriptor<>RNL_SOCKET_NULL then begin
-    if SelectCount<FD_SETSIZE then begin
-     inc(SelectCount);
-     SelectReadSet.Add(SelectForwardItem^.ListenFileDescriptor);
-     if SelectForwardItem^.ListenFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=SelectForwardItem^.ListenFileDescriptor;
+   for SelectIndex:=0 to fTCPActiveCount-1 do begin
+    SelectSessionIndex:=fTCPActiveIndices[SelectIndex];
+    SelectTCPSession:=fTCPSessionArray[SelectSessionIndex];
+    if SelectTCPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+     if SelectCount<FD_SETSIZE then begin
+      inc(SelectCount);
+      if SelectTCPSession^.State=UserModeTCPStateConnecting then begin
+       SelectWriteSet.Add(SelectTCPSession^.SocketFileDescriptor);
+      end else begin
+       SelectReadSet.Add(SelectTCPSession^.SocketFileDescriptor);
+      end;
+      if SelectTCPSession^.SocketFileDescriptor>SelectMaxSocket then begin
+       SelectMaxSocket:=SelectTCPSession^.SocketFileDescriptor;
+      end;
+      SelectHasSockets:=true;
+     end else begin
+      MustWait:=true;
      end;
-     SelectHasSockets:=true;
-    end else begin
-     MustWait:=true;
     end;
    end;
-  end;
 
-  if MustWait then begin
-   fWakeEvent.WaitFor(1);
-  end else if SelectHasSockets then begin
-   fRNLNetwork.SocketSelect(SelectMaxSocket,SelectReadSet,SelectWriteSet,1);
-  end else begin
-   fWakeEvent.WaitFor(10);
-  end;
+   for SelectIndex:=0 to fUDPv6ActiveCount-1 do begin
+    SelectSessionIndex:=fUDPv6ActiveIndices[SelectIndex];
+    SelectUDPv6Session:=fUDPv6SessionArray[SelectSessionIndex];
+    if SelectUDPv6Session^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+     if SelectCount<FD_SETSIZE then begin
+      inc(SelectCount);
+      SelectReadSet.Add(SelectUDPv6Session^.SocketFileDescriptor);
+      if SelectUDPv6Session^.SocketFileDescriptor>SelectMaxSocket then begin
+       SelectMaxSocket:=SelectUDPv6Session^.SocketFileDescriptor;
+      end;
+      SelectHasSockets:=true;
+     end else begin
+      MustWait:=true;
+     end;
+    end;
+   end;
+
+   for SelectIndex:=0 to fTCPv6ActiveCount-1 do begin
+    SelectSessionIndex:=fTCPv6ActiveIndices[SelectIndex];
+    SelectTCPv6Session:=fTCPv6SessionArray[SelectSessionIndex];
+    if SelectTCPv6Session^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+     if SelectCount<FD_SETSIZE then begin
+      inc(SelectCount);
+      if SelectTCPv6Session^.State=UserModeTCPStateConnecting then begin
+       SelectWriteSet.Add(SelectTCPv6Session^.SocketFileDescriptor);
+      end else begin
+       SelectReadSet.Add(SelectTCPv6Session^.SocketFileDescriptor);
+      end;
+      if SelectTCPv6Session^.SocketFileDescriptor>SelectMaxSocket then begin
+       SelectMaxSocket:=SelectTCPv6Session^.SocketFileDescriptor;
+      end;
+      SelectHasSockets:=true;
+     end else begin
+      MustWait:=true;
+     end;
+    end;
+   end;
+
+   for SelectIndex:=0 to fPortForwardCount-1 do begin
+    SelectForwardItem:=@fPortForwards[SelectIndex];
+    if SelectForwardItem^.ListenFileDescriptor<>RNL_SOCKET_NULL then begin
+     if SelectCount<FD_SETSIZE then begin
+      inc(SelectCount);
+      SelectReadSet.Add(SelectForwardItem^.ListenFileDescriptor);
+      if SelectForwardItem^.ListenFileDescriptor>SelectMaxSocket then begin
+       SelectMaxSocket:=SelectForwardItem^.ListenFileDescriptor;
+      end;
+      SelectHasSockets:=true;
+     end else begin
+      MustWait:=true;
+     end;
+    end;
+   end;
+
+   if MustWait then begin
+    fWakeEvent.WaitFor(1);
+   end else if SelectHasSockets then begin
+    fRNLNetwork.SocketSelect(SelectMaxSocket,SelectReadSet,SelectWriteSet,1);
+   end else begin
+    fWakeEvent.WaitFor(10);
+   end;
 
 {$else}
-  if (fICMPActiveCount>0) or (fUDPActiveCount>0) or (fTCPActiveCount>0) or
-     (fUDPv6ActiveCount>0) or (fTCPv6ActiveCount>0) or
-     (fSendQueueReadIndex<>fSendQueueWriteIndex) then begin
-   fWakeEvent.WaitFor(1);
-  end else begin
-   fWakeEvent.WaitFor(10);
-  end;
+   if (fICMPActiveCount>0) or (fUDPActiveCount>0) or (fTCPActiveCount>0) or
+      (fUDPv6ActiveCount>0) or (fTCPv6ActiveCount>0) or
+      (fSendQueueReadIndex<>fSendQueueWriteIndex) then begin
+    fWakeEvent.WaitFor(1);
+   end else begin
+    fWakeEvent.WaitFor(10);
+   end;
 {$endif}
 
-  repeat
+   repeat
 
-   Packet.Data:=nil;
-   Packet.Size:=0;
+    Packet.Data:=nil;
+    Packet.Size:=0;
 
-   fLock.Acquire;
-   try
-    if fSendQueueReadIndex<>fSendQueueWriteIndex then begin
-     Packet:=fSendQueue[fSendQueueReadIndex];
-     fSendQueue[fSendQueueReadIndex].Data:=nil;
-     fSendQueueReadIndex:=(fSendQueueReadIndex+1) and SendQueueMask;
-    end;
-   finally
-    fLock.Release;
-   end;
-
-   if assigned(Packet.Data) then begin
+    fLock.Acquire;
     try
-     DispatchEthernetFrame(Packet.Data,Packet.Size);
+     if fSendQueueReadIndex<>fSendQueueWriteIndex then begin
+      Packet:=fSendQueue[fSendQueueReadIndex];
+      fSendQueue[fSendQueueReadIndex].Data:=nil;
+      fSendQueueReadIndex:=(fSendQueueReadIndex+1) and SendQueueMask;
+     end;
     finally
-     FreeMem(Packet.Data);
+     fLock.Release;
+    end;
+
+    if assigned(Packet.Data) then begin
+     try
+      DispatchEthernetFrame(Packet.Data,Packet.Size);
+     finally
+      FreeMem(Packet.Data);
+     end;
+    end;
+
+   until not assigned(Packet.Data);
+
+   AdvanceUserModeTicks;
+
+   PollICMPSockets;
+   PollUDPSockets;
+   PollTCPSockets;
+
+   if fUserModeIPv6Enabled then begin
+    ExpireIPv6FragmentReassemblies;
+    PollICMPv6Sockets;
+    PollUDPv6Sockets;
+    PollTCPv6Sockets;
+    inc(fIPv6RATickCount,fUserModeTickDelta);
+    if fIPv6RATickCount>=20000 then begin
+     fIPv6RATickCount:=0;
+     SendRouterAdvertisement(AllNodesMulticastMAC,AllNodesMulticastIPv6);
     end;
    end;
 
-  until not assigned(Packet.Data);
-
-  AdvanceUserModeTicks;
-
-  PollICMPSockets;
-  PollUDPSockets;
-  PollTCPSockets;
-
-  if fUserModeIPv6Enabled then begin
-   ExpireIPv6FragmentReassemblies;
-   PollICMPv6Sockets;
-   PollUDPv6Sockets;
-   PollTCPv6Sockets;
-   inc(fIPv6RATickCount,fUserModeTickDelta);
-   if fIPv6RATickCount>=20000 then begin
-    fIPv6RATickCount:=0;
-    SendRouterAdvertisement(AllNodesMulticastMAC,AllNodesMulticastIPv6);
-   end;
   end;
 
+{$ifdef PasRISCVDiagnostics}
+ except
+  on e:Exception do begin
+   ReportLine('[PasRISCV] network thread terminated by '+e.ClassName+': '+e.Message);
+   ReportLine('[PasRISCV] address: $'+HexStr(TPasRISCVPtrUInt(ExceptAddr),16));
+   // The backtrace goes straight to ErrOutput and cannot be redirected, so it is only
+   // asked for where writing there is safe, and only where it exists at all.
+{$if declared(DumpExceptionBackTrace) and declared(IsConsole)}
+   if IsConsole then begin
+    DumpExceptionBackTrace(ErrOutput);
+    Flush(ErrOutput);
+   end;
+{$ifend}
+   raise;
+  end;
  end;
+{$endif}
 
 end;
 
@@ -31609,6 +32029,10 @@ begin
  SessionItem^.ActiveIndex:=fICMPActiveCount;
  fICMPActiveIndices[fICMPActiveCount]:=SessionIndex;
  inc(fICMPActiveCount);
+
+{$ifdef PasRISCVNATReadiness}
+ ArmICMPReadiness(SessionIndex);
+{$endif}
 
  fICMPSessions.Add(ICMPKey,SessionIndex);
 
@@ -32815,6 +33239,12 @@ begin
   fTCPActiveIndices[fTCPActiveCount]:=SessionIndex;
   inc(fTCPActiveCount);
 
+{$ifdef PasRISCVNATReadiness}
+  // Write interest from the start: a connect in progress announces itself as writable,
+  // which is the whole signal this state waits for.
+  ArmTCPReadiness(SessionIndex,true);
+{$endif}
+
   exit;
 
  end;
@@ -33233,6 +33663,10 @@ begin
 
  ICMPSession:=fICMPSessionArray[aSessionIndex];
 
+{$ifdef PasRISCVNATReadiness}
+ DisarmICMPReadiness(aSessionIndex);
+{$endif}
+
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(ICMPSession^.SocketFileDescriptor);
 {$else}
@@ -33271,6 +33705,11 @@ begin
 
  UDPSession:=fUDPSessionArray[aSessionIndex];
 
+{$ifdef PasRISCVNATReadiness}
+ // Before the descriptor goes, for the same reason as everywhere else.
+ DisarmUDPReadiness(aSessionIndex);
+{$endif}
+
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(UDPSession^.SocketFileDescriptor);
 {$else}
@@ -33303,13 +33742,11 @@ begin
 
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.PollICMPSockets;
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceICMPSession(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
 const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
 var SessionIndex:TPasRISCVInt32;
     SessionItem:PICMPSession;
     ReceiveLength:TPasRISCVSizeInt;
-    ActiveArrayIndex:TPasRISCVInt32;
-    CloseIndex:TPasRISCVInt32;
     SenderAddress:TRNLAddress;
     ResponseEthernet:PEthernetHeader;
     ResponseIP:PIPv4Header;
@@ -33321,15 +33758,15 @@ var SessionIndex:TPasRISCVInt32;
     TotalSize:TPasRISCVSizeInt;
 begin
 
- fToCloseCount:=0;
+ SessionIndex:=aSessionIndex;
 
- for ActiveArrayIndex:=0 to fICMPActiveCount-1 do begin
+ SessionItem:=fICMPSessionArray[SessionIndex];
 
-  SessionIndex:=fICMPActiveIndices[ActiveArrayIndex];
+ if SessionItem^.Active and not SessionItem^.QueuedForClose then begin
 
-  SessionItem:=fICMPSessionArray[SessionIndex];
+  ReceiveLength:=0;
 
-  if SessionItem^.Active then begin
+  if aService then begin
 
    SenderAddress:=RNL_ADDRESS_EMPTY;
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -33452,25 +33889,150 @@ begin
 
     end; // inner if ReceiveLength>=UserModeICMPHeaderSize
 
-   end else begin
+   end;
 
-    inc(SessionItem^.TickCount,fUserModeTickDelta);
-    if SessionItem^.TickCount>=UserModeICMPIdleTimeoutTicks then begin
-     if length(fToClose)<=fToCloseCount then begin
-      if length(fToClose)=0 then begin
-       SetLength(fToClose,8);
-      end else begin
-       SetLength(fToClose,length(fToClose)*2);
-      end;
+  end;
+
+  // Clock half. The original condition was the else of "a whole header arrived", not
+  // of "anything arrived", and it is kept that way: a runt shorter than a header is
+  // still nothing useful and must not hold the session open.
+  if aAge and (ReceiveLength<UserModeICMPHeaderSize) then begin
+
+   inc(SessionItem^.TickCount,fUserModeTickDelta);
+   if SessionItem^.TickCount>=UserModeICMPIdleTimeoutTicks then begin
+    if length(fToClose)<=fToCloseCount then begin
+     if length(fToClose)=0 then begin
+      SetLength(fToClose,8);
+     end else begin
+      SetLength(fToClose,length(fToClose)*2);
      end;
-     fToClose[fToCloseCount]:=SessionIndex;
-     inc(fToCloseCount);
     end;
+    fToClose[fToCloseCount]:=SessionIndex;
+    inc(fToCloseCount);
+    SessionItem^.QueuedForClose:=true;
+   end;
+
+  end;
+
+ end;
+
+end;
+
+{$ifdef PasRISCVNATReadiness}
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceICMPReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PICMPSession;
+begin
+
+ SessionItem:=fICMPSessionArray[aSessionIndex];
+
+ if assigned(SessionItem) and SessionItem^.Active and (SessionItem^.ReadinessRound<>fICMPReadinessRound) then begin
+
+  SessionItem^.ReadinessRound:=fICMPReadinessRound;
+
+  ServiceICMPSession(aSessionIndex,true,false);
+
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ArmICMPReadiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PICMPSession;
+begin
+
+ SessionItem:=fICMPSessionArray[aSessionIndex];
+
+ SessionItem^.ReadinessTag:=(TPasRISCVUInt64(fICMPGenerations[aSessionIndex]) shl 32) or TPasRISCVUInt64(TPasRISCVUInt32(aSessionIndex));
+
+ if fICMPReadiness.Arm(SessionItem^.SocketFileDescriptor,SessionItem^.ReadinessTag,false) then begin
+  SessionItem^.ReadinessArmed:=true;
+ end else begin
+  SessionItem^.ReadinessArmed:=false;
+  inc(fICMPUnarmedCount);
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.DisarmICMPReadiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PICMPSession;
+begin
+
+ SessionItem:=fICMPSessionArray[aSessionIndex];
+
+ if SessionItem^.ReadinessArmed then begin
+  fICMPReadiness.Disarm(SessionItem^.SocketFileDescriptor);
+  SessionItem^.ReadinessArmed:=false;
+ end else if fICMPUnarmedCount>0 then begin
+  dec(fICMPUnarmedCount);
+ end;
+
+ inc(fICMPGenerations[aSessionIndex]);
+
+end;
+
+{$endif}
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.PollICMPSockets;
+var ActiveArrayIndex:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadiness}
+{$ifdef PasRISCVNATReadiness}
+    ReadyCount:TPasRISCVInt32;
+    EventIndex:TPasRISCVInt32;
+    EventSessionIndex:TPasRISCVInt32;
+    ReadinessEvent:TUserModeReadinessEvent;
+{$endif}
+{$endif}
+    CloseIndex:TPasRISCVInt32;
+begin
+
+ fToCloseCount:=0;
+
+{$ifdef PasRISCVNATReadiness}
+
+ inc(fICMPReadinessRound);
+ if fICMPReadinessRound=0 then begin
+  fICMPReadinessRound:=1;
+ end;
+
+ if fICMPUnarmedCount=0 then begin
+
+  ReadyCount:=fICMPReadiness.Wait(0);
+
+  for EventIndex:=0 to ReadyCount-1 do begin
+
+   ReadinessEvent:=fICMPReadiness.Event(EventIndex);
+
+   EventSessionIndex:=TPasRISCVInt32(TPasRISCVUInt32(ReadinessEvent.Tag and $ffffffff));
+
+   if (EventSessionIndex>=0) and
+      (EventSessionIndex<length(fICMPSessionArray)) and
+      (TPasRISCVUInt32(ReadinessEvent.Tag shr 32)=fICMPGenerations[EventSessionIndex]) then begin
+
+    ServiceICMPReadinessOnce(EventSessionIndex);
 
    end;
 
   end;
 
+ end else begin
+
+  for ActiveArrayIndex:=0 to fICMPActiveCount-1 do begin
+   ServiceICMPReadinessOnce(fICMPActiveIndices[ActiveArrayIndex]);
+  end;
+
+ end;
+
+{$else}
+
+ // No readiness set in this build: every session is asked in every round, the way the
+ // NAT did it before there was one. The two-pass split stays either way.
+ for ActiveArrayIndex:=0 to fICMPActiveCount-1 do begin
+  ServiceICMPSession(fICMPActiveIndices[ActiveArrayIndex],true,false);
+ end;
+
+{$endif}
+
+ for ActiveArrayIndex:=0 to fICMPActiveCount-1 do begin
+  ServiceICMPSession(fICMPActiveIndices[ActiveArrayIndex],false,true);
  end;
 
  for CloseIndex:=0 to fToCloseCount-1 do begin
@@ -33852,11 +34414,54 @@ begin
  fUDPActiveIndices[fUDPActiveCount]:=Index;
  inc(fUDPActiveCount);
 
+{$ifdef PasRISCVNATReadiness}
+ ArmUDPReadiness(Index);
+{$endif}
+
  fUDPSessions.Add(UDPKey,Index);
 
  result:=Index;
 
 end;
+
+{$ifdef PasRISCVNATReadiness}
+// The datagram twins of the TCP helpers. No write interest: a UDP session has no send
+// queue, so read interest is all it ever needs and Modify is never called.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ArmUDPReadiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PUDPSession;
+begin
+
+ SessionItem:=fUDPSessionArray[aSessionIndex];
+
+ SessionItem^.ReadinessTag:=(TPasRISCVUInt64(fUDPGenerations[aSessionIndex]) shl 32) or TPasRISCVUInt64(TPasRISCVUInt32(aSessionIndex));
+
+ if fUDPReadiness.Arm(SessionItem^.SocketFileDescriptor,SessionItem^.ReadinessTag,false) then begin
+  SessionItem^.ReadinessArmed:=true;
+ end else begin
+  SessionItem^.ReadinessArmed:=false;
+  inc(fUDPUnarmedCount);
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.DisarmUDPReadiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PUDPSession;
+begin
+
+ SessionItem:=fUDPSessionArray[aSessionIndex];
+
+ if SessionItem^.ReadinessArmed then begin
+  fUDPReadiness.Disarm(SessionItem^.SocketFileDescriptor);
+  SessionItem^.ReadinessArmed:=false;
+ end else if fUDPUnarmedCount>0 then begin
+  dec(fUDPUnarmedCount);
+ end;
+
+ inc(fUDPGenerations[aSessionIndex]);
+
+end;
+
+{$endif}
 
 procedure TPasRISCVEthernetDeviceUserModeNetworking.ForwardUDP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aUDPHeader:PUDPHeader;const aPayload:Pointer;const aPayloadSize:TPasRISCVSizeInt);
 const DNSProxyIP:TIPv4Address=($0a,$00,$02,$03);
@@ -34033,23 +34638,15 @@ begin
 
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.PollUDPSockets;
+// Same split as the TCP twins: aService does the half that needs the socket, aAge the
+// half that only moves counters. A datagram session has no send queue, so there is no
+// write interest to manage here - read interest is all it ever needs.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceUDPSession(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
 const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
       DNSProxyIP:TIPv4Address=($0a,$00,$02,$03);
 var SessionIndex:TPasRISCVInt32;
     SessionItem:PUDPSession;
     ReceiveLength:TPasRISCVSizeInt;
-    ActiveArrayIndex:TPasRISCVInt32;
-    ForwardIndex:TPasRISCVInt32;
-    InjectTotalSize:TPasRISCVSizeInt;
-    InjectEthernetHeader:PEthernetHeader;
-    InjectIPHeader:PIPv4Header;
-    InjectUDPHeader:PUDPHeader;
-    InjectSenderIPBytes:TIPv4Address;
-    PortForwardItem:PUserModePortForward;
-    CloseIndex:TPasRISCVInt32;
-    InjectSenderAddress:TRNLAddress;
-    InjectReceiveLength:TPasRISCVSizeInt;
     ResponseEthernet:PEthernetHeader;
     ResponseIP:PIPv4Header;
     ResponseUDP:PUDPHeader;
@@ -34061,15 +34658,15 @@ var SessionIndex:TPasRISCVInt32;
     UDPSocketError:TPasRISCVInt32;
 begin
 
- fToCloseCount:=0;
+ SessionIndex:=aSessionIndex;
 
- for ActiveArrayIndex:=0 to fUDPActiveCount-1 do begin
+ SessionItem:=fUDPSessionArray[SessionIndex];
 
-  SessionIndex:=fUDPActiveIndices[ActiveArrayIndex];
+ if SessionItem^.Active and not SessionItem^.QueuedForClose then begin
 
-  SessionItem:=fUDPSessionArray[SessionIndex];
+  ReceiveLength:=0;
 
-  if SessionItem^.Active then begin
+  if aService then begin
 
    // With IP_RECVERR the kernel records an incoming ICMP error in SO_ERROR, where
    // reading it also clears it. Only asked for when the option is on, and only a
@@ -34106,8 +34703,10 @@ begin
         CompareMem(@SessionItem^.OriginalDestinationIP,@fHostDNSIP,4) then begin
       // Allow
      end else begin
-      // Otherwise reject
-      continue;
+      // Otherwise reject. This was a "continue" while the code sat inside the session
+      // loop; per session in its own procedure the equivalent is leaving it, which
+      // skips the rest of this session exactly as the continue did.
+      exit;
      end;
     end;
 
@@ -34167,25 +34766,121 @@ begin
 
     SessionItem^.TickCount:=0;
 
-   end else begin
+   end;
 
-    inc(SessionItem^.TickCount,fUserModeTickDelta);
-    if SessionItem^.TickCount>=IfThen(SessionItem^.OriginalDestinationPort=53,UserModeUDPDNSIdleTimeoutTicks,UserModeUDPIdleTimeoutTicks) then begin
-     if length(fToClose)<=fToCloseCount then begin
-      if length(fToClose)=0 then begin
-       SetLength(fToClose,8);
-      end else begin
-       SetLength(fToClose,length(fToClose)*2);
-      end;
+  end;
+
+  // Clock half: the idle timeout, only when nothing arrived.
+  if aAge and (ReceiveLength=0) then begin
+
+   inc(SessionItem^.TickCount,fUserModeTickDelta);
+   if SessionItem^.TickCount>=IfThen(SessionItem^.OriginalDestinationPort=53,UserModeUDPDNSIdleTimeoutTicks,UserModeUDPIdleTimeoutTicks) then begin
+    if length(fToClose)<=fToCloseCount then begin
+     if length(fToClose)=0 then begin
+      SetLength(fToClose,8);
+     end else begin
+      SetLength(fToClose,length(fToClose)*2);
      end;
-     fToClose[fToCloseCount]:=SessionIndex;
-     inc(fToCloseCount);
     end;
+    fToClose[fToCloseCount]:=SessionIndex;
+    inc(fToCloseCount);
+    SessionItem^.QueuedForClose:=true;
+   end;
+
+  end;
+
+ end;
+
+end;
+
+{$ifdef PasRISCVNATReadiness}
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceUDPReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PUDPSession;
+begin
+
+ SessionItem:=fUDPSessionArray[aSessionIndex];
+
+ if assigned(SessionItem) and SessionItem^.Active and (SessionItem^.ReadinessRound<>fUDPReadinessRound) then begin
+
+  SessionItem^.ReadinessRound:=fUDPReadinessRound;
+
+  ServiceUDPSession(aSessionIndex,true,false);
+
+ end;
+
+end;
+
+{$endif}
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.PollUDPSockets;
+const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
+var ActiveArrayIndex:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadiness}
+    ReadyCount:TPasRISCVInt32;
+    EventIndex:TPasRISCVInt32;
+    EventSessionIndex:TPasRISCVInt32;
+    ReadinessEvent:TUserModeReadinessEvent;
+{$endif}
+    ForwardIndex:TPasRISCVInt32;
+    InjectTotalSize:TPasRISCVSizeInt;
+    InjectEthernetHeader:PEthernetHeader;
+    InjectIPHeader:PIPv4Header;
+    InjectUDPHeader:PUDPHeader;
+    InjectSenderIPBytes:TIPv4Address;
+    PortForwardItem:PUserModePortForward;
+    CloseIndex:TPasRISCVInt32;
+    InjectSenderAddress:TRNLAddress;
+    InjectReceiveLength:TPasRISCVSizeInt;
+begin
+
+ fToCloseCount:=0;
+
+{$ifdef PasRISCVNATReadiness}
+
+ inc(fUDPReadinessRound);
+ if fUDPReadinessRound=0 then begin
+  fUDPReadinessRound:=1;
+ end;
+
+ if fUDPUnarmedCount=0 then begin
+
+  ReadyCount:=fUDPReadiness.Wait(0);
+
+  for EventIndex:=0 to ReadyCount-1 do begin
+
+   ReadinessEvent:=fUDPReadiness.Event(EventIndex);
+
+   EventSessionIndex:=TPasRISCVInt32(TPasRISCVUInt32(ReadinessEvent.Tag and $ffffffff));
+
+   if (EventSessionIndex>=0) and
+      (EventSessionIndex<length(fUDPSessionArray)) and
+      (TPasRISCVUInt32(ReadinessEvent.Tag shr 32)=fUDPGenerations[EventSessionIndex]) then begin
+
+    ServiceUDPReadinessOnce(EventSessionIndex);
 
    end;
 
   end;
 
+ end else begin
+
+  for ActiveArrayIndex:=0 to fUDPActiveCount-1 do begin
+   ServiceUDPReadinessOnce(fUDPActiveIndices[ActiveArrayIndex]);
+  end;
+
+ end;
+
+{$else}
+
+ // No readiness set in this build: every session asked in every round.
+ for ActiveArrayIndex:=0 to fUDPActiveCount-1 do begin
+  ServiceUDPSession(fUDPActiveIndices[ActiveArrayIndex],true,false);
+ end;
+
+{$endif}
+
+ for ActiveArrayIndex:=0 to fUDPActiveCount-1 do begin
+  ServiceUDPSession(fUDPActiveIndices[ActiveArrayIndex],false,true);
  end;
 
  for CloseIndex:=0 to fToCloseCount-1 do begin
@@ -34267,10 +34962,340 @@ end;
 // paid for a copy of the whole backlog. A ring cannot simply be reallocated either,
 // because the wrap point moves - so the two pieces are laid down flat in the new
 // block and the head goes back to zero.
+{$ifdef PasRISCVNATReadinessEpoll}
+// Not declared by FPC's linux unit, so spelled out here. Peer closed its writing end -
+// worth having, because it distinguishes an orderly shutdown from an error.
+const EPOLLRDHUP=$2000;
+{$endif}
+
+{$ifdef PasRISCVNATReadinessWSAPoll}
+const UserModeWinPollIn=$0300;    // POLLRDNORM or POLLRDBAND
+      UserModeWinPollOut=$0010;   // POLLWRNORM
+      UserModeWinPollErr=$0001;
+      UserModeWinPollHup=$0002;
+      UserModeWinPollNval=$0004;
+var UserModeWSAPollProc:TUserModeWSAPoll=nil;
+    UserModeWSAPollResolved:Boolean=false;
+
+function UserModeResolveWSAPoll:Boolean;
+var LibraryHandle:THandle;
+begin
+ if not UserModeWSAPollResolved then begin
+  UserModeWSAPollResolved:=true;
+  LibraryHandle:=LoadLibrary('ws2_32.dll');
+  if LibraryHandle<>0 then begin
+   UserModeWSAPollProc:=TUserModeWSAPoll(GetProcAddress(LibraryHandle,'WSAPoll'));
+  end;
+ end;
+ result:=assigned(UserModeWSAPollProc);
+end;
+{$endif}
+
+{$ifdef PasRISCVNATReadiness}
+
+class function TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.BackendName:string;
+begin
+{$if defined(PasRISCVNATReadinessEpoll)}
+ result:='epoll';
+{$elseif defined(PasRISCVNATReadinessWSAPoll)}
+ result:='WSAPoll';
+{$elseif defined(PasRISCVNATReadinessPoll)}
+ result:='poll';
+{$else}
+ // Unreachable as long as the selection block above assigns one; kept so that a
+ // future target added there without a name here says so instead of lying.
+ result:='(unbekannt)';
+{$ifend}
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Initialize(const aMaxEvents:TPasRISCVInt32);
+begin
+ fCapacity:=aMaxEvents;
+ if fCapacity<16 then begin
+  fCapacity:=16;
+ end;
+ fEventCount:=0;
+ SetLength(fEvents,fCapacity);
+{$ifdef PasRISCVNATReadinessEpoll}
+ SetLength(fRawEvents,fCapacity);
+ fEpollHandle:=epoll_create(fCapacity);
+{$endif}
+{$ifdef PasRISCVNATReadinessArray}
+ fCount:=0;
+ SetLength(fPollFDs,0);
+ SetLength(fTags,0);
+{$endif}
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Finalize;
+begin
+{$ifdef PasRISCVNATReadinessEpoll}
+ if fEpollHandle>=0 then begin
+  fpclose(fEpollHandle);
+  fEpollHandle:=-1;
+ end;
+ SetLength(fRawEvents,0);
+{$endif}
+{$ifdef PasRISCVNATReadinessArray}
+ SetLength(fPollFDs,0);
+ SetLength(fTags,0);
+ fCount:=0;
+{$endif}
+ SetLength(fEvents,0);
+ fEventCount:=0;
+end;
+
+// Whether this build has a working readiness mechanism at all. On Windows before
+// Vista it has not, and the caller keeps its old per-descriptor scan.
+function TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Available:Boolean;
+begin
+{$ifdef PasRISCVNATReadinessEpoll}
+ result:=fEpollHandle>=0;
+{$endif}
+{$ifdef PasRISCVNATReadinessWSAPoll}
+ result:=UserModeResolveWSAPoll;
+{$endif}
+{$ifdef PasRISCVNATReadinessPoll}
+ result:=true;
+{$endif}
+end;
+
+function TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Arm(const aSocket:TRNLSocket;const aTag:TPasRISCVUInt64;const aWantWrite:Boolean):Boolean;
+{$ifdef PasRISCVNATReadinessEpoll}
+var Event:EPoll_Event;
+begin
+ if fEpollHandle<0 then begin
+  result:=false;
+  exit;
+ end;
+ FillChar(Event,SizeOf(EPoll_Event),#0);
+ Event.Events:=EPOLLIN or EPOLLRDHUP or EPOLLERR or EPOLLHUP;
+ if aWantWrite then begin
+  Event.Events:=Event.Events or EPOLLOUT;
+ end;
+ Event.Data.u64:=aTag;
+ result:=epoll_ctl(fEpollHandle,EPOLL_CTL_ADD,TPasRISCVInt32(aSocket),@Event)=0;
+end;
+{$else}
+begin
+ if fCount>=length(fPollFDs) then begin
+  SetLength(fPollFDs,(fCount+1)*2);
+  SetLength(fTags,length(fPollFDs));
+ end;
+{$ifdef PasRISCVNATReadinessWSAPoll}
+ fPollFDs[fCount].Socket:=TPasRISCVPtrUInt(aSocket);
+ fPollFDs[fCount].Events:=UserModeWinPollIn;
+ if aWantWrite then begin
+  fPollFDs[fCount].Events:=fPollFDs[fCount].Events or UserModeWinPollOut;
+ end;
+ fPollFDs[fCount].ReturnedEvents:=0;
+{$else}
+ fPollFDs[fCount].fd:=aSocket;
+ fPollFDs[fCount].events:=POLLIN or POLLERR or POLLHUP;
+ if aWantWrite then begin
+  fPollFDs[fCount].events:=fPollFDs[fCount].events or POLLOUT;
+ end;
+ fPollFDs[fCount].revents:=0;
+{$endif}
+ fTags[fCount]:=aTag;
+ inc(fCount);
+ result:=true;
+end;
+{$endif}
+
+function TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Modify(const aSocket:TRNLSocket;const aTag:TPasRISCVUInt64;const aWantWrite:Boolean):Boolean;
+{$ifdef PasRISCVNATReadinessEpoll}
+var Event:EPoll_Event;
+begin
+ if fEpollHandle<0 then begin
+  result:=false;
+  exit;
+ end;
+ FillChar(Event,SizeOf(EPoll_Event),#0);
+ Event.Events:=EPOLLIN or EPOLLRDHUP or EPOLLERR or EPOLLHUP;
+ if aWantWrite then begin
+  Event.Events:=Event.Events or EPOLLOUT;
+ end;
+ Event.Data.u64:=aTag;
+ result:=epoll_ctl(fEpollHandle,EPOLL_CTL_MOD,TPasRISCVInt32(aSocket),@Event)=0;
+end;
+{$else}
+var Index:TPasRISCVInt32;
+begin
+ result:=false;
+ for Index:=0 to fCount-1 do begin
+{$ifdef PasRISCVNATReadinessWSAPoll}
+  if fPollFDs[Index].Socket=TPasRISCVPtrUInt(aSocket) then begin
+   fPollFDs[Index].Events:=UserModeWinPollIn;
+   if aWantWrite then begin
+    fPollFDs[Index].Events:=fPollFDs[Index].Events or UserModeWinPollOut;
+   end;
+{$else}
+  if fPollFDs[Index].fd=aSocket then begin
+   fPollFDs[Index].events:=POLLIN or POLLERR or POLLHUP;
+   if aWantWrite then begin
+    fPollFDs[Index].events:=fPollFDs[Index].events or POLLOUT;
+   end;
+{$endif}
+   fTags[Index]:=aTag;
+   result:=true;
+   exit;
+  end;
+ end;
+end;
+{$endif}
+
+function TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Disarm(const aSocket:TRNLSocket):Boolean;
+{$ifdef PasRISCVNATReadinessEpoll}
+var Event:EPoll_Event;
+begin
+ if fEpollHandle<0 then begin
+  result:=false;
+  exit;
+ end;
+ FillChar(Event,SizeOf(EPoll_Event),#0);
+ result:=epoll_ctl(fEpollHandle,EPOLL_CTL_DEL,TPasRISCVInt32(aSocket),@Event)=0;
+end;
+{$else}
+var Index:TPasRISCVInt32;
+begin
+ result:=false;
+ for Index:=0 to fCount-1 do begin
+{$ifdef PasRISCVNATReadinessWSAPoll}
+  if fPollFDs[Index].Socket=TPasRISCVPtrUInt(aSocket) then begin
+{$else}
+  if fPollFDs[Index].fd=aSocket then begin
+{$endif}
+   // Swap with the last one rather than shifting the rest along
+   if Index<(fCount-1) then begin
+    fPollFDs[Index]:=fPollFDs[fCount-1];
+    fTags[Index]:=fTags[fCount-1];
+   end;
+   dec(fCount);
+   result:=true;
+   exit;
+  end;
+ end;
+end;
+{$endif}
+
+function TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Wait(const aTimeoutMilliseconds:TPasRISCVInt32):TPasRISCVInt32;
+var Index,Count:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadinessArray}
+    Returned:TPasRISCVInt16;
+{$endif}
+begin
+
+ fEventCount:=0;
+
+{$ifdef PasRISCVNATReadinessEpoll}
+
+ if fEpollHandle<0 then begin
+  result:=0;
+  exit;
+ end;
+
+ Count:=epoll_wait(fEpollHandle,@fRawEvents[0],fCapacity,aTimeoutMilliseconds);
+ if Count<0 then begin
+  result:=0;
+  exit;
+ end;
+
+ for Index:=0 to Count-1 do begin
+  fEvents[Index].Tag:=fRawEvents[Index].Data.u64;
+  fEvents[Index].Readable:=(fRawEvents[Index].Events and EPOLLIN)<>0;
+  fEvents[Index].Writable:=(fRawEvents[Index].Events and EPOLLOUT)<>0;
+  fEvents[Index].Failed:=(fRawEvents[Index].Events and (EPOLLERR or EPOLLHUP))<>0;
+ end;
+ fEventCount:=Count;
+
+{$else}
+
+ if fCount<=0 then begin
+  result:=0;
+  exit;
+ end;
+
+{$ifdef PasRISCVNATReadinessWSAPoll}
+ if not UserModeResolveWSAPoll then begin
+  result:=0;
+  exit;
+ end;
+ Count:=UserModeWSAPollProc(@fPollFDs[0],TPasRISCVUInt32(fCount),aTimeoutMilliseconds);
+{$else}
+ Count:=FpPoll(@fPollFDs[0],fCount,aTimeoutMilliseconds);
+{$endif}
+
+ if Count<=0 then begin
+  result:=0;
+  exit;
+ end;
+
+ for Index:=0 to fCount-1 do begin
+{$ifdef PasRISCVNATReadinessWSAPoll}
+  Returned:=fPollFDs[Index].ReturnedEvents;
+  fPollFDs[Index].ReturnedEvents:=0;
+{$else}
+  Returned:=fPollFDs[Index].revents;
+  fPollFDs[Index].revents:=0;
+{$endif}
+  if Returned=0 then begin
+   continue;
+  end;
+  if fEventCount>=fCapacity then begin
+   break;
+  end;
+  fEvents[fEventCount].Tag:=fTags[Index];
+{$ifdef PasRISCVNATReadinessWSAPoll}
+  fEvents[fEventCount].Readable:=(Returned and UserModeWinPollIn)<>0;
+  fEvents[fEventCount].Writable:=(Returned and UserModeWinPollOut)<>0;
+  fEvents[fEventCount].Failed:=(Returned and (UserModeWinPollErr or UserModeWinPollHup or UserModeWinPollNval))<>0;
+{$else}
+  fEvents[fEventCount].Readable:=(Returned and POLLIN)<>0;
+  fEvents[fEventCount].Writable:=(Returned and POLLOUT)<>0;
+  fEvents[fEventCount].Failed:=(Returned and (POLLERR or POLLHUP or POLLNVAL))<>0;
+{$endif}
+  inc(fEventCount);
+ end;
+
+{$endif}
+
+ result:=fEventCount;
+
+end;
+
+function TPasRISCVEthernetDeviceUserModeNetworking.TUserModeReadinessSet.Event(const aIndex:TPasRISCVInt32):TUserModeReadinessEvent;
+begin
+ if (aIndex>=0) and (aIndex<fEventCount) then begin
+  result:=fEvents[aIndex];
+ end else begin
+  FillChar(result,SizeOf(TUserModeReadinessEvent),#0);
+ end;
+end;
+
+{$endif}
+
 class procedure TPasRISCVEthernetDeviceUserModeNetworking.RetransmitBufferReserve(var aData:Pointer;var aCapacity,aHead:TPasRISCVSizeInt;const aSize,aNeeded:TPasRISCVSizeInt);
 var NewCapacity,FirstPart:TPasRISCVSizeInt;
     NewData:Pointer;
 begin
+
+ // Nothing may ask for more than one receive buffer at a time, and none of the three
+ // ring numbers can legitimately be negative. A request past that is not a large
+ // transfer, it is a corrupt length - and the doubling loop below would turn it into
+ // a GetMem of many gigabytes, which is exactly how this surfaced: a capacity of 2^37
+ // written into the session, followed by a Move with a nonsense count. Refusing here
+ // keeps the ring intact and says so, instead of taking the caller's word for it.
+ if (aNeeded<0) or (aNeeded>UserModeTCPReserveMaximumRequest) or (aSize<0) or (aCapacity<0) then begin
+{$ifdef PasRISCVDiagnostics}
+  ReportLine('[PasRISCV] ring buffer: nonsensical request refused -'+
+             ' aNeeded='+IntToStr(aNeeded)+
+             ' aSize='+IntToStr(aSize)+
+             ' aCapacity='+IntToStr(aCapacity)+
+             ' aHead='+IntToStr(aHead));
+{$endif}
+  exit;
+ end;
 
  if (aSize+aNeeded)<=aCapacity then begin
   exit;
@@ -34580,6 +35605,13 @@ begin
  end;
  Move(aData^,aTCPSession^.PendingData^[aTCPSession^.PendingSize],aSize);
  inc(aTCPSession^.PendingSize,aSize);
+ // Something is now waiting for the host socket, so this session has to hear about
+ // when that socket will take it. Without the write interest it would only ever be
+ // visited when the host had something to say, and data the guest handed over could
+{$ifdef PasRISCVNATReadiness}
+ // sit here unsent for as long as the far side stayed quiet.
+ UpdateTCPReadinessWrite(aTCPSession,true);
+{$endif}
  result:=true;
 end;
 
@@ -34610,6 +35642,11 @@ begin
  end;
  Move(aData^,aTCPv6Session^.PendingData^[aTCPv6Session^.PendingSize],aSize);
  inc(aTCPv6Session^.PendingSize,aSize);
+ // Something is now waiting for the host socket, so this session has to hear about
+ // when that socket will take it.
+{$ifdef PasRISCVNATReadiness}
+ UpdateTCPv6ReadinessWrite(aTCPv6Session,true);
+{$endif}
  result:=true;
 end;
 
@@ -34779,6 +35816,13 @@ begin
   SendTCPToGuest(aSessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
  end;
 
+ // Before the descriptor goes, not after: closing it drops it from an epoll set on its
+ // own, but the array backends keep their own list and would be left holding a number
+ // that the next connection is about to be given.
+{$ifdef PasRISCVNATReadiness}
+ DisarmTCPReadiness(aSessionIndex);
+{$endif}
+
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(TCPSession^.SocketFileDescriptor);
 {$else}
@@ -34817,6 +35861,81 @@ begin
  FillChar(TCPSession^,SizeOf(TTCPSession),#0);
 
 end;
+
+{$ifdef PasRISCVNATReadiness}
+// Puts a session into the readiness set and remembers, in the tag, both which slot it
+// is and how often that slot has been reused.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ArmTCPReadiness(const aSessionIndex:TPasRISCVInt32;const aWantWrite:Boolean);
+var TCPSession:PTCPSession;
+begin
+
+ TCPSession:=fTCPSessionArray[aSessionIndex];
+
+ TCPSession^.ReadinessTag:=(TPasRISCVUInt64(fTCPGenerations[aSessionIndex]) shl 32) or TPasRISCVUInt64(TPasRISCVUInt32(aSessionIndex));
+ TCPSession^.ReadinessWantWrite:=aWantWrite;
+
+ if fTCPReadiness.Arm(TCPSession^.SocketFileDescriptor,TCPSession^.ReadinessTag,aWantWrite) then begin
+
+  TCPSession^.ReadinessArmed:=true;
+
+ end else begin
+
+  // Nothing will report this socket, so it must not be left to the event list. One
+  // such session is enough to put the whole pass back on the full scan - that is the
+  // slow answer, but the alternative is a connection that simply never gets served.
+  TCPSession^.ReadinessArmed:=false;
+  inc(fTCPUnarmedCount);
+
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.DisarmTCPReadiness(const aSessionIndex:TPasRISCVInt32);
+var TCPSession:PTCPSession;
+begin
+
+ TCPSession:=fTCPSessionArray[aSessionIndex];
+
+ if TCPSession^.ReadinessArmed then begin
+  fTCPReadiness.Disarm(TCPSession^.SocketFileDescriptor);
+  TCPSession^.ReadinessArmed:=false;
+ end else if fTCPUnarmedCount>0 then begin
+  dec(fTCPUnarmedCount);
+ end;
+
+ // The slot may be handed to a new connection immediately. Moving the generation on
+ // here is what makes any event still in flight for the old one recognisably stale.
+ inc(fTCPGenerations[aSessionIndex]);
+
+end;
+
+// Write interest costs a syscall to change, so it is only changed when it actually
+// differs from what is registered. Read interest is always on.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.UpdateTCPReadinessWrite(const aTCPSession:PTCPSession;const aWantWrite:Boolean);
+begin
+
+ if aTCPSession^.ReadinessArmed and (aTCPSession^.ReadinessWantWrite<>aWantWrite) then begin
+
+  if fTCPReadiness.Modify(aTCPSession^.SocketFileDescriptor,aTCPSession^.ReadinessTag,aWantWrite) then begin
+
+   aTCPSession^.ReadinessWantWrite:=aWantWrite;
+
+  end else begin
+
+   // The registered interest no longer matches what this session needs and cannot be
+   // corrected, so it stops being trustworthy as an event source - same fallback as a
+   // failed arm rather than a session that quietly stops sending.
+   fTCPReadiness.Disarm(aTCPSession^.SocketFileDescriptor);
+   aTCPSession^.ReadinessArmed:=false;
+   inc(fTCPUnarmedCount);
+
+  end;
+
+ end;
+
+end;
+
+{$endif}
 
 function TPasRISCVEthernetDeviceUserModeNetworking.FindUDPPortForwardPeer(const aPortForwardIndex:TPasRISCVInt32;const aRemoteIP:TPasRISCVUInt32;const aRemotePort:TPasRISCVUInt16):TPasRISCVInt32;
 var PortForward:PUserModePortForward;
@@ -35297,7 +36416,16 @@ begin
 
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.PollTCPSockets;
+// One session, and the two halves of what happens to it are now separable. aService is
+// the part that depends on the host socket being ready - the connect completion, the
+// flush of pending guest data, the receive. aAge is everything driven by the clock -
+// idle and connect timeouts, retransmit RTO, keepalive, TIME_WAIT.
+//
+// Called with both true it behaves exactly as the single sweep always did. The point
+// of the split is that an epoll-driven loop wants them apart: aService only for the
+// sessions epoll_wait actually named, aAge once per tick for the whole table. Right
+// now the poll loop still asks for both, so nothing has changed in effect yet.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceTCPSession(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
 var SessionIndex:TPasRISCVInt32;
     TCPSession:PTCPSession;
     ReceiveLength:TPasRISCVSizeInt;
@@ -35305,112 +36433,96 @@ var SessionIndex:TPasRISCVInt32;
     RetransmitLimit:TPasRISCVSizeInt;
     SentBytes:TPasRISCVSizeInt;
     SavedSequence:TPasRISCVUInt32;
-    NewCapacity:TPasRISCVSizeInt;
     SessionClosed:Boolean;
-    CloseIndex:TPasRISCVInt32;
-    ActiveArrayIndex:TPasRISCVInt32;
-    ForwardIndex:TPasRISCVInt32;
-    NewSessionIndex:TPasRISCVInt32;
-    ExtraIndex:TPasRISCVInt32;
-    EvictionIndex:TPasRISCVInt32;
     // Gathering point for one retransmitted chunk, which may straddle the wrap of
     // the ring and therefore cannot be handed on as a pointer into it
     RetransmitChunk:array[0..UserModeTCPMaxDataPayload-1] of TPasRISCVUInt8;
-    NewTCPSession:PTCPSession;
-    AcceptPeerIPAddressBytes:TIPv4Address;
-    NewTCPKey:TUserModeTCPKey;
-    PortForwardItem:PUserModePortForward;
     ChunkOffset:TPasRISCVSizeInt;
     ChunkSize:TPasRISCVSizeInt;
     MaxChunkSize:TPasRISCVSizeInt;
     WriteSet:TRNLSocketSet;
     ErrorSet:TRNLSocketSet;
     SocketError:TRNLInt32;
-    AcceptReadSet:TRNLSocketSet;
-    AcceptAddress:TRNLAddress;
-    AcceptedSocket:TRNLSocket;
 begin
 
- fToCloseCount:=0;
+ SessionIndex:=aSessionIndex;
 
- for ActiveArrayIndex:=0 to fTCPActiveCount-1 do begin
+ TCPSession:=fTCPSessionArray[SessionIndex];
 
-  SessionIndex:=fTCPActiveIndices[ActiveArrayIndex];
+ // Queued for closing earlier in this same round - the close itself is deferred to
+ // the end, so Active is still set, but there is nothing left to do with it and
+ // doing it twice would put it on the close list twice.
+ if TCPSession^.Active and not TCPSession^.QueuedForClose then begin
 
-  TCPSession:=fTCPSessionArray[SessionIndex];
+  SessionClosed:=false;
 
-  if TCPSession^.Active then begin
+  case TCPSession^.State of
 
-   SessionClosed:=false;
+   UserModeTCPStateConnecting:begin
 
-   case TCPSession^.State of
-
-    UserModeTCPStateConnecting:begin
-
-{$ifdef PasRISCVUseRNLNetworkInstance}if TCPSession^.SocketFileDescriptor<FD_SETSIZE then{$endif}begin
+    // Readiness half: has the host side finished connecting? This is the one an
+    // epoll set would report as EPOLLOUT.
+    if aService {$ifdef PasRISCVUseRNLNetworkInstance}and (TCPSession^.SocketFileDescriptor<FD_SETSIZE){$endif}then begin
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
 
-      WriteSet:=TRNLSocketSet.Empty;
-      WriteSet.Add(TCPSession^.SocketFileDescriptor);
+     WriteSet:=TRNLSocketSet.Empty;
+     WriteSet.Add(TCPSession^.SocketFileDescriptor);
 
-      ErrorSet:=TRNLSocketSet.Empty;
-      ErrorSet.Add(TCPSession^.SocketFileDescriptor);
+     ErrorSet:=TRNLSocketSet.Empty;
+     ErrorSet.Add(TCPSession^.SocketFileDescriptor);
 
 {$endif}
 
-      // poll, not select: with one host socket per session the descriptors run past
-      // FD_SETSIZE after roughly a thousand connections, and select cannot see those
-      // at all - the connect would never be noticed as completed and the session would
-      // die on its connect timeout while the host side was long since established.
-      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPSession^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketPollWriteError(TCPSession^.SocketFileDescriptor,0)>0{$endif} then begin
+     // poll, not select: with one host socket per session the descriptors run past
+     // FD_SETSIZE after roughly a thousand connections, and select cannot see those
+     // at all - the connect would never be noticed as completed and the session would
+     // die on its connect timeout while the host side was long since established.
+     if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPSession^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketPollWriteError(TCPSession^.SocketFileDescriptor,0)>0{$endif} then begin
 
-       SocketError:=0;
+      SocketError:=0;
 
-       if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketGetOption(TCPSession^.SocketFileDescriptor,RNL_SOCKET_OPTION_ERROR,SocketError){$else}RNLSocketGetError(TCPSession^.SocketFileDescriptor,SocketError){$endif} and (SocketError=0) then begin
+      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketGetOption(TCPSession^.SocketFileDescriptor,RNL_SOCKET_OPTION_ERROR,SocketError){$else}RNLSocketGetError(TCPSession^.SocketFileDescriptor,SocketError){$endif} and (SocketError=0) then begin
 
-        SendTCPToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
+       SendTCPToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
 
-        inc(TCPSession^.ServerSeq);
+       inc(TCPSession^.ServerSeq);
 
-        // The SYN consumes a sequence number of its own and is not held in the
-        // retransmit buffer, so the base has to move with it. Without this the
-        // base stays one behind for the whole connection and every retransmission
-        // goes out shifted by one byte, which the guest silently discards. The
-        // transfer then stalls the first time a segment needs repeating.
-        TCPSession^.RetransmitSeqBase:=TCPSession^.ServerSeq;
+       // The SYN consumes a sequence number of its own and is not held in the
+       // retransmit buffer, so the base has to move with it. Without this the
+       // base stays one behind for the whole connection and every retransmission
+       // goes out shifted by one byte, which the guest silently discards. The
+       // transfer then stalls the first time a segment needs repeating.
+       TCPSession^.RetransmitSeqBase:=TCPSession^.ServerSeq;
 
-        TCPSession^.State:=UserModeTCPStateSynAckSent;
-        TCPSession^.SynFinRetransmitCount:=0;
-        TCPSession^.RTO:=UserModeTCPInitialRTO;
-        TCPSession^.RTTSentTick:=fUserModeTickCount;
+       TCPSession^.State:=UserModeTCPStateSynAckSent;
+       TCPSession^.SynFinRetransmitCount:=0;
+       TCPSession^.RTO:=UserModeTCPInitialRTO;
+       TCPSession^.RTTSentTick:=fUserModeTickCount;
 
-       end else begin
+       // The connect is done, so writability is no longer interesting in itself - it
+       // would otherwise be announced on every round for the rest of the connection.
+       // Unless the guest handed over data while the connect was still pending, which
+       // is exactly what write interest is for from here on.
+{$ifdef PasRISCVNATReadiness}
+       UpdateTCPReadinessWrite(TCPSession,TCPSession^.PendingSize>0);
+{$endif}
 
-        SessionClosed:=true;
+      end else begin
 
-        if Length(fToClose)<=fToCloseCount then begin
-         if Length(fToClose)=0 then begin
-          SetLength(fToClose,8);
-         end else begin
-          SetLength(fToClose,Length(fToClose)*2);
-         end;
-        end;
+       // The host said no - almost always a refused port. Tell the guest, otherwise
+       // it sits there repeating SYNs until its own timeout: the session is torn down
+       // silently here, and CloseTCPSession deliberately suppresses the reset while
+       // the state is still Connecting, so nothing would ever reach the guest.
+       //
+       // RFC 793: the guest's SYN carries no ACK, so the reset takes sequence number
+       // zero and acknowledges the SYN. ServerAck already holds the guest's sequence
+       // number plus one from when the session was created.
+       TCPSession^.ServerSeq:=0;
+       SendTCPToGuest(SessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
 
-        fToClose[fToCloseCount]:=SessionIndex;
-        inc(fToCloseCount);
+       SessionClosed:=true;
 
-       end;
-
-      end;
-
-{    end else begin
-      inc(TCPSession^.TickCount,fUserModeTickDelta);}
-     end;
-
-     if (not SessionClosed) and (TCPSession^.State=UserModeTCPStateConnecting) then begin
-      inc(TCPSession^.TickCount,fUserModeTickDelta);
-      if TCPSession^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
        if Length(fToClose)<=fToCloseCount then begin
         if Length(fToClose)=0 then begin
          SetLength(fToClose,8);
@@ -35418,23 +36530,23 @@ begin
          SetLength(fToClose,Length(fToClose)*2);
         end;
        end;
+
        fToClose[fToCloseCount]:=SessionIndex;
        inc(fToCloseCount);
+
       end;
+
      end;
 
+{   end else begin
+     inc(TCPSession^.TickCount,fUserModeTickDelta);}
     end;
 
-    UserModeTCPStateSynAckSent,UserModeTCPStateEstablished,UserModeTCPStateGuestFinSent,UserModeTCPStateCloseWait:begin
-
-     inc(TCPSession^.IdleTickCount,fUserModeTickDelta);
-     if (((TCPSession^.State=UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=UserModeTCPConnectTimeoutTicks)) or
-         ((TCPSession^.State<>UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks))) then begin
-
-      // The guest still thinks this connection exists. Tearing it down without a
-      // word leaves it hanging until its own timeout, so send a reset first.
-      SendTCPToGuest(SessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
-
+    // Clock half: the connect timeout. Deliberately after the readiness check, so a
+    // connect that completed in this very round is not killed by its own timeout.
+    if aAge and (not SessionClosed) and (TCPSession^.State=UserModeTCPStateConnecting) then begin
+     inc(TCPSession^.TickCount,fUserModeTickDelta);
+     if TCPSession^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
       if Length(fToClose)<=fToCloseCount then begin
        if Length(fToClose)=0 then begin
         SetLength(fToClose,8);
@@ -35444,9 +36556,46 @@ begin
       end;
       fToClose[fToCloseCount]:=SessionIndex;
       inc(fToCloseCount);
+      // The one close path that did not raise this. It made no difference while
+      // everything happened in a single call, but the two passes go by this flag.
       SessionClosed:=true;
+     end;
+    end;
 
-     end else begin
+   end;
+
+   UserModeTCPStateSynAckSent,UserModeTCPStateEstablished,UserModeTCPStateGuestFinSent,UserModeTCPStateCloseWait:begin
+
+    if aAge then begin
+     inc(TCPSession^.IdleTickCount,fUserModeTickDelta);
+    end;
+    if aAge and
+       ((((TCPSession^.State=UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=UserModeTCPConnectTimeoutTicks)) or
+         ((TCPSession^.State<>UserModeTCPStateSynAckSent) and (TCPSession^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks)))) then begin
+
+     // The guest still thinks this connection exists. Tearing it down without a
+     // word leaves it hanging until its own timeout, so send a reset first.
+     SendTCPToGuest(SessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
+
+     if Length(fToClose)<=fToCloseCount then begin
+      if Length(fToClose)=0 then begin
+       SetLength(fToClose,8);
+      end else begin
+       SetLength(fToClose,Length(fToClose)*2);
+      end;
+     end;
+     fToClose[fToCloseCount]:=SessionIndex;
+     inc(fToCloseCount);
+     SessionClosed:=true;
+
+    end else begin
+
+     // Readiness half. When it is skipped, ReceiveLength stays zero, which is exactly
+     // the "nothing arrived" case the clock half below already keys on - so the two
+     // separate without moving a line of the retransmit and keepalive logic.
+     ReceiveLength:=0;
+
+     if aService then begin
 
       if (TCPSession^.PendingSize>0) and
          (TCPSession^.State<>UserModeTCPStateCloseWait) and
@@ -35463,6 +36612,13 @@ begin
          Move(TCPSession^.PendingData^[SentBytes],TCPSession^.PendingData^[0],TCPSession^.PendingSize-SentBytes);
         end;
         dec(TCPSession^.PendingSize,SentBytes);
+        // Drained. Asking to be told about writability again would mean being handed
+        // this session on every single round, since an idle socket is always writable.
+        if TCPSession^.PendingSize=0 then begin
+{$ifdef PasRISCVNATReadiness}
+         UpdateTCPReadinessWrite(TCPSession,false);
+{$endif}
+        end;
         TCPSession^.IdleTickCount:=0;
         // The window we last announced was shut and there is room again now, so tell
         // the guest - otherwise it sits in its persist timer waiting for space it has
@@ -35482,15 +36638,20 @@ begin
       // data loss on retransmit and break SSL/TLS streams).
       // Also honor GuestWindowSize so we don't flood the guest beyond what it
       // advertises (avoids guest-side TCP packet storms / 100% CPU).
+      // ReceiveLength is already zero from the top of this block and is deliberately
+      // NOT assigned again in the two branches below. Assigning it there let the
+      // compiler materialise the zero with a conditional move from a register it had
+      // cleared BEFORE the SendTCPToGuest call above - and rcx/r8 are caller-saved,
+      // so the zero did not survive that call. Whenever back-pressure actually bit,
+      // ReceiveLength took the leftovers of the call instead, a pointer-shaped value,
+      // and the code walked into the ring buffer with it as a length. Leaving the
+      // assignments out removes the conditional moves; the branches only have to say
+      // that nothing may be read, and that is what ReceiveBudget:=0 says.
       if TCPSession^.RetransmitSize>=UserModeTCPRetransmitBufferMax then begin
-
-       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
       end else if TCPSession^.RetransmitSize>=TCPSession^.GuestWindowSize then begin
-
-       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
@@ -35576,109 +36737,114 @@ begin
 
        end;
 
-      end else begin
+      end;
 
-       inc(TCPSession^.TickCount,fUserModeTickDelta);
+     end;
 
-       if (TCPSession^.State=UserModeTCPStateSynAckSent) and (TCPSession^.TickCount>=TCPSession^.RTO) then begin
+     // Clock half: retransmit timer and keepalive, both only when nothing arrived -
+     // a receive resets the timer anyway, so this is the same condition as before,
+     // just no longer nested inside the receive dispatch.
+     if aAge and (ReceiveLength=0) and not SessionClosed then begin
 
-        TCPSession^.TickCount:=0;
+      inc(TCPSession^.TickCount,fUserModeTickDelta);
 
-        TCPSession^.RTO:=TCPSession^.RTO shl 1;
-        if TCPSession^.RTO>UserModeTCPMaxRTO then begin
-         TCPSession^.RTO:=UserModeTCPMaxRTO;
-        end;
+      if (TCPSession^.State=UserModeTCPStateSynAckSent) and (TCPSession^.TickCount>=TCPSession^.RTO) then begin
 
-        TCPSession^.RTTSentTick:=0;
+       TCPSession^.TickCount:=0;
 
-        inc(TCPSession^.SynFinRetransmitCount);
+       TCPSession^.RTO:=TCPSession^.RTO shl 1;
+       if TCPSession^.RTO>UserModeTCPMaxRTO then begin
+        TCPSession^.RTO:=UserModeTCPMaxRTO;
+       end;
 
-        if TCPSession^.SynFinRetransmitCount>=UserModeTCPSynFinMaxRetransmits then begin
+       TCPSession^.RTTSentTick:=0;
 
-         if Length(fToClose)<=fToCloseCount then begin
-          if Length(fToClose)=0 then begin
-           SetLength(fToClose,8);
-          end else begin
-           SetLength(fToClose,Length(fToClose)*2);
-          end;
+       inc(TCPSession^.SynFinRetransmitCount);
+
+       if TCPSession^.SynFinRetransmitCount>=UserModeTCPSynFinMaxRetransmits then begin
+
+        if Length(fToClose)<=fToCloseCount then begin
+         if Length(fToClose)=0 then begin
+          SetLength(fToClose,8);
+         end else begin
+          SetLength(fToClose,Length(fToClose)*2);
          end;
-         fToClose[fToCloseCount]:=SessionIndex;
-         inc(fToCloseCount);
-
-         SessionClosed:=true;
-
-        end else begin
-
-         SavedSequence:=TCPSession^.ServerSeq;
-         dec(TCPSession^.ServerSeq);
-         SendTCPToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
-         TCPSession^.ServerSeq:=SavedSequence;
-
         end;
+        fToClose[fToCloseCount]:=SessionIndex;
+        inc(fToCloseCount);
 
-       end else if (TCPSession^.RetransmitSize>0) and (TCPSession^.TickCount>=TCPSession^.RTO) then begin
+        SessionClosed:=true;
 
-        TCPSession^.RTO:=TCPSession^.RTO shl 1;
-        if TCPSession^.RTO>UserModeTCPMaxRTO then begin
-         TCPSession^.RTO:=UserModeTCPMaxRTO;
-        end;
-
-        TCPSession^.RTTSentTick:=0;
+       end else begin
 
         SavedSequence:=TCPSession^.ServerSeq;
-
-        TCPSession^.ServerSeq:=TCPSession^.RetransmitSeqBase;
-
-        ChunkOffset:=0;
-
-        // Bound retransmit by guest window to avoid flooding the guest stack.
-        RetransmitLimit:=TCPSession^.RetransmitSize;
-        if RetransmitLimit>TCPSession^.GuestWindowSize then begin
-         RetransmitLimit:=TCPSession^.GuestWindowSize;
-        end;
-
-        while ChunkOffset<RetransmitLimit do begin
-         ChunkSize:=RetransmitLimit-ChunkOffset;
-         MaxChunkSize:=UserModeTCPMaxDataPayload;
-         if TCPSession^.GuestTimestampEnabled then begin
-          dec(MaxChunkSize,12);
-         end;
-         if ChunkSize>MaxChunkSize then begin
-          ChunkSize:=MaxChunkSize;
-         end;
-         if (TCPSession^.GuestMSS>0) and (TPasRISCVSizeInt(TCPSession^.GuestMSS)<ChunkSize) then begin
-          ChunkSize:=TPasRISCVSizeInt(TCPSession^.GuestMSS);
-         end;
-         // The frame builder wants one contiguous run, and the ring may wrap in the
-         // middle of this chunk, so it is gathered here first
-         RetransmitBufferFetch(TCPSession^.RetransmitData,
-                               TCPSession^.RetransmitCapacity,
-                               TCPSession^.RetransmitHead,
-                               ChunkOffset,
-                               @RetransmitChunk[0],
-                               ChunkSize);
-         SendTCPToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,@RetransmitChunk[0],ChunkSize);
-         inc(TCPSession^.ServerSeq,ChunkSize);
-         inc(ChunkOffset,ChunkSize);
-        end;
-
+        dec(TCPSession^.ServerSeq);
+        SendTCPToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
         TCPSession^.ServerSeq:=SavedSequence;
-        TCPSession^.TickCount:=0;
-
-       end else if TCPSession^.TickCount>=UserModeTCPKeepaliveTicks then begin
-
-        SavedSequence:=TCPSession^.ServerSeq;
-        if SavedSequence>0 then begin
-         dec(SavedSequence);
-        end;
-
-        TCPSession^.ServerSeq:=SavedSequence;
-
-        SendTCPToGuest(SessionIndex,TCPFlagACK,nil,0);
-        inc(TCPSession^.ServerSeq);
-        TCPSession^.TickCount:=0;
 
        end;
+
+      end else if (TCPSession^.RetransmitSize>0) and (TCPSession^.TickCount>=TCPSession^.RTO) then begin
+
+       TCPSession^.RTO:=TCPSession^.RTO shl 1;
+       if TCPSession^.RTO>UserModeTCPMaxRTO then begin
+        TCPSession^.RTO:=UserModeTCPMaxRTO;
+       end;
+
+       TCPSession^.RTTSentTick:=0;
+
+       SavedSequence:=TCPSession^.ServerSeq;
+
+       TCPSession^.ServerSeq:=TCPSession^.RetransmitSeqBase;
+
+       ChunkOffset:=0;
+
+       // Bound retransmit by guest window to avoid flooding the guest stack.
+       RetransmitLimit:=TCPSession^.RetransmitSize;
+       if RetransmitLimit>TCPSession^.GuestWindowSize then begin
+        RetransmitLimit:=TCPSession^.GuestWindowSize;
+       end;
+
+       while ChunkOffset<RetransmitLimit do begin
+        ChunkSize:=RetransmitLimit-ChunkOffset;
+        MaxChunkSize:=UserModeTCPMaxDataPayload;
+        if TCPSession^.GuestTimestampEnabled then begin
+         dec(MaxChunkSize,12);
+        end;
+        if ChunkSize>MaxChunkSize then begin
+         ChunkSize:=MaxChunkSize;
+        end;
+        if (TCPSession^.GuestMSS>0) and (TPasRISCVSizeInt(TCPSession^.GuestMSS)<ChunkSize) then begin
+         ChunkSize:=TPasRISCVSizeInt(TCPSession^.GuestMSS);
+        end;
+        // The frame builder wants one contiguous run, and the ring may wrap in the
+        // middle of this chunk, so it is gathered here first
+        RetransmitBufferFetch(TCPSession^.RetransmitData,
+                              TCPSession^.RetransmitCapacity,
+                              TCPSession^.RetransmitHead,
+                              ChunkOffset,
+                              @RetransmitChunk[0],
+                              ChunkSize);
+        SendTCPToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,@RetransmitChunk[0],ChunkSize);
+        inc(TCPSession^.ServerSeq,ChunkSize);
+        inc(ChunkOffset,ChunkSize);
+       end;
+
+       TCPSession^.ServerSeq:=SavedSequence;
+       TCPSession^.TickCount:=0;
+
+      end else if TCPSession^.TickCount>=UserModeTCPKeepaliveTicks then begin
+
+       SavedSequence:=TCPSession^.ServerSeq;
+       if SavedSequence>0 then begin
+        dec(SavedSequence);
+       end;
+
+       TCPSession^.ServerSeq:=SavedSequence;
+
+       SendTCPToGuest(SessionIndex,TCPFlagACK,nil,0);
+       inc(TCPSession^.ServerSeq);
+       TCPSession^.TickCount:=0;
 
       end;
 
@@ -35686,7 +36852,12 @@ begin
 
     end;
 
-    UserModeTCPStateLastAck:begin
+   end;
+
+   UserModeTCPStateLastAck:begin
+    // Nothing here depends on the socket being ready - this state only waits
+    if aAge then begin
+
      inc(TCPSession^.TickCount,fUserModeTickDelta);
 
      if TCPSession^.TickCount>=TCPSession^.RTO then begin
@@ -35729,7 +36900,11 @@ begin
 
     end;
 
-    UserModeTCPStateInboundSynSent:begin
+   end;
+
+   UserModeTCPStateInboundSynSent:begin
+
+    if aAge then begin
 
      inc(TCPSession^.TickCount,fUserModeTickDelta);
 
@@ -35751,9 +36926,13 @@ begin
 
     end;
 
-    UserModeTCPStateFINWait1,UserModeTCPStateFINWait2,UserModeTCPStateClosing:begin
+   end;
 
-     // Half-close states after active close: only need idle timeout.
+   UserModeTCPStateFINWait1,UserModeTCPStateFINWait2,UserModeTCPStateClosing:begin
+
+    // Half-close states after active close: only need idle timeout.
+
+    if aAge then begin
 
      inc(TCPSession^.IdleTickCount,fUserModeTickDelta);
 
@@ -35775,9 +36954,13 @@ begin
 
     end;
 
-    UserModeTCPStateTimeWait:begin
+   end;
 
-     // Wait 2×MSL before closing the session.
+   UserModeTCPStateTimeWait:begin
+
+    // Wait 2×MSL before closing the session.
+
+    if aAge then begin
 
      inc(TCPSession^.TimeWaitTickCount,fUserModeTickDelta);
 
@@ -35799,13 +36982,146 @@ begin
 
     end;
 
-    else begin
-    end;
+   end;
+
+   else begin
+   end;
+
+  end;
+
+  // One place instead of eight: every close path already raises SessionClosed, and
+  // this carries that fact out of the call so the other pass of the same round sees
+  // it. Cleared with the rest of the record when the deferred close runs.
+  if SessionClosed then begin
+   TCPSession^.QueuedForClose:=true;
+  end;
+
+ end;
+
+end;
+
+{$ifdef PasRISCVNATReadiness}
+// The readiness half of one round, at most once per session. Two things can name the
+// same session in a round - the event list and the extra sweep some platforms need -
+// and servicing it twice would mean an extra receive on a socket that was already read.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceTCPReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+var TCPSession:PTCPSession;
+begin
+
+ TCPSession:=fTCPSessionArray[aSessionIndex];
+
+ if assigned(TCPSession) and TCPSession^.Active and (TCPSession^.ReadinessRound<>fTCPReadinessRound) then begin
+
+  TCPSession^.ReadinessRound:=fTCPReadinessRound;
+
+  ServiceTCPSession(aSessionIndex,true,false);
+
+ end;
+
+end;
+
+{$endif}
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.PollTCPSockets;
+var ActiveArrayIndex:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadiness}
+    ReadyCount:TPasRISCVInt32;
+    EventIndex:TPasRISCVInt32;
+    EventSessionIndex:TPasRISCVInt32;
+    ReadinessEvent:TUserModeReadinessEvent;
+{$endif}
+    CloseIndex:TPasRISCVInt32;
+    ForwardIndex:TPasRISCVInt32;
+    NewSessionIndex:TPasRISCVInt32;
+    EvictionIndex:TPasRISCVInt32;
+    NewTCPSession:PTCPSession;
+    AcceptPeerIPAddressBytes:TIPv4Address;
+    NewTCPKey:TUserModeTCPKey;
+    PortForwardItem:PUserModePortForward;
+    WriteSet:TRNLSocketSet;
+    AcceptReadSet:TRNLSocketSet;
+    AcceptAddress:TRNLAddress;
+    AcceptedSocket:TRNLSocket;
+begin
+
+ fToCloseCount:=0;
+
+ // Two passes, and only the first one is expensive. The readiness pass visits just the
+ // sessions the kernel named; the clock pass has to see every session either way, but
+ // it costs no syscall at all - it only moves counters.
+ //
+ // Readiness before clock, deliberately: a connect that completes in this round must
+ // not then be killed by its own connect timeout in the same round.
+
+{$ifdef PasRISCVNATReadiness}
+
+ inc(fTCPReadinessRound);
+ if fTCPReadinessRound=0 then begin
+  // Zero is what a freshly cleared session record carries, and that has to keep
+  // meaning "not serviced yet" after a wrap.
+  fTCPReadinessRound:=1;
+ end;
+
+{$ifdef PasRISCVNATReadinessWSAPoll}
+ // WSAPoll does not report a failed connection attempt - Microsoft says so plainly -
+ // so a socket that is still connecting cannot be left to it alone. Those are visited
+ // unconditionally on this platform. It is a walk over the active list, but no
+ // syscall for anything except the sessions actually connecting, and every session
+ // passes through that state once and briefly.
+ for ActiveArrayIndex:=0 to fTCPActiveCount-1 do begin
+  if fTCPSessionArray[fTCPActiveIndices[ActiveArrayIndex]]^.State=UserModeTCPStateConnecting then begin
+   ServiceTCPReadinessOnce(fTCPActiveIndices[ActiveArrayIndex]);
+  end;
+ end;
+{$endif}
+
+ if fTCPUnarmedCount=0 then begin
+
+  // Zero timeout: the pacing of the loop is unchanged, this only asks what is ready
+  // right now. The wait itself still happens where it always did, at the top of the
+  // thread loop.
+  ReadyCount:=fTCPReadiness.Wait(0);
+
+  for EventIndex:=0 to ReadyCount-1 do begin
+
+   ReadinessEvent:=fTCPReadiness.Event(EventIndex);
+
+   EventSessionIndex:=TPasRISCVInt32(TPasRISCVUInt32(ReadinessEvent.Tag and $ffffffff));
+
+   // An event whose generation no longer matches belongs to a connection that has
+   // since been closed and whose slot may already serve someone else. Servicing it
+   // would hand one connection's data to another.
+   if (EventSessionIndex>=0) and
+      (EventSessionIndex<length(fTCPSessionArray)) and
+      (TPasRISCVUInt32(ReadinessEvent.Tag shr 32)=fTCPGenerations[EventSessionIndex]) then begin
+
+    ServiceTCPReadinessOnce(EventSessionIndex);
 
    end;
 
   end;
 
+ end else begin
+
+  // At least one live session is not in the set and would never be named. Ask them
+  // all, exactly as before - slower, but nobody is left unserved.
+  for ActiveArrayIndex:=0 to fTCPActiveCount-1 do begin
+   ServiceTCPReadinessOnce(fTCPActiveIndices[ActiveArrayIndex]);
+  end;
+
+ end;
+
+{$else}
+
+ // No readiness set in this build: every session asked in every round.
+ for ActiveArrayIndex:=0 to fTCPActiveCount-1 do begin
+  ServiceTCPSession(fTCPActiveIndices[ActiveArrayIndex],true,false);
+ end;
+
+{$endif}
+
+ for ActiveArrayIndex:=0 to fTCPActiveCount-1 do begin
+  ServiceTCPSession(fTCPActiveIndices[ActiveArrayIndex],false,true);
  end;
 
  // Accept loop: check for inbound TCP connections on port-forward listen sockets
@@ -35917,6 +37233,12 @@ begin
      NewTCPSession^.ActiveIndex:=fTCPActiveCount;
      fTCPActiveIndices[fTCPActiveCount]:=NewSessionIndex;
      inc(fTCPActiveCount);
+
+     // Already connected - this one only waits to be read from, and asks for write
+     // interest later if the guest ever gives it more than the host will take at once.
+{$ifdef PasRISCVNATReadiness}
+     ArmTCPReadiness(NewSessionIndex,false);
+{$endif}
 
      SendTCPToGuest(NewSessionIndex,TCPFlagSYN,nil,0);
      inc(NewTCPSession^.ServerSeq);
@@ -36996,6 +38318,10 @@ begin
  fICMPv6ActiveIndices[fICMPv6ActiveCount]:=SessionIndex;
  inc(fICMPv6ActiveCount);
 
+{$ifdef PasRISCVNATReadiness}
+ ArmICMPv6Readiness(SessionIndex);
+{$endif}
+
  fICMPv6Sessions.Add(ICMPv6Key,SessionIndex);
 
  result:=SessionIndex;
@@ -37008,6 +38334,9 @@ var ICMPv6Session:PICMPv6Session;
     Position,LastSessionIndex:TPasRISCVInt32;
 begin
  ICMPv6Session:=fICMPv6SessionArray[aSessionIndex];
+{$ifdef PasRISCVNATReadiness}
+ DisarmICMPv6Readiness(aSessionIndex);
+{$endif}
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(ICMPv6Session^.SocketFileDescriptor);
 {$else}
@@ -37035,6 +38364,9 @@ var UDPv6Session:PUDPv6Session;
     Position,LastSessionIndex:TPasRISCVInt32;
 begin
  UDPv6Session:=fUDPv6SessionArray[aSessionIndex];
+{$ifdef PasRISCVNATReadiness}
+ DisarmUDPv6Readiness(aSessionIndex);
+{$endif}
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(UDPv6Session^.SocketFileDescriptor);
 {$else}
@@ -37058,12 +38390,11 @@ begin
  FillChar(UDPv6Session^,SizeOf(TUDPv6Session),#0);
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.PollICMPv6Sockets;
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceICMPv6Session(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
 const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
 var SessionIndex:TPasRISCVInt32;
     SessionItem:PICMPv6Session;
     ReceiveLength:TPasRISCVSizeInt;
-    ActiveArrayIndex:TPasRISCVInt32;
     TotalSize:TPasRISCVSizeInt;
     ResponseEthernet:PEthernetHeader;
     ResponseIPv6:PIPv6Header;
@@ -37072,19 +38403,18 @@ var SessionIndex:TPasRISCVInt32;
     OrigIPv6Copy:PIPv6Header;
     ErrorData:PPasRISCVUInt8;
     ICMPv6PayloadSize:TPasRISCVSizeInt;
-    CloseIndex:TPasRISCVInt32;
     SenderAddress:TRNLAddress;
 begin
 
- fToCloseCount:=0;
+ SessionIndex:=aSessionIndex;
 
- for ActiveArrayIndex:=0 to fICMPv6ActiveCount-1 do begin
+ SessionItem:=fICMPv6SessionArray[SessionIndex];
 
-  SessionIndex:=fICMPv6ActiveIndices[ActiveArrayIndex];
+ if SessionItem^.Active and not SessionItem^.QueuedForClose then begin
 
-  SessionItem:=fICMPv6SessionArray[SessionIndex];
+  ReceiveLength:=0;
 
-  if SessionItem^.Active then begin
+  if aService then begin
 
    SenderAddress:=RNL_ADDRESS_EMPTY;
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -37177,25 +38507,145 @@ begin
 
     end;
 
-   end else begin
+   end;
 
-    inc(SessionItem^.TickCount,fUserModeTickDelta);
-    if SessionItem^.TickCount>=UserModeICMPIdleTimeoutTicks then begin
-     if length(fToClose)<=fToCloseCount then begin
-      if length(fToClose)=0 then begin
-       SetLength(fToClose,8);
-      end else begin
-       SetLength(fToClose,length(fToClose)*2);
-      end;
+  end;
+
+  // Clock half: the idle timeout, only when nothing arrived.
+  if aAge and (ReceiveLength=0) then begin
+
+   inc(SessionItem^.TickCount,fUserModeTickDelta);
+   if SessionItem^.TickCount>=UserModeICMPIdleTimeoutTicks then begin
+    if length(fToClose)<=fToCloseCount then begin
+     if length(fToClose)=0 then begin
+      SetLength(fToClose,8);
+     end else begin
+      SetLength(fToClose,length(fToClose)*2);
      end;
-     fToClose[fToCloseCount]:=SessionIndex;
-     inc(fToCloseCount);
     end;
+    fToClose[fToCloseCount]:=SessionIndex;
+    inc(fToCloseCount);
+    SessionItem^.QueuedForClose:=true;
+   end;
+
+  end;
+
+ end;
+
+end;
+
+{$ifdef PasRISCVNATReadiness}
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceICMPv6ReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PICMPv6Session;
+begin
+
+ SessionItem:=fICMPv6SessionArray[aSessionIndex];
+
+ if assigned(SessionItem) and SessionItem^.Active and (SessionItem^.ReadinessRound<>fICMPv6ReadinessRound) then begin
+
+  SessionItem^.ReadinessRound:=fICMPv6ReadinessRound;
+
+  ServiceICMPv6Session(aSessionIndex,true,false);
+
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ArmICMPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PICMPv6Session;
+begin
+
+ SessionItem:=fICMPv6SessionArray[aSessionIndex];
+
+ SessionItem^.ReadinessTag:=(TPasRISCVUInt64(fICMPv6Generations[aSessionIndex]) shl 32) or TPasRISCVUInt64(TPasRISCVUInt32(aSessionIndex));
+
+ if fICMPv6Readiness.Arm(SessionItem^.SocketFileDescriptor,SessionItem^.ReadinessTag,false) then begin
+  SessionItem^.ReadinessArmed:=true;
+ end else begin
+  SessionItem^.ReadinessArmed:=false;
+  inc(fICMPv6UnarmedCount);
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.DisarmICMPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PICMPv6Session;
+begin
+
+ SessionItem:=fICMPv6SessionArray[aSessionIndex];
+
+ if SessionItem^.ReadinessArmed then begin
+  fICMPv6Readiness.Disarm(SessionItem^.SocketFileDescriptor);
+  SessionItem^.ReadinessArmed:=false;
+ end else if fICMPv6UnarmedCount>0 then begin
+  dec(fICMPv6UnarmedCount);
+ end;
+
+ inc(fICMPv6Generations[aSessionIndex]);
+
+end;
+
+{$endif}
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.PollICMPv6Sockets;
+var ActiveArrayIndex:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadiness}
+    ReadyCount:TPasRISCVInt32;
+    EventIndex:TPasRISCVInt32;
+    EventSessionIndex:TPasRISCVInt32;
+    ReadinessEvent:TUserModeReadinessEvent;
+{$endif}
+    CloseIndex:TPasRISCVInt32;
+begin
+
+ fToCloseCount:=0;
+
+{$ifdef PasRISCVNATReadiness}
+
+ inc(fICMPv6ReadinessRound);
+ if fICMPv6ReadinessRound=0 then begin
+  fICMPv6ReadinessRound:=1;
+ end;
+
+ if fICMPv6UnarmedCount=0 then begin
+
+  ReadyCount:=fICMPv6Readiness.Wait(0);
+
+  for EventIndex:=0 to ReadyCount-1 do begin
+
+   ReadinessEvent:=fICMPv6Readiness.Event(EventIndex);
+
+   EventSessionIndex:=TPasRISCVInt32(TPasRISCVUInt32(ReadinessEvent.Tag and $ffffffff));
+
+   if (EventSessionIndex>=0) and
+      (EventSessionIndex<length(fICMPv6SessionArray)) and
+      (TPasRISCVUInt32(ReadinessEvent.Tag shr 32)=fICMPv6Generations[EventSessionIndex]) then begin
+
+    ServiceICMPv6ReadinessOnce(EventSessionIndex);
 
    end;
 
   end;
 
+ end else begin
+
+  for ActiveArrayIndex:=0 to fICMPv6ActiveCount-1 do begin
+   ServiceICMPv6ReadinessOnce(fICMPv6ActiveIndices[ActiveArrayIndex]);
+  end;
+
+ end;
+
+{$else}
+
+ // No readiness set in this build: every session asked in every round.
+ for ActiveArrayIndex:=0 to fICMPv6ActiveCount-1 do begin
+  ServiceICMPv6Session(fICMPv6ActiveIndices[ActiveArrayIndex],true,false);
+ end;
+
+{$endif}
+
+ for ActiveArrayIndex:=0 to fICMPv6ActiveCount-1 do begin
+  ServiceICMPv6Session(fICMPv6ActiveIndices[ActiveArrayIndex],false,true);
  end;
 
  for CloseIndex:=0 to fToCloseCount-1 do begin
@@ -37490,6 +38940,10 @@ begin
  fUDPv6ActiveIndices[fUDPv6ActiveCount]:=Index;
  inc(fUDPv6ActiveCount);
 
+{$ifdef PasRISCVNATReadiness}
+ ArmUDPv6Readiness(Index);
+{$endif}
+
  fUDPv6Sessions.Add(UDPv6Key,Index);
 
  result:=Index;
@@ -37580,36 +39034,29 @@ begin
 
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.PollUDPv6Sockets;
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceUDPv6Session(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
 const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
 var SessionIndex:TPasRISCVInt32;
     SessionItem:PUDPv6Session;
     ReceiveLength:TPasRISCVSizeInt;
-    ActiveArrayIndex:TPasRISCVInt32;
     TotalSize:TPasRISCVSizeInt;
     ResponseEthernet:PEthernetHeader;
     ResponseIPv6:PIPv6Header;
     ResponseUDP:PUDPHeader;
     ReplySourceIP:TIPv6Address;
     ReplySourcePort:TPasRISCVUInt16;
-    CloseIndex:TPasRISCVInt32;
     SenderAddress:TRNLAddress;
-    ForwardIndex:TPasRISCVInt32;
-    PortForwardItem:PUserModePortForward;
-    InjectSenderAddress:TRNLAddress;
-    InjectReceiveLength:TPasRISCVSizeInt;
-    InjectTotalSize:TPasRISCVSizeInt;
 begin
 
- fToCloseCount:=0;
+ SessionIndex:=aSessionIndex;
 
- for ActiveArrayIndex:=0 to fUDPv6ActiveCount-1 do begin
+ SessionItem:=fUDPv6SessionArray[SessionIndex];
 
-  SessionIndex:=fUDPv6ActiveIndices[ActiveArrayIndex];
+ if SessionItem^.Active and not SessionItem^.QueuedForClose then begin
 
-  SessionItem:=fUDPv6SessionArray[SessionIndex];
+  ReceiveLength:=0;
 
-  if SessionItem^.Active then begin
+  if aService then begin
 
    SenderAddress:=RNL_ADDRESS_EMPTY;
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -37633,8 +39080,9 @@ begin
          (SenderAddress.Port=53)) then begin
       // Allow
      end else begin
-      // Otherwise reject
-      continue;
+      // Otherwise reject. Was a "continue" inside the session loop; leaving the
+      // per-session procedure does the same thing.
+      exit;
      end;
     end;
 
@@ -37685,25 +39133,155 @@ begin
 
     SessionItem^.TickCount:=0;
 
-   end else begin
+   end;
 
-    inc(SessionItem^.TickCount,fUserModeTickDelta);
-    if SessionItem^.TickCount>=IfThen(SessionItem^.OriginalDestinationPort=53,UserModeUDPDNSIdleTimeoutTicks,UserModeUDPIdleTimeoutTicks) then begin
-     if length(fToClose)<=fToCloseCount then begin
-      if length(fToClose)=0 then begin
-       SetLength(fToClose,8);
-      end else begin
-       SetLength(fToClose,length(fToClose)*2);
-      end;
+  end;
+
+  // Clock half: the idle timeout, only when nothing arrived.
+  if aAge and (ReceiveLength=0) then begin
+
+   inc(SessionItem^.TickCount,fUserModeTickDelta);
+   if SessionItem^.TickCount>=IfThen(SessionItem^.OriginalDestinationPort=53,UserModeUDPDNSIdleTimeoutTicks,UserModeUDPIdleTimeoutTicks) then begin
+    if length(fToClose)<=fToCloseCount then begin
+     if length(fToClose)=0 then begin
+      SetLength(fToClose,8);
+     end else begin
+      SetLength(fToClose,length(fToClose)*2);
      end;
-     fToClose[fToCloseCount]:=SessionIndex;
-     inc(fToCloseCount);
     end;
+    fToClose[fToCloseCount]:=SessionIndex;
+    inc(fToCloseCount);
+    SessionItem^.QueuedForClose:=true;
+   end;
+
+  end;
+
+ end;
+
+end;
+
+{$ifdef PasRISCVNATReadiness}
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceUDPv6ReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PUDPv6Session;
+begin
+
+ SessionItem:=fUDPv6SessionArray[aSessionIndex];
+
+ if assigned(SessionItem) and SessionItem^.Active and (SessionItem^.ReadinessRound<>fUDPv6ReadinessRound) then begin
+
+  SessionItem^.ReadinessRound:=fUDPv6ReadinessRound;
+
+  ServiceUDPv6Session(aSessionIndex,true,false);
+
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ArmUDPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PUDPv6Session;
+begin
+
+ SessionItem:=fUDPv6SessionArray[aSessionIndex];
+
+ SessionItem^.ReadinessTag:=(TPasRISCVUInt64(fUDPv6Generations[aSessionIndex]) shl 32) or TPasRISCVUInt64(TPasRISCVUInt32(aSessionIndex));
+
+ if fUDPv6Readiness.Arm(SessionItem^.SocketFileDescriptor,SessionItem^.ReadinessTag,false) then begin
+  SessionItem^.ReadinessArmed:=true;
+ end else begin
+  SessionItem^.ReadinessArmed:=false;
+  inc(fUDPv6UnarmedCount);
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.DisarmUDPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+var SessionItem:PUDPv6Session;
+begin
+
+ SessionItem:=fUDPv6SessionArray[aSessionIndex];
+
+ if SessionItem^.ReadinessArmed then begin
+  fUDPv6Readiness.Disarm(SessionItem^.SocketFileDescriptor);
+  SessionItem^.ReadinessArmed:=false;
+ end else if fUDPv6UnarmedCount>0 then begin
+  dec(fUDPv6UnarmedCount);
+ end;
+
+ inc(fUDPv6Generations[aSessionIndex]);
+
+end;
+
+{$endif}
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.PollUDPv6Sockets;
+const GatewayMAC:TMACAddress=($52,$54,$00,$12,$34,$02);
+var ActiveArrayIndex:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadiness}
+    ReadyCount:TPasRISCVInt32;
+    EventIndex:TPasRISCVInt32;
+    EventSessionIndex:TPasRISCVInt32;
+    ReadinessEvent:TUserModeReadinessEvent;
+{$endif}
+    CloseIndex:TPasRISCVInt32;
+    ForwardIndex:TPasRISCVInt32;
+    PortForwardItem:PUserModePortForward;
+    InjectSenderAddress:TRNLAddress;
+    InjectReceiveLength:TPasRISCVSizeInt;
+    InjectTotalSize:TPasRISCVSizeInt;
+    // Still needed by the port-forward return path below, which builds its own reply
+    ResponseEthernet:PEthernetHeader;
+    ResponseIPv6:PIPv6Header;
+    ResponseUDP:PUDPHeader;
+begin
+
+ fToCloseCount:=0;
+
+{$ifdef PasRISCVNATReadiness}
+
+ inc(fUDPv6ReadinessRound);
+ if fUDPv6ReadinessRound=0 then begin
+  fUDPv6ReadinessRound:=1;
+ end;
+
+ if fUDPv6UnarmedCount=0 then begin
+
+  ReadyCount:=fUDPv6Readiness.Wait(0);
+
+  for EventIndex:=0 to ReadyCount-1 do begin
+
+   ReadinessEvent:=fUDPv6Readiness.Event(EventIndex);
+
+   EventSessionIndex:=TPasRISCVInt32(TPasRISCVUInt32(ReadinessEvent.Tag and $ffffffff));
+
+   if (EventSessionIndex>=0) and
+      (EventSessionIndex<length(fUDPv6SessionArray)) and
+      (TPasRISCVUInt32(ReadinessEvent.Tag shr 32)=fUDPv6Generations[EventSessionIndex]) then begin
+
+    ServiceUDPv6ReadinessOnce(EventSessionIndex);
 
    end;
 
   end;
 
+ end else begin
+
+  for ActiveArrayIndex:=0 to fUDPv6ActiveCount-1 do begin
+   ServiceUDPv6ReadinessOnce(fUDPv6ActiveIndices[ActiveArrayIndex]);
+  end;
+
+ end;
+
+{$else}
+
+ // No readiness set in this build: every session asked in every round.
+ for ActiveArrayIndex:=0 to fUDPv6ActiveCount-1 do begin
+  ServiceUDPv6Session(fUDPv6ActiveIndices[ActiveArrayIndex],true,false);
+ end;
+
+{$endif}
+
+ for ActiveArrayIndex:=0 to fUDPv6ActiveCount-1 do begin
+  ServiceUDPv6Session(fUDPv6ActiveIndices[ActiveArrayIndex],false,true);
  end;
 
  for CloseIndex:=0 to fToCloseCount-1 do begin
@@ -37946,6 +39524,13 @@ begin
   SendTCPv6ToGuest(aSessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
  end;
 
+ // Before the descriptor goes, for the same reason as in the IPv4 twin: the array
+ // backends keep their own list and would otherwise hold a number that the next
+ // connection is about to be given.
+{$ifdef PasRISCVNATReadiness}
+ DisarmTCPv6Readiness(aSessionIndex);
+{$endif}
+
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(TCPv6Session^.SocketFileDescriptor);
 {$else}
@@ -37984,6 +39569,70 @@ begin
  FillChar(TCPv6Session^,SizeOf(TTCPv6Session),#0);
 
 end;
+
+{$ifdef PasRISCVNATReadiness}
+// The IPv6 twins of the three IPv4 helpers; same reasoning throughout, see there.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ArmTCPv6Readiness(const aSessionIndex:TPasRISCVInt32;const aWantWrite:Boolean);
+var TCPv6Session:PTCPv6Session;
+begin
+
+ TCPv6Session:=fTCPv6SessionArray[aSessionIndex];
+
+ TCPv6Session^.ReadinessTag:=(TPasRISCVUInt64(fTCPv6Generations[aSessionIndex]) shl 32) or TPasRISCVUInt64(TPasRISCVUInt32(aSessionIndex));
+ TCPv6Session^.ReadinessWantWrite:=aWantWrite;
+
+ if fTCPv6Readiness.Arm(TCPv6Session^.SocketFileDescriptor,TCPv6Session^.ReadinessTag,aWantWrite) then begin
+
+  TCPv6Session^.ReadinessArmed:=true;
+
+ end else begin
+
+  TCPv6Session^.ReadinessArmed:=false;
+  inc(fTCPv6UnarmedCount);
+
+ end;
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.DisarmTCPv6Readiness(const aSessionIndex:TPasRISCVInt32);
+var TCPv6Session:PTCPv6Session;
+begin
+
+ TCPv6Session:=fTCPv6SessionArray[aSessionIndex];
+
+ if TCPv6Session^.ReadinessArmed then begin
+  fTCPv6Readiness.Disarm(TCPv6Session^.SocketFileDescriptor);
+  TCPv6Session^.ReadinessArmed:=false;
+ end else if fTCPv6UnarmedCount>0 then begin
+  dec(fTCPv6UnarmedCount);
+ end;
+
+ inc(fTCPv6Generations[aSessionIndex]);
+
+end;
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.UpdateTCPv6ReadinessWrite(const aTCPv6Session:PTCPv6Session;const aWantWrite:Boolean);
+begin
+
+ if aTCPv6Session^.ReadinessArmed and (aTCPv6Session^.ReadinessWantWrite<>aWantWrite) then begin
+
+  if fTCPv6Readiness.Modify(aTCPv6Session^.SocketFileDescriptor,aTCPv6Session^.ReadinessTag,aWantWrite) then begin
+
+   aTCPv6Session^.ReadinessWantWrite:=aWantWrite;
+
+  end else begin
+
+   fTCPv6Readiness.Disarm(aTCPv6Session^.SocketFileDescriptor);
+   aTCPv6Session^.ReadinessArmed:=false;
+   inc(fTCPv6UnarmedCount);
+
+  end;
+
+ end;
+
+end;
+
+{$endif}
 
 procedure TPasRISCVEthernetDeviceUserModeNetworking.HandleTCPv6(const aEthHeader:PEthernetHeader;const aIPv6Header:PIPv6Header;const aTCPData:Pointer;const aTCPSize:TPasRISCVSizeInt);
 var TCPHeader:PTCPHeader;
@@ -38213,6 +39862,11 @@ begin
   TCPv6Session^.ActiveIndex:=fTCPv6ActiveCount;
   fTCPv6ActiveIndices[fTCPv6ActiveCount]:=NewSessionIndex;
   inc(fTCPv6ActiveCount);
+
+  // Write interest from the start: a connect in progress announces itself as writable.
+{$ifdef PasRISCVNATReadiness}
+  ArmTCPv6Readiness(NewSessionIndex,true);
+{$endif}
 
   FillChar(TCPv6Key,SizeOf(TUserModeTCPv6Key),#0);
   TCPv6Key.GuestSourceIP:=TCPv6Session^.GuestSourceIP;
@@ -38785,7 +40439,11 @@ begin
 
 end;
 
-procedure TPasRISCVEthernetDeviceUserModeNetworking.PollTCPv6Sockets;
+// The IPv6 twin of ServiceTCPSession. Same split: aService does the half that needs
+// the socket, aAge the half that only moves counters. The states differ slightly from
+// IPv4 - SynAckSent is its own case here and touches no socket at all - but the
+// division falls the same way.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceTCPv6Session(const aSessionIndex:TPasRISCVInt32;const aService,aAge:Boolean);
 var SessionIndex:TPasRISCVInt32;
     TCPv6Session:PTCPv6Session;
     ReceiveLength:TPasRISCVSizeInt;
@@ -38793,111 +40451,109 @@ var SessionIndex:TPasRISCVInt32;
     RetransmitLimit:TPasRISCVSizeInt;
     SentBytes:TPasRISCVSizeInt;
     SavedSequence:TPasRISCVUInt32;
-    NewCapacity:TPasRISCVSizeInt;
     SessionClosed:Boolean;
-    CloseIndex:TPasRISCVInt32;
-    ActiveArrayIndex:TPasRISCVInt32;
-    ForwardIndex:TPasRISCVInt32;
-    NewSessionIndex:TPasRISCVInt32;
-    ExtraIndex:TPasRISCVInt32;
-    EvictionIndex:TPasRISCVInt32;
     RetransmitChunk:array[0..UserModeTCPMaxDataPayload-1] of TPasRISCVUInt8;
-    NewTCPv6Session:PTCPv6Session;
-    NewTCPv6Key:TUserModeTCPv6Key;
-    PortForwardItem:PUserModePortForward;
     ChunkOffset:TPasRISCVSizeInt;
     ChunkSize:TPasRISCVSizeInt;
     MaxChunkSize:TPasRISCVSizeInt;
     WriteSet:TRNLSocketSet;
     ErrorSet:TRNLSocketSet;
     SocketError:TRNLInt32;
-    AcceptReadSet:TRNLSocketSet;
-    AcceptAddress:TRNLAddress;
-    AcceptedSocket:TRNLSocket;
 begin
 
- fToCloseCount:=0;
+ SessionIndex:=aSessionIndex;
 
- for ActiveArrayIndex:=0 to fTCPv6ActiveCount-1 do begin
+ TCPv6Session:=fTCPv6SessionArray[SessionIndex];
 
-  SessionIndex:=fTCPv6ActiveIndices[ActiveArrayIndex];
+ if TCPv6Session^.Active and not TCPv6Session^.QueuedForClose then begin
 
-  TCPv6Session:=fTCPv6SessionArray[SessionIndex];
+  SessionClosed:=false;
 
-  if TCPv6Session^.Active then begin
+  case TCPv6Session^.State of
 
-   SessionClosed:=false;
+   UserModeTCPStateConnecting:begin
 
-   case TCPv6Session^.State of
-
-    UserModeTCPStateConnecting:begin
-
-{$ifdef PasRISCVUseRNLNetworkInstance}if TCPv6Session^.SocketFileDescriptor<FD_SETSIZE then{$endif}begin
+    if aService {$ifdef PasRISCVUseRNLNetworkInstance}and (TCPv6Session^.SocketFileDescriptor<FD_SETSIZE){$endif}then begin
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
 
-      WriteSet:=TRNLSocketSet.Empty;
-      WriteSet.Add(TCPv6Session^.SocketFileDescriptor);
+     WriteSet:=TRNLSocketSet.Empty;
+     WriteSet.Add(TCPv6Session^.SocketFileDescriptor);
 
-      ErrorSet:=TRNLSocketSet.Empty;
-      ErrorSet.Add(TCPv6Session^.SocketFileDescriptor);
+     ErrorSet:=TRNLSocketSet.Empty;
+     ErrorSet.Add(TCPv6Session^.SocketFileDescriptor);
 
  {$endif}
 
-      // poll rather than select, for the same FD_SETSIZE reason as in PollTCPSockets
-      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPv6Session^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketPollWriteError(TCPv6Session^.SocketFileDescriptor,0)>0{$endif} then begin
+     // poll rather than select, for the same FD_SETSIZE reason as in PollTCPSockets
+     if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketSelect(TCPv6Session^.SocketFileDescriptor+1,nil,@WriteSet,@ErrorSet,0)>0 then begin{$else}RNLSocketPollWriteError(TCPv6Session^.SocketFileDescriptor,0)>0{$endif} then begin
 
-       SocketError:=0;
+      SocketError:=0;
 
-       if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketGetOption(TCPv6Session^.SocketFileDescriptor,RNL_SOCKET_OPTION_ERROR,SocketError){$else}RNLSocketGetError(TCPv6Session^.SocketFileDescriptor,SocketError){$endif} and (SocketError=0) then begin
+      if {$ifdef PasRISCVUseRNLNetworkInstance}fRNLNetwork.SocketGetOption(TCPv6Session^.SocketFileDescriptor,RNL_SOCKET_OPTION_ERROR,SocketError){$else}RNLSocketGetError(TCPv6Session^.SocketFileDescriptor,SocketError){$endif} and (SocketError=0) then begin
 
-        // Stay in SynAckSent state until guest ACK arrives (like IPv4)
-        TCPv6Session^.State:=UserModeTCPStateSynAckSent;
-        TCPv6Session^.TickCount:=0;
-        TCPv6Session^.IdleTickCount:=0;
-        TCPv6Session^.SynFinRetransmitCount:=0;
-        TCPv6Session^.RTO:=UserModeTCPInitialRTO;
-        TCPv6Session^.RTTSentTick:=fUserModeTickCount;
+       // Stay in SynAckSent state until guest ACK arrives (like IPv4)
+       TCPv6Session^.State:=UserModeTCPStateSynAckSent;
+       TCPv6Session^.TickCount:=0;
+       TCPv6Session^.IdleTickCount:=0;
+       TCPv6Session^.SynFinRetransmitCount:=0;
+       TCPv6Session^.RTO:=UserModeTCPInitialRTO;
+       TCPv6Session^.RTTSentTick:=fUserModeTickCount;
 
-        SendTCPv6ToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
+       SendTCPv6ToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
 
-        inc(TCPv6Session^.ServerSeq);
+       inc(TCPv6Session^.ServerSeq);
 
-        TCPv6Session^.RetransmitSeqBase:=TCPv6Session^.ServerSeq;
+       TCPv6Session^.RetransmitSeqBase:=TCPv6Session^.ServerSeq;
 
-       end else begin
+       // Connect is done, writability is no longer interesting in itself; unless the
+       // guest handed data over while it was still pending.
+{$ifdef PasRISCVNATReadiness}
+       UpdateTCPv6ReadinessWrite(TCPv6Session,TCPv6Session^.PendingSize>0);
+{$endif}
 
-        if length(fToClose)<=fToCloseCount then begin
-         SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
-        end;
-        fToClose[fToCloseCount]:=SessionIndex;
-        inc(fToCloseCount);
+      end else begin
 
-        SessionClosed:=true;
-
-       end;
-
-      end;
-
-     end;
-
-     if (not SessionClosed) and (TCPv6Session^.State=UserModeTCPStateConnecting) then begin
-      inc(TCPv6Session^.TickCount,fUserModeTickDelta);
-      if TCPv6Session^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
+       // Same as the IPv4 twin: say no, rather than tear the session down silently
+       // and leave the guest repeating SYNs until its own timeout.
+       TCPv6Session^.ServerSeq:=0;
+       SendTCPv6ToGuest(SessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
 
        if length(fToClose)<=fToCloseCount then begin
         SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
        end;
        fToClose[fToCloseCount]:=SessionIndex;
        inc(fToCloseCount);
+
        SessionClosed:=true;
 
       end;
+
      end;
 
     end;
 
-    UserModeTCPStateSynAckSent:begin
+    if aAge and (not SessionClosed) and (TCPv6Session^.State=UserModeTCPStateConnecting) then begin
+     inc(TCPv6Session^.TickCount,fUserModeTickDelta);
+     if TCPv6Session^.TickCount>=UserModeTCPConnectTimeoutTicks then begin
+
+      if length(fToClose)<=fToCloseCount then begin
+       SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
+      end;
+      fToClose[fToCloseCount]:=SessionIndex;
+      inc(fToCloseCount);
+      SessionClosed:=true;
+
+     end;
+    end;
+
+   end;
+
+   UserModeTCPStateSynAckSent:begin
+
+    // Nothing here touches the socket: this state only waits for the guest ACK and
+    // repeats the SYN-ACK on its timer.
+    if aAge then begin
 
      inc(TCPv6Session^.IdleTickCount,fUserModeTickDelta);
 
@@ -38952,19 +40608,29 @@ begin
 
     end;
 
-    UserModeTCPStateEstablished,UserModeTCPStateGuestFinSent,UserModeTCPStateCloseWait:begin
+   end;
 
+   UserModeTCPStateEstablished,UserModeTCPStateGuestFinSent,UserModeTCPStateCloseWait:begin
+
+    if aAge then begin
      inc(TCPv6Session^.IdleTickCount,fUserModeTickDelta);
-     if TCPv6Session^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
+    end;
+    if aAge and (TCPv6Session^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks) then begin
 
-      if length(fToClose)<=fToCloseCount then begin
-       SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
-      end;
-      fToClose[fToCloseCount]:=SessionIndex;
-      inc(fToCloseCount);
-      SessionClosed:=true;
+     if length(fToClose)<=fToCloseCount then begin
+      SetLength(fToClose,Max(fToCloseCount+1,length(fToClose)*2));
+     end;
+     fToClose[fToCloseCount]:=SessionIndex;
+     inc(fToCloseCount);
+     SessionClosed:=true;
 
-     end else begin
+    end else begin
+
+     // Skipped readiness leaves this at zero, which is exactly the "nothing arrived"
+     // case the clock half keys on.
+     ReceiveLength:=0;
+
+     if aService then begin
 
       if (TCPv6Session^.PendingSize>0) and
          (TCPv6Session^.State<>UserModeTCPStateCloseWait) and
@@ -38981,6 +40647,12 @@ begin
          Move(TCPv6Session^.PendingData^[SentBytes],TCPv6Session^.PendingData^[0],TCPv6Session^.PendingSize-SentBytes);
         end;
         dec(TCPv6Session^.PendingSize,SentBytes);
+        // Drained: stop asking about writability, an idle socket is always writable.
+        if TCPv6Session^.PendingSize=0 then begin
+{$ifdef PasRISCVNATReadiness}
+         UpdateTCPv6ReadinessWrite(TCPv6Session,false);
+{$endif}
+        end;
         TCPv6Session^.IdleTickCount:=0;
         // The window we last announced was shut and there is room again now, so tell
         // the guest - otherwise it sits in its persist timer waiting for space it has
@@ -39001,15 +40673,16 @@ begin
       // data loss on retransmit and break SSL/TLS streams).
       // Also honor GuestWindowSize so we don't flood the guest beyond what it
       // advertises (avoids guest-side TCP packet storms / 100% CPU).
+      // ReceiveLength is already zero from above and is deliberately NOT assigned
+      // again in these two branches. Doing so let the compiler turn the zero into a
+      // conditional move from a caller-saved register it had cleared before the
+      // SendTCPv6ToGuest call above, which is the defect that cost a day on the IPv4
+      // side. The branches only have to say that nothing may be read.
       if TCPv6Session^.RetransmitSize>=UserModeTCPRetransmitBufferMax then begin
-
-       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
       end else if TCPv6Session^.RetransmitSize>=TCPv6Session^.GuestWindowSize then begin
-
-       ReceiveLength:=0;
 
        ReceiveBudget:=0;
 
@@ -39094,68 +40767,71 @@ begin
        end;
        TCPv6Session^.TickCount:=0;
 
-      end else begin
+      end;
 
-       inc(TCPv6Session^.TickCount,fUserModeTickDelta);
+     end;
 
-       if (TCPv6Session^.RetransmitSize>0) and (TCPv6Session^.TickCount>=TCPv6Session^.RTO) then begin
+     // Clock half: retransmit timer and keepalive, both only when nothing arrived.
+     if aAge and (ReceiveLength=0) and not SessionClosed then begin
 
-        TCPv6Session^.RTO:=TCPv6Session^.RTO shl 1;
-        if TCPv6Session^.RTO>UserModeTCPMaxRTO then begin
-         TCPv6Session^.RTO:=UserModeTCPMaxRTO;
-        end;
-        TCPv6Session^.RTTSentTick:=0;
+      inc(TCPv6Session^.TickCount,fUserModeTickDelta);
 
-        SavedSequence:=TCPv6Session^.ServerSeq;
+      if (TCPv6Session^.RetransmitSize>0) and (TCPv6Session^.TickCount>=TCPv6Session^.RTO) then begin
 
-        TCPv6Session^.ServerSeq:=TCPv6Session^.RetransmitSeqBase;
-
-        ChunkOffset:=0;
-
-        // Bound retransmit by guest window to avoid flooding the guest stack.
-        RetransmitLimit:=TCPv6Session^.RetransmitSize;
-        if RetransmitLimit>TCPv6Session^.GuestWindowSize then begin
-         RetransmitLimit:=TCPv6Session^.GuestWindowSize;
-        end;
-
-        while ChunkOffset<RetransmitLimit do begin
-         ChunkSize:=RetransmitLimit-ChunkOffset;
-         MaxChunkSize:=UserModeTCPv6MaxDataPayload;
-         if TCPv6Session^.GuestTimestampEnabled then begin
-          dec(MaxChunkSize,12);
-         end;
-         if ChunkSize>MaxChunkSize then begin
-          ChunkSize:=MaxChunkSize;
-         end;
-         if (TCPv6Session^.GuestMSS>0) and (TPasRISCVSizeInt(TCPv6Session^.GuestMSS)<ChunkSize) then begin
-          ChunkSize:=TPasRISCVSizeInt(TCPv6Session^.GuestMSS);
-         end;
-         RetransmitBufferFetch(TCPv6Session^.RetransmitData,
-                               TCPv6Session^.RetransmitCapacity,
-                               TCPv6Session^.RetransmitHead,
-                               ChunkOffset,
-                               @RetransmitChunk[0],
-                               ChunkSize);
-         SendTCPv6ToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,@RetransmitChunk[0],ChunkSize);
-         inc(TCPv6Session^.ServerSeq,TPasRISCVUInt32(ChunkSize));
-         inc(ChunkOffset,ChunkSize);
-        end;
-
-        TCPv6Session^.ServerSeq:=SavedSequence;
-        TCPv6Session^.TickCount:=0;
-
-       end else if TCPv6Session^.TickCount>=UserModeTCPKeepaliveTicks then begin
-
-        SavedSequence:=TCPv6Session^.ServerSeq;
-        if SavedSequence>0 then begin
-         dec(SavedSequence);
-        end;
-        TCPv6Session^.ServerSeq:=SavedSequence;
-        SendTCPv6ToGuest(SessionIndex,TCPFlagACK,nil,0);
-        inc(TCPv6Session^.ServerSeq);
-        TCPv6Session^.TickCount:=0;
-
+       TCPv6Session^.RTO:=TCPv6Session^.RTO shl 1;
+       if TCPv6Session^.RTO>UserModeTCPMaxRTO then begin
+        TCPv6Session^.RTO:=UserModeTCPMaxRTO;
        end;
+       TCPv6Session^.RTTSentTick:=0;
+
+       SavedSequence:=TCPv6Session^.ServerSeq;
+
+       TCPv6Session^.ServerSeq:=TCPv6Session^.RetransmitSeqBase;
+
+       ChunkOffset:=0;
+
+       // Bound retransmit by guest window to avoid flooding the guest stack.
+       RetransmitLimit:=TCPv6Session^.RetransmitSize;
+       if RetransmitLimit>TCPv6Session^.GuestWindowSize then begin
+        RetransmitLimit:=TCPv6Session^.GuestWindowSize;
+       end;
+
+       while ChunkOffset<RetransmitLimit do begin
+        ChunkSize:=RetransmitLimit-ChunkOffset;
+        MaxChunkSize:=UserModeTCPv6MaxDataPayload;
+        if TCPv6Session^.GuestTimestampEnabled then begin
+         dec(MaxChunkSize,12);
+        end;
+        if ChunkSize>MaxChunkSize then begin
+         ChunkSize:=MaxChunkSize;
+        end;
+        if (TCPv6Session^.GuestMSS>0) and (TPasRISCVSizeInt(TCPv6Session^.GuestMSS)<ChunkSize) then begin
+         ChunkSize:=TPasRISCVSizeInt(TCPv6Session^.GuestMSS);
+        end;
+        RetransmitBufferFetch(TCPv6Session^.RetransmitData,
+                              TCPv6Session^.RetransmitCapacity,
+                              TCPv6Session^.RetransmitHead,
+                              ChunkOffset,
+                              @RetransmitChunk[0],
+                              ChunkSize);
+        SendTCPv6ToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,@RetransmitChunk[0],ChunkSize);
+        inc(TCPv6Session^.ServerSeq,TPasRISCVUInt32(ChunkSize));
+        inc(ChunkOffset,ChunkSize);
+       end;
+
+       TCPv6Session^.ServerSeq:=SavedSequence;
+       TCPv6Session^.TickCount:=0;
+
+      end else if TCPv6Session^.TickCount>=UserModeTCPKeepaliveTicks then begin
+
+       SavedSequence:=TCPv6Session^.ServerSeq;
+       if SavedSequence>0 then begin
+        dec(SavedSequence);
+       end;
+       TCPv6Session^.ServerSeq:=SavedSequence;
+       SendTCPv6ToGuest(SessionIndex,TCPFlagACK,nil,0);
+       inc(TCPv6Session^.ServerSeq);
+       TCPv6Session^.TickCount:=0;
 
       end;
 
@@ -39163,7 +40839,11 @@ begin
 
     end;
 
-    UserModeTCPStateInboundSynSent:begin
+   end;
+
+   UserModeTCPStateInboundSynSent:begin
+
+    if aAge then begin
 
      inc(TCPv6Session^.TickCount,fUserModeTickDelta);
 
@@ -39180,7 +40860,11 @@ begin
 
     end;
 
-    UserModeTCPStateLastAck:begin
+   end;
+
+   UserModeTCPStateLastAck:begin
+
+    if aAge then begin
 
      inc(TCPv6Session^.TickCount,fUserModeTickDelta);
 
@@ -39212,8 +40896,11 @@ begin
 
     end;
 
-    UserModeTCPStateFINWait1,UserModeTCPStateFINWait2,UserModeTCPStateClosing:begin
-     // Half-close states after active close: only need idle timeout.
+   end;
+
+   UserModeTCPStateFINWait1,UserModeTCPStateFINWait2,UserModeTCPStateClosing:begin
+    // Half-close states after active close: only need idle timeout.
+    if aAge then begin
      inc(TCPv6Session^.IdleTickCount,fUserModeTickDelta);
      if TCPv6Session^.IdleTickCount>=fUserModeTCPIdleTimeoutTicks then begin
       if length(fToClose)<=fToCloseCount then begin
@@ -39224,9 +40911,11 @@ begin
       SessionClosed:=true;
      end;
     end;
+   end;
 
-    UserModeTCPStateTimeWait:begin
-     // Wait 2×MSL before closing the session.
+   UserModeTCPStateTimeWait:begin
+    // Wait 2×MSL before closing the session.
+    if aAge then begin
      inc(TCPv6Session^.TimeWaitTickCount,fUserModeTickDelta);
      if TCPv6Session^.TimeWaitTickCount>=UserModeTCPTimeWaitTicks then begin
       if length(fToClose)<=fToCloseCount then begin
@@ -39237,14 +40926,121 @@ begin
       SessionClosed:=true;
      end;
     end;
+   end;
 
-    else begin
-    end;
+   else begin
+   end;
+
+  end;
+
+  // One place instead of eight, as on the IPv4 side.
+  if SessionClosed then begin
+   TCPv6Session^.QueuedForClose:=true;
+  end;
+
+ end;
+
+end;
+
+{$ifdef PasRISCVNATReadiness}
+// Services one session's readiness half at most once per round.
+procedure TPasRISCVEthernetDeviceUserModeNetworking.ServiceTCPv6ReadinessOnce(const aSessionIndex:TPasRISCVInt32);
+var TCPv6Session:PTCPv6Session;
+begin
+
+ TCPv6Session:=fTCPv6SessionArray[aSessionIndex];
+
+ if assigned(TCPv6Session) and TCPv6Session^.Active and (TCPv6Session^.ReadinessRound<>fTCPv6ReadinessRound) then begin
+
+  TCPv6Session^.ReadinessRound:=fTCPv6ReadinessRound;
+
+  ServiceTCPv6Session(aSessionIndex,true,false);
+
+ end;
+
+end;
+
+{$endif}
+
+procedure TPasRISCVEthernetDeviceUserModeNetworking.PollTCPv6Sockets;
+var CloseIndex:TPasRISCVInt32;
+    ActiveArrayIndex:TPasRISCVInt32;
+{$ifdef PasRISCVNATReadiness}
+    ReadyCount:TPasRISCVInt32;
+    EventIndex:TPasRISCVInt32;
+    EventSessionIndex:TPasRISCVInt32;
+    ReadinessEvent:TUserModeReadinessEvent;
+{$endif}
+    ForwardIndex:TPasRISCVInt32;
+    NewSessionIndex:TPasRISCVInt32;
+    EvictionIndex:TPasRISCVInt32;
+    NewTCPv6Session:PTCPv6Session;
+    NewTCPv6Key:TUserModeTCPv6Key;
+    PortForwardItem:PUserModePortForward;
+    WriteSet:TRNLSocketSet;
+    AcceptReadSet:TRNLSocketSet;
+    AcceptAddress:TRNLAddress;
+    AcceptedSocket:TRNLSocket;
+begin
+
+ fToCloseCount:=0;
+
+{$ifdef PasRISCVNATReadiness}
+
+ inc(fTCPv6ReadinessRound);
+ if fTCPv6ReadinessRound=0 then begin
+  fTCPv6ReadinessRound:=1;
+ end;
+
+{$ifdef PasRISCVNATReadinessWSAPoll}
+ // WSAPoll does not report a failed connection attempt, so sockets still connecting
+ // are visited unconditionally there. Same reasoning as in PollTCPSockets.
+ for ActiveArrayIndex:=0 to fTCPv6ActiveCount-1 do begin
+  if fTCPv6SessionArray[fTCPv6ActiveIndices[ActiveArrayIndex]]^.State=UserModeTCPStateConnecting then begin
+   ServiceTCPv6ReadinessOnce(fTCPv6ActiveIndices[ActiveArrayIndex]);
+  end;
+ end;
+{$endif}
+
+ if fTCPv6UnarmedCount=0 then begin
+
+  ReadyCount:=fTCPv6Readiness.Wait(0);
+
+  for EventIndex:=0 to ReadyCount-1 do begin
+
+   ReadinessEvent:=fTCPv6Readiness.Event(EventIndex);
+
+   EventSessionIndex:=TPasRISCVInt32(TPasRISCVUInt32(ReadinessEvent.Tag and $ffffffff));
+
+   if (EventSessionIndex>=0) and
+      (EventSessionIndex<length(fTCPv6SessionArray)) and
+      (TPasRISCVUInt32(ReadinessEvent.Tag shr 32)=fTCPv6Generations[EventSessionIndex]) then begin
+
+    ServiceTCPv6ReadinessOnce(EventSessionIndex);
 
    end;
 
   end;
 
+ end else begin
+
+  for ActiveArrayIndex:=0 to fTCPv6ActiveCount-1 do begin
+   ServiceTCPv6ReadinessOnce(fTCPv6ActiveIndices[ActiveArrayIndex]);
+  end;
+
+ end;
+
+{$else}
+
+ // No readiness set in this build: every session asked in every round.
+ for ActiveArrayIndex:=0 to fTCPv6ActiveCount-1 do begin
+  ServiceTCPv6Session(fTCPv6ActiveIndices[ActiveArrayIndex],true,false);
+ end;
+
+{$endif}
+
+ for ActiveArrayIndex:=0 to fTCPv6ActiveCount-1 do begin
+  ServiceTCPv6Session(fTCPv6ActiveIndices[ActiveArrayIndex],false,true);
  end;
 
  for ForwardIndex:=0 to fPortForwardCount-1 do begin
@@ -39349,6 +41145,11 @@ begin
      NewTCPv6Session^.ActiveIndex:=fTCPv6ActiveCount;
      fTCPv6ActiveIndices[fTCPv6ActiveCount]:=NewSessionIndex;
      inc(fTCPv6ActiveCount);
+
+     // Already connected: this one only waits to be read from.
+{$ifdef PasRISCVNATReadiness}
+     ArmTCPv6Readiness(NewSessionIndex,false);
+{$endif}
 
      SendTCPv6ToGuest(NewSessionIndex,TCPFlagSYN,nil,0);
      inc(NewTCPv6Session^.ServerSeq);
