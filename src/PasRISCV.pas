@@ -32558,13 +32558,30 @@ begin
   TCPSession^.SocketFileDescriptor:=RNLSocketCreate(RNL_SOCKET_TYPE_STREAM,RNL_IPV4);
 {$endif}
   if TCPSession^.SocketFileDescriptor=RNL_SOCKET_NULL then begin
-   // Out of host descriptors, almost always EMFILE. The guest cannot be given the
-   // connection, but it can be told so: without the reset it waits out its connect
-   // timer for every attempt, and a host that has run out of file descriptors is
-   // exactly the situation in which the guest is retrying hardest.
-   SendTCPResetToGuest(aIPHeader,TCPHeader,PayloadSize);
-   fTCPFreeList.Enqueue(SessionIndex);
-   exit;
+   // Out of host descriptors, almost always EMFILE. Every session in the table holds
+   // one of those descriptors, including the ones that are finished or have not been
+   // touched in minutes, and nothing else ever reclaims them for this reason: the
+   // eviction used to be reachable only when the session table itself was full, which
+   // at 65536 entries happens long after the descriptors have run out. So take one
+   // back and ask again before giving up.
+   EvictionIndex:=FindEvictableTCPSession;
+   if EvictionIndex>=0 then begin
+    CloseTCPSession(EvictionIndex,true);
+{$ifdef PasRISCVUseRNLNetworkInstance}
+    TCPSession^.SocketFileDescriptor:=fRNLNetwork.SocketCreate(RNL_SOCKET_TYPE_STREAM,RNL_IPV4);
+{$else}
+    TCPSession^.SocketFileDescriptor:=RNLSocketCreate(RNL_SOCKET_TYPE_STREAM,RNL_IPV4);
+{$endif}
+   end;
+   if TCPSession^.SocketFileDescriptor=RNL_SOCKET_NULL then begin
+    // Nothing was spare, or freeing one still was not enough. The guest cannot be
+    // given the connection, but it can be told so: without the reset it waits out its
+    // connect timer for every attempt, and a host that has run out of file descriptors
+    // is exactly the situation in which the guest is retrying hardest.
+    SendTCPResetToGuest(aIPHeader,TCPHeader,PayloadSize);
+    fTCPFreeList.Enqueue(SessionIndex);
+    exit;
+   end;
   end;
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -37826,9 +37843,20 @@ begin
 
   if TCPv6Session^.SocketFileDescriptor=RNL_SOCKET_NULL then begin
    // Out of host descriptors, almost always EMFILE - see the IPv4 path
-   SendTCPv6ResetToGuest(aIPv6Header,TCPHeader,PayloadSize);
-   fTCPv6FreeList.Enqueue(NewSessionIndex);
-   exit;
+   EvictionIndex:=FindEvictableTCPv6Session;
+   if EvictionIndex>=0 then begin
+    CloseTCPv6Session(EvictionIndex,true);
+{$ifdef PasRISCVUseRNLNetworkInstance}
+    TCPv6Session^.SocketFileDescriptor:=fRNLNetwork.SocketCreate(RNL_SOCKET_TYPE_STREAM,RNL_IPV6);
+{$else}
+    TCPv6Session^.SocketFileDescriptor:=RNLSocketCreate(RNL_SOCKET_TYPE_STREAM,RNL_IPV6);
+{$endif}
+   end;
+   if TCPv6Session^.SocketFileDescriptor=RNL_SOCKET_NULL then begin
+    SendTCPv6ResetToGuest(aIPv6Header,TCPHeader,PayloadSize);
+    fTCPv6FreeList.Enqueue(NewSessionIndex);
+    exit;
+   end;
   end;
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
