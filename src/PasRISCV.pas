@@ -2027,6 +2027,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              UserModeTCPStateTimeWait=TPasRISCVUInt8(11);
              UserModeTCPTimeWaitTicks=TPasRISCVUInt32(6000);
              UserModeTCPRetransmitBufferMax=524288;
+             UserModeTCPRetransmitBufferInitialSize=4096;
              UserModeTCPRetransmitTicks=50;
              UserModeTCPSynFinMaxRetransmits=5;
              UserModeTCPInitialRTO=100;
@@ -2459,6 +2460,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              RetransmitData:Pointer;
              RetransmitSize:TPasRISCVSizeInt;
              RetransmitCapacity:TPasRISCVSizeInt;
+             // Offset of the oldest unacknowledged byte. The buffer is a ring, so an
+             // ACK only moves this forward instead of shifting everything still
+             // outstanding to the front of the buffer, which is what it used to do -
+             // one memmove of the whole backlog per acknowledgement, up to half a
+             // megabyte of it.
+             RetransmitHead:TPasRISCVSizeInt;
              RetransmitSeqBase:TPasRISCVUInt32;
              OutOfOrderQueue:PUserModeTCPOutOfOrderQueue;
              OutOfOrderCount:TPasRISCVUInt8;
@@ -2498,6 +2505,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              RetransmitData:Pointer;
              RetransmitSize:TPasRISCVSizeInt;
              RetransmitCapacity:TPasRISCVSizeInt;
+             // Offset of the oldest unacknowledged byte. The buffer is a ring, so an
+             // ACK only moves this forward instead of shifting everything still
+             // outstanding to the front of the buffer, which is what it used to do -
+             // one memmove of the whole backlog per acknowledgement, up to half a
+             // megabyte of it.
+             RetransmitHead:TPasRISCVSizeInt;
              RetransmitSeqBase:TPasRISCVUInt32;
              OutOfOrderQueue:PUserModeTCPOutOfOrderQueue;
              OutOfOrderCount:TPasRISCVUInt8;
@@ -2698,6 +2711,14 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        procedure ThreadProc;
        procedure ProcessReset;
       public
+       // The retransmit ring is pure arithmetic over a block of memory and holds no
+       // state of its own, so it lives out here where it can be driven directly - the
+       // wrap cases are almost unreachable through the network path, because a
+       // retransmit the guest already holds is discarded as a duplicate and a misread
+       // would leave no trace on the wire.
+       class procedure RetransmitBufferReserve(var aData:Pointer;var aCapacity,aHead:TPasRISCVSizeInt;const aSize,aNeeded:TPasRISCVSizeInt); static;
+       class procedure RetransmitBufferAppend(const aData:Pointer;const aCapacity,aHead,aSize:TPasRISCVSizeInt;const aSource:Pointer;const aLength:TPasRISCVSizeInt); static;
+       class procedure RetransmitBufferFetch(const aData:Pointer;const aCapacity,aHead,aOffset:TPasRISCVSizeInt;const aDestination:Pointer;const aLength:TPasRISCVSizeInt); static;
        constructor Create; reintroduce;
        destructor Destroy; override;
        procedure Shutdown; override;
@@ -32669,6 +32690,7 @@ begin
   TCPSession^.RetransmitData:=nil;
   TCPSession^.RetransmitSize:=0;
   TCPSession^.RetransmitCapacity:=0;
+  TCPSession^.RetransmitHead:=0;
   TCPSession^.RetransmitSeqBase:=TCPSession^.ServerSeq;
 
   TCPSession^.Active:=true;
@@ -32734,14 +32756,15 @@ begin
 
    if TrimLength>=TCPSession^.RetransmitSize then begin
     TCPSession^.RetransmitSize:=0;
-    inc(TCPSession^.RetransmitSeqBase,TrimLength);
+    TCPSession^.RetransmitHead:=0;
    end else begin
-    Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPSession^.RetransmitData)+TPasRISCVPtrUInt(TrimLength)))^,
-         TCPSession^.RetransmitData^,
-         TCPSession^.RetransmitSize-TrimLength);
+    inc(TCPSession^.RetransmitHead,TrimLength);
+    if TCPSession^.RetransmitHead>=TCPSession^.RetransmitCapacity then begin
+     dec(TCPSession^.RetransmitHead,TCPSession^.RetransmitCapacity);
+    end;
     dec(TCPSession^.RetransmitSize,TrimLength);
-    inc(TCPSession^.RetransmitSeqBase,TrimLength);
    end;
+   inc(TCPSession^.RetransmitSeqBase,TrimLength);
 
    TCPSession^.TickCount:=0;
    TCPSession^.IdleTickCount:=0;
@@ -32814,14 +32837,15 @@ begin
      end;
      if TrimLength>=TCPSession^.RetransmitSize then begin
       TCPSession^.RetransmitSize:=0;
-      inc(TCPSession^.RetransmitSeqBase,TrimLength);
+      TCPSession^.RetransmitHead:=0;
      end else begin
-      Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPSession^.RetransmitData)+TPasRISCVPtrUInt(TrimLength)))^,
-           TCPSession^.RetransmitData^,
-           TCPSession^.RetransmitSize-TrimLength);
+      inc(TCPSession^.RetransmitHead,TrimLength);
+      if TCPSession^.RetransmitHead>=TCPSession^.RetransmitCapacity then begin
+       dec(TCPSession^.RetransmitHead,TCPSession^.RetransmitCapacity);
+      end;
       dec(TCPSession^.RetransmitSize,TrimLength);
-      inc(TCPSession^.RetransmitSeqBase,TrimLength);
      end;
+     inc(TCPSession^.RetransmitSeqBase,TrimLength);
      TCPSession^.TickCount:=0;
      TCPSession^.IdleTickCount:=0;
     end;
@@ -34129,6 +34153,105 @@ begin
 
 end;
 
+// Makes room for aNeeded more bytes on top of the aSize already held. Growth is
+// geometric rather than exact-fit: the old code sized the block to precisely what was
+// needed, so once past the initial 4 KiB every single receive called ReallocMem and
+// paid for a copy of the whole backlog. A ring cannot simply be reallocated either,
+// because the wrap point moves - so the two pieces are laid down flat in the new
+// block and the head goes back to zero.
+class procedure TPasRISCVEthernetDeviceUserModeNetworking.RetransmitBufferReserve(var aData:Pointer;var aCapacity,aHead:TPasRISCVSizeInt;const aSize,aNeeded:TPasRISCVSizeInt);
+var NewCapacity,FirstPart:TPasRISCVSizeInt;
+    NewData:Pointer;
+begin
+
+ if (aSize+aNeeded)<=aCapacity then begin
+  exit;
+ end;
+
+ NewCapacity:=aCapacity;
+ if NewCapacity<UserModeTCPRetransmitBufferInitialSize then begin
+  NewCapacity:=UserModeTCPRetransmitBufferInitialSize;
+ end;
+ while NewCapacity<(aSize+aNeeded) do begin
+  inc(NewCapacity,NewCapacity);
+ end;
+ // The cap only applies while it still covers what was asked for. The caller bounds
+ // its reads by the same maximum, so this should never bind - but capping below the
+ // requested size would hand back a block too small to write into, and that is not a
+ // failure worth risking for a policy limit.
+ if (NewCapacity>UserModeTCPRetransmitBufferMax) and
+    (UserModeTCPRetransmitBufferMax>=(aSize+aNeeded)) then begin
+  NewCapacity:=UserModeTCPRetransmitBufferMax;
+ end;
+
+ GetMem(NewData,NewCapacity);
+
+ if aSize>0 then begin
+  FirstPart:=aCapacity-aHead;
+  if FirstPart>aSize then begin
+   FirstPart:=aSize;
+  end;
+  Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aData)+TPasRISCVPtrUInt(aHead)))^,NewData^,FirstPart);
+  if FirstPart<aSize then begin
+   Move(aData^,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(NewData)+TPasRISCVPtrUInt(FirstPart)))^,aSize-FirstPart);
+  end;
+ end;
+
+ if assigned(aData) then begin
+  FreeMem(aData);
+ end;
+
+ aData:=NewData;
+ aCapacity:=NewCapacity;
+ aHead:=0;
+
+end;
+
+// Writes aLength bytes behind the aSize bytes already held, wrapping if the tail of
+// the ring is reached.
+class procedure TPasRISCVEthernetDeviceUserModeNetworking.RetransmitBufferAppend(const aData:Pointer;const aCapacity,aHead,aSize:TPasRISCVSizeInt;const aSource:Pointer;const aLength:TPasRISCVSizeInt);
+var Start,FirstPart:TPasRISCVSizeInt;
+begin
+ if aLength<=0 then begin
+  exit;
+ end;
+ Start:=aHead+aSize;
+ while Start>=aCapacity do begin
+  dec(Start,aCapacity);
+ end;
+ FirstPart:=aCapacity-Start;
+ if FirstPart>aLength then begin
+  FirstPart:=aLength;
+ end;
+ Move(aSource^,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aData)+TPasRISCVPtrUInt(Start)))^,FirstPart);
+ if FirstPart<aLength then begin
+  Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aSource)+TPasRISCVPtrUInt(FirstPart)))^,aData^,aLength-FirstPart);
+ end;
+end;
+
+// Reads aLength bytes starting aOffset bytes into the held data, wrapping the same
+// way. The retransmit path needs a contiguous buffer to hand to the frame builder,
+// which is why this copies rather than returning a pointer into the ring.
+class procedure TPasRISCVEthernetDeviceUserModeNetworking.RetransmitBufferFetch(const aData:Pointer;const aCapacity,aHead,aOffset:TPasRISCVSizeInt;const aDestination:Pointer;const aLength:TPasRISCVSizeInt);
+var Start,FirstPart:TPasRISCVSizeInt;
+begin
+ if aLength<=0 then begin
+  exit;
+ end;
+ Start:=aHead+aOffset;
+ while Start>=aCapacity do begin
+  dec(Start,aCapacity);
+ end;
+ FirstPart:=aCapacity-Start;
+ if FirstPart>aLength then begin
+  FirstPart:=aLength;
+ end;
+ Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aData)+TPasRISCVPtrUInt(Start)))^,aDestination^,FirstPart);
+ if FirstPart<aLength then begin
+  Move(aData^,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aDestination)+TPasRISCVPtrUInt(FirstPart)))^,aLength-FirstPart);
+ end;
+end;
+
 procedure TPasRISCVEthernetDeviceUserModeNetworking.AdvanceUserModeTicks;
 var CurrentTickTime,ElapsedTicks:TPasRISCVUInt64;
 begin
@@ -35082,6 +35205,9 @@ var SessionIndex:TPasRISCVInt32;
     NewSessionIndex:TPasRISCVInt32;
     ExtraIndex:TPasRISCVInt32;
     EvictionIndex:TPasRISCVInt32;
+    // Gathering point for one retransmitted chunk, which may straddle the wrap of
+    // the ring and therefore cannot be handed on as a pointer into it
+    RetransmitChunk:array[0..UserModeTCPMaxDataPayload-1] of TPasRISCVUInt8;
     NewTCPSession:PTCPSession;
     AcceptPeerIPAddressBytes:TIPv4Address;
     NewTCPKey:TUserModeTCPKey;
@@ -35280,18 +35406,18 @@ begin
 
       if ReceiveLength>0 then begin
 
-       // Grow buffer dynamically (always fits because of ReceiveBudget cap above).
-       if (TCPSession^.RetransmitSize+ReceiveLength)>TCPSession^.RetransmitCapacity then begin
-        NewCapacity:=TCPSession^.RetransmitSize+ReceiveLength;
-        if NewCapacity<4096 then begin
-         NewCapacity:=4096;
-        end;
-        ReallocMem(TCPSession^.RetransmitData,NewCapacity);
-        TCPSession^.RetransmitCapacity:=NewCapacity;
-       end;
-       Move(fReceiveBuffer[0],
-            Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPSession^.RetransmitData)+TPasRISCVPtrUInt(TCPSession^.RetransmitSize)))^,
-            ReceiveLength);
+       // Grow the ring dynamically (always fits because of ReceiveBudget cap above).
+       RetransmitBufferReserve(TCPSession^.RetransmitData,
+                               TCPSession^.RetransmitCapacity,
+                               TCPSession^.RetransmitHead,
+                               TCPSession^.RetransmitSize,
+                               ReceiveLength);
+       RetransmitBufferAppend(TCPSession^.RetransmitData,
+                              TCPSession^.RetransmitCapacity,
+                              TCPSession^.RetransmitHead,
+                              TCPSession^.RetransmitSize,
+                              @fReceiveBuffer[0],
+                              ReceiveLength);
        inc(TCPSession^.RetransmitSize,ReceiveLength);
        if TCPSession^.RTTSentTick=0 then begin
         TCPSession^.RTTSentTick:=fUserModeTickCount;
@@ -35415,7 +35541,15 @@ begin
          if (TCPSession^.GuestMSS>0) and (TPasRISCVSizeInt(TCPSession^.GuestMSS)<ChunkSize) then begin
           ChunkSize:=TPasRISCVSizeInt(TCPSession^.GuestMSS);
          end;
-         SendTCPToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPSession^.RetransmitData)+TPasRISCVPtrUInt(ChunkOffset))),ChunkSize);
+         // The frame builder wants one contiguous run, and the ring may wrap in the
+         // middle of this chunk, so it is gathered here first
+         RetransmitBufferFetch(TCPSession^.RetransmitData,
+                               TCPSession^.RetransmitCapacity,
+                               TCPSession^.RetransmitHead,
+                               ChunkOffset,
+                               @RetransmitChunk[0],
+                               ChunkSize);
+         SendTCPToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,@RetransmitChunk[0],ChunkSize);
          inc(TCPSession^.ServerSeq,ChunkSize);
          inc(ChunkOffset,ChunkSize);
         end;
@@ -35644,6 +35778,7 @@ begin
      NewTCPSession^.RetransmitData:=nil;
      NewTCPSession^.RetransmitSize:=0;
      NewTCPSession^.RetransmitCapacity:=0;
+     NewTCPSession^.RetransmitHead:=0;
      NewTCPSession^.Active:=true;
 
      FillChar(NewTCPKey,SizeOf(TUserModeTCPKey),#0);
@@ -37997,14 +38132,15 @@ begin
 
      if TrimLength>=TCPv6Session^.RetransmitSize then begin
       TCPv6Session^.RetransmitSize:=0;
-      inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
+      TCPv6Session^.RetransmitHead:=0;
      end else begin
-      Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPv6Session^.RetransmitData)+TPasRISCVPtrUInt(TrimLength)))^,
-           TCPv6Session^.RetransmitData^,
-           TCPv6Session^.RetransmitSize-TrimLength);
+      inc(TCPv6Session^.RetransmitHead,TrimLength);
+      if TCPv6Session^.RetransmitHead>=TCPv6Session^.RetransmitCapacity then begin
+       dec(TCPv6Session^.RetransmitHead,TCPv6Session^.RetransmitCapacity);
+      end;
       dec(TCPv6Session^.RetransmitSize,TrimLength);
-      inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
      end;
+     inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
 
      TCPv6Session^.TickCount:=0;
 
@@ -38138,17 +38274,19 @@ begin
      if TrimLength>=TCPv6Session^.RetransmitSize then begin
 
       TCPv6Session^.RetransmitSize:=0;
-      inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
+      TCPv6Session^.RetransmitHead:=0;
 
      end else begin
 
-      Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPv6Session^.RetransmitData)+TPasRISCVPtrUInt(TrimLength)))^,
-           TCPv6Session^.RetransmitData^,
-           TCPv6Session^.RetransmitSize-TrimLength);
+      inc(TCPv6Session^.RetransmitHead,TrimLength);
+      if TCPv6Session^.RetransmitHead>=TCPv6Session^.RetransmitCapacity then begin
+       dec(TCPv6Session^.RetransmitHead,TCPv6Session^.RetransmitCapacity);
+      end;
       dec(TCPv6Session^.RetransmitSize,TrimLength);
-      inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
 
      end;
+
+     inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
 
      TCPv6Session^.TickCount:=0;
      TCPv6Session^.IdleTickCount:=0;
@@ -38377,17 +38515,19 @@ begin
       if TrimLength>=TCPv6Session^.RetransmitSize then begin
 
        TCPv6Session^.RetransmitSize:=0;
-       inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
+       TCPv6Session^.RetransmitHead:=0;
 
       end else begin
 
-       Move(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPv6Session^.RetransmitData)+TPasRISCVPtrUInt(TrimLength)))^,
-            TCPv6Session^.RetransmitData^,
-            TCPv6Session^.RetransmitSize-TrimLength);
+       inc(TCPv6Session^.RetransmitHead,TrimLength);
+       if TCPv6Session^.RetransmitHead>=TCPv6Session^.RetransmitCapacity then begin
+        dec(TCPv6Session^.RetransmitHead,TCPv6Session^.RetransmitCapacity);
+       end;
        dec(TCPv6Session^.RetransmitSize,TrimLength);
-       inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
 
       end;
+
+      inc(TCPv6Session^.RetransmitSeqBase,TrimLength);
 
       TCPv6Session^.TickCount:=0;
       TCPv6Session^.IdleTickCount:=0;
@@ -38529,6 +38669,7 @@ var SessionIndex:TPasRISCVInt32;
     NewSessionIndex:TPasRISCVInt32;
     ExtraIndex:TPasRISCVInt32;
     EvictionIndex:TPasRISCVInt32;
+    RetransmitChunk:array[0..UserModeTCPMaxDataPayload-1] of TPasRISCVUInt8;
     NewTCPv6Session:PTCPv6Session;
     NewTCPv6Key:TUserModeTCPv6Key;
     PortForwardItem:PUserModePortForward;
@@ -38761,15 +38902,17 @@ begin
       if ReceiveLength>0 then begin
 
        // Grow buffer dynamically (always fits because of ReceiveBudget cap above).
-       if (TCPv6Session^.RetransmitSize+ReceiveLength)>TCPv6Session^.RetransmitCapacity then begin
-        NewCapacity:=TCPv6Session^.RetransmitSize+ReceiveLength;
-        if NewCapacity<4096 then begin
-         NewCapacity:=4096;
-        end;
-        ReallocMem(TCPv6Session^.RetransmitData,NewCapacity);
-        TCPv6Session^.RetransmitCapacity:=NewCapacity;
-       end;
-       Move(fReceiveBuffer[0],Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPv6Session^.RetransmitData)+TPasRISCVPtrUInt(TCPv6Session^.RetransmitSize)))^,ReceiveLength);
+       RetransmitBufferReserve(TCPv6Session^.RetransmitData,
+                               TCPv6Session^.RetransmitCapacity,
+                               TCPv6Session^.RetransmitHead,
+                               TCPv6Session^.RetransmitSize,
+                               ReceiveLength);
+       RetransmitBufferAppend(TCPv6Session^.RetransmitData,
+                              TCPv6Session^.RetransmitCapacity,
+                              TCPv6Session^.RetransmitHead,
+                              TCPv6Session^.RetransmitSize,
+                              @fReceiveBuffer[0],
+                              ReceiveLength);
        inc(TCPv6Session^.RetransmitSize,ReceiveLength);
 
        if TCPv6Session^.RTTSentTick=0 then begin
@@ -38855,7 +38998,13 @@ begin
          if (TCPv6Session^.GuestMSS>0) and (TPasRISCVSizeInt(TCPv6Session^.GuestMSS)<ChunkSize) then begin
           ChunkSize:=TPasRISCVSizeInt(TCPv6Session^.GuestMSS);
          end;
-         SendTCPv6ToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(TCPv6Session^.RetransmitData)+TPasRISCVPtrUInt(ChunkOffset))),ChunkSize);
+         RetransmitBufferFetch(TCPv6Session^.RetransmitData,
+                               TCPv6Session^.RetransmitCapacity,
+                               TCPv6Session^.RetransmitHead,
+                               ChunkOffset,
+                               @RetransmitChunk[0],
+                               ChunkSize);
+         SendTCPv6ToGuest(SessionIndex,TCPFlagPSH or TCPFlagACK,@RetransmitChunk[0],ChunkSize);
          inc(TCPv6Session^.ServerSeq,TPasRISCVUInt32(ChunkSize));
          inc(ChunkOffset,ChunkSize);
         end;
@@ -39037,6 +39186,7 @@ begin
      NewTCPv6Session^.RetransmitData:=nil;
      NewTCPv6Session^.RetransmitSize:=0;
      NewTCPv6Session^.RetransmitCapacity:=0;
+     NewTCPv6Session^.RetransmitHead:=0;
      NewTCPv6Session^.Active:=true;
 
      FillChar(NewTCPv6Key,SizeOf(TUserModeTCPv6Key),#0);
