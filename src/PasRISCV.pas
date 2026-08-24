@@ -31724,6 +31724,8 @@ begin
 end;
 
 procedure TPasRISCVEthernetDeviceUserModeNetworking.HandleICMP(const aEthHeader:PEthernetHeader;const aIPHeader:PIPv4Header;const aICMPData:Pointer;const aICMPSize:TPasRISCVSizeInt);
+const GatewayIP:TIPv4Address=(10,0,2,2);
+      DNSIP:TIPv4Address=(10,0,2,3);
 var ICMPHeader:PICMPHeader;
     SocketFileDescriptor:TRNLSocket;
     SendAddress:TRNLAddress;
@@ -31745,6 +31747,18 @@ begin
 
  if (aIPHeader^.DestinationIP[0]=0) or
     ((aIPHeader^.DestinationIP[0]=255) and (aIPHeader^.DestinationIP[1]=255) and (aIPHeader^.DestinationIP[2]=255) and (aIPHeader^.DestinationIP[3]=255)) then begin
+  exit;
+ end;
+
+ // A ping to the gateway or to the DNS server is a ping to this device, not through
+ // it: there is nothing on the far side to forward it to, and passing it to a host
+ // socket would have it answered by whatever really owns 10.0.2.2 out there, or more
+ // usually by nothing at all. It went unanswered until now, which makes the first
+ // thing anyone reaches for when the network looks wrong - ping the gateway - report
+ // the gateway as dead while it is working perfectly.
+ if CompareMem(@aIPHeader^.DestinationIP,@GatewayIP,SizeOf(TIPv4Address)) or
+    CompareMem(@aIPHeader^.DestinationIP,@DNSIP,SizeOf(TIPv4Address)) then begin
+  EmulateICMPEchoReply(aIPHeader,aICMPData,aICMPSize);
   exit;
  end;
 
