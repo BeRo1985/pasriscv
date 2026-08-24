@@ -2415,6 +2415,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              Data:array[0..UserModeTCPMaxDataPayload-1] of TPasRISCVUInt8;
             end;
             PUserModeTCPOutOfOrderEntry=^TUserModeTCPOutOfOrderEntry;
+            // Nearly six kilobytes, and it used to sit inline in every session record,
+            // whether or not that connection ever saw a segment arrive out of order -
+            // which most never do. It made the session record thirty times larger than
+            // the rest of its fields together, so growing the session array meant
+            // copying tens of megabytes on the network thread, and five thousand idle
+            // connections cost thirty megabytes of buffers nobody had asked for. It is
+            // allocated on the first out-of-order segment instead.
+            TUserModeTCPOutOfOrderQueue=array[0..UserModeTCPOutOfOrderQueueSize-1] of TUserModeTCPOutOfOrderEntry;
+            PUserModeTCPOutOfOrderQueue=^TUserModeTCPOutOfOrderQueue;
             TUserModeTCPPendingBuffer=array[0..UserModeTCPPendingBufferSize-1] of TPasRISCVUInt8;
             PUserModeTCPPendingBuffer=^TUserModeTCPPendingBuffer;
             TUserModeTCPParsedOptions=record
@@ -2451,7 +2460,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              RetransmitSize:TPasRISCVSizeInt;
              RetransmitCapacity:TPasRISCVSizeInt;
              RetransmitSeqBase:TPasRISCVUInt32;
-             OutOfOrderQueue:array[0..UserModeTCPOutOfOrderQueueSize-1] of TUserModeTCPOutOfOrderEntry;
+             OutOfOrderQueue:PUserModeTCPOutOfOrderQueue;
              OutOfOrderCount:TPasRISCVUInt8;
              SynFinRetransmitCount:TPasRISCVUInt8;
              RTO:TPasRISCVUInt32;
@@ -2490,7 +2499,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              RetransmitSize:TPasRISCVSizeInt;
              RetransmitCapacity:TPasRISCVSizeInt;
              RetransmitSeqBase:TPasRISCVUInt32;
-             OutOfOrderQueue:array[0..UserModeTCPOutOfOrderQueueSize-1] of TUserModeTCPOutOfOrderEntry;
+             OutOfOrderQueue:PUserModeTCPOutOfOrderQueue;
              OutOfOrderCount:TPasRISCVUInt8;
              SynFinRetransmitCount:TPasRISCVUInt8;
              RTO:TPasRISCVUInt32;
@@ -30742,6 +30751,9 @@ end;
 
 procedure TPasRISCVEthernetDeviceUserModeNetworking.Shutdown;
 var Index:TPasRISCVInt32;
+    ICMPSessionItem:PICMPSession;
+    UDPSessionItem:PUDPSession;
+    TCPSessionItem:PTCPSession;
 begin
 
  if assigned(fThread) then begin
@@ -30766,35 +30778,43 @@ begin
  end;
 
  for Index:=0 to fICMPActiveCount-1 do begin
+  ICMPSessionItem:=@fICMPSessionArray[fICMPActiveIndices[Index]];
 {$ifdef PasRISCVUseRNLNetworkInstance}
-  fRNLNetwork.SocketDestroy(fICMPSessionArray[fICMPActiveIndices[Index]].SocketFileDescriptor);
+  fRNLNetwork.SocketDestroy(ICMPSessionItem^.SocketFileDescriptor);
 {$else}
-  RNLSocketDestroy(fICMPSessionArray[fICMPActiveIndices[Index]].SocketFileDescriptor);
+  RNLSocketDestroy(ICMPSessionItem^.SocketFileDescriptor);
 {$endif}
  end;
 
  for Index:=0 to fUDPActiveCount-1 do begin
+  UDPSessionItem:=@fUDPSessionArray[fUDPActiveIndices[Index]];
 {$ifdef PasRISCVUseRNLNetworkInstance}
-  fRNLNetwork.SocketDestroy(fUDPSessionArray[fUDPActiveIndices[Index]].SocketFileDescriptor);
+  fRNLNetwork.SocketDestroy(UDPSessionItem^.SocketFileDescriptor);
 {$else}
-  RNLSocketDestroy(fUDPSessionArray[fUDPActiveIndices[Index]].SocketFileDescriptor);
+  RNLSocketDestroy(UDPSessionItem^.SocketFileDescriptor);
 {$endif}
  end;
 
  for Index:=0 to fTCPActiveCount-1 do begin
+  TCPSessionItem:=@fTCPSessionArray[fTCPActiveIndices[Index]];
 {$ifdef PasRISCVUseRNLNetworkInstance}
-  fRNLNetwork.SocketDestroy(fTCPSessionArray[fTCPActiveIndices[Index]].SocketFileDescriptor);
+  fRNLNetwork.SocketDestroy(TCPSessionItem^.SocketFileDescriptor);
 {$else}
-  RNLSocketDestroy(fTCPSessionArray[fTCPActiveIndices[Index]].SocketFileDescriptor);
+  RNLSocketDestroy(TCPSessionItem^.SocketFileDescriptor);
 {$endif}
-  if assigned(fTCPSessionArray[fTCPActiveIndices[Index]].RetransmitData) then begin
-   FreeMem(fTCPSessionArray[fTCPActiveIndices[Index]].RetransmitData);
-   fTCPSessionArray[fTCPActiveIndices[Index]].RetransmitData:=nil;
+  if assigned(TCPSessionItem^.RetransmitData) then begin
+   FreeMem(TCPSessionItem^.RetransmitData);
+   TCPSessionItem^.RetransmitData:=nil;
   end;
-  if assigned(fTCPSessionArray[fTCPActiveIndices[Index]].PendingData) then begin
-   FreeMem(fTCPSessionArray[fTCPActiveIndices[Index]].PendingData);
-   fTCPSessionArray[fTCPActiveIndices[Index]].PendingData:=nil;
-   fTCPSessionArray[fTCPActiveIndices[Index]].PendingCapacity:=0;
+  if assigned(TCPSessionItem^.PendingData) then begin
+   FreeMem(TCPSessionItem^.PendingData);
+   TCPSessionItem^.PendingData:=nil;
+   TCPSessionItem^.PendingCapacity:=0;
+  end;
+  if assigned(TCPSessionItem^.OutOfOrderQueue) then begin
+   FreeMem(TCPSessionItem^.OutOfOrderQueue);
+   TCPSessionItem^.OutOfOrderQueue:=nil;
+   TCPSessionItem^.OutOfOrderCount:=0;
   end;
  end;
 
@@ -30924,6 +30944,9 @@ var Packet:TSendPacket;
     SelectForwardItem:PUserModePortForward;
     SelectTCPSession:PTCPSession;
     SelectTCPv6Session:PTCPv6Session;
+    SelectICMPSession:PICMPSession;
+    SelectUDPSession:PUDPSession;
+    SelectUDPv6Session:PUDPv6Session;
     MustWait:Boolean;
 {$endif}
 begin
@@ -30947,12 +30970,13 @@ begin
 
   for SelectIndex:=0 to fICMPActiveCount-1 do begin
    SelectSessionIndex:=fICMPActiveIndices[SelectIndex];
-   if fICMPSessionArray[SelectSessionIndex].SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+   SelectICMPSession:=@fICMPSessionArray[SelectSessionIndex];
+   if SelectICMPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
-     SelectReadSet.Add(fICMPSessionArray[SelectSessionIndex].SocketFileDescriptor);
-     if fICMPSessionArray[SelectSessionIndex].SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=fICMPSessionArray[SelectSessionIndex].SocketFileDescriptor;
+     SelectReadSet.Add(SelectICMPSession^.SocketFileDescriptor);
+     if SelectICMPSession^.SocketFileDescriptor>SelectMaxSocket then begin
+      SelectMaxSocket:=SelectICMPSession^.SocketFileDescriptor;
      end;
      SelectHasSockets:=true;
     end else begin
@@ -30963,12 +30987,13 @@ begin
 
   for SelectIndex:=0 to fUDPActiveCount-1 do begin
    SelectSessionIndex:=fUDPActiveIndices[SelectIndex];
-   if fUDPSessionArray[SelectSessionIndex].SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+   SelectUDPSession:=@fUDPSessionArray[SelectSessionIndex];
+   if SelectUDPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
-     SelectReadSet.Add(fUDPSessionArray[SelectSessionIndex].SocketFileDescriptor);
-     if fUDPSessionArray[SelectSessionIndex].SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=fUDPSessionArray[SelectSessionIndex].SocketFileDescriptor;
+     SelectReadSet.Add(SelectUDPSession^.SocketFileDescriptor);
+     if SelectUDPSession^.SocketFileDescriptor>SelectMaxSocket then begin
+      SelectMaxSocket:=SelectUDPSession^.SocketFileDescriptor;
      end;
      SelectHasSockets:=true;
     end else begin
@@ -31000,12 +31025,13 @@ begin
 
   for SelectIndex:=0 to fUDPv6ActiveCount-1 do begin
    SelectSessionIndex:=fUDPv6ActiveIndices[SelectIndex];
-   if fUDPv6SessionArray[SelectSessionIndex].SocketFileDescriptor<>RNL_SOCKET_NULL then begin
+   SelectUDPv6Session:=@fUDPv6SessionArray[SelectSessionIndex];
+   if SelectUDPv6Session^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
-     SelectReadSet.Add(fUDPv6SessionArray[SelectSessionIndex].SocketFileDescriptor);
-     if fUDPv6SessionArray[SelectSessionIndex].SocketFileDescriptor>SelectMaxSocket then begin
-      SelectMaxSocket:=fUDPv6SessionArray[SelectSessionIndex].SocketFileDescriptor;
+     SelectReadSet.Add(SelectUDPv6Session^.SocketFileDescriptor);
+     if SelectUDPv6Session^.SocketFileDescriptor>SelectMaxSocket then begin
+      SelectMaxSocket:=SelectUDPv6Session^.SocketFileDescriptor;
      end;
      SelectHasSockets:=true;
     end else begin
@@ -31382,13 +31408,14 @@ begin
  ICMPKey.GuestIdentifier:=aGuestIdentifier;
 
  if fICMPSessions.TryGet(ICMPKey,SessionIndex) then begin
-  fICMPSessionArray[SessionIndex].GuestSourceIP:=aGuestSourceIP;
-  fICMPSessionArray[SessionIndex].OriginalIPHeader:=aOriginalIPHeader^;
+  SessionItem:=@fICMPSessionArray[SessionIndex];
+  SessionItem^.GuestSourceIP:=aGuestSourceIP;
+  SessionItem^.OriginalIPHeader:=aOriginalIPHeader^;
   if aICMPSize>=UserModeICMPHeaderSize then begin
-   Move(aICMPData^,fICMPSessionArray[SessionIndex].OriginalICMPHeader,UserModeICMPHeaderSize);
+   Move(aICMPData^,SessionItem^.OriginalICMPHeader,UserModeICMPHeaderSize);
   end;
-  fICMPSessionArray[SessionIndex].TickCount:=0;
-  result:=fICMPSessionArray[SessionIndex].SocketFileDescriptor;
+  SessionItem^.TickCount:=0;
+  result:=SessionItem^.SocketFileDescriptor;
   exit;
  end;
 
@@ -31397,9 +31424,10 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fICMPActiveCount-1 do begin
    SessionIndex:=fICMPActiveIndices[ActiveArrayIndex];
-   if (OldestSessionIndex<0) or (fICMPSessionArray[SessionIndex].TickCount>OldestTickCount) then begin
+   SessionItem:=@fICMPSessionArray[SessionIndex];
+   if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=SessionIndex;
-    OldestTickCount:=fICMPSessionArray[SessionIndex].TickCount;
+    OldestTickCount:=SessionItem^.TickCount;
    end;
   end;
   if OldestSessionIndex<0 then begin
@@ -32517,10 +32545,11 @@ begin
 
   Index:=FindTCPSession(aIPHeader^.SourceIP,TCPHeader^.SourcePort,EffectiveDestinationIP,TCPHeader^.DestinationPort);
   if Index>=0 then begin
+   TCPSession:=@fTCPSessionArray[Index];
    // If session is in SynAckSent state, retransmit SYN-ACK instead of reconnecting
-   if fTCPSessionArray[Index].State=UserModeTCPStateSynAckSent then begin
+   if TCPSession^.State=UserModeTCPStateSynAckSent then begin
     SendTCPToGuest(Index,TCPFlagSYN or TCPFlagACK,nil,0);
-    fTCPSessionArray[Index].IdleTickCount:=0;
+    TCPSession^.IdleTickCount:=0;
     exit;
    end;
    CloseTCPSession(Index,true);
@@ -32855,16 +32884,21 @@ begin
        UserModeTCPSequenceLessThan(TCPSession^.ServerAck,SequenceNumber) and
        (TCPSession^.OutOfOrderCount<UserModeTCPOutOfOrderQueueSize) and
        (PayloadSize<=UserModeTCPMaxDataPayload) then begin
+     // First segment this connection has ever had arrive out of order, so this is
+     // where it earns its queue
+     if not assigned(TCPSession^.OutOfOrderQueue) then begin
+      GetMem(TCPSession^.OutOfOrderQueue,SizeOf(TUserModeTCPOutOfOrderQueue));
+     end;
      // Check not already in queue
      Index:=0;
      while Index<TPasRISCVInt32(TCPSession^.OutOfOrderCount) do begin
-      if TCPSession^.OutOfOrderQueue[Index].SeqNo=SequenceNumber then begin
+      if TCPSession^.OutOfOrderQueue^[Index].SeqNo=SequenceNumber then begin
        break;
       end;
       inc(Index);
      end;
      if Index=TPasRISCVInt32(TCPSession^.OutOfOrderCount) then begin
-      OutOfOrderQueueItem:=@TCPSession^.OutOfOrderQueue[TCPSession^.OutOfOrderCount];
+      OutOfOrderQueueItem:=@TCPSession^.OutOfOrderQueue^[TCPSession^.OutOfOrderCount];
       OutOfOrderQueueItem^.SeqNo:=SequenceNumber;
       OutOfOrderQueueItem^.Size:=PayloadSize;
       Move(PayloadPointer^,OutOfOrderQueueItem^.Data[0],PayloadSize);
@@ -32926,7 +32960,7 @@ begin
      while Index<TPasRISCVInt32(TCPSession^.OutOfOrderCount) do begin
       ExtraIndex:=0;
       while ExtraIndex<TPasRISCVInt32(TCPSession^.OutOfOrderCount) do begin
-       OutOfOrderQueueItem:=@TCPSession^.OutOfOrderQueue[ExtraIndex];
+       OutOfOrderQueueItem:=@TCPSession^.OutOfOrderQueue^[ExtraIndex];
        if OutOfOrderQueueItem^.SeqNo=TCPSession^.ServerAck then begin
         AcceptedBytes:=0;
         if TCPSession^.PendingSize=0 then begin
@@ -32958,7 +32992,7 @@ begin
         end;
         // Remove flushed entry from queue
         if ExtraIndex<TPasRISCVInt32(TCPSession^.OutOfOrderCount)-1 then begin
-         Move(TCPSession^.OutOfOrderQueue[ExtraIndex+1],TCPSession^.OutOfOrderQueue[ExtraIndex],(TPasRISCVInt32(TCPSession^.OutOfOrderCount)-ExtraIndex-1)*SizeOf(TUserModeTCPOutOfOrderEntry));
+         Move(TCPSession^.OutOfOrderQueue^[ExtraIndex+1],TCPSession^.OutOfOrderQueue^[ExtraIndex],(TPasRISCVInt32(TCPSession^.OutOfOrderCount)-ExtraIndex-1)*SizeOf(TUserModeTCPOutOfOrderEntry));
         end;
         dec(TCPSession^.OutOfOrderCount);
         // Restart scan since queue changed
@@ -33605,9 +33639,10 @@ begin
  UDPKey.DestinationPort:=aOriginalDestinationPort;
 
  if fUDPSessions.TryGet(UDPKey,Index) then begin
-  fUDPSessionArray[Index].OriginalDestinationIP:=aOriginalDestinationIP;
-  fUDPSessionArray[Index].OriginalDestinationPort:=aOriginalDestinationPort;
-  fUDPSessionArray[Index].TickCount:=0;
+  SessionItem:=@fUDPSessionArray[Index];
+  SessionItem^.OriginalDestinationIP:=aOriginalDestinationIP;
+  SessionItem^.OriginalDestinationPort:=aOriginalDestinationPort;
+  SessionItem^.TickCount:=0;
   result:=Index;
   exit;
  end;
@@ -33617,9 +33652,10 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fUDPActiveCount-1 do begin
    Index:=fUDPActiveIndices[ActiveArrayIndex];
-   if (OldestSessionIndex<0) or (fUDPSessionArray[Index].TickCount>OldestTickCount) then begin
+   SessionItem:=@fUDPSessionArray[Index];
+   if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=Index;
-    OldestTickCount:=fUDPSessionArray[Index].TickCount;
+    OldestTickCount:=SessionItem^.TickCount;
    end;
   end;
   if OldestSessionIndex<0 then begin
@@ -34524,6 +34560,10 @@ begin
 
  if assigned(TCPSession^.PendingData) then begin
   FreeMem(TCPSession^.PendingData);
+ end;
+
+ if assigned(TCPSession^.OutOfOrderQueue) then begin
+  FreeMem(TCPSession^.OutOfOrderQueue);
  end;
 
  FillChar(Key,SizeOf(TUserModeTCPKey),#0);
@@ -36506,10 +36546,12 @@ begin
 
  if fICMPv6Sessions.TryGet(ICMPv6Key,SessionIndex) then begin
 
-  fICMPv6SessionArray[SessionIndex].DestinationIP:=aDestinationIP;
-  fICMPv6SessionArray[SessionIndex].OriginalIPv6Header:=aOriginalIPv6Header^;
+  SessionItem:=@fICMPv6SessionArray[SessionIndex];
 
-  FillChar(fICMPv6SessionArray[SessionIndex].OriginalICMPv6Prefix[0],UserModeICMPv6OriginalPrefixSize,0);
+  SessionItem^.DestinationIP:=aDestinationIP;
+  SessionItem^.OriginalIPv6Header:=aOriginalIPv6Header^;
+
+  FillChar(SessionItem^.OriginalICMPv6Prefix[0],UserModeICMPv6OriginalPrefixSize,0);
 
   OriginalCopySize:=aICMPv6Size;
   if OriginalCopySize>UserModeICMPv6OriginalPrefixSize then begin
@@ -36517,10 +36559,10 @@ begin
   end;
 
   if OriginalCopySize>0 then begin
-   Move(aICMPv6Data^,fICMPv6SessionArray[SessionIndex].OriginalICMPv6Prefix[0],OriginalCopySize);
+   Move(aICMPv6Data^,SessionItem^.OriginalICMPv6Prefix[0],OriginalCopySize);
   end;
 
-  fICMPv6SessionArray[SessionIndex].TickCount:=0;
+  SessionItem^.TickCount:=0;
 
   result:=SessionIndex;
   exit;
@@ -36532,9 +36574,10 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fICMPv6ActiveCount-1 do begin
    SessionIndex:=fICMPv6ActiveIndices[ActiveArrayIndex];
-   if (OldestSessionIndex<0) or (fICMPv6SessionArray[SessionIndex].TickCount>OldestTickCount) then begin
+   SessionItem:=@fICMPv6SessionArray[SessionIndex];
+   if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=SessionIndex;
-    OldestTickCount:=fICMPv6SessionArray[SessionIndex].TickCount;
+    OldestTickCount:=SessionItem^.TickCount;
    end;
   end;
   if OldestSessionIndex<0 then begin
@@ -37110,9 +37153,10 @@ begin
  UDPv6Key.DestinationPort:=aOriginalDestinationPort;
 
  if fUDPv6Sessions.TryGet(UDPv6Key,Index) then begin
-  fUDPv6SessionArray[Index].OriginalDestinationIP:=aOriginalDestinationIP;
-  fUDPv6SessionArray[Index].OriginalDestinationPort:=aOriginalDestinationPort;
-  fUDPv6SessionArray[Index].TickCount:=0;
+  SessionItem:=@fUDPv6SessionArray[Index];
+  SessionItem^.OriginalDestinationIP:=aOriginalDestinationIP;
+  SessionItem^.OriginalDestinationPort:=aOriginalDestinationPort;
+  SessionItem^.TickCount:=0;
   result:=Index;
   exit;
  end;
@@ -37122,9 +37166,10 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fUDPv6ActiveCount-1 do begin
    Index:=fUDPv6ActiveIndices[ActiveArrayIndex];
-   if (OldestSessionIndex<0) or (fUDPv6SessionArray[Index].TickCount>OldestTickCount) then begin
+   SessionItem:=@fUDPv6SessionArray[Index];
+   if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=Index;
-    OldestTickCount:=fUDPv6SessionArray[Index].TickCount;
+    OldestTickCount:=SessionItem^.TickCount;
    end;
   end;
   if OldestSessionIndex<0 then begin
@@ -37653,6 +37698,10 @@ begin
   FreeMem(TCPv6Session^.PendingData);
  end;
 
+ if assigned(TCPv6Session^.OutOfOrderQueue) then begin
+  FreeMem(TCPv6Session^.OutOfOrderQueue);
+ end;
+
  FillChar(Key,SizeOf(TUserModeTCPv6Key),#0);
  Key.GuestSourceIP:=TCPv6Session^.GuestSourceIP;
  Key.GuestSourcePort:=TCPv6Session^.GuestSourcePort;
@@ -37766,12 +37815,13 @@ begin
 
  // Existing sessions are state-driven below; keep retransmitted outbound SYNs
  // on the fast path so we resend the synthetic SYN-ACK.
- if (SessionIndex>=0) and
-    ((Flags and (TCPFlagSYN or TCPFlagACK))=TCPFlagSYN) and
-    (fTCPv6SessionArray[SessionIndex].State=UserModeTCPStateSynAckSent) then begin
-  SendTCPv6ToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
-  fTCPv6SessionArray[SessionIndex].IdleTickCount:=0;
-  exit;
+ if (SessionIndex>=0) and ((Flags and (TCPFlagSYN or TCPFlagACK))=TCPFlagSYN) then begin
+  TCPv6Session:=@fTCPv6SessionArray[SessionIndex];
+  if TCPv6Session^.State=UserModeTCPStateSynAckSent then begin
+   SendTCPv6ToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
+   TCPv6Session^.IdleTickCount:=0;
+   exit;
+  end;
  end;
 
  // Only pure SYN without an existing session starts a new outbound connect.
@@ -38159,15 +38209,20 @@ begin
        UserModeTCPSequenceLessThan(TCPv6Session^.ServerAck,SequenceNumber) and
        (TCPv6Session^.OutOfOrderCount<UserModeTCPOutOfOrderQueueSize) and
        (PayloadSize<=UserModeTCPMaxDataPayload) then begin
+     // First segment this connection has ever had arrive out of order, so this is
+     // where it earns its queue
+     if not assigned(TCPv6Session^.OutOfOrderQueue) then begin
+      GetMem(TCPv6Session^.OutOfOrderQueue,SizeOf(TUserModeTCPOutOfOrderQueue));
+     end;
      Index:=0;
      while Index<TPasRISCVInt32(TCPv6Session^.OutOfOrderCount) do begin
-      if TCPv6Session^.OutOfOrderQueue[Index].SeqNo=SequenceNumber then begin
+      if TCPv6Session^.OutOfOrderQueue^[Index].SeqNo=SequenceNumber then begin
        break;
       end;
       inc(Index);
      end;
      if Index=TPasRISCVInt32(TCPv6Session^.OutOfOrderCount) then begin
-      OutOfOrderQueueItem:=@TCPv6Session^.OutOfOrderQueue[TCPv6Session^.OutOfOrderCount];
+      OutOfOrderQueueItem:=@TCPv6Session^.OutOfOrderQueue^[TCPv6Session^.OutOfOrderCount];
       OutOfOrderQueueItem^.SeqNo:=SequenceNumber;
       OutOfOrderQueueItem^.Size:=PayloadSize;
       Move(PayloadPointer^,OutOfOrderQueueItem^.Data[0],PayloadSize);
@@ -38229,7 +38284,7 @@ begin
      while Index<TPasRISCVInt32(TCPv6Session^.OutOfOrderCount) do begin
       ExtraIndex:=0;
       while ExtraIndex<TPasRISCVInt32(TCPv6Session^.OutOfOrderCount) do begin
-       OutOfOrderQueueItem:=@TCPv6Session^.OutOfOrderQueue[ExtraIndex];
+       OutOfOrderQueueItem:=@TCPv6Session^.OutOfOrderQueue^[ExtraIndex];
        if OutOfOrderQueueItem^.SeqNo=TCPv6Session^.ServerAck then begin
         AcceptedBytes:=0;
         if TCPv6Session^.PendingSize=0 then begin
@@ -38260,7 +38315,7 @@ begin
          TCPv6Session^.IdleTickCount:=0;
         end;
         if ExtraIndex<TPasRISCVInt32(TCPv6Session^.OutOfOrderCount)-1 then begin
-         Move(TCPv6Session^.OutOfOrderQueue[ExtraIndex+1],TCPv6Session^.OutOfOrderQueue[ExtraIndex],(TPasRISCVInt32(TCPv6Session^.OutOfOrderCount)-ExtraIndex-1)*SizeOf(TUserModeTCPOutOfOrderEntry));
+         Move(TCPv6Session^.OutOfOrderQueue^[ExtraIndex+1],TCPv6Session^.OutOfOrderQueue^[ExtraIndex],(TPasRISCVInt32(TCPv6Session^.OutOfOrderCount)-ExtraIndex-1)*SizeOf(TUserModeTCPOutOfOrderEntry));
         end;
         dec(TCPv6Session^.OutOfOrderCount);
         break;
