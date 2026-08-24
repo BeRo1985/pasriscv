@@ -2552,12 +2552,20 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
             TUserModeICMPv6FreeList=TPasRISCVDynamicQueue<TPasRISCVInt32>;
             TUserModeUDPv6FreeList=TPasRISCVDynamicQueue<TPasRISCVInt32>;
             TUserModeTCPv6FreeList=TPasRISCVDynamicQueue<TPasRISCVInt32>;
-            TUserModeICMPSessionArray=array of TICMPSession;
-            TUserModeUDPSessionArray=array of TUDPSession;
-            TUserModeTCPSessionArray=array of TTCPSession;
-            TUserModeICMPv6SessionArray=array of TICMPv6Session;
-            TUserModeUDPv6SessionArray=array of TUDPv6Session;
-            TUserModeTCPv6SessionArray=array of TTCPv6Session;
+            // Arrays of pointers, not of records, and dimensioned once in the
+            // constructor. A dynamic array of inline records is reallocated when it
+            // grows, which moves every element - and this code hands out pointers into
+            // it (PTCPSession and friends) all over the place. Nothing dereferenced
+            // such a pointer across a growth, but that held only by the order the
+            // procedures happen to call each other, and the next change to that order
+            // would have been a use-after-free that shows up years later. Now the
+            // slots never move, by construction.
+            TUserModeICMPSessionArray=array of PICMPSession;
+            TUserModeUDPSessionArray=array of PUDPSession;
+            TUserModeTCPSessionArray=array of PTCPSession;
+            TUserModeICMPv6SessionArray=array of PICMPv6Session;
+            TUserModeUDPv6SessionArray=array of PUDPv6Session;
+            TUserModeTCPv6SessionArray=array of PTCPv6Session;
        private
        fThread:TNetworkThread;
        fLock:TPasMPCriticalSection;
@@ -2574,6 +2582,18 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fDHCPLeases:TDHCPLeaseTable;
        fICMPSessions:TUserModeICMPSessionMap;
        fICMPSessionArray:TUserModeICMPSessionArray;
+       // Slots below this have been handed out at least once; everything from here up
+       // has never been used and is available without going through the free list.
+       // The free list only ever holds slots that were used and given back, so it
+       // stays as small as the peak session count instead of being pre-filled with
+       // sixty-five thousand entries - which would also have been quadratic, since the
+       // queue grows by exactly one element per Enqueue.
+       fICMPNextSlot:TPasRISCVInt32;
+       fUDPNextSlot:TPasRISCVInt32;
+       fTCPNextSlot:TPasRISCVInt32;
+       fICMPv6NextSlot:TPasRISCVInt32;
+       fUDPv6NextSlot:TPasRISCVInt32;
+       fTCPv6NextSlot:TPasRISCVInt32;
        fICMPFreeList:TUserModeICMPFreeList;
        fUDPSessions:TUserModeUDPSessionMap;
        fUDPSessionArray:TUserModeUDPSessionArray;
@@ -30517,6 +30537,7 @@ begin
 end;
 
 constructor TPasRISCVEthernetDeviceUserModeNetworking.Create;
+var SlotIndex:TPasRISCVInt32;
 begin
 
  inherited Create;
@@ -30542,14 +30563,22 @@ begin
 
  FillChar(fDHCPLeases,SizeOf(fDHCPLeases),#0);
 
+ // Every session table is laid out here once and never resized again. That is what
+ // makes the pointers this code hands out - PTCPSession and its siblings - stay valid
+ // no matter who creates a session in between: a dynamic array of records moves every
+ // element when it grows. SetLength zeroes the new slots, so the records themselves
+ // start out unallocated and are fetched the first time a slot is actually used, then
+ // recycled with it.
  fICMPSessions:=TUserModeICMPSessionMap.Create(-1);
- fICMPSessionArray:=nil;
+ SetLength(fICMPSessionArray,UserModeICMPMaxSessions);
+ fICMPNextSlot:=0;
  fICMPActiveIndices:=nil;
  fICMPActiveCount:=0;
  fICMPActiveCapacity:=0;
 
  fUDPSessions:=TUserModeUDPSessionMap.Create(-1);
- fUDPSessionArray:=nil;
+ SetLength(fUDPSessionArray,UserModeUDPMaxSessions);
+ fUDPNextSlot:=0;
  fUDPActiveIndices:=nil;
  fUDPActiveCount:=0;
  fUDPActiveCapacity:=0;
@@ -30557,7 +30586,8 @@ begin
  InitHostDNS;
 
  fTCPSessions:=TUserModeTCPSessionMap.Create(-1);
- fTCPSessionArray:=nil;
+ SetLength(fTCPSessionArray,UserModeTCPMaxSessions);
+ fTCPNextSlot:=0;
  fTCPISNCounter:=$12345678;
  fTCPActiveIndices:=nil;
  fTCPActiveCount:=0;
@@ -30660,19 +30690,22 @@ begin
  fICMPv6SocketAvailable:=true;
 
  fICMPv6Sessions:=TUserModeICMPv6SessionMap.Create(-1);
- fICMPv6SessionArray:=nil;
+ SetLength(fICMPv6SessionArray,UserModeICMPv6MaxSessions);
+ fICMPv6NextSlot:=0;
  fICMPv6ActiveIndices:=nil;
  fICMPv6ActiveCount:=0;
  fICMPv6ActiveCapacity:=0;
 
  fUDPv6Sessions:=TUserModeUDPv6SessionMap.Create(-1);
- fUDPv6SessionArray:=nil;
+ SetLength(fUDPv6SessionArray,UserModeUDPv6MaxSessions);
+ fUDPv6NextSlot:=0;
  fUDPv6ActiveIndices:=nil;
  fUDPv6ActiveCount:=0;
  fUDPv6ActiveCapacity:=0;
 
  fTCPv6Sessions:=TUserModeTCPv6SessionMap.Create(-1);
- fTCPv6SessionArray:=nil;
+ SetLength(fTCPv6SessionArray,UserModeTCPv6MaxSessions);
+ fTCPv6NextSlot:=0;
  fTCPv6ActiveIndices:=nil;
  fTCPv6ActiveCount:=0;
  fTCPv6ActiveCapacity:=0;
@@ -30691,9 +30724,50 @@ end;
 destructor TPasRISCVEthernetDeviceUserModeNetworking.Destroy;
 var ForwardIndex:TPasRISCVInt32;
     PortForwardItem:PUserModePortForward;
+    SlotIndex:TPasRISCVInt32;
 begin
 
  Shutdown;
+
+ // Every record a slot ever fetched goes back here. Walking the whole array is the
+ // complete list: slots that were used and handed back sit on neither the free list
+ // nor the active one, but they still hold their record for the next user.
+ for SlotIndex:=0 to length(fTCPSessionArray)-1 do begin
+  if assigned(fTCPSessionArray[SlotIndex]) then begin
+   FreeMem(fTCPSessionArray[SlotIndex]);
+   fTCPSessionArray[SlotIndex]:=nil;
+  end;
+ end;
+ for SlotIndex:=0 to length(fUDPSessionArray)-1 do begin
+  if assigned(fUDPSessionArray[SlotIndex]) then begin
+   FreeMem(fUDPSessionArray[SlotIndex]);
+   fUDPSessionArray[SlotIndex]:=nil;
+  end;
+ end;
+ for SlotIndex:=0 to length(fICMPSessionArray)-1 do begin
+  if assigned(fICMPSessionArray[SlotIndex]) then begin
+   FreeMem(fICMPSessionArray[SlotIndex]);
+   fICMPSessionArray[SlotIndex]:=nil;
+  end;
+ end;
+ for SlotIndex:=0 to length(fTCPv6SessionArray)-1 do begin
+  if assigned(fTCPv6SessionArray[SlotIndex]) then begin
+   FreeMem(fTCPv6SessionArray[SlotIndex]);
+   fTCPv6SessionArray[SlotIndex]:=nil;
+  end;
+ end;
+ for SlotIndex:=0 to length(fUDPv6SessionArray)-1 do begin
+  if assigned(fUDPv6SessionArray[SlotIndex]) then begin
+   FreeMem(fUDPv6SessionArray[SlotIndex]);
+   fUDPv6SessionArray[SlotIndex]:=nil;
+  end;
+ end;
+ for SlotIndex:=0 to length(fICMPv6SessionArray)-1 do begin
+  if assigned(fICMPv6SessionArray[SlotIndex]) then begin
+   FreeMem(fICMPv6SessionArray[SlotIndex]);
+   fICMPv6SessionArray[SlotIndex]:=nil;
+  end;
+ end;
 
  fTCPFreeList.Finalize;
  FreeAndNil(fTCPSessions);
@@ -30799,7 +30873,7 @@ begin
  end;
 
  for Index:=0 to fICMPActiveCount-1 do begin
-  ICMPSessionItem:=@fICMPSessionArray[fICMPActiveIndices[Index]];
+  ICMPSessionItem:=fICMPSessionArray[fICMPActiveIndices[Index]];
 {$ifdef PasRISCVUseRNLNetworkInstance}
   fRNLNetwork.SocketDestroy(ICMPSessionItem^.SocketFileDescriptor);
 {$else}
@@ -30808,7 +30882,7 @@ begin
  end;
 
  for Index:=0 to fUDPActiveCount-1 do begin
-  UDPSessionItem:=@fUDPSessionArray[fUDPActiveIndices[Index]];
+  UDPSessionItem:=fUDPSessionArray[fUDPActiveIndices[Index]];
 {$ifdef PasRISCVUseRNLNetworkInstance}
   fRNLNetwork.SocketDestroy(UDPSessionItem^.SocketFileDescriptor);
 {$else}
@@ -30817,7 +30891,7 @@ begin
  end;
 
  for Index:=0 to fTCPActiveCount-1 do begin
-  TCPSessionItem:=@fTCPSessionArray[fTCPActiveIndices[Index]];
+  TCPSessionItem:=fTCPSessionArray[fTCPActiveIndices[Index]];
 {$ifdef PasRISCVUseRNLNetworkInstance}
   fRNLNetwork.SocketDestroy(TCPSessionItem^.SocketFileDescriptor);
 {$else}
@@ -30991,7 +31065,7 @@ begin
 
   for SelectIndex:=0 to fICMPActiveCount-1 do begin
    SelectSessionIndex:=fICMPActiveIndices[SelectIndex];
-   SelectICMPSession:=@fICMPSessionArray[SelectSessionIndex];
+   SelectICMPSession:=fICMPSessionArray[SelectSessionIndex];
    if SelectICMPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
@@ -31008,7 +31082,7 @@ begin
 
   for SelectIndex:=0 to fUDPActiveCount-1 do begin
    SelectSessionIndex:=fUDPActiveIndices[SelectIndex];
-   SelectUDPSession:=@fUDPSessionArray[SelectSessionIndex];
+   SelectUDPSession:=fUDPSessionArray[SelectSessionIndex];
    if SelectUDPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
@@ -31025,7 +31099,7 @@ begin
 
   for SelectIndex:=0 to fTCPActiveCount-1 do begin
    SelectSessionIndex:=fTCPActiveIndices[SelectIndex];
-   SelectTCPSession:=@fTCPSessionArray[SelectSessionIndex];
+   SelectTCPSession:=fTCPSessionArray[SelectSessionIndex];
    if SelectTCPSession^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
@@ -31046,7 +31120,7 @@ begin
 
   for SelectIndex:=0 to fUDPv6ActiveCount-1 do begin
    SelectSessionIndex:=fUDPv6ActiveIndices[SelectIndex];
-   SelectUDPv6Session:=@fUDPv6SessionArray[SelectSessionIndex];
+   SelectUDPv6Session:=fUDPv6SessionArray[SelectSessionIndex];
    if SelectUDPv6Session^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
@@ -31063,7 +31137,7 @@ begin
 
   for SelectIndex:=0 to fTCPv6ActiveCount-1 do begin
    SelectSessionIndex:=fTCPv6ActiveIndices[SelectIndex];
-   SelectTCPv6Session:=@fTCPv6SessionArray[SelectSessionIndex];
+   SelectTCPv6Session:=fTCPv6SessionArray[SelectSessionIndex];
    if SelectTCPv6Session^.SocketFileDescriptor<>RNL_SOCKET_NULL then begin
     if SelectCount<FD_SETSIZE then begin
      inc(SelectCount);
@@ -31429,7 +31503,7 @@ begin
  ICMPKey.GuestIdentifier:=aGuestIdentifier;
 
  if fICMPSessions.TryGet(ICMPKey,SessionIndex) then begin
-  SessionItem:=@fICMPSessionArray[SessionIndex];
+  SessionItem:=fICMPSessionArray[SessionIndex];
   SessionItem^.GuestSourceIP:=aGuestSourceIP;
   SessionItem^.OriginalIPHeader:=aOriginalIPHeader^;
   if aICMPSize>=UserModeICMPHeaderSize then begin
@@ -31445,7 +31519,7 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fICMPActiveCount-1 do begin
    SessionIndex:=fICMPActiveIndices[ActiveArrayIndex];
-   SessionItem:=@fICMPSessionArray[SessionIndex];
+   SessionItem:=fICMPSessionArray[SessionIndex];
    if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=SessionIndex;
     OldestTickCount:=SessionItem^.TickCount;
@@ -31458,15 +31532,23 @@ begin
   CloseICMPSession(OldestSessionIndex);
  end;
 
+ // A recycled slot if there is one, otherwise the next slot never used. Only when
+ // both are exhausted is the table genuinely full - which the check above already
+ // dealt with, so this is the belt to its braces.
  if not fICMPFreeList.Dequeue(SessionIndex) then begin
-  SessionIndex:=length(fICMPSessionArray);
-  SetLength(fICMPSessionArray,TPasRISCVInt32(SessionIndex+1)*2);
-  for ExtraIndex:=SessionIndex+1 to length(fICMPSessionArray)-1 do begin
-   fICMPFreeList.Enqueue(ExtraIndex);
+  if fICMPNextSlot>=UserModeICMPMaxSessions then begin
+   result:=RNL_SOCKET_NULL;
+   exit;
   end;
+  SessionIndex:=fICMPNextSlot;
+  inc(fICMPNextSlot);
  end;
 
- SessionItem:=@fICMPSessionArray[SessionIndex];
+ if not assigned(fICMPSessionArray[SessionIndex]) then begin
+  GetMem(fICMPSessionArray[SessionIndex],SizeOf(TICMPSession));
+ end;
+
+ SessionItem:=fICMPSessionArray[SessionIndex];
  FillChar(SessionItem^,SizeOf(TICMPSession),#0);
 
 {$if defined(Windows)}
@@ -32520,7 +32602,7 @@ begin
   Index:=FindTCPSession(aIPHeader^.SourceIP,TCPHeader^.SourcePort,EffectiveDestinationIP,TCPHeader^.DestinationPort);
   if Index>=0 then begin
    // Validate RST sequence number against expected guest sequence (RFC 5961)
-   if SequenceNumber=fTCPSessionArray[Index].ServerAck then begin
+   if SequenceNumber=fTCPSessionArray[Index]^.ServerAck then begin
     CloseTCPSession(Index,false);
    end;
   end;
@@ -32580,7 +32662,7 @@ begin
 
   Index:=FindTCPSession(aIPHeader^.SourceIP,TCPHeader^.SourcePort,EffectiveDestinationIP,TCPHeader^.DestinationPort);
   if Index>=0 then begin
-   TCPSession:=@fTCPSessionArray[Index];
+   TCPSession:=fTCPSessionArray[Index];
    // If session is in SynAckSent state, retransmit SYN-ACK instead of reconnecting
    if TCPSession^.State=UserModeTCPStateSynAckSent then begin
     SendTCPToGuest(Index,TCPFlagSYN or TCPFlagACK,nil,0);
@@ -32606,14 +32688,21 @@ begin
   end;
 
   if not fTCPFreeList.Dequeue(SessionIndex) then begin
-   SessionIndex:=length(fTCPSessionArray);
-   SetLength(fTCPSessionArray,TPasRISCVInt32(SessionIndex+1)*2);
-   for ExtraIndex:=SessionIndex+1 to length(fTCPSessionArray)-1 do begin
-    fTCPFreeList.Enqueue(ExtraIndex);
+   if fTCPNextSlot>=UserModeTCPMaxSessions then begin
+    // Table full and nothing was evictable - the branch above already said so. Answer
+    // rather than drop, as everywhere else.
+    SendTCPResetToGuest(aIPHeader,TCPHeader,PayloadSize);
+    exit;
    end;
+   SessionIndex:=fTCPNextSlot;
+   inc(fTCPNextSlot);
   end;
 
-  TCPSession:=@fTCPSessionArray[SessionIndex];
+  if not assigned(fTCPSessionArray[SessionIndex]) then begin
+   GetMem(fTCPSessionArray[SessionIndex],SizeOf(TTCPSession));
+  end;
+
+  TCPSession:=fTCPSessionArray[SessionIndex];
   FillChar(TCPSession^,SizeOf(TTCPSession),#0);
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -32738,7 +32827,7 @@ begin
   exit;
  end;
 
- TCPSession:=@fTCPSessionArray[SessionIndex];
+ TCPSession:=fTCPSessionArray[SessionIndex];
 
  if TCPSession^.GuestTimestampEnabled and (DataOffsetBytes>UserModeTCPHeaderSize) then begin
   ParseTCPOptions(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aTCPData)+UserModeTCPHeaderSize)),DataOffsetBytes-UserModeTCPHeaderSize,ParsedOptions);
@@ -33142,7 +33231,7 @@ var ICMPSession:PICMPSession;
     Position,LastSessionIndex:TPasRISCVInt32;
 begin
 
- ICMPSession:=@fICMPSessionArray[aSessionIndex];
+ ICMPSession:=fICMPSessionArray[aSessionIndex];
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(ICMPSession^.SocketFileDescriptor);
@@ -33165,7 +33254,7 @@ begin
  if Position<fICMPActiveCount then begin
   LastSessionIndex:=fICMPActiveIndices[fICMPActiveCount];
   fICMPActiveIndices[Position]:=LastSessionIndex;
-  fICMPSessionArray[LastSessionIndex].ActiveIndex:=Position;
+  fICMPSessionArray[LastSessionIndex]^.ActiveIndex:=Position;
  end;
 
  ICMPSession^.Active:=false;
@@ -33180,7 +33269,7 @@ var UDPSession:PUDPSession;
     Position,LastSessionIndex:TPasRISCVInt32;
 begin
 
- UDPSession:=@fUDPSessionArray[aSessionIndex];
+ UDPSession:=fUDPSessionArray[aSessionIndex];
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(UDPSession^.SocketFileDescriptor);
@@ -33205,7 +33294,7 @@ begin
  if Position<fUDPActiveCount then begin
   LastSessionIndex:=fUDPActiveIndices[fUDPActiveCount];
   fUDPActiveIndices[Position]:=LastSessionIndex;
-  fUDPSessionArray[LastSessionIndex].ActiveIndex:=Position;
+  fUDPSessionArray[LastSessionIndex]^.ActiveIndex:=Position;
  end;
 
  UDPSession^.Active:=false;
@@ -33238,7 +33327,7 @@ begin
 
   SessionIndex:=fICMPActiveIndices[ActiveArrayIndex];
 
-  SessionItem:=@fICMPSessionArray[SessionIndex];
+  SessionItem:=fICMPSessionArray[SessionIndex];
 
   if SessionItem^.Active then begin
 
@@ -33677,7 +33766,7 @@ begin
  UDPKey.DestinationPort:=aOriginalDestinationPort;
 
  if fUDPSessions.TryGet(UDPKey,Index) then begin
-  SessionItem:=@fUDPSessionArray[Index];
+  SessionItem:=fUDPSessionArray[Index];
   SessionItem^.OriginalDestinationIP:=aOriginalDestinationIP;
   SessionItem^.OriginalDestinationPort:=aOriginalDestinationPort;
   SessionItem^.TickCount:=0;
@@ -33690,7 +33779,7 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fUDPActiveCount-1 do begin
    Index:=fUDPActiveIndices[ActiveArrayIndex];
-   SessionItem:=@fUDPSessionArray[Index];
+   SessionItem:=fUDPSessionArray[Index];
    if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=Index;
     OldestTickCount:=SessionItem^.TickCount;
@@ -33704,14 +33793,19 @@ begin
  end;
 
  if not fUDPFreeList.Dequeue(Index) then begin
-  Index:=length(fUDPSessionArray);
-  SetLength(fUDPSessionArray,TPasRISCVInt32(Index+1)*2);
-  for ExtraIndex:=Index+1 to length(fUDPSessionArray)-1 do begin
-   fUDPFreeList.Enqueue(ExtraIndex);
+  if fUDPNextSlot>=UserModeUDPMaxSessions then begin
+   result:=-1;
+   exit;
   end;
+  Index:=fUDPNextSlot;
+  inc(fUDPNextSlot);
  end;
 
- SessionItem:=@fUDPSessionArray[Index];
+ if not assigned(fUDPSessionArray[Index]) then begin
+  GetMem(fUDPSessionArray[Index],SizeOf(TUDPSession));
+ end;
+
+ SessionItem:=fUDPSessionArray[Index];
  FillChar(SessionItem^,SizeOf(TUDPSession),#0);
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -33847,7 +33941,7 @@ begin
   exit;
  end;
 
- SessionItem:=@fUDPSessionArray[SessionIndex];
+ SessionItem:=fUDPSessionArray[SessionIndex];
 
  DestinationAddress.Host:=TRNLHostAddress.CreateFromIPV4(TRNLUInt32(TRNLPointer(@ActualDestinationIP[0])^));
  DestinationAddress.Port:=ActualDestinationPort;
@@ -33973,7 +34067,7 @@ begin
 
   SessionIndex:=fUDPActiveIndices[ActiveArrayIndex];
 
-  SessionItem:=@fUDPSessionArray[SessionIndex];
+  SessionItem:=fUDPSessionArray[SessionIndex];
 
   if SessionItem^.Active then begin
 
@@ -34328,7 +34422,7 @@ begin
 
   Position:=(fTCPEvictionCursor+Index) mod fTCPActiveCount;
   SessionIndex:=fTCPActiveIndices[Position];
-  TCPSession:=@fTCPSessionArray[SessionIndex];
+  TCPSession:=fTCPSessionArray[SessionIndex];
 
   case TCPSession^.State of
    UserModeTCPStateClosed,
@@ -34396,7 +34490,7 @@ begin
 
   Position:=(fTCPv6EvictionCursor+Index) mod fTCPv6ActiveCount;
   SessionIndex:=fTCPv6ActiveIndices[Position];
-  TCPv6Session:=@fTCPv6SessionArray[SessionIndex];
+  TCPv6Session:=fTCPv6SessionArray[SessionIndex];
 
   case TCPv6Session^.State of
    UserModeTCPStateClosed,
@@ -34533,7 +34627,7 @@ var TotalSize:TPasRISCVSizeInt;
     TimestampEchoReply:TPasRISCVUInt32;
 begin
 
- TCPSession:=@fTCPSessionArray[aSessionIndex];
+ TCPSession:=fTCPSessionArray[aSessionIndex];
 
  OptionsSize:=0;
  if (aFlags and TCPFlagSYN)<>0 then begin
@@ -34679,7 +34773,7 @@ var TCPSession:PTCPSession;
     Position,LastSessionIndex:TPasRISCVInt32;
 begin
 
- TCPSession:=@fTCPSessionArray[aSessionIndex];
+ TCPSession:=fTCPSessionArray[aSessionIndex];
 
  if aSendRST and (TCPSession^.State<>UserModeTCPStateConnecting) then begin
   SendTCPToGuest(aSessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
@@ -34716,7 +34810,7 @@ begin
  if Position<fTCPActiveCount then begin
   LastSessionIndex:=fTCPActiveIndices[fTCPActiveCount];
   fTCPActiveIndices[Position]:=LastSessionIndex;
-  fTCPSessionArray[LastSessionIndex].ActiveIndex:=Position;
+  fTCPSessionArray[LastSessionIndex]^.ActiveIndex:=Position;
  end;
 
  TCPSession^.Active:=false;
@@ -35243,7 +35337,7 @@ begin
 
   SessionIndex:=fTCPActiveIndices[ActiveArrayIndex];
 
-  TCPSession:=@fTCPSessionArray[SessionIndex];
+  TCPSession:=fTCPSessionArray[SessionIndex];
 
   if TCPSession^.Active then begin
 
@@ -35760,14 +35854,23 @@ begin
      end;
 
      if not fTCPFreeList.Dequeue(NewSessionIndex) then begin
-      NewSessionIndex:=Length(fTCPSessionArray);
-      SetLength(fTCPSessionArray,TPasRISCVInt32(NewSessionIndex+1)*2);
-      for ExtraIndex:=NewSessionIndex+1 to Length(fTCPSessionArray)-1 do begin
-       fTCPFreeList.Enqueue(ExtraIndex);
+      if fTCPNextSlot>=UserModeTCPMaxSessions then begin
+{$ifdef PasRISCVUseRNLNetworkInstance}
+       fRNLNetwork.SocketDestroy(AcceptedSocket);
+{$else}
+       RNLSocketDestroy(AcceptedSocket);
+{$endif}
+       continue;
       end;
+      NewSessionIndex:=fTCPNextSlot;
+      inc(fTCPNextSlot);
      end;
 
-     NewTCPSession:=@fTCPSessionArray[NewSessionIndex];
+     if not assigned(fTCPSessionArray[NewSessionIndex]) then begin
+      GetMem(fTCPSessionArray[NewSessionIndex],SizeOf(TTCPSession));
+     end;
+
+     NewTCPSession:=fTCPSessionArray[NewSessionIndex];
      FillChar(NewTCPSession^,SizeOf(TTCPSession),#0);
      NewTCPSession^.SocketFileDescriptor:=AcceptedSocket;
      NewTCPSession^.IsInbound:=true;
@@ -36651,7 +36754,7 @@ begin
     ICMPv6Identifier:=PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aICMPv6Data)+SizeOf(TICMPv6Header))))^;
     SessionIndex:=FindOrCreateICMPv6Session(ICMPv6Identifier,aIPv6Header^.SourceAddress,aIPv6Header^.DestinationAddress,aIPv6Header,aICMPv6Data,aICMPv6Size);
     if SessionIndex>=0 then begin
-     SessionItem:=@fICMPv6SessionArray[SessionIndex];
+     SessionItem:=fICMPv6SessionArray[SessionIndex];
      DestinationAddress:=RNL_ADDRESS_EMPTY;
      Move(aIPv6Header^.DestinationAddress[0],DestinationAddress.Host.Addr[0],SizeOf(TIPv6Address));
      DestinationAddress.Port:=0;
@@ -36695,7 +36798,7 @@ begin
 
  if fICMPv6Sessions.TryGet(ICMPv6Key,SessionIndex) then begin
 
-  SessionItem:=@fICMPv6SessionArray[SessionIndex];
+  SessionItem:=fICMPv6SessionArray[SessionIndex];
 
   SessionItem^.DestinationIP:=aDestinationIP;
   SessionItem^.OriginalIPv6Header:=aOriginalIPv6Header^;
@@ -36723,7 +36826,7 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fICMPv6ActiveCount-1 do begin
    SessionIndex:=fICMPv6ActiveIndices[ActiveArrayIndex];
-   SessionItem:=@fICMPv6SessionArray[SessionIndex];
+   SessionItem:=fICMPv6SessionArray[SessionIndex];
    if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=SessionIndex;
     OldestTickCount:=SessionItem^.TickCount;
@@ -36737,14 +36840,19 @@ begin
  end;
 
  if not fICMPv6FreeList.Dequeue(SessionIndex) then begin
-  SessionIndex:=length(fICMPv6SessionArray);
-  SetLength(fICMPv6SessionArray,TPasRISCVInt32(SessionIndex+1)*2);
-  for ExtraIndex:=SessionIndex+1 to length(fICMPv6SessionArray)-1 do begin
-   fICMPv6FreeList.Enqueue(ExtraIndex);
+  if fICMPv6NextSlot>=UserModeICMPv6MaxSessions then begin
+   result:=-1;
+   exit;
   end;
+  SessionIndex:=fICMPv6NextSlot;
+  inc(fICMPv6NextSlot);
  end;
 
- SessionItem:=@fICMPv6SessionArray[SessionIndex];
+ if not assigned(fICMPv6SessionArray[SessionIndex]) then begin
+  GetMem(fICMPv6SessionArray[SessionIndex],SizeOf(TICMPv6Session));
+ end;
+
+ SessionItem:=fICMPv6SessionArray[SessionIndex];
  FillChar(SessionItem^,SizeOf(TICMPv6Session),#0);
 
 {$if defined(fpc) and defined(Unix)}
@@ -36899,7 +37007,7 @@ var ICMPv6Session:PICMPv6Session;
     Key:TUserModeICMPv6Key;
     Position,LastSessionIndex:TPasRISCVInt32;
 begin
- ICMPv6Session:=@fICMPv6SessionArray[aSessionIndex];
+ ICMPv6Session:=fICMPv6SessionArray[aSessionIndex];
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(ICMPv6Session^.SocketFileDescriptor);
 {$else}
@@ -36915,7 +37023,7 @@ begin
  if Position<fICMPv6ActiveCount then begin
   LastSessionIndex:=fICMPv6ActiveIndices[fICMPv6ActiveCount];
   fICMPv6ActiveIndices[Position]:=LastSessionIndex;
-  fICMPv6SessionArray[LastSessionIndex].ActiveIndex:=Position;
+  fICMPv6SessionArray[LastSessionIndex]^.ActiveIndex:=Position;
  end;
  ICMPv6Session^.Active:=false;
  FillChar(ICMPv6Session^,SizeOf(TICMPv6Session),#0);
@@ -36926,7 +37034,7 @@ var UDPv6Session:PUDPv6Session;
     Key:TUserModeUDPv6Key;
     Position,LastSessionIndex:TPasRISCVInt32;
 begin
- UDPv6Session:=@fUDPv6SessionArray[aSessionIndex];
+ UDPv6Session:=fUDPv6SessionArray[aSessionIndex];
 {$ifdef PasRISCVUseRNLNetworkInstance}
  fRNLNetwork.SocketDestroy(UDPv6Session^.SocketFileDescriptor);
 {$else}
@@ -36944,7 +37052,7 @@ begin
  if Position<fUDPv6ActiveCount then begin
   LastSessionIndex:=fUDPv6ActiveIndices[fUDPv6ActiveCount];
   fUDPv6ActiveIndices[Position]:=LastSessionIndex;
-  fUDPv6SessionArray[LastSessionIndex].ActiveIndex:=Position;
+  fUDPv6SessionArray[LastSessionIndex]^.ActiveIndex:=Position;
  end;
  UDPv6Session^.Active:=false;
  FillChar(UDPv6Session^,SizeOf(TUDPv6Session),#0);
@@ -36974,7 +37082,7 @@ begin
 
   SessionIndex:=fICMPv6ActiveIndices[ActiveArrayIndex];
 
-  SessionItem:=@fICMPv6SessionArray[SessionIndex];
+  SessionItem:=fICMPv6SessionArray[SessionIndex];
 
   if SessionItem^.Active then begin
 
@@ -37302,7 +37410,7 @@ begin
  UDPv6Key.DestinationPort:=aOriginalDestinationPort;
 
  if fUDPv6Sessions.TryGet(UDPv6Key,Index) then begin
-  SessionItem:=@fUDPv6SessionArray[Index];
+  SessionItem:=fUDPv6SessionArray[Index];
   SessionItem^.OriginalDestinationIP:=aOriginalDestinationIP;
   SessionItem^.OriginalDestinationPort:=aOriginalDestinationPort;
   SessionItem^.TickCount:=0;
@@ -37315,7 +37423,7 @@ begin
   OldestTickCount:=0;
   for ActiveArrayIndex:=0 to fUDPv6ActiveCount-1 do begin
    Index:=fUDPv6ActiveIndices[ActiveArrayIndex];
-   SessionItem:=@fUDPv6SessionArray[Index];
+   SessionItem:=fUDPv6SessionArray[Index];
    if (OldestSessionIndex<0) or (SessionItem^.TickCount>OldestTickCount) then begin
     OldestSessionIndex:=Index;
     OldestTickCount:=SessionItem^.TickCount;
@@ -37329,14 +37437,19 @@ begin
  end;
 
  if not fUDPv6FreeList.Dequeue(Index) then begin
-  Index:=length(fUDPv6SessionArray);
-  SetLength(fUDPv6SessionArray,TPasRISCVInt32(Index+1)*2);
-  for ExtraIndex:=Index+1 to length(fUDPv6SessionArray)-1 do begin
-   fUDPv6FreeList.Enqueue(ExtraIndex);
+  if fUDPv6NextSlot>=UserModeUDPv6MaxSessions then begin
+   result:=-1;
+   exit;
   end;
+  Index:=fUDPv6NextSlot;
+  inc(fUDPv6NextSlot);
  end;
 
- SessionItem:=@fUDPv6SessionArray[Index];
+ if not assigned(fUDPv6SessionArray[Index]) then begin
+  GetMem(fUDPv6SessionArray[Index],SizeOf(TUDPv6Session));
+ end;
+
+ SessionItem:=fUDPv6SessionArray[Index];
  FillChar(SessionItem^,SizeOf(TUDPv6Session),#0);
 
 {$ifdef PasRISCVUseRNLNetworkInstance}
@@ -37460,9 +37573,9 @@ begin
  DestinationAddress.Port:=ActualDestinationPort;
  DestinationAddress.ScopeID:=0;
 {$ifdef PasRISCVUseRNLNetworkInstance}
- fRNLNetwork.Send(fUDPv6SessionArray[SessionIndex].SocketFileDescriptor,@DestinationAddress,aPayload^,aPayloadSize,RNL_IPV6);
+ fRNLNetwork.Send(fUDPv6SessionArray[SessionIndex]^.SocketFileDescriptor,@DestinationAddress,aPayload^,aPayloadSize,RNL_IPV6);
 {$else}
- RNLSocketSend(fUDPv6SessionArray[SessionIndex].SocketFileDescriptor,@DestinationAddress,aPayload^,aPayloadSize,RNL_IPV6);
+ RNLSocketSend(fUDPv6SessionArray[SessionIndex]^.SocketFileDescriptor,@DestinationAddress,aPayload^,aPayloadSize,RNL_IPV6);
 {$endif}
 
 end;
@@ -37494,7 +37607,7 @@ begin
 
   SessionIndex:=fUDPv6ActiveIndices[ActiveArrayIndex];
 
-  SessionItem:=@fUDPv6SessionArray[SessionIndex];
+  SessionItem:=fUDPv6SessionArray[SessionIndex];
 
   if SessionItem^.Active then begin
 
@@ -37677,7 +37790,7 @@ var TotalSize:TPasRISCVSizeInt;
     TimestampEchoReply:TPasRISCVUInt32;
 begin
 
- TCPv6Session:=@fTCPv6SessionArray[aSessionIndex];
+ TCPv6Session:=fTCPv6SessionArray[aSessionIndex];
 
  OptionsSize:=0;
  if (aFlags and TCPFlagSYN)<>0 then begin
@@ -37827,7 +37940,7 @@ var TCPv6Session:PTCPv6Session;
     LastSessionIndex:TPasRISCVInt32;
 begin
 
- TCPv6Session:=@fTCPv6SessionArray[aSessionIndex];
+ TCPv6Session:=fTCPv6SessionArray[aSessionIndex];
 
  if aSendRST and (TCPv6Session^.State<>UserModeTCPStateConnecting) then begin
   SendTCPv6ToGuest(aSessionIndex,TCPFlagRST or TCPFlagACK,nil,0);
@@ -37864,7 +37977,7 @@ begin
  if Position<fTCPv6ActiveCount then begin
   LastSessionIndex:=fTCPv6ActiveIndices[fTCPv6ActiveCount];
   fTCPv6ActiveIndices[Position]:=LastSessionIndex;
-  fTCPv6SessionArray[LastSessionIndex].ActiveIndex:=Position;
+  fTCPv6SessionArray[LastSessionIndex]^.ActiveIndex:=Position;
  end;
 
  TCPv6Session^.Active:=false;
@@ -37924,7 +38037,7 @@ begin
  if (Flags and TCPFlagRST)<>0 then begin
   if SessionIndex>=0 then begin
    // Validate RST sequence number against expected guest sequence (RFC 5961)
-   if SequenceNumber=fTCPv6SessionArray[SessionIndex].ServerAck then begin
+   if SequenceNumber=fTCPv6SessionArray[SessionIndex]^.ServerAck then begin
     CloseTCPv6Session(SessionIndex,false);
    end;
   end;
@@ -37965,7 +38078,7 @@ begin
  // Existing sessions are state-driven below; keep retransmitted outbound SYNs
  // on the fast path so we resend the synthetic SYN-ACK.
  if (SessionIndex>=0) and ((Flags and (TCPFlagSYN or TCPFlagACK))=TCPFlagSYN) then begin
-  TCPv6Session:=@fTCPv6SessionArray[SessionIndex];
+  TCPv6Session:=fTCPv6SessionArray[SessionIndex];
   if TCPv6Session^.State=UserModeTCPStateSynAckSent then begin
    SendTCPv6ToGuest(SessionIndex,TCPFlagSYN or TCPFlagACK,nil,0);
    TCPv6Session^.IdleTickCount:=0;
@@ -37996,14 +38109,19 @@ begin
   end;
 
   if not fTCPv6FreeList.Dequeue(NewSessionIndex) then begin
-   NewSessionIndex:=length(fTCPv6SessionArray);
-   SetLength(fTCPv6SessionArray,TPasRISCVInt32(NewSessionIndex+1)*2);
-   for ExtraIndex:=NewSessionIndex+1 to length(fTCPv6SessionArray)-1 do begin
-    fTCPv6FreeList.Enqueue(ExtraIndex);
+   if fTCPv6NextSlot>=UserModeTCPv6MaxSessions then begin
+    SendTCPv6ResetToGuest(aIPv6Header,TCPHeader,PayloadSize);
+    exit;
    end;
+   NewSessionIndex:=fTCPv6NextSlot;
+   inc(fTCPv6NextSlot);
   end;
 
-  TCPv6Session:=@fTCPv6SessionArray[NewSessionIndex];
+  if not assigned(fTCPv6SessionArray[NewSessionIndex]) then begin
+   GetMem(fTCPv6SessionArray[NewSessionIndex],SizeOf(TTCPv6Session));
+  end;
+
+  TCPv6Session:=fTCPv6SessionArray[NewSessionIndex];
   FillChar(TCPv6Session^,SizeOf(TTCPv6Session),#0);
 
   TCPv6Session^.GuestSourceIP:=aIPv6Header^.SourceAddress;
@@ -38114,7 +38232,7 @@ begin
   exit;
  end;
 
- TCPv6Session:=@fTCPv6SessionArray[SessionIndex];
+ TCPv6Session:=fTCPv6SessionArray[SessionIndex];
 
  if TCPv6Session^.GuestTimestampEnabled and (DataOffsetBytes>UserModeTCPHeaderSize) then begin
   ParseTCPOptions(Pointer(TPasRISCVPtrUInt(TPasRISCVPtrUInt(aTCPData)+UserModeTCPHeaderSize)),DataOffsetBytes-UserModeTCPHeaderSize,ParsedOptions);
@@ -38704,7 +38822,7 @@ begin
 
   SessionIndex:=fTCPv6ActiveIndices[ActiveArrayIndex];
 
-  TCPv6Session:=@fTCPv6SessionArray[SessionIndex];
+  TCPv6Session:=fTCPv6SessionArray[SessionIndex];
 
   if TCPv6Session^.Active then begin
 
@@ -39173,14 +39291,23 @@ begin
      end;
 
      if not fTCPv6FreeList.Dequeue(NewSessionIndex) then begin
-      NewSessionIndex:=Length(fTCPv6SessionArray);
-      SetLength(fTCPv6SessionArray,TPasRISCVInt32(NewSessionIndex+1)*2);
-      for ExtraIndex:=NewSessionIndex+1 to Length(fTCPv6SessionArray)-1 do begin
-       fTCPv6FreeList.Enqueue(ExtraIndex);
+      if fTCPv6NextSlot>=UserModeTCPv6MaxSessions then begin
+{$ifdef PasRISCVUseRNLNetworkInstance}
+       fRNLNetwork.SocketDestroy(AcceptedSocket);
+{$else}
+       RNLSocketDestroy(AcceptedSocket);
+{$endif}
+       continue;
       end;
+      NewSessionIndex:=fTCPv6NextSlot;
+      inc(fTCPv6NextSlot);
      end;
 
-     NewTCPv6Session:=@fTCPv6SessionArray[NewSessionIndex];
+     if not assigned(fTCPv6SessionArray[NewSessionIndex]) then begin
+      GetMem(fTCPv6SessionArray[NewSessionIndex],SizeOf(TTCPv6Session));
+     end;
+
+     NewTCPv6Session:=fTCPv6SessionArray[NewSessionIndex];
      FillChar(NewTCPv6Session^,SizeOf(TTCPv6Session),#0);
      NewTCPv6Session^.SocketFileDescriptor:=AcceptedSocket;
      NewTCPv6Session^.IsInbound:=true;
