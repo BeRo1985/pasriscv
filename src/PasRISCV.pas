@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-08-25-00-38-0000                       *
+ *                        Version 2026-09-11-08-30-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -418,6 +418,23 @@ unit PasRISCV;
 {$define PasOPL3EmuThreadSafeWriteBuffer}
 
 {$define PasRISCVStrictCompliantFPU}
+
+// Set where feclearexcept/fetestexcept/feraiseexcept are really implemented, which
+// is what the host FPU lane needs to turn host exception flags into guest fflags.
+// The condition mirrors the one the helpers themselves are gated on; on every other
+// target they are stubs that return zero, so the host FPU lane runs there with
+// fflags permanently clear and StrictCompliantFPU defaults to on instead. That is
+// only a default, an explicit setting still wins.
+//
+// To give another target a working host FPU lane, implement the three fenv helpers
+// for it and add it here. The status words are: AArch64 FPSR with IOC/DZC/OFC/UFC/IXC
+// on bits 0..4 and IDC on bit 7, reachable with "mrs x0,fpsr" / "msr fpsr,x0" the way
+// FPC's own rtl/aarch64/mathu.inc does it; RISC-V fflags with NX/UF/OF/DZ/NV on bits
+// 0..4. Both have to be mapped onto the x86 shaped FE_* layout that the helpers and
+// X86ToRISCVFPUExceptionLookUpTable use.
+{$if defined(cpu386) or defined(cpuamd64) or defined(cpux64)}
+ {$define PasRISCVHostFPUExceptionFlags}
+{$ifend}
 
 {$define PasRISCVFastRMMFixup} // Optional: RMM-exact fast mode via selective soft-float fallback (needs PasRISCVStrictCompliantFPU)
 {$define PasRISCVJITFPUInvalidFlag} // Optional: let the JIT raise NV for invalid arithmetic FP operations, from the host invalid flag
@@ -13245,6 +13262,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function StoreEx(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):Boolean;
               function IsCSRENVCFGEnabled(const aMask:TPasRISCVUInt64):Boolean;
               class function CSROperation(const aOperation:TCSROperation;const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64; static; inline;
+              class function CSRWriteIntent(const aInstruction:TPasRISCVUInt64):boolean; static; inline;
+              class function CSRReadOnlyWriteAttempt(const aCSR,aInstruction:TPasRISCVUInt64):boolean; static; inline;
               procedure CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
@@ -13911,8 +13930,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure DumpMemoryTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
               procedure DumpStack(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
               procedure DumpStackTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
-              procedure DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
-              procedure DumpDisassemblerTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
+              procedure DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVInt64);
+              procedure DumpDisassemblerTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
               procedure DumpBacktrace(const aHART:THART;const aMaxDepth:TPasRISCVUInt64);
               procedure DumpBacktraceTo(const aHART:THART;const aMaxDepth:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
               procedure ListBreakpoints;
@@ -16941,8 +16960,159 @@ end;
 // Consolidated atomic memcpy for SMP correctness.
 // Uses naturally-aligned typed accesses for sizes 1/2/4/8 when both src and dst are aligned,
 // falling back to byte-by-byte copy otherwise (which is still correct, just not single-access atomic).
+// Guest visible 64 bit atomics, also on a 32 bit host.
+//
+// PasMP gates most of its 64 bit interlocked operations on CPU64, so on a 32 bit
+// target only Read, Write and CompareExchange accept a QWord - those are enabled for
+// CPU386 as well, because CMPXCHG8B provides them. Everything else is built from the
+// compare-exchange below, which is what a 32 bit host has to do anyway. On a 64 bit
+// host these forward straight to PasMP.
+//
+// Return values follow PasMP, which also matches what the RISC-V AMOs want:
+// Increment yields the new value, Add, Exchange and the ExchangeBitwise* forms yield
+// the value the location held before.
+
+function PasRISCVAtomicIncrement64(var aDestination:TPasRISCVUInt64):TPasRISCVUInt64;
+{$ifdef CPU64}
+begin
+ result:=TPasMPInterlocked.Increment(TPasMPUInt64(aDestination));
+end;
+{$else}
+var OldValue,NewValue:TPasMPUInt64;
+begin
+ repeat
+  OldValue:=TPasMPInterlocked.Read(TPasMPUInt64(aDestination));
+  NewValue:=OldValue+1;
+ until TPasMPInterlocked.CompareExchange(TPasMPUInt64(aDestination),NewValue,OldValue)=OldValue;
+ result:=NewValue;
+end;
+{$endif}
+
+function PasRISCVAtomicAdd64(var aDestination:TPasRISCVUInt64;const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+{$ifdef CPU64}
+begin
+ result:=TPasMPInterlocked.Add(TPasMPUInt64(aDestination),TPasMPUInt64(aValue));
+end;
+{$else}
+var OldValue:TPasMPUInt64;
+begin
+ repeat
+  OldValue:=TPasMPInterlocked.Read(TPasMPUInt64(aDestination));
+ until TPasMPInterlocked.CompareExchange(TPasMPUInt64(aDestination),OldValue+TPasMPUInt64(aValue),OldValue)=OldValue;
+ result:=OldValue;
+end;
+{$endif}
+
+function PasRISCVAtomicExchange64(var aDestination:TPasRISCVUInt64;const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+{$ifdef CPU64}
+begin
+ result:=TPasMPInterlocked.Exchange(TPasMPUInt64(aDestination),TPasMPUInt64(aValue));
+end;
+{$else}
+var OldValue:TPasMPUInt64;
+begin
+ repeat
+  OldValue:=TPasMPInterlocked.Read(TPasMPUInt64(aDestination));
+ until TPasMPInterlocked.CompareExchange(TPasMPUInt64(aDestination),TPasMPUInt64(aValue),OldValue)=OldValue;
+ result:=OldValue;
+end;
+{$endif}
+
+function PasRISCVAtomicExchangeBitwiseOr64(var aDestination:TPasRISCVUInt64;const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+{$ifdef CPU64}
+begin
+ result:=TPasMPInterlocked.ExchangeBitwiseOr(TPasMPUInt64(aDestination),TPasMPUInt64(aValue));
+end;
+{$else}
+var OldValue:TPasMPUInt64;
+begin
+ repeat
+  OldValue:=TPasMPInterlocked.Read(TPasMPUInt64(aDestination));
+ until TPasMPInterlocked.CompareExchange(TPasMPUInt64(aDestination),OldValue or TPasMPUInt64(aValue),OldValue)=OldValue;
+ result:=OldValue;
+end;
+{$endif}
+
+function PasRISCVAtomicExchangeBitwiseAnd64(var aDestination:TPasRISCVUInt64;const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+{$ifdef CPU64}
+begin
+ result:=TPasMPInterlocked.ExchangeBitwiseAnd(TPasMPUInt64(aDestination),TPasMPUInt64(aValue));
+end;
+{$else}
+var OldValue:TPasMPUInt64;
+begin
+ repeat
+  OldValue:=TPasMPInterlocked.Read(TPasMPUInt64(aDestination));
+ until TPasMPInterlocked.CompareExchange(TPasMPUInt64(aDestination),OldValue and TPasMPUInt64(aValue),OldValue)=OldValue;
+ result:=OldValue;
+end;
+{$endif}
+
+function PasRISCVAtomicExchangeBitwiseXor64(var aDestination:TPasRISCVUInt64;const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+{$ifdef CPU64}
+begin
+ result:=TPasMPInterlocked.ExchangeBitwiseXor(TPasMPUInt64(aDestination),TPasMPUInt64(aValue));
+end;
+{$else}
+var OldValue:TPasMPUInt64;
+begin
+ repeat
+  OldValue:=TPasMPInterlocked.Read(TPasMPUInt64(aDestination));
+ until TPasMPInterlocked.CompareExchange(TPasMPUInt64(aDestination),OldValue xor TPasMPUInt64(aValue),OldValue)=OldValue;
+ result:=OldValue;
+end;
+{$endif}
+
+procedure PasRISCVAtomicBitwiseOr64(var aDestination:TPasRISCVUInt64;const aValue:TPasRISCVUInt64);
+begin
+{$ifdef CPU64}
+ TPasMPInterlocked.BitwiseOr(TPasMPUInt64(aDestination),TPasMPUInt64(aValue));
+{$else}
+ PasRISCVAtomicExchangeBitwiseOr64(aDestination,aValue);
+{$endif}
+end;
+
+procedure PasRISCVAtomicBitwiseAnd64(var aDestination:TPasRISCVUInt64;const aValue:TPasRISCVUInt64);
+begin
+{$ifdef CPU64}
+ TPasMPInterlocked.BitwiseAnd(TPasMPUInt64(aDestination),TPasMPUInt64(aValue));
+{$else}
+ PasRISCVAtomicExchangeBitwiseAnd64(aDestination,aValue);
+{$endif}
+end;
+
+{$ifndef CPU64}
+var PasRISCVAtomic128Lock:TPasMPUInt32=0;
+{$endif}
+
+// 128 bit compare-exchange for amocas.q (Zacas).
+function PasRISCVAtomicCompareExchange128(var aDestination:TPasMPInt128Record;const aNewValue,aComperand:TPasMPInt128Record):TPasMPInt128Record;
+{$ifdef CPU64}
+begin
+ result:=TPasMPInterlocked.CompareExchange(aDestination,aNewValue,aComperand);
+end;
+{$else}
+begin
+ // A 32 bit host has no 128 bit compare-exchange, so a spin lock serialises the wide
+ // ones against each other. That is the most that can be done here, and it is weaker
+ // than the ISA asks for: it does not make amocas.q atomic against a plain load or
+ // store of the same location from another hart.
+ while TPasMPInterlocked.CompareExchange(PasRISCVAtomic128Lock,TPasMPUInt32(1),TPasMPUInt32(0))<>TPasMPUInt32(0) do begin
+  TPasMP.Relax;
+ end;
+ try
+  result:=aDestination;
+  if (result.Lo=aComperand.Lo) and (result.Hi=aComperand.Hi) then begin
+   aDestination:=aNewValue;
+  end;
+ finally
+  TPasMPInterlocked.Write(PasRISCVAtomic128Lock,TPasMPUInt32(0));
+ end;
+end;
+{$endif}
+
 procedure AtomicMemCopyRelaxed(const aSrc,aDst:Pointer;const aSize:TPasRISCVUInt64); {$ifdef CAN_INLINE}inline;{$endif}
-var Index:TPasRISCVUInt64;
+var Index:{$ifdef CPU64}TPasRISCVUInt64{$else}TPasRISCVUInt32{$endif};
 begin
  if (aSize=8) and ((TPasRISCVPtrUInt(aSrc) and 7)=0) and ((TPasRISCVPtrUInt(aDst) and 7)=0) then begin
   PPasRISCVUInt64(aDst)^:=PPasRISCVUInt64(aSrc)^;
@@ -16951,8 +17121,8 @@ begin
  end else if (aSize=2) and ((TPasRISCVPtrUInt(aSrc) and 1)=0) and ((TPasRISCVPtrUInt(aDst) and 1)=0) then begin
   PPasRISCVUInt16(aDst)^:=PPasRISCVUInt16(aSrc)^;
  end else begin
-  for Index:=0 to aSize-1 do begin
-   PPasRISCVUInt8Array(aDst)^[Index]:=PPasRISCVUInt8Array(aSrc)^[Index];
+  for Index:=1 to aSize do begin
+   PPasRISCVUInt8Array(aDst)^[Index-1]:=PPasRISCVUInt8Array(aSrc)^[Index-1];
   end;
  end;
 end;
@@ -17412,153 +17582,6 @@ begin
 end;
 {$ifend}
 
-// Fused multiply-add: result = (a * b) + c with single rounding
-{$if defined(cpu386) and not defined(purepascal)}
-function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register;
-asm
- // Use x87 extended precision for fma emulation
- fld dword ptr aA
- fld dword ptr aB
- fmulp st(1),st(0)
- fld dword ptr aC
- faddp st(1),st(0)
- fstp dword ptr [esp-4]
- fld dword ptr [esp-4]
- // result in st(0)
-end;
-
-function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble; assembler; register;
-asm
- // Use x87 extended precision for fma emulation
- fld qword ptr aA
- fld qword ptr aB
- fmulp st(1),st(0)
- fld qword ptr aC
- faddp st(1),st(0)
- // result in st(0)
-end;
-{$elseif (defined(cpuamd64) or defined(cpux64) or defined(cpux86_64)) and not defined(purepascal)}
-function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register; {$ifdef fpc}nostackframe;{$endif}
-asm
-{$ifndef fpc}
- .NOFRAME
-{$endif}
-{$ifdef fpc}
- test dword ptr [rip+CPUFeatures],CPUFeatures_X86_FMA_Mask
-{$else}
- test dword ptr [rel CPUFeatures],CPUFeatures_X86_FMA_Mask
-{$endif}
- jz @NoFMA
- // vfmadd213ss xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
-{$ifdef Windows}
- // xmm0=aA, xmm1=aB, xmm2=aC
- db $c4,$e2,$71,$a9,$c2 // vfmadd213ss xmm0,xmm1,xmm2
-{$else}
- // xmm0=aA, xmm1=aB, xmm2=aC (SysV ABI)
- db $c4,$e2,$71,$a9,$c2 // vfmadd213ss xmm0,xmm1,xmm2
-{$endif}
- ret
-@NoFMA:
- // Fallback: promote to double, multiply, add, demote
-{$ifdef Windows}
- cvtss2sd xmm0,xmm0
- cvtss2sd xmm1,xmm1
- cvtss2sd xmm2,xmm2
- mulsd xmm0,xmm1
- addsd xmm0,xmm2
- cvtsd2ss xmm0,xmm0
-{$else}
- cvtss2sd xmm0,xmm0
- cvtss2sd xmm1,xmm1
- cvtss2sd xmm2,xmm2
- mulsd xmm0,xmm1
- addsd xmm0,xmm2
- cvtsd2ss xmm0,xmm0
-{$endif}
-end;
-
-function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble; assembler; register; {$ifdef fpc}nostackframe;{$endif}
-asm
-{$ifndef fpc}
- .NOFRAME
-{$endif}
-{$ifdef fpc}
- test dword ptr [rip+CPUFeatures],CPUFeatures_X86_FMA_Mask
-{$else}
- test dword ptr [rel CPUFeatures],CPUFeatures_X86_FMA_Mask
-{$endif}
- jz @NoFMA
- // vfmadd213sd xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
-{$ifdef Windows}
- db $c4,$e2,$f1,$a9,$c2 // vfmadd213sd xmm0,xmm1,xmm2
-{$else}
- db $c4,$e2,$f1,$a9,$c2 // vfmadd213sd xmm0,xmm1,xmm2
-{$endif}
- ret
-@NoFMA:
- // Fallback: use x87 extended precision.
-{$ifdef Windows}
- // Windows x64 has no red zone, so we must allocate stack space explicitly.
- sub rsp,24
- movsd qword ptr [rsp],xmm0
- movsd qword ptr [rsp+8],xmm1
- movsd qword ptr [rsp+16],xmm2
- fld qword ptr [rsp]
- fld qword ptr [rsp+8]
- fmulp st(1),st(0)
- fld qword ptr [rsp+16]
- faddp st(1),st(0)
- fstp qword ptr [rsp]
- movsd xmm0,qword ptr [rsp]
- add rsp,24
-{$else}
- // On SysV the 128-byte red zone allows direct use of [rsp-N].
- movsd qword ptr [rsp-8],xmm0
- movsd qword ptr [rsp-16],xmm1
- movsd qword ptr [rsp-24],xmm2
- fld qword ptr [rsp-8]
- fld qword ptr [rsp-16]
- fmulp st(1),st(0)
- fld qword ptr [rsp-24]
- faddp st(1),st(0)
- fstp qword ptr [rsp-8]
- movsd xmm0,qword ptr [rsp-8]
-{$endif}
-end;
-{$else}
-// Non-x86 fallback
-function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
-var a64,b64,c64,r64:TPasRISCVDouble;
-begin
- // Perform fma via double precision: exact for single-precision inputs
- // since double has >= 2*24+1 = 49 mantissa bits (it has 53)
- a64:=aA;
- b64:=aB;
- c64:=aC;
- r64:=(a64*b64)+c64;
- result:=r64;
-end;
-
-function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
-var a80,b80,c80,r80:{$ifdef HAS_TYPE_EXTENDED}Extended{$else}TPasRISCVDouble{$endif};
-begin
-{$ifdef HAS_TYPE_EXTENDED}
- // Perform fma via extended precision (80-bit): exact for double inputs
- // if extended has >= 2*53+1 = 107 mantissa bits, x87 extended has only 64,
- // which is not enough. So this is still not perfectly fused for double, but
- // it is the best we can do without hardware FMA.
- a80:=aA;
- b80:=aB;
- c80:=aC;
- r80:=(a80*b80)+c80;
- result:=r80;
-{$else}
- // No extended type available, fall back to non-fused
- result:=(aA*aB)+aC;
-{$endif}
-end;
-{$ifend}
-
 function BitwiseOrCombine(aValue:TPasRISCVUInt64):TPasRISCVUInt64; {$if defined(fpc) and defined(cpuamd64)} assembler; {$if defined(fpc)}nostackframe; {$if defined(Windows)}ms_abi_default;{$else}sysv_abi_default;{$ifend}{$ifend}
 asm
 {$if not defined(fpc)}
@@ -17801,25 +17824,27 @@ begin
 end;
 
 function CrossbarPermBytes(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // xperm8 (Zbkx)
-var i,Index:TPasRISCVUInt64;
+var i:{$ifdef CPU64}TPasRISCVUInt64{$else}TPasRISCVUInt32{$endif};
+    Index:TPasRISCVUInt64;
 begin
  result:=0;
  for i:=0 to 7 do begin
-  Index:=(aRs2 shr (i*8)) and $ff;
+  Index:=(aRs2 shr (i shl 3)) and $ff;
   if Index<8 then begin
-   result:=result or (((aRs1 shr (Index*8)) and $ff) shl (i*8));
+   result:=result or (((aRs1 shr (Index shl 3)) and $ff) shl (i shl 3));
   end;
  end;
 end;
 
 function CrossbarPermNibbles(aRs1,aRs2:TPasRISCVUInt64):TPasRISCVUInt64; // xperm4 (Zbkx)
-var i,Index:TPasRISCVUInt64;
+var i:{$ifdef CPU64}TPasRISCVUInt64{$else}TPasRISCVUInt32{$endif};
+    Index:TPasRISCVUInt64;
 begin
  result:=0;
  for i:=0 to 15 do begin
-  Index:=(aRs2 shr (i*4)) and $f;
+  Index:=(aRs2 shr (i shl 2)) and $f;
   if Index<16 then begin
-   result:=result or (((aRs1 shr (Index*4)) and $f) shl (i*4));
+   result:=result or (((aRs1 shr (Index shl 2)) and $f) shl (i shl 2));
   end;
  end;
 end;
@@ -19363,6 +19388,27 @@ begin
  end;
 end;
 
+// Whether a right shift by aShift would discard any set bit. Needed where a jammed
+// sticky cannot be used, see the alignment in SoftFloatFMACoreGeneric.
+function SoftFloatBits192ShrLoses(const aValue:TSoftFloatBits192;const aShift:TPasRISCVInt32):boolean;
+begin
+ if aShift<=0 then begin
+  result:=false;
+ end else if aShift>=192 then begin
+  result:=(aValue.Lo<>0) or (aValue.Mid<>0) or (aValue.Hi<>0);
+ end else if aShift<64 then begin
+  result:=(aValue.Lo and ((TPasRISCVUInt64(1) shl aShift)-1))<>0;
+ end else if aShift=64 then begin
+  result:=aValue.Lo<>0;
+ end else if aShift<128 then begin
+  result:=(aValue.Lo<>0) or ((aValue.Mid and ((TPasRISCVUInt64(1) shl (aShift-64))-1))<>0);
+ end else if aShift=128 then begin
+  result:=(aValue.Lo<>0) or (aValue.Mid<>0);
+ end else begin
+  result:=(aValue.Lo<>0) or (aValue.Mid<>0) or ((aValue.Hi and ((TPasRISCVUInt64(1) shl (aShift-128))-1))<>0);
+ end;
+end;
+
 function SoftFloatBits192ShrSticky(const aValue:TSoftFloatBits192;const aShift:TPasRISCVInt32):TSoftFloatBits192;
 var Lost:boolean;
 begin
@@ -20218,12 +20264,12 @@ begin
 end;
 
 function SoftFloatFMACoreGeneric(const aA,aB,aC:TPasRISCVUInt64;const aMantissaBits,aSignShift:TPasRISCVInt32;const aInfiniteExponent:TPasRISCVUInt32;const aExponentBias:TPasRISCVInt32;const aCanonicalNaN:TPasRISCVUInt64;const aRM:TPasRISCVUInt8;var aFFlags:TPasRISCVUInt8):TPasRISCVUInt64;
-var SignA,SignB,SignC,ProductSign,ResultSign:boolean;
+var SignA,SignB,SignC,ProductSign,ResultSign,StickyResidue:boolean;
     ExponentA,ExponentB,ExponentC,ProductExponent,CommonExponent,ResultExponent:TPasRISCVInt32;
     MantissaA,MantissaB,MantissaC,ExtMantissa:TPasRISCVUInt64;
     Product:TSoftFloatBits128;
     Product192,c192,r192:TSoftFloatBits192;
-    Comparison,HighestBit,Shift:TPasRISCVInt32;
+    Comparison,HighestBit,Shift,ExponentDifference,AlignmentLimit:TPasRISCVInt32;
 begin
  SoftFloatUnpack(aA,aMantissaBits,aSignShift,aInfiniteExponent,SignA,ExponentA,MantissaA);
  SoftFloatUnpack(aB,aMantissaBits,aSignShift,aInfiniteExponent,SignB,ExponentB,MantissaB);
@@ -20279,23 +20325,48 @@ begin
  SoftFloatMul64to128(MantissaA,MantissaB,Product.Hi,Product.Lo);
  ProductExponent:=ExponentA+ExponentB-aExponentBias;
  Product192:=SoftFloatBits192From128(Product);
+ StickyResidue:=false;
  if (ExponentC=0) and (MantissaC=0) then begin
   c192:=SoftFloatBits192Zero;
   CommonExponent:=ProductExponent;
  end else begin
   SoftFloatNormalizeOperand(ExponentC,MantissaC,aMantissaBits);
   c192:=SoftFloatBits192Shl(SoftFloatBits192FromUInt64(MantissaC),aMantissaBits);
-  if ProductExponent>ExponentC then begin
-   c192:=SoftFloatBits192ShrSticky(c192,ProductExponent-ExponentC);
-   CommonExponent:=ProductExponent;
-  end else if ProductExponent<ExponentC then begin
-   Product192:=SoftFloatBits192ShrSticky(Product192,ExponentC-ProductExponent);
-   CommonExponent:=ExponentC;
+  // Alignment. Jamming the smaller operand into a sticky bit is only sound for an
+  // addition: a subtraction rounds the subtrahend up to the next grid step and then
+  // has no way left to say that the true difference lies above the computed one, so
+  // an exact tie rounds to the wrong neighbour. The 192 bit window is wide enough to
+  // hold both operands exactly whenever the exponents are close, so align on the
+  // lower exponent there and keep every bit. Past that distance the smaller operand
+  // is far below the larger one, and the residue is carried as an explicit sticky
+  // plus, for a subtraction, one step off the truncated difference.
+  ExponentDifference:=ProductExponent-ExponentC;
+  AlignmentLimit:=188-(2*aMantissaBits);
+  if ExponentDifference>0 then begin
+   if ExponentDifference<=AlignmentLimit then begin
+    Product192:=SoftFloatBits192Shl(Product192,ExponentDifference);
+    CommonExponent:=ExponentC;
+   end else begin
+    StickyResidue:=SoftFloatBits192ShrLoses(c192,ExponentDifference);
+    c192:=SoftFloatBits192Shr(c192,ExponentDifference);
+    CommonExponent:=ProductExponent;
+   end;
+  end else if ExponentDifference<0 then begin
+   if (-ExponentDifference)<=AlignmentLimit then begin
+    c192:=SoftFloatBits192Shl(c192,-ExponentDifference);
+    CommonExponent:=ProductExponent;
+   end else begin
+    StickyResidue:=SoftFloatBits192ShrLoses(Product192,-ExponentDifference);
+    Product192:=SoftFloatBits192Shr(Product192,-ExponentDifference);
+    CommonExponent:=ExponentC;
+   end;
   end else begin
    CommonExponent:=ProductExponent;
   end;
  end;
  if SignC=ProductSign then begin
+  // The discarded residue has the same sign as the sum, so the truncated total is
+  // already the integer part and the residue is just a sticky.
   r192:=SoftFloatBits192Add(Product192,c192);
   ResultSign:=ProductSign;
  end else begin
@@ -20307,12 +20378,20 @@ begin
    r192:=SoftFloatBits192Sub(c192,Product192);
    ResultSign:=SignC;
   end else begin
+   // Only reachable without a residue: the truncating branch above leaves the two
+   // magnitudes orders of magnitude apart, so they cannot compare equal there.
    if aRM=SoftFloatRM_RDN then begin
     result:=SoftFloatZero(true,aSignShift);
    end else begin
     result:=0;
    end;
    exit;
+  end;
+  if StickyResidue then begin
+   // The residue belongs to the operand that was shifted out, which is the smaller
+   // one and therefore the subtrahend, so the true difference is one step below the
+   // truncated one and carries a fraction of a step above that.
+   r192:=SoftFloatBits192Sub(r192,SoftFloatBits192FromUInt64(1));
   end;
  end;
  HighestBit:=SoftFloatHighestBit192(r192);
@@ -20324,6 +20403,11 @@ begin
   r192:=SoftFloatBits192Shl(r192,-Shift);
  end;
  ExtMantissa:=r192.Lo;
+ if StickyResidue then begin
+  // Bit 0 is the sticky slot SoftFloatRoundPack reads, and the residue sits below
+  // the retained least significant bit either way round.
+  ExtMantissa:=ExtMantissa or 1;
+ end;
  if ResultExponent<=0 then begin
   ExtMantissa:=SoftFloatShiftRightJam64(ExtMantissa,1-ResultExponent);
   ResultExponent:=0;
@@ -22569,6 +22653,23 @@ asm
  or eax,edx
  and eax,ecx
 end;
+
+// Set exception flags without executing a floating point operation. The soft-float
+// helpers below need this to report the flags of a computation they did in integer
+// arithmetic, so that the SetFPUExceptions transfer sees them like any host flag.
+// Writing the flag bits does not trap even when the matching exception is unmasked,
+// only an actual FP instruction does.
+function feraiseexcept(aExceptions:TPasRISCVUInt32=$3f):TPasRISCVUInt32; assembler; register;
+asm
+ mov ecx,eax
+ and ecx,$3f
+ sub esp,4
+ stmxcsr dword ptr [esp]
+ or dword ptr [esp],ecx
+ ldmxcsr dword ptr [esp]
+ add esp,4
+ xor eax,eax
+end;
 {$elseif defined(cpuamd64) or defined(cpux64)}
 function feclearexcept(aExceptions:TPasRISCVUInt32=$3f):TPasRISCVUInt32; assembler; {$ifdef fpc}ms_abi_default; nostackframe;{$endif}
 asm
@@ -22623,6 +22724,33 @@ asm
  or eax,edx
  and eax,ecx
 end;
+
+// Set exception flags without executing a floating point operation. The soft-float
+// helpers below need this to report the flags of a computation they did in integer
+// arithmetic, so that the SetFPUExceptions transfer sees them like any host flag.
+// Writing the flag bits does not trap even when the matching exception is unmasked,
+// only an actual FP instruction does.
+function feraiseexcept(aExceptions:TPasRISCVUInt32=$3f):TPasRISCVUInt32; assembler; {$ifdef fpc}ms_abi_default; nostackframe;{$endif}
+asm
+{$ifndef fpc}
+.noframe
+{$endif}
+ and ecx,$3f
+{$ifdef Windows}
+ // Windows x64 has no red zone; allocate 8 bytes on the stack for stmxcsr scratch.
+ sub rsp,8
+ stmxcsr dword ptr [rsp]
+ or dword ptr [rsp],ecx
+ ldmxcsr dword ptr [rsp]
+ add rsp,8
+{$else}
+ // On SysV the 128-byte red zone makes [rsp-8] safe to use directly.
+ stmxcsr dword ptr [rsp-8]
+ or dword ptr [rsp-8],ecx
+ ldmxcsr dword ptr [rsp-8]
+{$endif}
+ xor rax,rax
+end;
 {$else}
 function feclearexcept(aExceptions:TPasRISCVUInt32=$3f):TPasRISCVUInt32;
 begin
@@ -22633,7 +22761,283 @@ function fetestexcept(aExceptions:TPasRISCVUInt32=$3f):TPasRISCVUInt32;
 begin
  result:=0;
 end;
+
+function feraiseexcept(aExceptions:TPasRISCVUInt32=$3f):TPasRISCVUInt32;
+begin
+ result:=0;
+end;
 {$ifend}
+
+// Fused multiply-add: result = (a * b) + c with single rounding.
+//
+// Hosts with a real fused instruction use it. Everywhere else the operation goes
+// through the exact soft-float core instead of through host arithmetic, because
+// every host emulation of a fused op rounds more than once:
+//
+//  - "promote to double, multiply, add, demote" keeps the product exact (an f32
+//    product needs 48 of the 53 mantissa bits) but rounds the sum to f64 and then
+//    again to f32. Under RNE that can land on the wrong neighbour, and it cannot
+//    report an f32 level UF at all: an f32 subnormal is a normal f64, so the
+//    narrowing conversion of an already exact value raises nothing while the f64
+//    add has consumed the inexactness.
+//  - the x87 route for double is worse still: a 64 bit mantissa cannot hold the
+//    106 bit product, so the product is rounded before the addend is applied.
+//    (1+2^-52)*(1-2^-52)-1 then yields 0 instead of the exact -2^-104.
+//
+// The soft-float core keeps the full product, aligns the addend with a sticky
+// shift and rounds exactly once, so result and flags match a hardware fused op.
+// It is slower than the host sequence, but it only runs on hosts without a fused
+// instruction, and being right matters more there than being quick.
+
+function SoftFloatHostRoundingMode:TPasRISCVUInt8;
+begin
+ case GetRoundMode of
+{$ifdef fpc}
+  TFPURoundingMode.rmTruncate:begin
+{$else}
+  rmTruncate:begin
+{$endif}
+   result:=SoftFloatRM_RTZ;
+  end;
+{$ifdef fpc}
+  TFPURoundingMode.rmDown:begin
+{$else}
+  rmDown:begin
+{$endif}
+   result:=SoftFloatRM_RDN;
+  end;
+{$ifdef fpc}
+  TFPURoundingMode.rmUp:begin
+{$else}
+  rmUp:begin
+{$endif}
+   result:=SoftFloatRM_RUP;
+  end;
+  else begin
+   // rmNearest. RMM cannot show up here, the interpreter already routes RMM
+   // operations to the soft-float path, see FastRMMActive.
+   result:=SoftFloatRM_RNE;
+  end;
+ end;
+end;
+
+// Report soft-float flags as host flags, so that the SetFPUExceptions transfer
+// picks them up like the flags of any host operation. NV is passed on as well,
+// but it is filtered out again by X86ToRISCVFPUExceptionLookUpTable: the callers
+// derive NV from the operands, see the fmadd cases in the instruction decoder.
+procedure SoftFloatRaiseHostExceptions(const aFFlags:TPasRISCVUInt8);
+var Exceptions:TPasRISCVUInt32;
+begin
+ if aFFlags<>0 then begin
+  Exceptions:=0;
+  if (aFFlags and SoftFloatFF_NX)<>0 then begin
+   Exceptions:=Exceptions or TPasRISCV.FE_INEXACT;
+  end;
+  if (aFFlags and SoftFloatFF_UF)<>0 then begin
+   Exceptions:=Exceptions or TPasRISCV.FE_UNDERFLOW;
+  end;
+  if (aFFlags and SoftFloatFF_OF)<>0 then begin
+   Exceptions:=Exceptions or TPasRISCV.FE_OVERFLOW;
+  end;
+  if (aFFlags and SoftFloatFF_DZ)<>0 then begin
+   Exceptions:=Exceptions or TPasRISCV.FE_DIVBYZERO;
+  end;
+  if (aFFlags and SoftFloatFF_NV)<>0 then begin
+   Exceptions:=Exceptions or TPasRISCV.FE_INVALID;
+  end;
+  feraiseexcept(Exceptions);
+ end;
+end;
+
+function SoftFloatFusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
+var OperandA,OperandB,OperandC,FMAResult:TPasRISCVSoftFloat32;
+    FFlags:TPasRISCVUInt8;
+begin
+ OperandA.ui32:=PPasRISCVUInt32(Pointer(@aA))^;
+ OperandB.ui32:=PPasRISCVUInt32(Pointer(@aB))^;
+ OperandC.ui32:=PPasRISCVUInt32(Pointer(@aC))^;
+ FFlags:=0;
+ FMAResult:=TPasRISCVSoftFloat32.FMA(OperandA,OperandB,OperandC,SoftFloatHostRoundingMode,FFlags);
+ SoftFloatRaiseHostExceptions(FFlags);
+ PPasRISCVUInt32(Pointer(@result))^:=FMAResult.ui32;
+end;
+
+function SoftFloatFusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
+var OperandA,OperandB,OperandC,FMAResult:TPasRISCVSoftFloat64;
+    FFlags:TPasRISCVUInt8;
+begin
+ OperandA.ui64:=PPasRISCVUInt64(Pointer(@aA))^;
+ OperandB.ui64:=PPasRISCVUInt64(Pointer(@aB))^;
+ OperandC.ui64:=PPasRISCVUInt64(Pointer(@aC))^;
+ FFlags:=0;
+ FMAResult:=TPasRISCVSoftFloat64.FMA(OperandA,OperandB,OperandC,SoftFloatHostRoundingMode,FFlags);
+ SoftFloatRaiseHostExceptions(FFlags);
+ PPasRISCVUInt64(Pointer(@result))^:=FMAResult.ui64;
+end;
+
+// Counterpart of the two above for half precision, taking and returning raw f16 bits
+// because there is no host type for them. aNegA/aNegC pick the fmadd/fmsub/fnmsub/
+// fnmadd variant; negating an f16 bit pattern is a sign flip and leaves NaNs NaNs.
+// The interpreter's host FPU lane goes through HostFusedMultiplyAddHalf instead,
+// which keeps the host fused instruction in the loop; this one is the direct route
+// to the exact core, for callers that want it without a host round trip.
+function SoftFloatFusedMultiplyAddHalf(const aA,aB,aC:TPasRISCVUInt16;const aNegA,aNegC:boolean):TPasRISCVUInt16;
+var OperandA,OperandB,OperandC,FMAResult:TPasRISCVSoftFloat16;
+    FFlags:TPasRISCVUInt8;
+begin
+ OperandA.ui16:=aA;
+ OperandB.ui16:=aB;
+ OperandC.ui16:=aC;
+ if aNegA then begin
+  OperandA.ui16:=OperandA.ui16 xor TPasRISCVUInt16($8000);
+ end;
+ if aNegC then begin
+  OperandC.ui16:=OperandC.ui16 xor TPasRISCVUInt16($8000);
+ end;
+ FFlags:=0;
+ FMAResult:=TPasRISCVSoftFloat16.FMA(OperandA,OperandB,OperandC,SoftFloatHostRoundingMode,FFlags);
+ SoftFloatRaiseHostExceptions(FFlags);
+ result:=FMAResult.ui16;
+end;
+
+{$if (defined(cpuamd64) or defined(cpux64) or defined(cpux86_64)) and not defined(purepascal)}
+function HardwareFusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+{$ifndef fpc}
+ .NOFRAME
+{$endif}
+ // vfmadd213ss xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
+ // xmm0=aA, xmm1=aB, xmm2=aC on both the SysV and the Windows x64 ABI.
+ db $c4,$e2,$71,$a9,$c2
+end;
+
+function HardwareFusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble; assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+{$ifndef fpc}
+ .NOFRAME
+{$endif}
+ // vfmadd213sd xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
+ db $c4,$e2,$f1,$a9,$c2
+end;
+{$elseif defined(cpu386) and not defined(purepascal)}
+// 32 bit x86 reaches the same fused instructions; only the plumbing differs, because
+// the parameters arrive on the stack and a floating point result goes back in st(0).
+// CPUID.1:ECX[12] is read by DoCheckCPU on this target as well, so the dispatcher
+// below decides at runtime here too.
+function HardwareFusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat; assembler; register;
+asm
+ movss xmm0,dword ptr aA
+ movss xmm1,dword ptr aB
+ movss xmm2,dword ptr aC
+ // vfmadd213ss xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
+ db $c4,$e2,$71,$a9,$c2
+ sub esp,4
+ movss dword ptr [esp],xmm0
+ fld dword ptr [esp]
+ add esp,4
+ // result in st(0)
+end;
+
+function HardwareFusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble; assembler; register;
+asm
+ // FPC's 32 bit assembler lists these xmm moves with a 128 bit memory operand and
+ // therefore prints a "check size of memory operand" warning for every one of them,
+ // movq included. The 64 bit encoding is the right one for a double, so the warning
+ // can be ignored.
+ movsd xmm0,qword ptr aA
+ movsd xmm1,qword ptr aB
+ movsd xmm2,qword ptr aC
+ // vfmadd213sd xmm0,xmm1,xmm2: xmm0 = (xmm1 * xmm0) + xmm2
+ db $c4,$e2,$f1,$a9,$c2
+ sub esp,8
+ movsd qword ptr [esp],xmm0
+ fld qword ptr [esp]
+ add esp,8
+ // result in st(0)
+end;
+{$ifend}
+
+{$if (defined(cpuamd64) or defined(cpux64) or defined(cpux86_64) or defined(cpu386)) and not defined(purepascal)}
+function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
+begin
+ if (CPUFeatures and CPUFeatures_X86_FMA_Mask)<>0 then begin
+  result:=HardwareFusedMultiplyAddFloat(aA,aB,aC);
+ end else begin
+  result:=SoftFloatFusedMultiplyAddFloat(aA,aB,aC);
+ end;
+end;
+
+function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
+begin
+ if (CPUFeatures and CPUFeatures_X86_FMA_Mask)<>0 then begin
+  result:=HardwareFusedMultiplyAddDouble(aA,aB,aC);
+ end else begin
+  result:=SoftFloatFusedMultiplyAddDouble(aA,aB,aC);
+ end;
+end;
+{$else}
+// No host fused instruction is reachable here, so there is nothing to dispatch on:
+// either the target has none, or this is a purepascal build, which rules out the
+// assembler the VEX encoding needs. Non-x86 used to take the double/extended route,
+// which rounds twice, see the note above.
+function FusedMultiplyAddFloat(const aA,aB,aC:TPasRISCVFloat):TPasRISCVFloat;
+begin
+ result:=SoftFloatFusedMultiplyAddFloat(aA,aB,aC);
+end;
+
+function FusedMultiplyAddDouble(const aA,aB,aC:TPasRISCVDouble):TPasRISCVDouble;
+begin
+ result:=SoftFloatFusedMultiplyAddDouble(aA,aB,aC);
+end;
+{$ifend}
+
+// Half precision fused multiply-add for the host FPU lane, keeping the host fused
+// instruction in the loop. The product of two f16 values needs 22 of the 53 double
+// mantissa bits and is therefore exact, and the fused op rounds the sum once, so the
+// only rounding left over is the narrowing back to f16 - one rounding too many in
+// principle, but provably harmless here.
+//
+// Double rounding hurts only when the first rounding lands the value exactly on a
+// midpoint of the second format. Near an f16 midpoint at magnitude 2^e the operands
+// can only produce a grid of 2^(e-33) or coarser: for the sum to sit that close to a
+// midpoint the product has to nearly cancel the addend, and with at most 22 product
+// bits and 11 addend bits the residue is then a multiple of 2^(e-33). Half a double
+// ulp is 2^(e-53), twenty orders of magnitude finer, so the double never snaps onto
+// an f16 midpoint. Directed modes are idempotent under double rounding anyway, and
+// RMM never gets here because FastRMMActive routes it to the soft-float lane.
+//
+// Doing it through single precision, the way this path used to, is *not* safe: an f32
+// intermediate has only 24 bits and does snap onto f16 midpoints, which is where the
+// old sequence lost 1 ulp. It also could not report an f16 level UF, since an f16
+// subnormal is a normal f32. The narrowing below is the exact soft-float conversion,
+// so it produces the f16 NX/UF/OF itself, while the fused op's own NX stays in the
+// host flags and both end up ORed together by SetFPUExceptions.
+function HostFusedMultiplyAddHalf(const aA,aB,aC:TPasRISCVUInt16;const aNegA,aNegC:boolean):TPasRISCVUInt16;
+var HalfA,HalfB,HalfC:TPasRISCVHalfFloat;
+    WideA,WideB,WideC,WideResult:TPasRISCVDouble;
+    Wide:TPasRISCVSoftFloat64;
+    Narrow:TPasRISCVSoftFloat16;
+    FFlags:TPasRISCVUInt8;
+begin
+ HalfA.Value:=aA;
+ HalfB.Value:=aB;
+ HalfC.Value:=aC;
+ WideA:=HalfA.ToFloat;
+ WideB:=HalfB.ToFloat;
+ WideC:=HalfC.ToFloat;
+ if aNegA then begin
+  WideA:=-WideA;
+ end;
+ if aNegC then begin
+  WideC:=-WideC;
+ end;
+ WideResult:=FusedMultiplyAddDouble(WideA,WideB,WideC);
+ Wide.ui64:=PPasRISCVUInt64(Pointer(@WideResult))^;
+ FFlags:=0;
+ Narrow:=SoftFloatF64ToF16(Wide,SoftFloatHostRoundingMode,FFlags);
+ SoftFloatRaiseHostExceptions(FFlags);
+ result:=Narrow.ui16;
+end;
 
 {$if defined(cpuamd64)}
 function MULHU(a,b:TPasRISCVUInt64):TPasRISCVUInt64; assembler; {$if defined(fpc)}nostackframe; {$if defined(Windows)}ms_abi_default;{$else}sysv_abi_default;{$ifend}{$ifend}
@@ -47140,7 +47544,7 @@ begin
  end;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
- TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+ {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
 end;
 
@@ -47160,7 +47564,7 @@ begin
    end;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+   {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
    exit;
   end;
@@ -47437,7 +47841,8 @@ begin
 end;
 
 procedure TPasRISCV.TACLINTDevice.Store(const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
-var CountHARTs,Address,HARTID,Time:TPasRISCVUInt64;
+var CountHARTs,Address,Time:TPasRISCVUInt64;
+    HARTID:{$ifdef CPU64}TPasRISCVUInt64{$else}TPasRISCVUInt32{$endif};
 begin
  CountHARTs:=length(fMachine.fHARTs);
  Address:=aAddress-fBase;
@@ -50051,7 +50456,7 @@ begin
       fMachine.fBus.fAddressSpaceDispatch.Invalidate;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-      TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+      {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
      end;
     end else begin
@@ -50077,7 +50482,7 @@ begin
      fMachine.fBus.fAddressSpaceDispatch.Invalidate;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-     TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+     {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
     end;
 {$endif}
@@ -50097,7 +50502,7 @@ begin
      fMachine.fBus.fAddressSpaceDispatch.Invalidate;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-     TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+     {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
     end;
 {$endif}
@@ -70179,7 +70584,7 @@ begin
  TPasMPMultipleReaderSingleWriterSpinLock.AcquireWrite(fEventQueueThread.fLock);
  try
 
-  TPasMPInterlocked.Increment(fEventQueueThread.fGeneration);
+  {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fEventQueueThread.fGeneration);
 
   fResetMRSWLock.AcquireWrite;
   try
@@ -70202,7 +70607,7 @@ begin
     inherited DeviceReset;
 
 {$ifdef PasRISCVVSockParallelThreading}
-    TPasMPInterlocked.Increment(fEventQueueThread.fGeneration);
+    {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fEventQueueThread.fGeneration);
 
    finally
     fEventQueueThread.fConditionVariableLock.Release;
@@ -71842,7 +72247,7 @@ begin
  end;
  try
 
-  TPasMPInterlocked.Increment(fEventQueueThread.fGeneration);
+  {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fEventQueueThread.fGeneration);
 
   fResetMRSWLock.AcquireWrite;
   try
@@ -71862,7 +72267,7 @@ begin
     DestroyAllConnections;
 
 {$ifdef PasRISCVVSockParallelThreading}
-    TPasMPInterlocked.Increment(fEventQueueThread.fGeneration);
+    {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fEventQueueThread.fGeneration);
 
    finally
     fEventQueueThread.fConditionVariableLock.Release;
@@ -99213,7 +99618,7 @@ begin
 {$endif}
 
 {$ifdef PasRISCVMMIOTLB}
-  TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+  {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
 
   // Clear LR/SC reservation on privilege mode change (like QEMU's riscv_cpu_set_mode)
@@ -99649,7 +100054,7 @@ begin
  fTLBHasExecuteEntries:=false;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
- TPasMPInterlocked.Increment(fMachine.fMMIOTLBGeneration);
+ {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
  if aInterrupt then begin
 {$ifdef PasRISCVJustInTimeCompilerStats}
@@ -102193,6 +102598,41 @@ begin
  end;
 end;
 
+// Whether the instruction architecturally writes the CSR. This has to come from the
+// encoding, never from the value: csrrs/csrrc with a source register other than x0 is
+// a write even when that register happens to hold zero, and csrrw is a write even when
+// the value written equals the value already there.
+class function TPasRISCV.THART.CSRWriteIntent(const aInstruction:TPasRISCVUInt64):boolean;
+begin
+ case (aInstruction shr 12) and 7 of
+  1,5:begin
+   // csrrw, csrrwi: always a write, even with rd=x0
+   result:=true;
+  end;
+  2,3:begin
+   // csrrs, csrrc: a read-only access only in the canonical rs1=x0 form
+   result:=((aInstruction shr 15) and $1f)<>0;
+  end;
+  6,7:begin
+   // csrrsi, csrrci: a read-only access only when the immediate is zero
+   result:=((aInstruction shr 15) and $1f)<>0;
+  end;
+  else begin
+   result:=false;
+  end;
+ end;
+end;
+
+// A CSR whose address has bits [11:10] set to 11 is read-only by encoding, and the
+// spec requires every write to it to raise an illegal instruction. Deliberately keyed
+// on the address and not on the handler, because the read-only handlers are also used
+// for CSRs that are writable by encoding and merely discard what is written to them
+// (misa and tdata1 are WARL, so a write to those must not trap).
+class function TPasRISCV.THART.CSRReadOnlyWriteAttempt(const aCSR,aInstruction:TPasRISCVUInt64):boolean;
+begin
+ result:=(((aCSR shr 10) and 3)=3) and CSRWriteIntent(aInstruction);
+end;
+
 procedure TPasRISCV.THART.CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
@@ -102228,6 +102668,10 @@ procedure TPasRISCV.THART.CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
+ if CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -102258,6 +102702,10 @@ begin
  if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else if StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
+  if CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+   exit;
+  end;
   rd:=TRegister((aInstruction shr 7) and $1f);
   CSRValue:=fState.CSR.Load(aCSR);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -102540,14 +102988,16 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    CSRValue,OperationValue:TPasRISCVUInt64;
+    CSRValue:TPasRISCVUInt64;
 begin
- rd:=TRegister((aInstruction shr 7) and $1f);
- CSRValue:=fState.CSR.Load(aCSR);
- OperationValue:=CSROperation(aOperation,CSRValue,aRHS);
- if CSRValue<>OperationValue then begin
+ // Used to compare the value the operation would produce against the current one, which
+ // let a write through whenever it happened not to change anything: csrrs with a nonzero
+ // source register holding zero, or csrrw writing back the value already present.
+ if CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  CSRValue:=fState.CSR.Load(aCSR);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
@@ -126495,7 +126945,6 @@ begin
      end;
     end;
 
-
    end; // case funct3
 
   end; // $57
@@ -126585,9 +127034,20 @@ begin
         TPasRISCVUInt32(VectorGetElement(vs2,SubIndex+7,32)),
         SegmentBuffer[0],SegmentBuffer[1],SegmentBuffer[2],SegmentBuffer[3],
         SegmentBuffer[4],SegmentBuffer[5],SegmentBuffer[6],SegmentBuffer[7]);
+{$ifdef cpu64}
        for OperandValue:=0 to 7 do begin
         VectorSetElement(vd,SubIndex+OperandValue,32,SegmentBuffer[OperandValue]);
        end;
+{$else}
+        VectorSetElement(vd,SubIndex+0,32,SegmentBuffer[0]);
+        VectorSetElement(vd,SubIndex+1,32,SegmentBuffer[1]);
+        VectorSetElement(vd,SubIndex+2,32,SegmentBuffer[2]);
+        VectorSetElement(vd,SubIndex+3,32,SegmentBuffer[3]);
+        VectorSetElement(vd,SubIndex+4,32,SegmentBuffer[4]);
+        VectorSetElement(vd,SubIndex+5,32,SegmentBuffer[5]);
+        VectorSetElement(vd,SubIndex+6,32,SegmentBuffer[6]);
+        VectorSetElement(vd,SubIndex+7,32,SegmentBuffer[7]);
+{$endif}
       end;
      end;
      fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -128958,7 +129418,7 @@ begin
         end;
 {$ifend}
         TPasMPMemoryBarrier.ReadDependency;
-        TPasMPInterlocked.BitwiseOr(TPasMPUInt64(fState.Bounce.ui64),0);
+        {$ifdef CPU64}TPasMPInterlocked.BitwiseOr{$else}PasRISCVAtomicBitwiseOr64{$endif}(TPasMPUInt64(fState.Bounce.ui64),0);
         result:=4;
         exit;
        end else begin
@@ -132835,7 +133295,10 @@ begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
-          HalfFloat:=TPasRISCVHalfFloat.FromFloat((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)+ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat);
+          HalfFloat.Value:=HostFusedMultiplyAddHalf(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs3].ui64),
+                                                    false,false);
           if HalfFloat.IsNaN then begin
            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
            if CheckF16HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) then begin
@@ -132972,7 +133435,10 @@ begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
-          HalfFloat:=TPasRISCVHalfFloat.FromFloat((ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)-ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat);
+          HalfFloat.Value:=HostFusedMultiplyAddHalf(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs3].ui64),
+                                                    false,true);
           if HalfFloat.IsNaN then begin
            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
            if CheckF16HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) then begin
@@ -133137,7 +133603,10 @@ begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
-          HalfFloat:=TPasRISCVHalfFloat.FromFloat(((-ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat)*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)+ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat); // fnmsub = c-a*b
+          HalfFloat.Value:=HostFusedMultiplyAddHalf(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs3].ui64),
+                                                    true,false);
           if HalfFloat.IsNaN then begin
            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
            if CheckF16HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) then begin
@@ -133278,7 +133747,10 @@ begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
-          HalfFloat:=TPasRISCVHalfFloat.FromFloat(((-ReadNormalizedFloatF16(fState.FPURegisters[frs1].ui64).ToFloat)*ReadNormalizedFloatF16(fState.FPURegisters[frs2].ui64).ToFloat)-ReadNormalizedFloatF16(fState.FPURegisters[frs3].ui64).ToFloat); // fnmadd = -(a*b+c)
+          HalfFloat.Value:=HostFusedMultiplyAddHalf(ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64),
+                                                    ReadNormalizedFloatUI16(fState.FPURegisters[frs3].ui64),
+                                                    true,true);
           if HalfFloat.IsNaN then begin
            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
            if CheckF16HasSignalingNaN3(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,fState.FPURegisters[frs3].ui64) then begin
@@ -138570,7 +139042,7 @@ begin
 {$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:=TPasMPInterlocked.Add(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
+           Temporary:={$ifdef CPU64}TPasMPInterlocked.Add{$else}PasRISCVAtomicAdd64{$endif}(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
@@ -138597,7 +139069,7 @@ begin
 {$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
+           Temporary:={$ifdef CPU64}TPasMPInterlocked.Exchange{$else}PasRISCVAtomicExchange64{$endif}(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
@@ -138705,7 +139177,7 @@ begin
 {$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:=TPasMPInterlocked.ExchangeBitwiseXor(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
+           Temporary:={$ifdef CPU64}TPasMPInterlocked.ExchangeBitwiseXor{$else}PasRISCVAtomicExchangeBitwiseXor64{$endif}(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
@@ -138754,7 +139226,7 @@ begin
 {$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:=TPasMPInterlocked.ExchangeBitwiseOr(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
+           Temporary:={$ifdef CPU64}TPasMPInterlocked.ExchangeBitwiseOr{$else}PasRISCVAtomicExchangeBitwiseOr64{$endif}(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
@@ -138782,7 +139254,7 @@ begin
           end;
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
+           Temporary:={$ifdef CPU64}TPasMPInterlocked.Exchange{$else}PasRISCVAtomicExchange64{$endif}(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(Temporary);
            end;
@@ -138805,7 +139277,7 @@ begin
 {$ifend}
           Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
           if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:=TPasMPInterlocked.ExchangeBitwiseAnd(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
+           Temporary:={$ifdef CPU64}TPasMPInterlocked.ExchangeBitwiseAnd{$else}PasRISCVAtomicExchangeBitwiseAnd64{$endif}(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt64(Temporary)));
            end;
@@ -139007,7 +139479,7 @@ begin
            fState.CAS128OldValue.Hi:=TPasMPUInt64(fState.Registers[TRegister((TPasRISCVUInt32(rd)+1) and $1f)]);
            fState.CAS128NewValue.Lo:=TPasMPUInt64(fState.Registers[rs2]);
            fState.CAS128NewValue.Hi:=TPasMPUInt64(fState.Registers[TRegister((TPasRISCVUInt32(rs2)+1) and $1f)]);
-           fState.CAS128Result:=TPasMPInterlocked.CompareExchange(PPasMPInt128Record(Ptr)^,fState.CAS128NewValue,fState.CAS128OldValue);
+           fState.CAS128Result:={$ifdef CPU64}TPasMPInterlocked.CompareExchange{$else}PasRISCVAtomicCompareExchange128{$endif}(PPasMPInt128Record(Ptr)^,fState.CAS128NewValue,fState.CAS128OldValue);
            if rd<>TRegister.Zero then begin
             fState.Registers[rd]:=fState.CAS128Result.Lo;
             if TRegister((TPasRISCVUInt32(rd)+1) and $1f)<>TRegister.Zero then begin
@@ -139117,7 +139589,7 @@ procedure TPasRISCV.THART.ClearInterrupt(const aInterruptValue:TPasRISCV.THART.T
 var Mask:TPasRISCVUInt64;
 begin
  Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
- TPasMPInterlocked.BitwiseAnd(fState.PendingIRQs,TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
+ {$ifdef CPU64}TPasMPInterlocked.BitwiseAnd{$else}PasRISCVAtomicBitwiseAnd64{$endif}(fState.PendingIRQs,TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
 //TPasMPInterlocked.BitwiseAnd(fState.CSR.fData[TCSR.TAddress.MIP],TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
 end;
 
@@ -139125,7 +139597,7 @@ procedure TPasRISCV.THART.RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.T
 var Mask:TPasRISCVUInt64;
 begin
  Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
- if (TPasMPInterlocked.ExchangeBitwiseOr(fState.PendingIRQs,Mask) and Mask)=0 then begin
+ if ({$ifdef CPU64}TPasMPInterlocked.ExchangeBitwiseOr{$else}PasRISCVAtomicExchangeBitwiseOr64{$endif}(fState.PendingIRQs,Mask) and Mask)=0 then begin
 {$ifdef PasRISCVDumpNVMeIO}
   if aInterruptValue=TPasRISCV.THART.TInterruptValue.SupervisorExternal then begin
    //writeln(StdErr,'HART ',fHARTID,' RaiseInterrupt S-ext (new) at ',GetTickCount64,'ms');
@@ -139189,7 +139661,7 @@ function TPasRISCV.THART.SetInterrupt(const aInterruptValue:TPasRISCV.THART.TInt
 var Mask:TPasRISCVUInt64;
 begin
  Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
- result:=(TPasMPInterlocked.ExchangeBitwiseOr(fState.PendingIRQs,Mask) and Mask)=0;
+ result:=({$ifdef CPU64}TPasMPInterlocked.ExchangeBitwiseOr{$else}PasRISCVAtomicExchangeBitwiseOr64{$endif}(fState.PendingIRQs,Mask) and Mask)=0;
 end;
 
 function TPasRISCV.THART.GetVGEIN:TPasRISCVUInt32;
@@ -144113,13 +144585,13 @@ begin
  DumpMemoryTo(aHART,aAddress,aSize,aOnOutput,aOnError);
 end;
 
-procedure TPasRISCV.TDebugger.DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64);
+procedure TPasRISCV.TDebugger.DumpDisassembler(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVInt64);
 begin
  DumpDisassemblerTo(aHART,aAddress,aCount,Output,OutputError);
 end;
 
-procedure TPasRISCV.TDebugger.DumpDisassemblerTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVUInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
-var Index:TPasRISCVUInt64;
+procedure TPasRISCV.TDebugger.DumpDisassemblerTo(const aHART:THART;const aAddress:TPasRISCVUInt64;const aCount:TPasRISCVInt64;const aOnOutput:TOnOutput;const aOnError:TOnError);
+var Index:TPasRISCVInt64;
     Address:TPasRISCVUInt64;
     Instruction:TPasRISCVUInt32;
     Size:TPasRISCVUInt64;
@@ -144145,7 +144617,7 @@ begin
   exit;
  end;
  Address:=aAddress;
- for Index:=0 to aCount-1 do begin
+ {$ifdef cpu64}for Index:=0 to aCount-1 do{$else}Index:=0; while Index<aCount do{$endif}begin
   if ReadInstruction(aHART,Address,Instruction,Size) then begin
    if Size=2 then begin
     HexValue:='    '+LowerCase(IntToHex(Instruction and $ffff,4));
@@ -144159,6 +144631,9 @@ begin
    EmitError('E00');
    exit;
   end;
+{$ifndef cpu64}
+  inc(Index);
+{$endif}
  end;
 end;
 
@@ -145271,7 +145746,15 @@ begin
 
  fAIA:=false;
 
+{$ifdef PasRISCVHostFPUExceptionFlags}
  fStrictCompliantFPU:=false;
+{$else}
+ // This target has no working fenv helpers, so the host FPU lane cannot turn host
+ // exception flags into guest fflags and would run with fflags permanently clear.
+ // Default to the exact lane here, but leave the choice overridable: an explicit
+ // StrictCompliantFPU=false still selects the faster host lane, fflags and all.
+ fStrictCompliantFPU:=true;
+{$endif}
 
 {$ifdef PasRISCVFastRMMFixup}
  fFastRMMFixupEnabled:=true; // RMM-exact fast mode on by default (negligible cost, RMM is rare)
@@ -149228,7 +149711,7 @@ begin
   HART:=fHARTs[HARTIndex];
 {$ifdef PasRISCVUseFutexEvents}
 {$if defined(PasRISCVInterruptWakeupHardening)}
-  TPasMPInterlocked.Increment(HART.fWakeGeneration);
+  {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(HART.fWakeGeneration);
 {$ifend}
   TPasMPInterlocked.BitwiseOr(fRunState,HART.fHARTMask);
   HART.fWakeUpFutexEvent.Wake;
@@ -149236,7 +149719,7 @@ begin
   HART.fWakeUpConditionVariableLock.Acquire;
   try
  {$if defined(PasRISCVInterruptWakeupHardening)}
-   TPasMPInterlocked.Increment(HART.fWakeGeneration);
+   {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(HART.fWakeGeneration);
  {$ifend}
    TPasMPInterlocked.BitwiseOr(fRunState,HART.fHARTMask);
    HART.fWakeUpConditionVariable.Signal;
