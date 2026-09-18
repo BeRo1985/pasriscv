@@ -9373,6 +9373,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fHeight:TPasRISCVUInt32;
               fBytesPerPixel:TPasRISCVUInt32;
               fData:TPasRISCVUInt8DynamicArray;
+              fRetiredData:array of TPasRISCVUInt8DynamicArray; // Old fData buffers, kept alive since HART TLBs may still point into them
               fRGBA32Data:TPasRISCVUInt8DynamicArray;
               fComposited:TPasRISCVUInt8DynamicArray;
               fCursor:TCursor;
@@ -11159,6 +11160,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            // Data TLB field offsets within TDirectAccessTLBEntry
                            TLB_R=0;  // Read tag offset
                            TLB_W=8;  // Write tag offset
+                           // EmitDataTLBLookup flags
+                           JIT_TLB_LOOKUP_NO_MMIO=TPasRISCVUInt32($1); // Access is wider than aAlignment (vector), can not use the MMIO scratch
+                           JIT_TLB_LOOKUP_ATOMIC=TPasRISCVUInt32($2);  // Atomic access: natural alignment required and no MMIO scratch
+                           // Flags in the alignment argument of JITDataTLBFillHelper: the caller can not use the 8-byte
+                           // JITMMIOScratch (wider, vector or atomic access, or a store without a pre-stored value),
+                           // so MMIO accesses must bail out to the interpreter instead
+                           JIT_TLB_FILL_NO_MMIO=TPasRISCVUInt32($100);
+                           // The access must be naturally aligned (atomics), misaligned addresses bail out to the interpreter,
+                           // which raises the proper misaligned/access fault exception
+                           JIT_TLB_FILL_ALIGNED=TPasRISCVUInt32($200);
                            CC_E=TPasRISCVUInt8($4);
                            CC_NE=TPasRISCVUInt8($5);
                            CC_LE=TPasRISCVUInt8($e);
@@ -11549,7 +11560,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitPatchableRET; virtual; abstract;
                      procedure EmitTailBNEZ(const aOffset:TPasRISCVInt32); virtual; abstract;
 {$endif}
-                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0;const aStoreHostRegister:TPasRISCVUInt8=$ff); virtual; abstract;
+                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0;const aStoreHostRegister:TPasRISCVUInt8=$ff;const aLookupFlags:TPasRISCVUInt32=0); virtual; abstract;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); virtual; abstract;
                      function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; virtual; abstract;
                      function VMPtrRegister:TPasRISCVUInt8; virtual; abstract;
@@ -12584,7 +12595,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitPatchableRET; override;
                      procedure EmitTailBNEZ(const aOffset:TPasRISCVInt32); override;
 {$endif}
-                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0;const aStoreHostRegister:TPasRISCVUInt8=$ff); override;
+                     procedure EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32=0;const aStoreHostRegister:TPasRISCVUInt8=$ff;const aLookupFlags:TPasRISCVUInt32=0); override;
                      procedure EmitJmpReg(const aReg:TPasRISCVUInt8); override;
                      function PatchBranchLabel(const aLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel):TPasRISCVUInt32; override;
                      function VMPtrRegister:TPasRISCVUInt8; override;
@@ -21505,6 +21516,28 @@ begin
  result:=true;
 end;
 
+// Checks that a guest-supplied file name (9P and virtio-fs) is exactly one path component, so that it can not
+// escape the shared host directory: not empty, not "." or "..", and without directory separators or NUL bytes
+function IsValidFileSystemName(const aName:TPasRISCVRawByteString):Boolean;
+var Index:TPasRISCVSizeInt;
+begin
+ if (length(aName)=0) or (aName='.') or (aName='..') then begin
+  result:=false;
+ end else begin
+  result:=true;
+  for Index:=1 to length(aName) do begin
+   case aName[Index] of
+    #0,'/'{$ifdef Windows},'\',':'{$endif}:begin
+     result:=false;
+     break;
+    end;
+    else begin
+    end;
+   end;
+  end;
+ end;
+end;
+
 function Marshall(const aBuffer:Pointer;const aSize:TPasRISCVSizeInt;var aPOffset:TPasRISCVSizeInt;const aFmt:TPasRISCVRawByteString;const aArgs:array of pointer):Boolean;
 var FmtIndex,ArgIndex,Len:TPasRISCVSizeInt;
     BufferBegin,BufferEnd,BufferCurrent:PPasRISCVUInt8;
@@ -26469,6 +26502,11 @@ begin
  if assigned(fMemory) and (fCurrentViewOffset=0) and (fCurrentViewSize>=fSize) then begin
 { fPosition:=0;
   UpdateMapView;}
+  // Offsets can be derived from guest-controlled values (disk sectors, NVMe LBAs), so never touch memory outside the mapping
+  if (aOffset<0) or (aCount<=0) or (aOffset>=fSize) then begin
+   result:=0;
+   exit;
+  end;
   if (aOffset+aCount)>Size then begin
    aCount:=fSize-aOffset;
   end;
@@ -26497,6 +26535,11 @@ begin
  if assigned(fMemory) and (fCurrentViewOffset=0) and (fCurrentViewSize>=fSize) then begin
 { fPosition:=0;
   UpdateMapView;}
+  // Offsets can be derived from guest-controlled values (disk sectors, NVMe LBAs), so never touch memory outside the mapping
+  if (aOffset<0) or (aCount<=0) or (aOffset>=fSize) then begin
+   result:=0;
+   exit;
+  end;
   if (aOffset+aCount)>Size then begin
    aCount:=fSize-aOffset;
   end;
@@ -26955,12 +26998,32 @@ end;
 function TPasRISCV9PFileSystemPOSIX.Walk(out aFiles:TPasRISCV9PFileSystem.TFSFile;const aQIDs:TPasRISCV9PFileSystem.PFSQIDArray;const aFile:TPasRISCV9PFileSystem.TFSFile;const aCount:TPasRISCVSizeInt;const aNames:array of TPasRISCVRawByteString):TPasRISCVInt32;
 var Path,Path1:TPasRISCVRawByteString;
     StatData:TStat;
-    Index:TPasRISCVSizeInt;
+    Index,SeparatorIndex:TPasRISCVSizeInt;
 begin
  Path:=aFile.fPath;
  result:=0;
  for Index:=0 to aCount-1 do begin
-  Path1:=ComposePath(Path,aNames[Index]);
+  if aNames[Index]='.' then begin
+   Path1:=Path;
+  end else if aNames[Index]='..' then begin
+   // Walk to the parent, but never above the shared root
+   Path1:=Path;
+   if length(Path)>length(fRootPath) then begin
+    SeparatorIndex:=length(Path);
+    while (SeparatorIndex>0) and (Path[SeparatorIndex]<>'/') do begin
+     dec(SeparatorIndex);
+    end;
+    if SeparatorIndex>length(fRootPath) then begin
+     Path1:=Copy(Path,1,SeparatorIndex-1);
+    end else begin
+     Path1:=fRootPath;
+    end;
+   end;
+  end else if IsValidFileSystemName(aNames[Index]) then begin
+   Path1:=ComposePath(Path,aNames[Index]);
+  end else begin
+   break;
+  end;
   if fpLStat(PAnsiChar(Path1),@StatData)=0 then begin
    Path:=Path1;
    StatToQID(@aQIDs[Index],@StatData);
@@ -28697,7 +28760,7 @@ end;
 function TPasRISCV9PFileSystemWindows.Walk(out aFiles:TPasRISCV9PFileSystem.TFSFile;const aQIDs:TPasRISCV9PFileSystem.PFSQIDArray;const aFile:TPasRISCV9PFileSystem.TFSFile;const aCount:TPasRISCVSizeInt;const aNames:array of TPasRISCVRawByteString):TPasRISCVInt32;
 var CurrentPath,NewPath:TPasRISCVRawByteString;
     FileInfo:BY_HANDLE_FILE_INFORMATION;
-    Index:TPasRISCVSizeInt;
+    Index,SeparatorIndex:TPasRISCVSizeInt;
     Handle:THandle;
 begin
 
@@ -28706,7 +28769,27 @@ begin
 
  for Index:=0 to aCount-1 do begin
 
-  NewPath:=ComposePath(CurrentPath,aNames[Index]);
+  if aNames[Index]='.' then begin
+   NewPath:=CurrentPath;
+  end else if aNames[Index]='..' then begin
+   // Walk to the parent, but never above the shared root
+   NewPath:=CurrentPath;
+   if length(CurrentPath)>length(fRootPath) then begin
+    SeparatorIndex:=length(CurrentPath);
+    while (SeparatorIndex>0) and (CurrentPath[SeparatorIndex]<>'\') do begin
+     dec(SeparatorIndex);
+    end;
+    if SeparatorIndex>length(fRootPath) then begin
+     NewPath:=Copy(CurrentPath,1,SeparatorIndex-1);
+    end else begin
+     NewPath:=fRootPath;
+    end;
+   end;
+  end else if IsValidFileSystemName(aNames[Index]) then begin
+   NewPath:=ComposePath(CurrentPath,aNames[Index]);
+  end else begin
+   break;
+  end;
 
   Handle:=CreateFileA(PAnsiChar(RawByteString(NewPath)),
                       GENERIC_READ,
@@ -49125,6 +49208,11 @@ var Raised:TPasRISCVUInt32;
     WordIndex,Shift:TPasRISCVUInt32;
 {$ifend}
 begin
+ // The interrupt ID comes straight from a guest write to the claim/complete register, so it must be
+ // range-checked before it indexes any per-source state. Invalid IDs are silently ignored, as per PLIC spec.
+ if (aIRQ=0) or (aIRQ>=PLIC_SOURCE_MAX) then begin
+  exit;
+ end;
 {$if defined(PasRISCVPLICGenerationCounter)}
  // Compare generation counters — if different, level still asserted
  if TPasMPInterlocked.Read(fRaisedGenerations[aIRQ])<>TPasMPInterlocked.Read(fProcessedGenerations[aIRQ]) then begin
@@ -52252,11 +52340,16 @@ begin
      end else begin
       fStreamLock.Acquire;
       try
-       fStream.Seek(Pos,soBeginning);
-       if Opcode=NVM_WRITE then begin
-        Temporary:=fStream.Write(Buffer^,Size);
+       // The LBA is guest-controlled, never seek beyond the end of the namespace, since that would grow the image
+       if (Pos>=TPasRISCVUInt64(fStream.Size)) or (Size>(TPasRISCVUInt64(fStream.Size)-Pos)) then begin
+        Temporary:=0;
        end else begin
-        Temporary:=fStream.Read(Buffer^,Size);
+        fStream.Seek(Pos,soBeginning);
+        if Opcode=NVM_WRITE then begin
+         Temporary:=fStream.Write(Buffer^,Size);
+        end else begin
+         Temporary:=fStream.Read(Buffer^,Size);
+        end;
        end;
       finally
        fStreamLock.Release;
@@ -52346,7 +52439,13 @@ begin
         end else begin
          fStreamLock.Acquire;
          try
-          fStream.Seek(Pos,soBeginning);
+          // The range is guest-controlled, never seek or write beyond the end of the namespace
+          if (Pos>=TPasRISCVUInt64(fStream.Size)) or (ToDo>(TPasRISCVUInt64(fStream.Size)-Pos)) then begin
+           Status:=SC_LBA_RANGE;
+           ToDo:=0;
+          end else begin
+           fStream.Seek(Pos,soBeginning);
+          end;
           while ToDo>0 do begin
            if ToDo<SizeOf(TZeroBuffer) then begin
             ChunkSize:=ToDo;
@@ -60459,6 +60558,12 @@ function TPasRISCV.TVirtIOBlockDevice.ImageRead(const aSectorIndex:TPasRISCVUInt
 var Offset,Size,Remain:TPasRISCVInt64;
     Buf:PPasRISCVUInt8;
 begin
+ // Validate against the capacity in sectors before multiplying, the sector index is guest-controlled and
+ // aSectorIndex*SECTOR_SIZE could otherwise overflow into a negative host file offset
+ if (aSectorIndex>=fCountSectors) or (aCount>(fCountSectors-aSectorIndex)) then begin
+  result:=false;
+  exit;
+ end;
  Offset:=aSectorIndex*SECTOR_SIZE;
  Size:=aCount*SECTOR_SIZE;
  if (Offset+Size)<=(fCountSectors*SECTOR_SIZE) then begin
@@ -60499,6 +60604,12 @@ function TPasRISCV.TVirtIOBlockDevice.ImageWrite(const aSectorIndex:TPasRISCVUIn
 var Offset,Size,Remain:TPasRISCVInt64;
     Buf:PPasRISCVUInt8;
 begin
+ // Validate against the capacity in sectors before multiplying, the sector index is guest-controlled and
+ // aSectorIndex*SECTOR_SIZE could otherwise overflow into a negative host file offset
+ if (aSectorIndex>=fCountSectors) or (aCount>(fCountSectors-aSectorIndex)) then begin
+  result:=false;
+  exit;
+ end;
  Offset:=aSectorIndex*SECTOR_SIZE;
  Size:=aCount*SECTOR_SIZE;
  if (Offset+Size)<=(fCountSectors*SECTOR_SIZE) then begin
@@ -62988,7 +63099,11 @@ begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wswww',[@FID,@NameString,@Flags,@Mode,@GID]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Error:=fFileSystem.Create_(@QID,FIDDescriptor.fFile,NameString,Flags,Mode,GID);
+         if IsValidFileSystemName(NameString) then begin
+          Error:=fFileSystem.Create_(@QID,FIDDescriptor.fFile,NameString,Flags,Mode,GID);
+         end else begin
+          Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
+         end;
          if Error<0 then begin
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
          end else begin
@@ -63011,7 +63126,11 @@ begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wssw',[@FID,@NameString,@OtherNameString,@GID]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Error:=fFileSystem.Symlink(@QID,FIDDescriptor.fFile,NameString,OtherNameString,GID);
+         if IsValidFileSystemName(NameString) then begin
+          Error:=fFileSystem.Symlink(@QID,FIDDescriptor.fFile,NameString,OtherNameString,GID);
+         end else begin
+          Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
+         end;
          if Error<0 then begin
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
          end else begin
@@ -63032,7 +63151,11 @@ begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wswwww',[@FID,@NameString,@Mode,@Major,@Minor,@GID]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Error:=fFileSystem.Mknod(@QID,FIDDescriptor.fFile,NameString,Mode,Major,Minor,GID);
+         if IsValidFileSystemName(NameString) then begin
+          Error:=fFileSystem.Mknod(@QID,FIDDescriptor.fFile,NameString,Mode,Major,Minor,GID);
+         end else begin
+          Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
+         end;
          if Error<0 then begin
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
          end else begin
@@ -63266,7 +63389,11 @@ begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wws',[@FID,@FID,@NameString]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Error:=fFileSystem.Link(FIDDescriptor.fFile,FIDDescriptor.fFile,NameString);
+         if IsValidFileSystemName(NameString) then begin
+          Error:=fFileSystem.Link(FIDDescriptor.fFile,FIDDescriptor.fFile,NameString);
+         end else begin
+          Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
+         end;
          if Error<0 then begin
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
          end else begin
@@ -63285,7 +63412,11 @@ begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wsww',[@FID,@NameString,@Mode,@GID]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Error:=fFileSystem.MkDir(@QID,FIDDescriptor.fFile,NameString,Mode,GID);
+         if IsValidFileSystemName(NameString) then begin
+          Error:=fFileSystem.MkDir(@QID,FIDDescriptor.fFile,NameString,Mode,GID);
+         end else begin
+          Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
+         end;
          if Error<0 then begin
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
          end else begin
@@ -63308,7 +63439,11 @@ begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         OtherFIDDescriptor:=fFIDDescriptors.Find(NewFID);
         if assigned(FIDDescriptor) and assigned(OtherFIDDescriptor) then begin
-         Error:=fFileSystem.RenameAt(FIDDescriptor.fFile,NameString,OtherFIDDescriptor.fFile,OtherNameString);
+         if IsValidFileSystemName(NameString) and IsValidFileSystemName(OtherNameString) then begin
+          Error:=fFileSystem.RenameAt(FIDDescriptor.fFile,NameString,OtherFIDDescriptor.fFile,OtherNameString);
+         end else begin
+          Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
+         end;
          if Error<0 then begin
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
          end else begin
@@ -63327,7 +63462,11 @@ begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wsw',[@FID,@NameString,@Flags]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Error:=fFileSystem.UnlinkAt(FIDDescriptor.fFile,NameString);
+         if IsValidFileSystemName(NameString) then begin
+          Error:=fFileSystem.UnlinkAt(FIDDescriptor.fFile,NameString);
+         end else begin
+          Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
+         end;
          if Error<0 then begin
           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
          end else begin
@@ -63472,7 +63611,11 @@ begin
        if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wdw',[@FID,@FSOffset,@Val32]) then begin
         Size:=Val32;
         FIDDescriptor:=fFIDDescriptors.Find(FID);
-        if assigned(FIDDescriptor) then begin
+        if (TPasRISCVUInt64(RecvBufferOffset)>aReadSize) or (Size>(aReadSize-TPasRISCVUInt64(RecvBufferOffset))) then begin
+         // The guest-supplied count must not exceed the payload actually present in the request,
+         // otherwise host memory behind the receive buffer would be written into the file
+         SendError(aQueueIndex,aDescriptorIndex,Tag,-TPasRISCV9PFileSystem.P9_EPROTO);
+        end else if assigned(FIDDescriptor) then begin
          Count:=fFileSystem.Write(FIDDescriptor.fFile,FSOffset,@fRecvBuffer[RecvBufferOffset],Size);
          if Count<0 then begin
           Error:=Count;
@@ -63835,6 +63978,10 @@ var ParentNode:TNodeEntry;
     NewNode:TNodeEntry;
 begin
  result:=nil;
+ // Guest-supplied names must be single path components, otherwise they could escape the shared root
+ if not IsValidFileSystemName(aName) then begin
+  exit;
+ end;
  ParentNode:=FindNode(aParentNodeID);
  if not assigned(ParentNode) then begin
   exit;
@@ -63922,6 +64069,11 @@ begin
 {$ifdef PasRISCVDebugVirtIOFS}
  writeln('VirtIOFS: SendReply unique=',aUnique,' payloadSize=',aPayloadSize);
 {$endif}
+ // Never copy more than the send buffer can hold, the payload size can be derived from guest-controlled request sizes
+ if aPayloadSize>(TPasRISCVUInt32(length(fSendBuffer))-TPasRISCVUInt32(FUSE_OUT_HEADER_SIZE)) then begin
+  SendError(aQueueIndex,aDescriptorIndex,aUnique,TPasRISCVFUSEFileSystem.FUSE_EIO);
+  exit;
+ end;
  TotalSize:=FUSE_OUT_HEADER_SIZE+aPayloadSize;
  OutHeader.Len:=TotalSize;
  OutHeader.Error:=0;
@@ -64338,6 +64490,10 @@ var ReadIn:TFUSEReadIn;
     BytesRead:TPasRISCVInt64;
 begin
  if CopyMemoryFromQueue(@ReadIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEReadIn)) then begin
+  // The requested size is guest-controlled, clamp it to what the send buffer can carry (max_pages*4096 as negotiated in INIT)
+  if ReadIn.Size>(TPasRISCVUInt32(length(fSendBuffer))-TPasRISCVUInt32(FUSE_OUT_HEADER_SIZE)) then begin
+   ReadIn.Size:=TPasRISCVUInt32(length(fSendBuffer))-TPasRISCVUInt32(FUSE_OUT_HEADER_SIZE);
+  end;
   FHFound:=false;
   fLock.Acquire;
   try
@@ -64499,7 +64655,11 @@ begin
    end;
 {$endif}
    if Err=0 then begin
+    // The requested size is guest-controlled, clamp it to what the send buffer can carry
     BufSize:=ReadIn.Size;
+    if BufSize>(TPasRISCVUInt32(length(fSendBuffer))-TPasRISCVUInt32(FUSE_OUT_HEADER_SIZE)) then begin
+     BufSize:=TPasRISCVUInt32(length(fSendBuffer))-TPasRISCVUInt32(FUSE_OUT_HEADER_SIZE);
+    end;
     GetMem(Buf,BufSize);
     try
      BufOfs:=0;
@@ -64840,7 +65000,9 @@ begin
    fLock.Release;
   end;
 
-  if ParentFound and assigned(fFileSystem) then begin
+  if not IsValidFileSystemName(Name) then begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
+  end else if ParentFound and assigned(fFileSystem) then begin
    Path:=fFileSystem.ComposePath(ParentPath,Name);
    if aIsDir then begin
     Err:=fFileSystem.RmDir(Path);
@@ -64912,7 +65074,9 @@ begin
     fLock.Release;
    end;
 
-   if BothFound and assigned(fFileSystem) then begin
+   if not (IsValidFileSystemName(OldName) and IsValidFileSystemName(NewName)) then begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
+   end else if BothFound and assigned(fFileSystem) then begin
     OldPath:=fFileSystem.ComposePath(ParentPath,OldName);
     NewPath:=fFileSystem.ComposePath(NewParentPath,NewName);
     Err:=fFileSystem.Rename(OldPath,NewPath);
@@ -64984,7 +65148,9 @@ begin
     fLock.Release;
    end;
 
-   if BothFound and assigned(fFileSystem) then begin
+   if not (IsValidFileSystemName(OldName) and IsValidFileSystemName(NewName)) then begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
+   end else if BothFound and assigned(fFileSystem) then begin
     OldPath:=fFileSystem.ComposePath(ParentPath,OldName);
     NewPath:=fFileSystem.ComposePath(NewParentPath,NewName);
     Err:=fFileSystem.Rename(OldPath,NewPath);
@@ -73495,9 +73661,21 @@ begin
    NewData:=nil;
    try
     SetLength(NewData,NewSize*2);
-    Move(fData[0],NewData[0],length(fData));
+    if length(fData)>0 then begin
+     Move(fData[0],NewData[0],length(fData));
+    end;
    finally
+    // The HART TLBs (and JIT code) may still hold direct pointers into the old buffer, so it must not be freed
+    // here. It is retired until the device is destroyed, and all HART TLBs are asked to flush. Since the buffer
+    // grows geometrically, the retired buffers are bounded by the size of the current one.
+    if length(fData)>0 then begin
+     SetLength(fRetiredData,length(fRetiredData)+1);
+     fRetiredData[length(fRetiredData)-1]:=fData;
+    end;
     fData:=NewData;
+    if assigned(fMachine) then begin
+     fMachine.FlushTLB;
+    end;
    end;
   end;
   if length(fRGBA32Data)<(fWidth*fHeight*4) then begin
@@ -73826,7 +74004,10 @@ var Address:TPasRISCVUInt64;
 begin
  if (aAddress>=fBase) and ((aAddress-fBase)<fSize) then begin
   Address:=aAddress-fBase;
-  if (Address>=FrameBufferAddress) and ((Address-FrameBufferAddress)<length(fFrameBuffer.fData)) then begin
+  // The whole requested range (the TLB asks for a whole page) must lie inside the frame buffer data,
+  // otherwise the guest could access host memory behind it, partial pages go through Load/Store instead
+  if (Address>=FrameBufferAddress) and ((Address-FrameBufferAddress)<TPasRISCVUInt64(length(fFrameBuffer.fData))) and
+     (aSize<=(TPasRISCVUInt64(length(fFrameBuffer.fData))-(Address-FrameBufferAddress))) then begin
    if aWrite then begin
     fFrameBuffer.fDirty:=true;
    end;
@@ -79708,9 +79889,20 @@ var HART:THART;
 {$ifdef PasRISCVMMIOTLB}
     MMIOTLBEntry:TMMU.PMMIOTLBEntry;
 {$endif}
+    NoMMIO:Boolean;
 begin
 
  HART:=THART(aHART);
+
+ // The emitter flags accesses that can not be served through the 8-byte JITMMIOScratch (vector, atomic or
+ // wider accesses, stores without a pre-stored value). Those must bail out to the interpreter on MMIO.
+ NoMMIO:=(aAlignment and JIT_TLB_FILL_NO_MMIO)<>0;
+ // Misaligned atomics bail out to the interpreter, which raises the proper exception
+ if ((aAlignment and JIT_TLB_FILL_ALIGNED)<>0) and ((aVirtualAddress and ((aAlignment and TPasRISCVUInt64($ff))-1))<>0) then begin
+  result:=0;
+  exit;
+ end;
+ aAlignment:=aAlignment and TPasRISCVUInt64($ff);
 
 {$ifdef PasRISCVJustInTimeCompilerStats}
  if assigned(HART.fJustInTimeCompiler) then begin
@@ -79734,6 +79926,10 @@ begin
  VPN:=aVirtualAddress shr PAGE_SHIFT;
  MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
+  if NoMMIO then begin
+   result:=0;
+   exit;
+  end;
   if aTLBFieldOffset=TLB_W then begin
    HART.fBus.BusDeviceStore(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),HART.fState.JITMMIOScratch,aAlignment);
    if HART.fState.ExceptionValue<>TExceptionValue.None then begin
@@ -79776,6 +79972,10 @@ begin
  DirectAccessTLBEntry:={$ifdef PerModeTLB}@HART.fDirectAccessTLBCache^{$else}@HART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if aTLBFieldOffset=TLB_W then begin
   if DirectAccessTLBEntry^.Write<>VPN then begin
+   if NoMMIO then begin
+    result:=0;
+    exit;
+   end;
 {$ifdef PasRISCVMMIOTLB}
 // MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
    if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
@@ -79811,6 +80011,10 @@ begin
   end;
  end else begin
   if DirectAccessTLBEntry^.Read<>VPN then begin
+   if NoMMIO then begin
+    result:=0;
+    exit;
+   end;
 {$ifdef PasRISCVMMIOTLB}
 // MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
    if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
@@ -83816,7 +84020,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -83845,7 +84049,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -83874,7 +84078,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -83903,7 +84107,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -83932,7 +84136,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -83961,7 +84165,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -83990,7 +84194,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84019,7 +84223,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84048,7 +84252,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84079,7 +84283,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostGuestAddr:=MapGuestToHostIntRegister(RS1,REG_SRC,CurrentAMOHostRegAvoidMask);
  HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
@@ -84109,7 +84313,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  HostGuestAddr:=MapGuestToHostIntRegister(RS1,REG_SRC,CurrentAMOHostRegAvoidMask);
@@ -84140,7 +84344,7 @@ begin
  Is32:=aParameter3<>0;
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,4 shl ord(not Is32),CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84178,7 +84382,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84205,7 +84409,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84232,7 +84436,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84259,7 +84463,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84286,7 +84490,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84313,7 +84517,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84340,7 +84544,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84367,7 +84571,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84394,7 +84598,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,1,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84423,7 +84627,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84450,7 +84654,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84477,7 +84681,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84504,7 +84708,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84531,7 +84735,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84558,7 +84762,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84585,7 +84789,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84612,7 +84816,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -84639,7 +84843,7 @@ begin
  RS2:=TRegister(aParameter2);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostAddr:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,2,CurrentAMOHostRegAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
  FreeHostIntRegisters(CurrentAMOHostRegAvoidMask);
  HostSrc:=MapGuestToHostIntRegister(RS2,REG_SRC,CurrentAMOHostRegAvoidMask);
  if RD<>TRegister.Zero then begin
@@ -88932,13 +89136,16 @@ begin
  EmitImmOp(ALU_CMP,ScratchReg,TPasRISCVInt32(RUNSTATE_RUNNING),false);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32;const aStoreHostRegister:TPasRISCVUInt8);
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitDataTLBLookup(const aHostAddrRegister:TPasRISCVUInt8;const aGuestBaseRegister:TRegister;const aOffset:TPasRISCVInt32;const aTLBFieldOffset:TPasRISCVInt32;const aAlignment:TPasRISCVUInt8;const aAvoidRegisterMask:TPasRISCVUInt32;const aStoreHostRegister:TPasRISCVUInt8;const aLookupFlags:TPasRISCVUInt32);
 // Inline data TLB check with fallback to interpreter
 // aHostAddrRegister = output: host pointer to accessed memory
 // aGuestBaseRegister = RISC-V register holding virtual base address
 // aOffset = immediate offset to add to base
 // aTLBFieldOffset = offset of Read/Write tag field within TLB entry (0=Read, 8=Write)
-// aAlignment = access alignment (1, 2, 4, 8)
+// aAlignment = access alignment (1, 2, 4, 8, 16)
+// aLookupFlags = JIT_TLB_LOOKUP_NO_MMIO: the caller accesses more than aAlignment bytes, so it can not use the MMIO
+//                scratch (stores without aStoreHostRegister are always treated like this, there is no pre-stored value)
+//                JIT_TLB_LOOKUP_ATOMIC: atomic access, misaligned addresses and MMIO bail out to the interpreter
 const PAGE_SHIFT=12;
       TLB_MASK=255;          // DIRECT_ACCESS_TLB_MASK
 {$ifdef CombinedDirectAccessTLBCache}
@@ -88965,11 +89172,24 @@ var HostVirtualAddress,HostVPN,HostIndex:TPasRISCVUInt8;
     SideExitBailoutFixup:TPasRISCVUInt32;
     SideExitDoneFixup:TPasRISCVUInt32;
     HelperReg:TPasRISCVUInt8;
+    HelperAlignment:TPasRISCVUInt32;
 {$endif}
 begin
  if aAvoidRegisterMask<>0 then begin
   FreeHostIntRegisters(aAvoidRegisterMask);
  end;
+{$ifdef PasRISCVJustInTimeCompilerSideExit}
+ // Tell the fill helper whether an MMIO access may be served through the 8-byte JITMMIOScratch. That is only
+ // valid for scalar loads and for stores whose value was pre-stored into the scratch before the helper call.
+ HelperAlignment:=aAlignment;
+ if ((aLookupFlags and (JIT_TLB_LOOKUP_NO_MMIO or JIT_TLB_LOOKUP_ATOMIC))<>0) or
+    ((aTLBFieldOffset=TLB_W) and ({$ifdef JITMMIOFastPath}aStoreHostRegister=$ff{$else}true{$endif})) then begin
+  HelperAlignment:=HelperAlignment or JIT_TLB_FILL_NO_MMIO;
+ end;
+ if (aLookupFlags and JIT_TLB_LOOKUP_ATOMIC)<>0 then begin
+  HelperAlignment:=HelperAlignment or JIT_TLB_FILL_ALIGNED;
+ end;
+{$endif}
  HostVirtualAddress:=ClaimHostIntRegister(aAvoidRegisterMask);
  HostVPN:=ClaimHostIntRegister(aAvoidRegisterMask);
  HostIndex:=ClaimHostIntRegister(aAvoidRegisterMask);
@@ -88999,11 +89219,17 @@ begin
  if aAlignment>1 then begin
   // TLB miss check: aHostAddrRegister = tag ^ vpn
   Emit2RegOp(X86_XOR,aHostAddrRegister,HostVPN,true);
-  // Page crossing check: HostVPN = ((hvaddr + size - 1) ^ hvaddr) >> 12
-  EmitNativeAddi(HostVPN,HostVirtualAddress,aAlignment-1);
-  Emit2RegOp(X86_XOR,HostVPN,HostVirtualAddress,true);
-  EmitShiftRegImm(SHIFT_SHR,HostVPN,PAGE_SHIFT,true);
-  // Combine: any bit set = TLB miss or page crossing
+  if (aLookupFlags and JIT_TLB_LOOKUP_ATOMIC)<>0 then begin
+   // Atomics must be naturally aligned, and an aligned access can not cross a page: HostVPN = hvaddr & (size - 1)
+   // (a misaligned address takes the miss path, where the fill helper bails out to the interpreter)
+   EmitNativeAndi(HostVPN,HostVirtualAddress,aAlignment-1);
+  end else begin
+   // Page crossing check: HostVPN = ((hvaddr + size - 1) ^ hvaddr) >> 12
+   EmitNativeAddi(HostVPN,HostVirtualAddress,aAlignment-1);
+   Emit2RegOp(X86_XOR,HostVPN,HostVirtualAddress,true);
+   EmitShiftRegImm(SHIFT_SHR,HostVPN,PAGE_SHIFT,true);
+  end;
+  // Combine: any bit set = TLB miss, page crossing or misalignment
   Emit2RegOp(X86_OR,HostVPN,aHostAddrRegister,true);
  end else begin
   // Byte access: no page crossing possible, just check TLB
@@ -89074,7 +89300,7 @@ begin
  // Win64 ABI: RCX=arg1, RDX=arg2, R8=arg3, R9=arg4; VMPtrRegister=RCX
  EmitMOVRegReg(TPasRISCVUInt8(ord(TX64Register.rRDX)),HostVirtualAddress,true);
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rR8)),TPasRISCVUInt32(aTLBFieldOffset));
- EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rR9)),TPasRISCVUInt32(aAlignment));
+ EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rR9)),HelperAlignment);
  // Win64: Allocate 32 bytes shadow space
  EmitNativeAddi(TPasRISCVUInt8(ord(TX64Register.rRSP)),TPasRISCVUInt8(ord(TX64Register.rRSP)),-32);
  // Load helper function pointer into RAX (from state, before clobbering VMPtrRegister)
@@ -89086,7 +89312,7 @@ begin
  // SysV ABI: RDI=arg1, RSI=arg2, RDX=arg3, RCX=arg4; VMPtrRegister=RDI
  EmitMOVRegReg(TPasRISCVUInt8(ord(TX64Register.rRSI)),HostVirtualAddress,true);
  EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRDX)),TPasRISCVUInt32(aTLBFieldOffset));
- EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRCX)),TPasRISCVUInt32(aAlignment));
+ EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRCX)),HelperAlignment);
  // Load helper function pointer into RAX (from state, before clobbering VMPtrRegister)
  HelperReg:=TPasRISCVUInt8(ord(TX64Register.rRAX));
  EmitNativeLoad(HelperReg,VMPtrRegister,GuestJITDataTLBFillPtrOffset,true);
@@ -91724,7 +91950,7 @@ begin
 
  HostAddr:=ClaimHostIntRegister(CASQAvoidMask);
 
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,16,CASQAvoidMask);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_W,16,CASQAvoidMask,$ff,JIT_TLB_LOOKUP_ATOMIC);
 
  FreeHostIntRegisters(CASQAvoidMask);
 
@@ -96507,7 +96733,7 @@ begin
 
  // === TLB lookup for base address ===
  HostAddr:=ClaimHostIntRegister;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,1);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,1,0,$ff,JIT_TLB_LOOKUP_NO_MMIO);
 
  // === Page-crossing check: use GUEST virtual address (not host address) ===
  // RelativeMemory may have non-zero lower 12 bits, making HostAddr & $fff wrong
@@ -98627,7 +98853,7 @@ begin
 
  // === TLB lookup for base address ===
  HostAddr:=ClaimHostIntRegister;
- EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,1);
+ EmitDataTLBLookup(HostAddr,RS1,0,TLB_R,1,0,$ff,JIT_TLB_LOOKUP_NO_MMIO);
 
  // === Page-crossing check: if (addr & $fff) + TotalBytes > $1000, bailout ===
  HostTmp:=ClaimHostIntRegister;
