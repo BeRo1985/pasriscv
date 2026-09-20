@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-09-11-08-30-0000                       *
+ *                        Version 2026-09-20-14-16-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -320,8 +320,6 @@ unit PasRISCV;
 
 {$define PasRISCVEthernetDeviceUserModeNetworking} // User mode networking (userland network stack backend for VirtIO Net, no root, no TAP, cross-platform)
 
-{$define GStageQEMUParity}
-
 // PLIC/APLIC interrupt race condition fix:
 // The original chained fRaised+fPending dedup in RaiseIRQ can lose interrupts because fRaised
 // is only cleared late by LowerIRQ (inside ISR), causing new RaiseIRQ calls to be silently
@@ -438,6 +436,16 @@ unit PasRISCV;
 
 {$define PasRISCVFastRMMFixup} // Optional: RMM-exact fast mode via selective soft-float fallback (needs PasRISCVStrictCompliantFPU)
 {$define PasRISCVJITFPUInvalidFlag} // Optional: let the JIT raise NV for invalid arithmetic FP operations, from the host invalid flag
+
+// Canonical NaN for the half results of the JIT. Every half result goes through EmitNativeFCvtHS
+// (fcvt.h.s, fcvt.h.d and the whole Zfh arithmetic), and vcvtps2ph keeps sign and payload there,
+// so without this fsub.h(+inf,+inf) gives 0xfe00 instead of 0x7e00 (N21). On by default, because
+// half FP is rare enough for its cost not to matter yet. The cost is not the two instructions but
+// their roughly 12 bytes: an FP loop with one fcvt.h.s runs 28% slower with them, since one
+// unrolled copy less fits into the UNROLL_MAX_BLOCK_SIZE of a block (ten NOP bytes in the same
+// place cost the same, and a variant with a branch as well). So switch this off when half FP gets
+// hot; the interpreter, the strict FPU and fcvt.h.d in the JIT stay canonical either way.
+{$define PasRISCVJITCanonicalHalfNaN}
 
 {$undef MRETSRETCheckInterrupts}
 
@@ -1456,17 +1464,46 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              P9_SETATTR_ATIME_SET=$00000080;
              P9_SETATTR_MTIME_SET=$00000100;
 
-             // Error codes
+             // Error codes. The Rlerror code of 9P2000.L is a Linux errno, so these are the Linux
+             // numbers, whatever the host uses for its own errno
              P9_EPERM=1;
              P9_ENOENT=2;
+             P9_ENXIO=6;
+             P9_EBADF=9;
+             P9_EAGAIN=11;
+             P9_ENOMEM=12;
              P9_EIO=5;
+             P9_EACCES=13;
+             P9_EBUSY=16;
              P9_EEXIST=17;
+             P9_EXDEV=18;
+             P9_ENODEV=19;
              P9_ENOTDIR=20;
+             P9_EISDIR=21;
              P9_EINVAL=22;
+             P9_ENFILE=23;
+             P9_EMFILE=24;
+             P9_ETXTBSY=26;
+             P9_EFBIG=27;
              P9_ENOSPC=28;
+             P9_ESPIPE=29;
+             P9_EROFS=30;
+             P9_EMLINK=31;
+             P9_EPIPE=32;
+             P9_ERANGE=34;
+             P9_ENAMETOOLONG=36;
+             P9_ENOLCK=37;
+             P9_ENOSYS=38;
              P9_ENOTEMPTY=39;
+             P9_ELOOP=40;
+             P9_ENODATA=61;
              P9_EPROTO=71;
-             P9_ENOTSUP=524;
+             P9_EOVERFLOW=75;
+             // 95 is EOPNOTSUPP, which user space sees as ENOTSUP. 524 is the kernel internal
+             // ENOTSUPP and would reach the guest as an unknown error number
+             P9_ENOTSUP=95;
+             P9_ESTALE=116;
+             P9_EDQUOT=122;
 
              // Lock types
              P9_LOCK_TYPE_RDLCK=0;
@@ -1593,6 +1630,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              UTIME_NOW=TPasRISCVUInt32((TPasRISCVUInt32(1) shl 30)-1);
              UTIME_OMIT=TPasRISCVUInt32((TPasRISCVUInt32(1) shl 30)-2);
       private
+       fRootFD:cint;
+       function GetRootFD:cint;
+       function OpenParent(const aPath:TPasRISCVRawByteString;out aName:TPasRISCVRawByteString):cint;
+       function LStatPath(const aPath:TPasRISCVRawByteString;out aStat:TStat):cint;
        function POSIXErrorCodeToP9ErrorCode(const aErrorCode:TPasRISCVInt32):TPasRISCVInt32;
        function P9OpenFlagsToPOSIXOpenFlags(const aFlags:TPasRISCVUInt32):TPasRISCVUInt32;
        procedure StatToQID(const aQID:TPasRISCV9PFileSystem.PFSQID;const aStat:PStat);
@@ -1689,7 +1730,29 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
              FUSE_ENAMETOOLONG=36;
              FUSE_ENOSYS=38;
              FUSE_ENOTEMPTY=39;
+             FUSE_ELOOP=40;
              FUSE_ENODATA=61;
+             // Linux numbers as well, the guest gets them as its own errno
+             FUSE_ENXIO=6;
+             FUSE_EBADF=9;
+             FUSE_EAGAIN=11;
+             FUSE_ENOMEM=12;
+             FUSE_EBUSY=16;
+             FUSE_EXDEV=18;
+             FUSE_ENODEV=19;
+             FUSE_ENFILE=23;
+             FUSE_EMFILE=24;
+             FUSE_ETXTBSY=26;
+             FUSE_EFBIG=27;
+             FUSE_ESPIPE=29;
+             FUSE_EMLINK=31;
+             FUSE_EPIPE=32;
+             FUSE_ERANGE=34;
+             FUSE_ENOLCK=37;
+             FUSE_EOVERFLOW=75;
+             FUSE_ENOTSUP=95;
+             FUSE_ESTALE=116;
+             FUSE_EDQUOT=122;
              // File type bits (Linux stat mode)
              S_IFMT=$f000;
              S_IFSOCK=$c000;
@@ -1786,6 +1849,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function CloseFile(const aHandle:TFileHandle):TPasRISCVInt32; virtual;
        function FlushFile(const aHandle:TFileHandle):TPasRISCVInt32; virtual;
        function FSyncFile(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; virtual;
+       function FSyncDir(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; virtual;
        function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32; virtual;
        function ReadDir(const aHandle:TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; virtual;
        function CloseDir(const aHandle:TFileHandle):TPasRISCVInt32; virtual;
@@ -1808,6 +1872,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
      { TPasRISCVFUSEFileSystemPOSIX }
      TPasRISCVFUSEFileSystemPOSIX=class(TPasRISCVFUSEFileSystem)
       private
+       fRootFD:cint;
+       function GetRootFD:cint;
+       function OpenParent(const aPath:TPasRISCVRawByteString;out aName:TPasRISCVRawByteString):cint;
        function POSIXErrorToFUSEError(const aErrno:TPasRISCVInt32):TPasRISCVInt32;
        procedure StatBufToFileStat(const aSB:PStat;out aStat:TPasRISCVFUSEFileSystem.TFileStat);
       public
@@ -1822,6 +1889,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function CloseFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
        function FlushFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
        function FSyncFile(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
+       function FSyncDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aDataSync:Boolean):TPasRISCVInt32; override;
        function OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
        function ReadDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aOffset:TPasRISCVUInt64;out aEntries:TPasRISCVFUSEFileSystem.TDirEntries;out aCount:TPasRISCVInt32):TPasRISCVInt32; override;
        function CloseDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32; override;
@@ -7429,6 +7497,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function Add(const aFID:TPasRISCVUInt32;const aFile:TPasRISCV9PFileSystem.TFSFile):TFIDDescriptor;
                      function Remove(const aFID:TPasRISCVUInt32):TFIDDescriptor;
                      function Find(const aFID:TPasRISCVUInt32):TFIDDescriptor;
+                     procedure FreeDescriptor(const aDescriptor:TFIDDescriptor);
+                     procedure Clear;
                    end;
                    TOpenInfo=record
                     QueueIndex:TPasRISCVUInt64;
@@ -8852,6 +8922,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function FindOrCreateChildNode(const aParentNodeID:TPasRISCVUInt64;const aName:TPasRISCVRawByteString):TNodeEntry;
               function GetNodePath(const aNodeID:TPasRISCVUInt64):TPasRISCVRawByteString;
               procedure RemoveNode(const aNodeID:TPasRISCVUInt64);
+              procedure ReleaseNodeLookup(const aNodeID:TPasRISCVUInt64);
+              procedure DetachChildNode(const aParentNodeID:TPasRISCVUInt64;const aName:TPasRISCVRawByteString);
+              procedure RenameNodes(const aOldParentNodeID:TPasRISCVUInt64;const aOldName:TPasRISCVRawByteString;const aNewParentNodeID:TPasRISCVUInt64;const aNewName,aOldPath,aNewPath:TPasRISCVRawByteString);
               procedure FillAttr(var aAttr:TFUSEAttr;const aStat:TPasRISCVFUSEFileSystem.TFileStat;const aNodeID:TPasRISCVUInt64);
               procedure SendReply(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aUnique:TPasRISCVUInt64;const aPayload:Pointer;const aPayloadSize:TPasRISCVUInt32);
               procedure SendError(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aUnique:TPasRISCVUInt64;const aError:TPasRISCVInt32);
@@ -8872,7 +8945,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure HandleStatFS(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleFlush(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleFSync(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
-              procedure HandleForget(const aHeader:PFUSEInHeader);
+              procedure HandleForget(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleBatchForget(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleAccess(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
               procedure HandleLink(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
@@ -10178,6 +10251,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure AddBusDevice(const aBusDevice:TBusDevice);
               procedure RemoveBusDevice(const aBusDevice:TBusDevice);
               function FindBusDevice(const aAddress:TPasRISCVUInt64):TBusDevice;
+              function IsOnlyDeviceInPage(const aBusDevice:TBusDevice;const aPageBase:TPasRISCVUInt64):Boolean;
 {$if defined(PasRISCVAddressSpaceDispatch)}
               function FastFindBusDevice(const aHART:THART;const aAddress:TPasRISCVUInt64):TBusDevice;
 {$ifend}
@@ -10308,6 +10382,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            MSECCFG_USEED=TPasRISCVUInt64(1) shl 8;
                            MSECCFG_SSEED=TPasRISCVUInt64(1) shl 9;
                            MSECCFG_MLPE=TPasRISCVUInt64(1) shl 10; // Zicfilp: M-mode landing pad enable
+                           MSECCFG_PMM=TPasRISCVUInt64($300000000); // Smmpm: M-mode pointer masking, bits 33:32
 {$ifdef PasRISCVSmepmp}
                            MSECCFG_MML=TPasRISCVUInt64(1) shl 0;   // Smepmp: Machine Mode Lockdown
                            MSECCFG_MMWP=TPasRISCVUInt64(1) shl 1;  // Smepmp: Machine Mode Whitelist Policy
@@ -10317,17 +10392,24 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            CSR_FRM_MASK=$7;
                            CSR_FCSR_MASK=$ff;
                            CSR_STATUS_FS_MASK=$6000;
-                           CSR_MEDELEG_MASK=TPasRISCVUInt64($f4b3ff); // H-ext: includes SoftwareCheck (18), guest page faults (20-23), virtual instruction (22)
-                           CSR_HEDELEG_MASK=TPasRISCVUInt64($b1ff); // Same minus guest page faults and VS ecall
-                           CSR_MIDELEG_MASK=TPasRISCVUInt64($2222);
-                           CSR_HIDELEG_MASK=TPasRISCVUInt64($0222); // S-level IRQs delegatable to VS
+                           CSR_MEDELEG_MASK=TPasRISCVUInt64($f4b7ff); // H-ext: includes VS ecall (10), SoftwareCheck (18), guest page faults (20-23), virtual instruction (22)
+                           CSR_HEDELEG_MASK=TPasRISCVUInt64($4b1ff); // Same minus HS/VS/M ecall (9-11), guest page faults (20, 21, 23) and virtual instruction (22)
+                           CSR_MIDELEG_MASK=TPasRISCVUInt64($2222); // Writable: SSI, STI, SEI, LCOFI
+                           CSR_MIDELEG_RO1=TPasRISCVUInt64($1444); // With H always delegated to HS: VSSI, VSTI, VSEI, SGEI
+                           CSR_HIDELEG_MASK=TPasRISCVUInt64($0444); // VS-level interrupts delegatable to VS: VSSI, VSTI, VSEI
+                           CSR_MIE_MASK=TPasRISCVUInt64($3eee); // All implemented interrupts: SSI, VSSI, MSI, STI, VSTI, MTI, SEI, VSEI, MEI, SGEI, LCOFI
+                           CSR_MIP_WRITE_MASK=TPasRISCVUInt64($2222); // Software-writable in mip itself (VSSIP is an alias of hvip.VSSIP)
+                           CSR_SIP_WRITE_MASK=TPasRISCVUInt64($2002); // Writable through sip: SSIP, LCOFIP
+                           CSR_HIE_MASK=TPasRISCVUInt64($1444); // hie/hip: VSSI, VSTI, VSEI, SGEI (aliases of the same bits in mie/mip)
+                           CSR_HVIP_MASK=TPasRISCVUInt64($0444); // hvip: VSSIP, VSTIP, VSEIP
+                           HGEIP_PENDING_SHIFT=32; // The hgeip lines are kept in the upper half of PendingIRQs
                            CSR_MEIP_MASK=TPasRISCVUInt64($2aaa);
                            CSR_SEIP_MASK=TPasRISCVUInt64($2222);
                            CSR_MENVCFG_MASK=TPasRISCVUInt64($e0000003000000d0){$ifdef Zicfilp} or ENVCFG_LPE{$endif}{$ifdef Zicfiss} or ENVCFG_SSE{$endif}{$ifdef PasRISCVSsdbltrp} or ENVCFG_DTE{$endif};
                            CSR_SENVCFG_MASK=TPasRISCVUInt64($00000003000000d0){$ifdef Zicfilp} or ENVCFG_LPE{$endif}{$ifdef Zicfiss} or ENVCFG_SSE{$endif};
                            CSR_HENVCFG_MASK=TPasRISCVUInt64($e0000003000000d0){$ifdef Zicfilp} or ENVCFG_LPE{$endif}{$ifdef Zicfiss} or ENVCFG_SSE{$endif}{$ifdef PasRISCVSsdbltrp} or ENVCFG_DTE{$endif};
                            CSR_SRMCFG_MASK=TPasRISCVUInt64($0fff0fff); // Ssqosid: RCID bits [11:0], MCID bits [27:16]
-                           CSR_MSECCFG_MASK=MSECCFG_USEED or MSECCFG_SSEED{$ifdef Zicfilp} or MSECCFG_MLPE{$endif}{$ifdef PasRISCVSmepmp} or MSECCFG_MML or MSECCFG_MMWP or MSECCFG_RLB{$endif};
+                           CSR_MSECCFG_MASK=MSECCFG_USEED or MSECCFG_SSEED or MSECCFG_PMM{$ifdef Zicfilp} or MSECCFG_MLPE{$endif}{$ifdef PasRISCVSmepmp} or MSECCFG_MML or MSECCFG_MMWP or MSECCFG_RLB{$endif};
                            HVICTL_VTI=TPasRISCVUInt64(1) shl 30;
                            HVICTL_IID_MASK=TPasRISCVUInt64($0fff0000); // bits [27:16]
                            HVICTL_IID_SHIFT=16;
@@ -10627,6 +10709,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   HSTATUS_MASK_BASE=TPasRISCVUInt64($007003e0); // SPV, SPVP, HU, GVA, VSBE, VTVM, VTW, VTSR (no VSXL: hardwired to 2, no VGEIN: AIA-only)
                                   HSTATUS_MASK_AIA=TPasRISCVUInt64($0003f000); // VGEIN bits (17:12), only writable when AIA is active
                                   GEILEN=1; // number of guest interrupt files per HART
+                                  HGEIE_MASK=((TPasRISCVUInt64(1) shl (GEILEN+1))-1) and not TPasRISCVUInt64(1); // hgeie/hgeip: guest external interrupts 1..GEILEN
                                   MSTATUS_SWAP_MASK=TPasRISCVUInt64($3000de722){$ifdef Zicfilp} or (TPasRISCVUInt64(1) shl 23{SPELP}){$endif}{$ifdef PasRISCVSsdbltrp} or (TPasRISCVUInt64(1) shl 24{SDT}){$endif}; // Bits swapped between HS and VS
                             type TStatus=class
                                   public
@@ -10880,6 +10963,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      ExceptionValue:TExceptionValue;
                      ExceptionData:TPasRISCVUInt64;
                      ExceptionPC:TPasRISCVUInt64;
+                     // Details of a guest page fault for htval/mtval2 (guest physical address shr 2)
+                     // and htinst/mtinst (transformed instruction or pseudoinstruction). They go into
+                     // the CSRs only at trap entry, depending on where the trap is taken.
+                     ExceptionGuestAddress:TPasRISCVUInt64;
+                     ExceptionTransformedInstruction:TPasRISCVUInt64;
+                     // The address of the exception is a guest virtual address (V=1, or HLV/HSV/HLVX)
+                     ExceptionGuestVirtual:TPasMPBool32;
                      Cycle:TPasRISCVUInt64;
                      LRSC:TPasMPBool32;
                      LRSCCycle:TPasRISCVUInt64;
@@ -10931,13 +11021,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      JITSkipExecution:TPasMPBool32;
  {$ifdef PasRISCVJustInTimeCompilerFPU}
                      // Canonical NaN constants for the JIT NaN fixup of arithmetic FP results.
-                     // Read through the VM pointer so the fixup needs neither a scratch register
-                     // nor stack access: it has to run inside the static rounding mode window,
-                     // where RSP points at the saved MXCSR and a register spill would clobber it.
-                     // The single-precision one is stored already NaN-boxed, so one 64 bit load
+                     // Read through the VM pointer so the fixup needs no scratch register. The
+                     // single-precision one is stored already NaN-boxed, so one 64 bit load
                      // yields the final register value. Written once in THART.Init.
                      JITCanonicalNaNF32:TPasRISCVUInt64;
                      JITCanonicalNaNF64:TPasRISCVUInt64;
+{$ifdef PasRISCVJITCanonicalHalfNaN}
+                     JITCanonicalNaNF16:TPasRISCVUInt64; // NaN-boxed as well
+{$endif}
+                     // MXCSR save area of the static rounding mode window, addressed through the
+                     // VM pointer and not through RSP: the code inside the window may push a
+                     // reclaimed callee-saved host register, which moves RSP
+                     JITSavedMXCSR:TPasRISCVUInt32;
+                     JITModifiedMXCSR:TPasRISCVUInt32;
  {$endif}
  {$ifdef PasRISCVJustInTimeCompilerSideExit}
                      JITDataTLBFillPtr:Pointer;
@@ -11001,7 +11097,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                             NoTrap,                       // Do not trap
                             IgnoreMMUProtection,          // Ignore MMU protection (for debugging, so that the emulator-level debugger can access all memory)
                             TranslateIntoPhysicalAddress, // Translate into physical address
-                            DirectMemoryPointer           // Direct Memory Pointer (for example for atomic operations)
+                            DirectMemoryPointer,          // Direct Memory Pointer (for example for atomic operations)
+                            CallerChecksPMP,              // Skip the PMP check of the translated address, the caller does it (HLVX: a load that needs execute permission in the page tables only)
+                            ShadowStack                   // Zicfiss shadow stack access (sspush, sspopchk, ssamoswap): only to shadow stack pages when paging is on
                            );
                           PAccessFlag=^TAccessFlag;
                           TAccessFlags=set of TAccessFlag;
@@ -11096,7 +11194,11 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                          // MMIO TLB: caches device lookup results for MMIO pages
                          // Fully separate from RAM TLB, uses generation counter for invalidation
                          TMMIOTLBEntry=record
-                          VPN:TPasRISCVUInt64;              // Virtual page number tag
+                          // Virtual page number tags per access type, like the RAM TLB, so that a
+                          // permitted load does not also let stores or instruction fetches through
+                          ReadVPN:TPasRISCVUInt64;
+                          WriteVPN:TPasRISCVUInt64;
+                          ExecuteVPN:TPasRISCVUInt64;
                           Generation:TPasRISCVUInt64;       // Generation counter for invalidation
                           PhysicalPageBase:TPasRISCVUInt64; // Physical page base address
                           BusDevice:TBusDevice;             // Cached device for this MMIO page
@@ -11148,9 +11250,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            JIT_TLB_MASK=JIT_TLB_SIZE-1;
 {$ifdef JITTLBTag}
                            JIT_TLB_ENTRY_SHIFT=5; // 2^5 = 32 bytes per entry (VirtualPC + Tag + Block + padding)
+                           // Tag layout: bit 0 V, bits 2:1 mode, then the state bits, then the generation
+                           JIT_TAG_GENERATION_SHIFT=8;
 {$else}
                            JIT_TLB_ENTRY_SHIFT=4; // 2^4 = 16 bytes per entry (VirtualPC + Block)
 {$endif}
+                           // State that translated code relies on besides mode and V (see
+                           // ComputeJITStateBits), part of the tag and of the block map key
+                           JIT_STATE_SHIFT=3;
+                           JIT_STATE_FPU_ENABLED=TPasRISCVUInt64(1) shl 3; // FP instructions enabled (FS, with V=1 also the HS-level FS)
+                           JIT_STATE_LANDING_PADS=TPasRISCVUInt64(1) shl 4; // Zicfilp landing pads enforced in the current mode
+                           JIT_STATE_COUNTERS_SHIFT=5; // bits 7:5: cycle, time and instret readable in the current mode (counter enables)
+                           JIT_STATE_COUNTERS=TPasRISCVUInt64(7) shl JIT_STATE_COUNTERS_SHIFT;
+                           JIT_STATE_MASK=TPasRISCVUInt64($f8);
                            JIT_CODE_BUFFER_SIZE=64*1024*1024;
                            JIT_MAX_BLOCK_SIZE=4096;
                            JIT_TEMPORARY_CODE_INITIAL_SIZE=1024*1024;
@@ -11227,6 +11339,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            PhysicalPC:TPasRISCVUInt64;
                            Mode:TMode;
                            VirtualMode:Boolean;
+                           StateBits:TPasRISCVUInt8; // JIT_STATE_* shr JIT_STATE_SHIFT
                           end;
                           TBlockMap=TPasRISCVHashMap<TBlockMapKey,TPasRISCVPtrUInt>;
                           TBlockLinkPoolSlot=array of TPasRISCVPtrUInt;
@@ -11239,6 +11352,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            DestPhysicalPC:TPasRISCVUInt64;
                            Mode:TMode;
                            VirtualMode:Boolean;
+                           StateBits:TPasRISCVUInt8; // JIT_STATE_* shr JIT_STATE_SHIFT
                            PatchPtr:TPasRISCVPtrUInt;
                           end;
                     private
@@ -11262,6 +11376,19 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 {$ifdef JITTLBTag}
                      fJITTLBGeneration:TPasRISCVUInt64;
 {$endif}
+                     // State the translated code depends on besides mode and V (JIT_STATE_*), part of the
+                     // tag and of the block map key: the current value, and the one of the block being
+                     // traced. fJITStateBitsSeen has a bit for every state value that got a block, for
+                     // the page flush in FindBlockCodePtr.
+                     fJITStateBits:TPasRISCVUInt64;
+                     fCurrentStateBits:TPasRISCVUInt64;
+                     fJITStateBitsSeen:TPasRISCVUInt32;
+                     // Mode and V combinations (ord(Mode)*2+ord(V)) that got blocks, for the page flush
+                     fJITModeVirtualSeen:TPasRISCVUInt32;
+                     // Virtual pages (bit = VPN and 32767) that got JIT TLB entries since the last
+                     // FlushJITTLB, for FlushTLBPage: the execute TLB entry of such a page can be gone
+                     // (another page took the slot) while JIT TLB entries for it are still valid
+                     fJITTLBPagesSeen:array[0..511] of TPasRISCVUInt64;
                      fBlockMap:TBlockMap;
                      // Block-to-block linking
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
@@ -11291,6 +11418,13 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fFPUEnabled:Boolean;
                      fBlockFSDirtyEmitted:Boolean;
 {$endif}
+                     // Host features that the native code of some intrinsics needs, true unless the
+                     // backend knows better (x86-64: CPUID). Without the feature the intrinsic
+                     // declines, and the interpreter executes the instruction.
+                     fHostHasLZCNT:Boolean;
+                     fHostHasTZCNT:Boolean;
+                     fHostHasPOPCNT:Boolean;
+                     fHostHasF16C:Boolean;
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      fVectorEnabled:Boolean;
                      fBlockVectorEnabled:Boolean;
@@ -11357,6 +11491,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function GuestFPURegisterOffset(const aGuestRegister:TFPURegister):TPasRISCVInt32;
                      function GuestJITCanonicalNaNF32Offset:TPasRISCVInt32;
                      function GuestJITCanonicalNaNF64Offset:TPasRISCVInt32;
+{$ifdef PasRISCVJITCanonicalHalfNaN}
+                     function GuestJITCanonicalNaNF16Offset:TPasRISCVInt32;
+{$endif}
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerVector}
                      function GuestVectorRegisterOffset(const aVReg:TPasRISCVUInt32):TPasRISCVInt32;
@@ -11406,8 +11543,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitFPUEpilog; virtual;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerCBO}
-                     class procedure CBOZeroHelper(aHART:Pointer;aAddress:TPasRISCVUInt64); static;
+                     class function CBOZeroHelper(aHART:Pointer;aAddress:TPasRISCVUInt64):TPasRISCVUInt64; static;
                      function GuestCBOZeroHelperAbsoluteOffset:TPasRISCVUInt64;
+                     class function CBOAccessHelper(aHART:Pointer;aAddress:TPasRISCVUInt64):TPasRISCVUInt64; static;
+                     function GuestCBOAccessHelperAbsoluteOffset:TPasRISCVUInt64;
                      function GuestModeOffset:TPasRISCVInt32;
                      function GuestVirtualModeOffset:TPasRISCVInt32;
 {$endif}
@@ -11421,8 +11560,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
 {$ifdef JITTLBTag}
                      function GetJITTLBTag(const aMode:TPasRISCVInt32=-1;const aVirtualMode:TPasRISCVInt32=-1):TPasRISCVUInt64; inline;
-                     procedure UpdateJITTLBTag; inline;
+                     procedure UpdateJITTLBTag;
 {$endif}
+                     function ComputeJITStateBits:TPasRISCVUInt64;
+                     procedure MarkJITTLBPage(const aVirtualPC:TPasRISCVUInt64); inline;
+                     function JITTLBPageSeen(const aVirtualAddress:TPasRISCVUInt64):Boolean; inline;
+                     procedure FlushPageBlocks(const aPageBase:TPasRISCVUInt64);
 
                      procedure SaveState;
                      procedure RollbackLastState;
@@ -11498,7 +11641,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure FreeExecutableMemory(const aPointer:Pointer;const aSize:TPasRISCVUInt64);
 
                      // Block cache
-                     function FindBlockCodePtr(const aPhysicalPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean):TPasRISCVPtrUInt;
+                     function FindBlockCodePtr(const aPhysicalPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aStateBits:TPasRISCVUInt64):TPasRISCVPtrUInt;
                      procedure ClearBlocks;
 
                      // Dirty page tracking
@@ -11509,8 +11652,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
                      // Block-to-block linking
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
-                     procedure AddLinkEntry(const aDestPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aPatchPtr:TPasRISCVPtrUInt);
-                     procedure PatchPendingLinks(const aPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean);
+                     procedure AddLinkEntry(const aDestPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aStateBits:TPasRISCVUInt64;const aPatchPtr:TPasRISCVPtrUInt);
+                     procedure PatchPendingLinks(const aPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aStateBits:TPasRISCVUInt64);
                      class procedure PatchJmp(const aAddr:Pointer;const aOffset:TPasRISCVInt32); static;
                      class procedure PatchRET(const aAddr:Pointer); static;
 {$endif}
@@ -12801,6 +12944,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeFenceACQREL; override;
 {$endif}
 {$ifdef PasRISCVJustInTimeCompilerCBO}
+                     procedure EmitCBOHelperCall(const aRS1:TRegister;const aHelperAddress:TPasRISCVUInt64);
                      procedure EmitNativeCBOFence; override;
                      procedure EmitCBOENVCFGCheck(const aMask:TPasRISCVUInt64;var aBlockChecked:Boolean); override;
                      function IntrinsicCBOInval(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
@@ -12816,6 +12960,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeCLMUL(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeCLMULH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeCLMULR(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
+                     procedure FreeXMMForCLMUL;
                      function IntrinsicCLMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
                      function IntrinsicCLMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
                      function IntrinsicCLMULR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean; override;
@@ -13166,6 +13311,42 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fVSTIMECMP:TPasRISCVUInt64;
               fMMUMode:TMMU.TMMUMode;
               fRootPageTable:TPasRISCVUInt64;
+              // Virtual address range covered by superpage and Svnapot translations in the TLB, one per
+              // half of the address space (index = bit 63). The TLB holds such a page as independent
+              // 4 KiB entries, so an address sfence.vma inside this range has to flush everything.
+              fTLBLargePageLow:array[0..1] of TPasRISCVUInt64;
+              fTLBLargePageHigh:array[0..1] of TPasRISCVUInt64;
+              // Set by AddressTranslate before a TLB fill: the translation does not depend on SUM
+              // (no user page), so TLBPut may put it into both S-mode TLBs
+              fTLBFillSharedBySUM:Boolean;
+              // Set while ForcedVirtualTranslate runs (HLV/HSV/HLVX, MPRV with MPV=1): the real
+              // HS-level mstatus, whose MXR also applies to the G-stage
+              fForcedVirtualActive:Boolean;
+              fForcedVirtualHSStatus:TPasRISCVUInt64;
+              // Physical address of a read-modify-write that goes through the bounce buffer (a device
+              // without direct memory access), set by MemoryPointerTranslate for RMWCommit
+              fBounceCommitAddress:TPasRISCVUInt64;
+              // Virtual address of the access being translated, set by AddressTranslate. The bus only
+              // knows the physical address, but xtval of an access fault has to be the virtual one
+              fAccessVirtualAddress:TPasRISCVUInt64;
+              // Set while ExecuteFPStaticRM runs an FP instruction with a static rm other than frm: the
+              // host rounding mode is switched, so no translated block may start from there (TLBLookup),
+              // and the static rm check of ExecuteInstruction must not recurse (StaticRMApplies)
+              fStaticRMActive:Boolean;
+{$ifdef PasRISCVSmepmp}
+              // Decoded PMP entries as inclusive byte ranges, rebuilt by UpdatePMP after every
+              // change of the PMP CSRs. OFF and empty entries get an impossible range.
+              fPMPEntryLow:array[0..15] of TPasRISCVUInt64;
+              fPMPEntryHigh:array[0..15] of TPasRISCVUInt64;
+              fPMPEntryConfig:array[0..15] of TPasRISCVUInt8;
+              fPMPEntryCount:TPasRISCVInt32; // entries 0..count-1 are scanned, higher ones are all OFF
+              // Set by CheckPMPAccess: the whole 4 KiB page of the checked address falls under one
+              // single PMP decision, so a TLB entry for it can not bypass a PMP boundary
+              fPMPPageUniform:Boolean;
+              // Per page walk level, the last page table page that PMP allows S-mode to read as a
+              // whole, so repeated walks through the same tables skip the check. Reset by UpdatePMP.
+              fPMPWalkPage:array[0..4] of TPasRISCVUInt64;
+{$endif}
 {$ifdef PerModeTLB}
               fDirectAccessTLBCacheModes:array[TMode.User..TMode.Machine] of TMMU.TDirectAccessTLBEntries;
 {$endif}
@@ -13228,19 +13409,40 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure RestartExecution; inline;
               procedure UpdateMMU;
               function CheckPrivilege(const aCPUMode:THART.TMode;const aAccessType:TMMU.TAccessType):Boolean;
-              function AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
+              function AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags;const aSize:TPasRISCVUInt64=1):TPasRISCVUInt64;
               procedure FlushTLB(const aInterrupt,aFlushJITTLB:Boolean);
               procedure FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
+              procedure TLBDropWriteEntries(const aHostPage:TPasRISCVPtrUInt);
               procedure TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
+              procedure TLBPutEntry(const aDirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
+              procedure TLBNoteLargePage(const aVirtualAddress,aMask:TPasRISCVUInt64);
+{$ifdef PerModeTLB}
+              procedure SelectTLB;
+{$endif}
               procedure TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
 {$ifdef PasRISCVMMIOTLB}
               procedure TLBPutMMIO(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
 {$endif}
               procedure RaisePhysicalFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
               procedure RaisePageFault(const aAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
-              procedure RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
-              function GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
-              function ForcedVirtualTranslate(const aGuestVA:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType):TPasRISCVUInt64;
+              procedure RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aNoTrap:Boolean);
+              function GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType,aFaultType:TMMU.TAccessType;const aIsImplicit,aNoTrap:Boolean):TPasRISCVUInt64;
+              function ForcedVirtualTranslate(const aGuestVA:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aMode:TMode;const aExecute:Boolean;const aSize:TPasRISCVUInt64;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
+              function HypervisorLoad(const aGuestVA,aSize:TPasRISCVUInt64;const aExecute:Boolean;out aValue:TPasRISCVUInt64):Boolean;
+              function HypervisorStore(const aGuestVA,aSize,aValue:TPasRISCVUInt64):Boolean;
+              function ExecuteHypervisorLoadStore(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+              procedure SetHostRoundingMode(const aRM:TPasRISCVUInt64);
+              function StaticRMApplies(const aInstruction:TPasRISCVUInt32):Boolean;
+              function HasRoundingModeField(const aInstruction:TPasRISCVUInt32):Boolean;
+              function ExecuteFPStaticRM(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+{$ifdef Zicfiss}
+              function ShadowStackAccessCheck:TExceptionValue;
+              function ShadowStackTranslate(const aAddress,aSize:TPasRISCVUInt64;const aStore:Boolean):TPasRISCVUInt64;
+              function ShadowStackLoad(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64):Boolean;
+              function ShadowStackStore(const aAddress,aValue:TPasRISCVUInt64):Boolean;
+              procedure ExecuteShadowStackSwap(const aInstruction:TPasRISCVUInt32;const aSize:TPasRISCVUInt64);
+              procedure CSRHandlerSSP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+{$endif}
               function Load8(const aAddress:TPasRISCVUInt64):TPasRISCVUInt8; inline;
               procedure LoadRegisterS8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
               procedure LoadRegisterU8(const aRegister:TRegister;const aAddress:TPasRISCVUInt64); inline;
@@ -13275,6 +13477,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               class function CSROperation(const aOperation:TCSROperation;const aCSR,aRHS:TPasRISCVUInt64):TPasRISCVUInt64; static; inline;
               class function CSRWriteIntent(const aInstruction:TPasRISCVUInt64):boolean; static; inline;
               class function CSRReadOnlyWriteAttempt(const aCSR,aInstruction:TPasRISCVUInt64):boolean; static; inline;
+              function CSRAccessDenied(const aCSR,aInstruction:TPasRISCVUInt64):Boolean;
+              function CounterAccessCheck(const aCSR:TPasRISCVUInt64):TExceptionValue;
+              function CSRReadInlinable(const aCSR:TPasRISCVUInt64):Boolean;
+              procedure CSRHandlerCounter(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerDefaultReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
@@ -13282,7 +13488,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 {$ifdef PasRISCVSmepmp}
               procedure CSRHandlerPMPWrite(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
-              function CheckPMPAccess(const aPhysAddr:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aCPUMode:THART.TMode):Boolean;
+              procedure UpdatePMP;
+              function CheckPMPAccess(const aPhysAddr,aSize:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aCPUMode:THART.TMode):Boolean;
 {$endif}
               procedure CSRHandlerIllegal(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerEnforcedReadOnly(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
@@ -13294,6 +13501,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerVSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              function CSRAccessVSIE(const aRHS:TPasRISCVUInt64;const aOperation:TCSROperation):TPasRISCVUInt64;
+              function CSRAccessVSIP(const aRHS:TPasRISCVUInt64;const aOperation:TCSROperation):TPasRISCVUInt64;
               procedure CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
@@ -13353,12 +13562,16 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure VectorSetBFloat16(const aVReg:TPasRISCVUInt32;const aIndex:TPasRISCVUInt32;const aValue:TPasRISCVFloat);
               function VectorGetMaskBit(const aIndex:TPasRISCVUInt32):Boolean; inline;
               function VectorCheckRegAlign(const aVReg:TPasRISCVUInt32;const aEMUL8:TPasRISCVInt32):Boolean;
+              function VectorOverlapAllowed(const aDstReg:TPasRISCVUInt32;const aDstEMUL8:TPasRISCVInt32;const aSrcReg:TPasRISCVUInt32;const aSrcEMUL8:TPasRISCVInt32):Boolean;
+              function VectorFloatToSmallInteger(const aValue:TPasRISCVFloat;const aBits:TPasRISCVUInt32;const aSigned,aRoundToZero:boolean):TPasRISCVUInt64;
               function VectorRoundoffShift(const aValue:TPasRISCVUInt64;const aShift:TPasRISCVUInt32):TPasRISCVUInt64;
               function VectorRoundoffShiftSigned(const aValue:TPasRISCVInt64;const aShift:TPasRISCVUInt32):TPasRISCVInt64;
               class function VFRsqrt732(const aValue:TPasRISCVUInt32):TPasRISCVUInt32; static;
               class function VFRsqrt764(const aValue:TPasRISCVUInt64):TPasRISCVUInt64; static;
+              class function VFRsqrt716(const aValue:TPasRISCVUInt16):TPasRISCVUInt16; static;
               function VFRec732(const aValue:TPasRISCVUInt32):TPasRISCVUInt32;
               function VFRec764(const aValue:TPasRISCVUInt64):TPasRISCVUInt64;
+              function VFRec716(const aValue:TPasRISCVUInt16):TPasRISCVUInt16;
 {$ifdef PasRISCVFastEmulateVLEVSE}
               function EmulateVLE(const aInstruction:TPasRISCVUInt32):Boolean;
               function EmulateVSE(const aInstruction:TPasRISCVUInt32):Boolean;
@@ -13688,16 +13901,29 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure NonStrictExecVNCvtBF16(const aVS2,aVD:TPasRISCVUInt32;const aVSTART,aEVL:TPasRISCVUInt32;const aUnmasked:Boolean;const aRM:TPasRISCVUInt8);
               function ExecuteVectorInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
               procedure ExecuteInstructionCBOZero(const aAddress:TPasRISCVUInt64);
+              procedure ExecuteInstructionCBOAccess(const aAddress:TPasRISCVUInt64);
+              function ENVCFGDenialException(const aMask:TPasRISCVUInt64):TExceptionValue;
               function ExecuteInstruction(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
 {$ifdef Zicfilp}
               function ExecuteInstructionWithPrechecks(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
               procedure UpdateExecuteInstructionMethod;
 {$endif}
               function InterruptsRaised:TPasRISCVUInt64; inline;
+              procedure JITStateChanged;
+{$ifdef Zicfilp}
+              function LandingPadsEnabled:Boolean;
+{$endif}
+{$ifdef Zicfiss}
+              function ShadowStackEnabled:Boolean;
+{$endif}
+              function GuestExternalInterrupts(const aHGEIP:TPasRISCVUInt64):TPasRISCVUInt64;
+              function PendingInterruptBits:TPasRISCVUInt64;
               function InterruptsPending:TPasRISCVUInt64; inline;
               function InterruptsNotPending:TPasRISCVUInt64; inline;
               procedure ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
               procedure RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
+              procedure ClearInterruptMask(const aMask:TPasRISCVUInt64);
+              procedure RaiseInterruptMask(const aMask:TPasRISCVUInt64);
               function SetInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue):Boolean;
               procedure SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
               function GetVGEIN:TPasRISCVUInt32; inline;
@@ -13713,6 +13939,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure TakeNMI; // Smrnmi: dispatch a non-maskable interrupt
               procedure TriggerNMI; // Smrnmi: trigger a non-maskable interrupt on this HART
               procedure Interrupt;
+              class function HighestPriorityInterrupt(const aIRQs:TPasRISCVUInt64):TPasRISCV.THART.TInterruptValue; static;
               procedure HandleInterrupts;
               procedure ExecuteException;
               procedure SwapHypervisorRegs; // H-extension: swap S↔VS CSRs on V transition
@@ -14720,6 +14947,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
 {$ifdef PasRISCVJustInTimeCompiler}
        procedure JITMarkDirtyMemory(const aPhysicalAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64=0);
+       procedure JITWriteProtectPage(const aPhysicalAddress:TPasRISCVUInt64);
 {$endif}
 
       public
@@ -15349,6 +15577,45 @@ const PasRISCVFLITable:array[0..31] of TPasRISCVUInt32=
         $47800000, // 2^16
         $7f800000, // +Infinity
         $7fc00000  // Canonical NaN
+       );
+
+      // fli.h table (Zfa), half precision bit patterns. The conversion of the single precision
+      // entries would raise overflow and inexact for the entry 2^16, which fli must not do (index
+      // 29 gives infinity, like index 30)
+      PasRISCVFLIHalfTable:array[0..31] of TPasRISCVUInt16=
+       (
+        $bc00, // -1.0
+        $0400, // Minimum positive normal
+        $0100, // 1.0 x 2^-16
+        $0200, // 1.0 x 2^-15
+        $1c00, // 1.0 x 2^-8
+        $2000, // 1.0 x 2^-7
+        $2c00, // 1.0 x 2^-4
+        $3000, // 1.0 x 2^-3
+        $3400, // 0.25
+        $3500, // 0.3125
+        $3600, // 0.375
+        $3700, // 0.4375
+        $3800, // 0.5
+        $3900, // 0.625
+        $3a00, // 0.75
+        $3b00, // 0.875
+        $3c00, // 1.0
+        $3d00, // 1.25
+        $3e00, // 1.5
+        $3f00, // 1.75
+        $4000, // 2.0
+        $4100, // 2.5
+        $4200, // 3.0
+        $4400, // 4.0
+        $4800, // 8.0
+        $4c00, // 16.0
+        $5800, // 128.0
+        $5c00, // 256.0
+        $7800, // 2^15
+        $7c00, // 2^16, not representable in half precision, so infinity
+        $7c00, // +Infinity
+        $7e00  // Canonical NaN
        );
 
       // vfrsqrt7 lookup table, indexed by {exp[0],sig[MSB-:6]}, per RISC-V V-spec
@@ -20243,12 +20510,11 @@ begin
  SoftFloatNormalizeOperand(Exponent,Mantissa,aMantissaBits);
  TrueExponent:=Exponent-aExponentBias;
  if (TrueExponent and 1)<>0 then begin
+  // Odd exponent: the factor 2 moves into the mantissa, the radicand shift stays the same
   Mantissa:=Mantissa shl 1;
   dec(TrueExponent);
-  ShiftK:=aMantissaBits+5;
- end else begin
-  ShiftK:=aMantissaBits+6;
  end;
+ ShiftK:=aMantissaBits+6;
  Radicand:=SoftFloatBits128Shl(SoftFloatBits128FromUInt64(Mantissa),ShiftK);
  s:=SoftFloatISqrt128(Radicand);
  SoftFloatMul64to128(s,s,Square.Hi,Square.Lo);
@@ -20548,7 +20814,8 @@ begin
  end;
  if TrueExponent>=aMantissaBits then begin
   Shift:=TrueExponent-aMantissaBits;
-  if Shift>63 then begin
+  // Sig has aMantissaBits+1 significant bits, so from 2^64 on the shift below loses the top bits
+  if TrueExponent>=64 then begin
    aFFlags:=aFFlags or SoftFloatFF_NV;
    if aIsSigned then begin
     if Sign then begin
@@ -20595,7 +20862,8 @@ begin
    end;
   end;
  end else begin
-  if Rounded>MaxUnsigned then begin
+  // Negative values are handled below (0 with NV unless they round to 0), not saturated to the maximum
+  if (not Sign) and (Rounded>MaxUnsigned) then begin
    aFFlags:=aFFlags or SoftFloatFF_NV;
    result:=MaxUnsigned;
    exit;
@@ -21543,12 +21811,17 @@ var FmtIndex,ArgIndex,Len:TPasRISCVSizeInt;
     BufferBegin,BufferEnd,BufferCurrent:PPasRISCVUInt8;
     c:AnsiChar;
 begin
- if aPOffset<aSize then begin
+ if length(aFmt)=0 then begin
+  // Nothing to write, so no buffer is needed for it either
+  result:=true;
+ end else if aPOffset<aSize then begin
   BufferBegin:=@PPasRISCVUInt8Array(aBuffer)^[aPOffset];
   BufferEnd:=@PPasRISCVUInt8Array(aBuffer)^[aSize];
   BufferCurrent:=BufferBegin;
   FmtIndex:=1;
-  while (TPasRISCVPtrUInt(BufferCurrent)<TPasRISCVPtrUInt(BufferEnd)) and (FmtIndex<=length(aFmt)) do begin
+  // The whole format has to fit: with a buffer that ends early the field checks below fail
+  // instead of leaving the loop with a success
+  while FmtIndex<=length(aFmt) do begin
    ArgIndex:=FmtIndex-1;
    c:=aFmt[FmtIndex];
    inc(FmtIndex);
@@ -21620,6 +21893,9 @@ begin
   end;
   inc(aPOffset,TPasRISCVPtrUInt(BufferCurrent)-TPasRISCVPtrUInt(BufferBegin));
   result:=true;
+ end else begin
+  // The buffer is already full, so nothing of the format fits any more
+  result:=false;
  end;
 end;
 
@@ -21628,12 +21904,17 @@ var FmtIndex,ArgIndex,Len:TPasRISCVSizeInt;
     BufferBegin,BufferEnd,BufferCurrent:PPasRISCVUInt8;
     c:AnsiChar;
 begin
- if aPOffset<aSize then begin
+ if length(aFmt)=0 then begin
+  // Nothing to read, so no buffer is needed for it either
+  result:=true;
+ end else if aPOffset<aSize then begin
   BufferBegin:=@PPasRISCVUInt8Array(aBuffer)^[aPOffset];
   BufferEnd:=@PPasRISCVUInt8Array(aBuffer)^[aSize];
   BufferCurrent:=BufferBegin;
   FmtIndex:=1;
-  while (TPasRISCVPtrUInt(BufferCurrent)<TPasRISCVPtrUInt(BufferEnd)) and (FmtIndex<=length(aFmt)) do begin
+  // The whole format has to be there: with a buffer that ends early the field checks below fail
+  // instead of leaving the loop with a success
+  while FmtIndex<=length(aFmt) do begin
    ArgIndex:=FmtIndex-1;
    c:=aFmt[FmtIndex];
    inc(FmtIndex);
@@ -23573,6 +23854,60 @@ begin
  end;
 end;
 
+// Unsigned 64-bit integer to single or double with one rounding. For values from 2^63 on the
+// compiler converts the signed value and adds 2^64, which rounds twice; halving with the dropped
+// bit kept as a sticky bit (round-to-odd) rounds once, as the JIT does, and the doubling is exact.
+function UInt64ToFloat32(const aValue:TPasRISCVUInt64):TPasRISCVFloat;
+begin
+ if TPasRISCVInt64(aValue)>=0 then begin
+  result:=TPasRISCVInt64(aValue);
+ end else begin
+  result:=TPasRISCVInt64(TPasRISCVUInt64(TPasRISCVUInt64(aValue shr 1) or TPasRISCVUInt64(aValue and TPasRISCVUInt64($0000000000000001))));
+  result:=result+result;
+ end;
+end;
+
+function UInt64ToFloat64(const aValue:TPasRISCVUInt64):TPasRISCVDouble;
+begin
+ if TPasRISCVInt64(aValue)>=0 then begin
+  result:=TPasRISCVInt64(aValue);
+ end else begin
+  result:=TPasRISCVInt64(TPasRISCVUInt64(TPasRISCVUInt64(aValue shr 1) or TPasRISCVUInt64(aValue and TPasRISCVUInt64($0000000000000001))));
+  result:=result+result;
+ end;
+end;
+
+// Narrows a double (bits, not NaN) to single with round-to-odd: the dropped bits only set the
+// lowest bit. The 24 significant bits of the result are 13 more than half precision has, so a
+// following conversion to half rounds once in any rounding mode, like one directly from the
+// double (fcvt.h.d; double to single to half otherwise rounds twice). Values outside the single
+// range only have to stay outside the half range: large ones become the largest single, tiny ones
+// the smallest normal single with the lowest bit set, both odd, and the sign is kept.
+function Float64ToFloat32RoundToOdd(const aValue:TPasRISCVUInt64):TPasRISCVFloat;
+var Exponent:TPasRISCVInt32;
+    Bits:TPasRISCVUInt32;
+    Casted:TPasRISCVFloat absolute Bits;
+begin
+ Bits:=TPasRISCVUInt32(TPasRISCVUInt64(aValue shr 32) and TPasRISCVUInt64($80000000));
+ Exponent:=TPasRISCVInt32(TPasRISCVUInt32(TPasRISCVUInt64(aValue shr 52) and TPasRISCVUInt64($7ff)))-1023;
+ if Exponent=1024 then begin
+  // Infinity
+  Bits:=Bits or TPasRISCVUInt32($7f800000);
+ end else if (aValue and TPasRISCVUInt64($7fffffffffffffff))=0 then begin
+  // Zero, only the sign
+ end else if Exponent>127 then begin
+  Bits:=Bits or TPasRISCVUInt32($7f7fffff);
+ end else if Exponent<(-126) then begin
+  Bits:=Bits or TPasRISCVUInt32($00800001);
+ end else begin
+  Bits:=Bits or TPasRISCVUInt32(TPasRISCVUInt32(Exponent+127) shl 23) or TPasRISCVUInt32(TPasRISCVUInt64(aValue shr 29) and TPasRISCVUInt64($7fffff));
+  if (aValue and TPasRISCVUInt64($1fffffff))<>0 then begin
+   Bits:=Bits or TPasRISCVUInt32($00000001);
+  end;
+ end;
+ result:=Casted;
+end;
+
 { TPasRISCVHalfFloat }
 
 class function TPasRISCVHalfFloat.FromFloat(const aValue:TPasRISCVFloat):TPasRISCVHalfFloat;
@@ -23635,7 +23970,7 @@ asm
 
 //@x86_F16C:
  movss xmm0,dword ptr aValue
- db $c4,$e3,$79,$1d,$c0,$00 // vcvtps2ph xmm0,xmm0,0
+ db $c4,$e3,$79,$1d,$c0,$04 // vcvtps2ph xmm0,xmm0,4: rounding from MXCSR (frm or the static rm of the instruction)
  movss dword ptr [esp-4],xmm0
  movzx eax,word ptr [esp-4]
  jmp @Done
@@ -23702,7 +24037,7 @@ asm
  jz @Bittwiddling
 
 //@x86_F16C:
- db $c4,$e3,$79,$1d,$c0,$00 // vcvtps2ph xmm0,xmm0,0
+ db $c4,$e3,$79,$1d,$c0,$04 // vcvtps2ph xmm0,xmm0,4: rounding from MXCSR (frm or the static rm of the instruction)
  movss dword ptr TemporaryValue,xmm0
  movzx eax,word ptr TemporaryValue
  jmp @Done
@@ -24200,12 +24535,13 @@ begin
  result:=(rs1.IsInfinity and rs2.IsZero) or (rs1.IsZero and rs2.IsInfinity);
 end;
 
-function CheckF16IsInvalidAddOp(const aRS1,aRS2:TPasRISCVUInt64):boolean;
+function CheckF16IsInvalidAddOp(const aRS1,aRS2:TPasRISCVUInt64;const aSubtract:boolean):boolean;
+// inf + -inf (addition with different signs, subtraction with equal signs) is invalid, inf + inf is inf
 var rs1,rs2:TPasRISCVHalfFloat;
 begin
  rs1:=ReadNormalizedFloatF16(aRS1);
  rs2:=ReadNormalizedFloatF16(aRS2);
- result:=rs1.IsInfinity and rs2.IsInfinity;
+ result:=rs1.IsInfinity and rs2.IsInfinity and ((((rs1.Value xor rs2.Value) and $8000)<>0)<>aSubtract);
 end;
 
 function CheckF16IsInvalidDivOp(const aRS1,aRS2:TPasRISCVUInt64):boolean;
@@ -26808,16 +27144,282 @@ function MkNod_(pathname:PAnsiChar;Mode:mode_t;dev:dev_t):cint; cdecl; external 
 function lchown(pathname:PAnsiChar;uid:UID_T;gid:gid_t):cint; cdecl; external 'c' name 'lchown';
 function Remove_(pathname:PAnsiChar):cint; cdecl; external 'c' name 'remove';
 
+// Host directory sharing (9P and virtio-fs), secure path resolution. The guest-supplied names are single
+// path components (see IsValidFileSystemName), but a guest can still create symlinks inside the shared
+// directory, or replace a directory by a symlink between two requests, and the host must never follow
+// them. Like the QEMU 9p "local" backend, every path is therefore resolved component by component below
+// a descriptor of the share root with O_NOFOLLOW, and the final operation is done with the *at() syscalls
+// relative to the resolved parent directory. The raw syscalls are used on purpose: the O_NOFOLLOW and
+// O_DIRECTORY values of the FPC RTL are wrong on ARM, AArch64 and PowerPC Linux, and its utimensat()
+// ignores the flags argument.
+const PASRISCV_AT_FDCWD=-100;
+      PASRISCV_AT_SYMLINK_NOFOLLOW=$100;
+      PASRISCV_AT_REMOVEDIR=$200;
+      PASRISCV_O_CLOEXEC=$80000;
+      PASRISCV_O_PATH=$200000;
+{$if defined(cpuarm) or defined(cpuaarch64) or defined(cpupowerpc) or defined(cpupowerpc64)}
+      PASRISCV_O_DIRECTORY=$4000;
+      PASRISCV_O_NOFOLLOW=$8000;
+{$else}
+      PASRISCV_O_DIRECTORY=$10000;
+      PASRISCV_O_NOFOLLOW=$20000;
+{$ifend}
+      PASRISCV_SYSCALL_NR_FACCESSAT2=439; // Same number on all Linux architectures
+      PASRISCV_UTIME_NOW=TPasRISCVInt64((TPasRISCVInt64(1) shl 30)-1);
+      PASRISCV_UTIME_OMIT=TPasRISCVInt64((TPasRISCVInt64(1) shl 30)-2);
+      PASRISCV_F_RDLCK=0; // fcntl lock types (Linux, the FPC RTL does not export them)
+      PASRISCV_F_WRLCK=1;
+      PASRISCV_F_UNLCK=2;
+
+function PasRISCVSysOpenAt(const aDirFD:cint;const aName:PAnsiChar;const aFlags:cint;const aMode:TPasRISCVUInt32):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_openat,TSysParam(aDirFD),TSysParam(aName),TSysParam(aFlags),TSysParam(aMode)));
+end;
+
+function PasRISCVSysMkDirAt(const aDirFD:cint;const aName:PAnsiChar;const aMode:TPasRISCVUInt32):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_mkdirat,TSysParam(aDirFD),TSysParam(aName),TSysParam(aMode)));
+end;
+
+function PasRISCVSysUnlinkAt(const aDirFD:cint;const aName:PAnsiChar;const aFlags:cint):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_unlinkat,TSysParam(aDirFD),TSysParam(aName),TSysParam(aFlags)));
+end;
+
+function PasRISCVSysRenameAt(const aOldDirFD:cint;const aOldName:PAnsiChar;const aNewDirFD:cint;const aNewName:PAnsiChar):cint;
+begin
+ // renameat2 with flags 0, since plain renameat does not exist on all architectures (e.g. riscv64)
+ result:=cint(do_syscall(syscall_nr_renameat2,TSysParam(aOldDirFD),TSysParam(aOldName),TSysParam(aNewDirFD),TSysParam(aNewName),0));
+end;
+
+function PasRISCVSysLinkAt(const aOldDirFD:cint;const aOldName:PAnsiChar;const aNewDirFD:cint;const aNewName:PAnsiChar):cint;
+begin
+ // Without AT_SYMLINK_FOLLOW, so a symlink as the source is linked itself and never followed
+ result:=cint(do_syscall(syscall_nr_linkat,TSysParam(aOldDirFD),TSysParam(aOldName),TSysParam(aNewDirFD),TSysParam(aNewName),0));
+end;
+
+function PasRISCVSysSymLinkAt(const aTarget:PAnsiChar;const aDirFD:cint;const aName:PAnsiChar):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_symlinkat,TSysParam(aTarget),TSysParam(aDirFD),TSysParam(aName)));
+end;
+
+function PasRISCVSysReadLinkAt(const aDirFD:cint;const aName:PAnsiChar;const aBuffer:Pointer;const aSize:TPasRISCVSizeInt):TPasRISCVSizeInt;
+begin
+ result:=TPasRISCVSizeInt(do_syscall(syscall_nr_readlinkat,TSysParam(aDirFD),TSysParam(aName),TSysParam(aBuffer),TSysParam(aSize)));
+end;
+
+function PasRISCVSysFChOwnAt(const aDirFD:cint;const aName:PAnsiChar;const aUID,aGID:TPasRISCVInt32;const aFlags:cint):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_fchownat,TSysParam(aDirFD),TSysParam(aName),TSysParam(aUID),TSysParam(aGID),TSysParam(aFlags)));
+end;
+
+function PasRISCVSysMkNodAt(const aDirFD:cint;const aName:PAnsiChar;const aMode,aDev:TPasRISCVUInt32):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_mknodat,TSysParam(aDirFD),TSysParam(aName),TSysParam(aMode),TSysParam(aDev)));
+end;
+
+function PasRISCVSysFChMod(const aFD:cint;const aMode:TPasRISCVUInt32):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_fchmod,TSysParam(aFD),TSysParam(aMode)));
+end;
+
+function PasRISCVSysUTimeNSAt(const aDirFD:cint;const aName:PAnsiChar;const aTimes:Pointer;const aFlags:cint):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_utimensat,TSysParam(aDirFD),TSysParam(aName),TSysParam(aTimes),TSysParam(aFlags)));
+end;
+
+// Closes a descriptor without clobbering the errno of the operation before
+procedure PasRISCVCloseKeepErrNo(const aFD:cint);
+var SavedErrNo:cint;
+begin
+ if aFD>=0 then begin
+  SavedErrNo:=fpGetErrNo;
+  fpClose(aFD);
+  fpSetErrNo(SavedErrNo);
+ end;
+end;
+
+// lstat() relative to a directory descriptor, via an O_PATH descriptor (fstat() on it works for all
+// file types including symlinks, and avoids the per-architecture fstatat syscall and struct variants)
+function PasRISCVLStatAt(const aDirFD:cint;const aName:PAnsiChar;out aStat:TStat):cint;
+var FD:cint;
+begin
+ FD:=PasRISCVSysOpenAt(aDirFD,aName,PASRISCV_O_PATH or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+ if FD<0 then begin
+  FillChar(aStat,SizeOf(TStat),#0);
+  result:=-1;
+ end else begin
+  result:=fpFStat(FD,aStat);
+  PasRISCVCloseKeepErrNo(FD);
+ end;
+end;
+
+// chmod() that never follows a final symlink. Linux has no working fchmodat(AT_SYMLINK_NOFOLLOW) for
+// this, so, like QEMU, the object is pinned with an O_PATH descriptor first and then changed through
+// its /proc magic link, which refers exactly to the pinned object.
+function PasRISCVFChModAtNoFollow(const aDirFD:cint;const aName:PAnsiChar;const aMode:TPasRISCVUInt32):cint;
+var FD:cint;
+    StatData:TStat;
+    ProcPath:TPasRISCVRawByteString;
+begin
+ FD:=PasRISCVSysOpenAt(aDirFD,aName,PASRISCV_O_PATH or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+ if FD<0 then begin
+  result:=-1;
+ end else begin
+  if fpFStat(FD,StatData)<>0 then begin
+   result:=-1;
+  end else if (StatData.st_mode and S_IFMT)=S_IFLNK then begin
+   // The permissions of a symlink can not be changed on Linux, and following it must not happen
+   fpSetErrNo(ESysELOOP);
+   result:=-1;
+  end else begin
+   ProcPath:='/proc/self/fd/'+IntToStr(FD);
+   result:=fpChmod(PAnsiChar(ProcPath),aMode);
+  end;
+  PasRISCVCloseKeepErrNo(FD);
+ end;
+end;
+
+// Like the FPC RTL fpOpenDir, but for an already (securely) opened directory descriptor, which is then
+// owned by the returned directory object and closed by fpCloseDir
+function PasRISCVFDOpenDir(const aFD:cint):PDir;
+begin
+ if aFD<0 then begin
+  result:=nil;
+ end else begin
+  New(result);
+  New(result^.dd_buf);
+  result^.dd_fd:=aFD;
+  result^.dd_loc:=0;
+  result^.dd_size:=0;
+  result^.dd_nextoff:=0;
+  result^.dd_max:=SizeOf(result^.dd_buf^);
+ end;
+end;
+
+// Resolves aRelativePath (components separated by '/', empty for the root itself) below aRootFD without
+// following any symlink, and returns a descriptor of the parent directory (to be closed by the caller)
+// together with the final component in aName ('.' for the root itself). Every intermediate component is
+// opened with O_PATH or O_DIRECTORY or O_NOFOLLOW, so a symlink there fails with ENOTDIR. Returns -1
+// with errno set on failure.
+function PasRISCVOpenParentNoFollow(const aRootFD:cint;const aRelativePath:TPasRISCVRawByteString;out aName:TPasRISCVRawByteString):cint;
+var Index,StartIndex,Len:TPasRISCVSizeInt;
+    NextFD:cint;
+    Component:TPasRISCVRawByteString;
+begin
+ aName:='.';
+ if aRootFD<0 then begin
+  fpSetErrNo(ESysENOENT);
+  result:=-1;
+  exit;
+ end;
+ result:=fpDup(aRootFD);
+ if result<0 then begin
+  exit;
+ end;
+ Len:=length(aRelativePath);
+ Index:=1;
+ while (Index<=Len) and (aRelativePath[Index]='/') do begin
+  inc(Index);
+ end;
+ while Index<=Len do begin
+  StartIndex:=Index;
+  while (Index<=Len) and (aRelativePath[Index]<>'/') do begin
+   inc(Index);
+  end;
+  Component:=Copy(aRelativePath,StartIndex,Index-StartIndex);
+  while (Index<=Len) and (aRelativePath[Index]='/') do begin
+   inc(Index);
+  end;
+  if (Component='.') or (Component='..') then begin
+   // Never produced by the device layer (see IsValidFileSystemName and Walk), but refused anyway,
+   // since ".." is no symlink and would otherwise leave the shared root
+   PasRISCVCloseKeepErrNo(result);
+   fpSetErrNo(ESysEACCES);
+   result:=-1;
+   exit;
+  end;
+  if Index>Len then begin
+   aName:=Component;
+   break;
+  end;
+  NextFD:=PasRISCVSysOpenAt(result,PAnsiChar(Component),PASRISCV_O_PATH or PASRISCV_O_DIRECTORY or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+  PasRISCVCloseKeepErrNo(result);
+  result:=NextFD;
+  if result<0 then begin
+   exit;
+  end;
+ end;
+end;
+
+// Opens the descriptor of a share root on first use (the directory may not exist yet at construction time)
+function PasRISCVGetRootFD(var aRootFD:cint;const aRootPath:TPasRISCVRawByteString):cint;
+var FD:cint;
+begin
+ result:=aRootFD;
+ if result<0 then begin
+  FD:=PasRISCVSysOpenAt(PASRISCV_AT_FDCWD,PAnsiChar(aRootPath),PASRISCV_O_PATH or PASRISCV_O_DIRECTORY or PASRISCV_O_CLOEXEC,0);
+  if FD>=0 then begin
+   if TPasMPInterlocked.CompareExchange(TPasMPInt32(aRootFD),TPasMPInt32(FD),TPasMPInt32(-1))=-1 then begin
+    result:=FD;
+   end else begin
+    fpClose(FD);
+    result:=aRootFD;
+   end;
+  end;
+ end;
+end;
+
 constructor TPasRISCV9PFileSystemPOSIX.Create(const aRootPath:TPasRISCVRawByteString);
 begin
  inherited Create;
  fRootPath:=aRootPath;
+ fRootFD:=-1;
+ GetRootFD;
 end;
 
 destructor TPasRISCV9PFileSystemPOSIX.Destroy;
 begin
+ if fRootFD>=0 then begin
+  fpClose(fRootFD);
+  fRootFD:=-1;
+ end;
  fRootPath:='';
  inherited Destroy;
+end;
+
+function TPasRISCV9PFileSystemPOSIX.GetRootFD:cint;
+begin
+ result:=PasRISCVGetRootFD(fRootFD,fRootPath);
+end;
+
+function TPasRISCV9PFileSystemPOSIX.OpenParent(const aPath:TPasRISCVRawByteString;out aName:TPasRISCVRawByteString):cint;
+begin
+ // The 9P file objects carry host paths below fRootPath (see Attach, Walk and ComposePath)
+ if (length(aPath)>=length(fRootPath)) and (Copy(aPath,1,length(fRootPath))=fRootPath) and
+    ((length(aPath)=length(fRootPath)) or
+     (aPath[length(fRootPath)+1]='/') or
+     ((length(fRootPath)>0) and (fRootPath[length(fRootPath)]='/'))) then begin
+  result:=PasRISCVOpenParentNoFollow(GetRootFD,Copy(aPath,length(fRootPath)+1,length(aPath)-length(fRootPath)),aName);
+ end else begin
+  aName:='';
+  fpSetErrNo(ESysEACCES);
+  result:=-1;
+ end;
+end;
+
+function TPasRISCV9PFileSystemPOSIX.LStatPath(const aPath:TPasRISCVRawByteString;out aStat:TStat):cint;
+var DirFD:cint;
+    Name:TPasRISCVRawByteString;
+begin
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
+  FillChar(aStat,SizeOf(TStat),#0);
+  result:=-1;
+ end else begin
+  result:=PasRISCVLStatAt(DirFD,PAnsiChar(Name),aStat);
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
 end;
 
 function TPasRISCV9PFileSystemPOSIX.POSIXErrorCodeToP9ErrorCode(const aErrorCode:TPasRISCVInt32):TPasRISCVInt32;
@@ -26835,8 +27437,17 @@ begin
   ESysEIO:begin
    result:=P9_EIO;
   end;
+  ESysEACCES:begin
+   result:=P9_EACCES;
+  end;
   ESysEEXIST:begin
    result:=P9_EEXIST;
+  end;
+  ESysENOTDIR:begin
+   result:=P9_ENOTDIR;
+  end;
+  ESysELOOP:begin
+   result:=P9_ELOOP;
   end;
   ESysEINVAL:begin
    result:=P9_EINVAL;
@@ -26852,6 +27463,80 @@ begin
   end;
   ESysEOPNOTSUPP:begin
    result:=P9_ENOTSUP;
+  end;
+  // Everything below used to end up as EINVAL, which hid what really happened (a rename across
+  // file systems for example looked like a bad argument instead of EXDEV)
+  ESysENXIO:begin
+   result:=P9_ENXIO;
+  end;
+  ESysEBADF:begin
+   result:=P9_EBADF;
+  end;
+  ESysEAGAIN:begin
+   result:=P9_EAGAIN;
+  end;
+  ESysENOMEM:begin
+   result:=P9_ENOMEM;
+  end;
+  ESysEBUSY:begin
+   result:=P9_EBUSY;
+  end;
+  ESysEXDEV:begin
+   result:=P9_EXDEV;
+  end;
+  ESysENODEV:begin
+   result:=P9_ENODEV;
+  end;
+  ESysEISDIR:begin
+   result:=P9_EISDIR;
+  end;
+  ESysENFILE:begin
+   result:=P9_ENFILE;
+  end;
+  ESysEMFILE:begin
+   result:=P9_EMFILE;
+  end;
+  ESysETXTBSY:begin
+   result:=P9_ETXTBSY;
+  end;
+  ESysEFBIG:begin
+   result:=P9_EFBIG;
+  end;
+  ESysESPIPE:begin
+   result:=P9_ESPIPE;
+  end;
+  ESysEROFS:begin
+   result:=P9_EROFS;
+  end;
+  ESysEMLINK:begin
+   result:=P9_EMLINK;
+  end;
+  ESysEPIPE:begin
+   result:=P9_EPIPE;
+  end;
+  ESysERANGE:begin
+   result:=P9_ERANGE;
+  end;
+  ESysENAMETOOLONG:begin
+   result:=P9_ENAMETOOLONG;
+  end;
+  ESysENOLCK:begin
+   result:=P9_ENOLCK;
+  end;
+  ESysENOSYS:begin
+   result:=P9_ENOSYS;
+  end;
+  ESysENODATA:begin
+   result:=P9_ENODATA;
+  end;
+  ESysEOVERFLOW:begin
+   result:=P9_EOVERFLOW;
+  end;
+  ESysESTALE:begin
+   result:=P9_ESTALE;
+  end;
+  ESysEDQUOT:begin
+   result:=P9_EDQUOT;
   end;
   else begin
    result:=P9_EINVAL;
@@ -26896,7 +27581,7 @@ begin
   result:=result or O_DIRECTORY;
  end;}
  if (aFlags and P9_O_NOFOLLOW)<>0 then begin
-  result:=result or O_NOFOLLOW;
+  result:=result or PASRISCV_O_NOFOLLOW; // FPC's O_NOFOLLOW is wrong on ARM/AArch64/PowerPC Linux
  end;
 {if (aFlags and P9_O_NOATIME)<>0 then begin
   result:=result or O_NOATIME;
@@ -26911,15 +27596,23 @@ end;
 
 procedure TPasRISCV9PFileSystemPOSIX.StatToQID(const aQID:TPasRISCV9PFileSystem.PFSQID;const aStat:PStat);
 begin
- aQID^.Type_:=0;
- if (aStat.st_mode and S_IFDIR)<>0 then begin
-  aQID^.Type_:=aQID^.Type_ or P9_QTDIR;
- end;
- if (aStat.st_mode and S_IFLNK)<>0 then begin
-  aQID^.Type_:=aQID^.Type_ or P9_QTSYMLINK;
+ // The file type is a field, not a set of single bits: S_IFREG and S_IFLNK share bits, so the bit
+ // tests used here before made every regular file a symbolic link for the client
+ case aStat.st_mode and S_IFMT of
+  S_IFDIR:begin
+   aQID^.Type_:=P9_QTDIR;
+  end;
+  S_IFLNK:begin
+   aQID^.Type_:=P9_QTSYMLINK;
+  end;
+  else begin
+   aQID^.Type_:=P9_QTFILE;
+  end;
  end;
  aQID^.Version:=0; // no caching on client
- aQID^.Path:=aStat.st_ino;
+ // The inode number alone is not unique across mount points of the share, so the device goes into
+ // the path as well (mixed in, the client only compares the value)
+ aQID^.Path:=TPasRISCVUInt64(aStat.st_ino) xor (TPasRISCVUInt64(aStat.st_dev)*TPasRISCVUInt64($9e3779b97f4a7c15));
 end;
 
 function TPasRISCV9PFileSystemPOSIX.ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
@@ -26985,7 +27678,7 @@ end;
 function TPasRISCV9PFileSystemPOSIX.Attach(out aFile:TPasRISCV9PFileSystem.TFSFile;const aQID:TPasRISCV9PFileSystem.PFSQID;const aUID:TPasRISCVUInt32;const aUName,aAName:TPasRISCVRawByteString):TPasRISCVInt32;
 var StatData:TStat;
 begin
- if fpLStat(PAnsiChar(fRootPath),@StatData)=0 then begin
+ if LStatPath(fRootPath,StatData)=0 then begin
   aFile:=CreateFileObject(fRootPath,aUID);
   StatToQID(aQID,@StatData);
   result:=0;
@@ -27024,7 +27717,9 @@ begin
   end else begin
    break;
   end;
-  if fpLStat(PAnsiChar(Path1),@StatData)=0 then begin
+  // Secure resolution: walking through a symlink component fails, walking to a symlink is fine
+  // (the guest reads it with Treadlink and resolves it itself)
+  if LStatPath(Path1,StatData)=0 then begin
    Path:=Path1;
    StatToQID(@aQIDs[Index],@StatData);
    inc(result);
@@ -27037,20 +27732,29 @@ end;
 
 function TPasRISCV9PFileSystemPOSIX.MkDir(const aQID:TPasRISCV9PFileSystem.PFSQID;const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString;const aMode,aGID:TPasRISCVUInt32):TPasRISCVInt32;
 var CreateMode:TPasRISCVUInt32;
-    Path:TPasRISCVRawByteString;
+    Name:TPasRISCVRawByteString;
     StatData:TStat;
+    DirFD:cint;
 begin
- Path:=ComposePath(aFile.fPath,aName);
  CreateMode:=aMode and (P9_S_IRWXUGO or P9_S_ISUID or P9_S_ISGID or P9_S_ISVTX);
- if fpMkDir(PAnsiChar(Path),CreateMode)<0 then begin
+ DirFD:=OpenParent(ComposePath(aFile.fPath,aName),Name);
+ if DirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  fpChmod(PAnsiChar(Path),CreateMode);
-  if fpLStat(PAnsiChar(Path),@StatData)=0 then begin
-   StatToQID(aQID,@StatData);
-   result:=0;
-  end else begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+  try
+   if PasRISCVSysMkDirAt(DirFD,PAnsiChar(Name),CreateMode)<0 then begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+   end else begin
+    PasRISCVFChModAtNoFollow(DirFD,PAnsiChar(Name),CreateMode);
+    if PasRISCVLStatAt(DirFD,PAnsiChar(Name),StatData)=0 then begin
+     StatToQID(aQID,@StatData);
+     result:=0;
+    end else begin
+     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+    end;
+   end;
+  finally
+   PasRISCVCloseKeepErrNo(DirFD);
   end;
  end;
 end;
@@ -27058,50 +27762,71 @@ end;
 function TPasRISCV9PFileSystemPOSIX.Open(const aQID:TPasRISCV9PFileSystem.PFSQID;const aFile:TPasRISCV9PFileSystem.TFSFile;const aFlags:TPasRISCVUInt32;const aOnOpenCompletion:TPasRISCV9PFileSystem.TOnOpenCompletion;const aOpaque:Pointer):TPasRISCVInt32;
 var StatData:TStat;
     Flags:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
+    DirFD,FD:cint;
 begin
- if fpLStat(PAnsiChar(aFile.fPath),@StatData)=0 then begin
-  StatToQID(aQID,@StatData);
-  Flags:=P9OpenFlagsToPOSIXOpenFlags(aFlags);
-  if ((aFlags and P9_O_DIRECTORY)<>0) or ((StatData.st_mode and S_IFMT)=S_IFDIR) then begin
-   aFile.fDirectory:=FpOpenDir(PAnsiChar(aFile.fPath));
-   if assigned(aFile.fDirectory) then begin
-    aFile.fIsOpened:=true;
-    aFile.fIsDirectory:=true;
-    result:=0;
-   end else begin
-    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-   end;
-  end else begin
-   aFile.fFile:=fpOpen(PAnsiChar(aFile.fPath),Flags and not O_CREAT);
-   if aFile.fFile>=0 then begin
-    aFile.fIsOpened:=true;
-    aFile.fIsDirectory:=false;
-    result:=0;
-   end else begin
-    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-   end;
-  end;
- end else begin
+ DirFD:=OpenParent(aFile.fPath,Name);
+ if DirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+ end else begin
+  try
+   if PasRISCVLStatAt(DirFD,PAnsiChar(Name),StatData)=0 then begin
+    StatToQID(aQID,@StatData);
+    Flags:=P9OpenFlagsToPOSIXOpenFlags(aFlags);
+    if ((aFlags and P9_O_DIRECTORY)<>0) or ((StatData.st_mode and S_IFMT)=S_IFDIR) then begin
+     FD:=PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),O_RDONLY or PASRISCV_O_DIRECTORY or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+     aFile.fDirectory:=PasRISCVFDOpenDir(FD);
+     if assigned(aFile.fDirectory) then begin
+      aFile.fIsOpened:=true;
+      aFile.fIsDirectory:=true;
+      result:=0;
+     end else begin
+      result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+     end;
+    end else begin
+     // O_NOFOLLOW: a symlink swapped in after the lstat above fails with ELOOP instead of being followed
+     aFile.fFile:=PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),(Flags and not O_CREAT) or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+     if aFile.fFile>=0 then begin
+      aFile.fIsOpened:=true;
+      aFile.fIsDirectory:=false;
+      result:=0;
+     end else begin
+      result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+     end;
+    end;
+   end else begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+   end;
+  finally
+   PasRISCVCloseKeepErrNo(DirFD);
+  end;
  end;
 end;
 
 function TPasRISCV9PFileSystemPOSIX.Create_(const aQID:TPasRISCV9PFileSystem.PFSQID;const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;const aMode,aGID:TPasRISCVUInt32):TPasRISCVInt32;
 var StatData:TStat;
-    ret,fd:cint;
+    ret,fd,DirFD:cint;
     CreateMode,Flags:TPasRISCVUInt32;
-    Path:TPasRISCVRawByteString;
+    Path,Name:TPasRISCVRawByteString;
 begin
  Close(aFile);
  Path:=ComposePath(aFile.fPath,aName);
  Flags:=P9OpenFlagsToPOSIXOpenFlags(aFlags);
  CreateMode:=aMode and (P9_S_IRWXUGO or P9_S_ISUID or P9_S_ISGID or P9_S_ISVTX);
- fd:=fpOpen(PAnsiChar(Path),Flags or O_CREAT,CreateMode);
+ DirFD:=OpenParent(Path,Name);
+ if DirFD<0 then begin
+  fd:=-1;
+ end else begin
+  // O_NOFOLLOW: an existing symlink with that name fails with ELOOP instead of being followed
+  fd:=PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),Flags or O_CREAT or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,CreateMode);
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
  if fd<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  fpChmod(PAnsiChar(Path),CreateMode);
-  ret:=fpLStat(PAnsiChar(Path),@StatData);
+  // Both on the descriptor itself, so nothing is resolved by path again
+  PasRISCVSysFChMod(fd,CreateMode);
+  ret:=fpFStat(fd,StatData);
   if ret=0 then begin
    StatToQID(aQID,@StatData);
    aFile.fPath:=Path;
@@ -27121,7 +27846,6 @@ var de:Pdirent;
     len,pos,name_len:TPasRISCVSizeInt;
     qid_type,dtype:TPasRISCVUInt8;
     StatData:TStat;
-    Path:TPasRISCVRawByteString;
     Offset:TPasRISCVUInt64;
     Skip:TPasRISCVInt32;
 begin
@@ -27158,8 +27882,8 @@ begin
      qid_type:=P9_QTFILE;
      dtype:=DT_REG;
      if de^.d_type=DT_UNKNOWN then begin
-      Path:=ComposePath(aFile.fPath,de^.d_name);
-      if fpLStat(PAnsiChar(Path),@StatData)=0 then begin
+      // Relative to the opened directory itself, never re-resolved by path
+      if PasRISCVLStatAt(aFile.fDirectory^.dd_fd,PAnsiChar(@de^.d_name[0]),StatData)=0 then begin
        case StatData.st_mode and S_IFMT of
         S_IFDIR:begin
          qid_type:=P9_QTDIR;
@@ -27273,7 +27997,10 @@ procedure TPasRISCV9PFileSystemPOSIX.Close(const aFile:TPasRISCV9PFileSystem.TFS
 begin
  if aFile.fIsOpened then begin
   if aFile.fIsDirectory then begin
+   // fpCloseDir also frees the DIR record (and its buffer), so the pointer must not survive:
+   // Delete would free it a second time
    fpCloseDir(aFile.fDirectory^);
+   aFile.fDirectory:=nil;
   end else begin
    fpClose(aFile.fFile);
   end;
@@ -27284,7 +28011,7 @@ end;
 function TPasRISCV9PFileSystemPOSIX.Stat(const aFile:TPasRISCV9PFileSystem.TFSFile;out aStat:TPasRISCV9PFileSystem.TFSStat):TPasRISCVInt32;
 var StatData:TStat;
 begin
- if fpLStat(PAnsiChar(aFile.fPath),@StatData)=0 then begin
+ if LStatPath(aFile.fPath,StatData)=0 then begin
   StatToQID(@aStat.qid,@StatData);
   aStat.Mode:=StatData.st_mode;
   aStat.UID:=StatData.st_uid;
@@ -27311,184 +28038,273 @@ var //StatData:TStat;
     ts:tkernel_timespecs;
     ctime_updated:boolean;
     UID,GID:TPasRISCVInt32;
-    fd:cint;
+    fd,DirFD:cint;
+    Name:TPasRISCVRawByteString;
 begin
 
- if (aMask and (P9_SETATTR_UID or P9_SETATTR_GID))<>0 then begin
-  if (aMask and P9_SETATTR_UID)<>0 then begin
-   UID:=aUID;
-  end else begin
-   UID:=-1;
-  end;
-  if (aMask and P9_SETATTR_GID)<>0 then begin
-   GID:=aGID;
-  end else begin
-   GID:=-1;
-  end;
-  if LChOwn(PAnsiChar(aFile.fPath),UID,GID)<0 then begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-   exit;
-  end;
-  ctime_updated:=true;
- end else begin
-  ctime_updated:=false;
+ // Resolved once, all changes below are done relative to it without following a final symlink
+ DirFD:=OpenParent(aFile.fPath,Name);
+ if DirFD<0 then begin
+  result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+  exit;
  end;
+ try
 
- if (aMask and P9_SETATTR_MODE)<>0 then begin
-  if fpChMod(PAnsiChar(aFile.fPath),aMode)<0 then begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-   exit;
-  end;
-  ctime_updated:=true;
- end;
-
- if (aMask and P9_SETATTR_SIZE)<>0 then begin
-  if aFile.fIsOpened then begin
-   if fpFTruncate(aFile.fFile,aSize)<0 then begin
+  if (aMask and (P9_SETATTR_UID or P9_SETATTR_GID))<>0 then begin
+   if (aMask and P9_SETATTR_UID)<>0 then begin
+    UID:=aUID;
+   end else begin
+    UID:=-1;
+   end;
+   if (aMask and P9_SETATTR_GID)<>0 then begin
+    GID:=aGID;
+   end else begin
+    GID:=-1;
+   end;
+   if PasRISCVSysFChOwnAt(DirFD,PAnsiChar(Name),UID,GID,PASRISCV_AT_SYMLINK_NOFOLLOW)<0 then begin
     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
     exit;
    end;
+   ctime_updated:=true;
   end else begin
-   fd:=fpOpen(PAnsiChar(aFile.fPath),O_WRONLY);
-   if fd<0 then begin
+   ctime_updated:=false;
+  end;
+
+  if (aMask and P9_SETATTR_MODE)<>0 then begin
+   if PasRISCVFChModAtNoFollow(DirFD,PAnsiChar(Name),aMode)<0 then begin
     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
     exit;
    end;
-   if fpFTruncate(fd,aSize)<0 then begin
+   ctime_updated:=true;
+  end;
+
+  if (aMask and P9_SETATTR_SIZE)<>0 then begin
+   if aFile.fIsOpened and not aFile.fIsDirectory then begin
+    if fpFTruncate(aFile.fFile,aSize)<0 then begin
+     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+     exit;
+    end;
+   end else begin
+    // O_NOFOLLOW: truncating through a symlink fails with ELOOP instead of hitting its target
+    fd:=PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),O_WRONLY or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+    if fd<0 then begin
+     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+     exit;
+    end;
+    if fpFTruncate(fd,aSize)<0 then begin
+     PasRISCVCloseKeepErrNo(fd);
+     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+     exit;
+    end;
     fpClose(fd);
-    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-    exit;
    end;
-   fpClose(fd);
+   ctime_updated:=true;
   end;
-{if fpTruncate(PAnsiChar(aFile.fPath),aSize)<0 then begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-   exit;
-  end;}
-  ctime_updated:=true;
- end;
 
- if (aMask and (P9_SETATTR_ATIME or P9_SETATTR_MTIME))<>0 then begin
-  if (aMask and P9_SETATTR_ATIME)<>0 then begin
-   if (aMask and P9_SETATTR_ATIME_SET)<>0 then begin
-    ts[0].tv_sec:=aATimeSec;
-    ts[0].tv_nsec:=aATimeNSec;
+  if (aMask and (P9_SETATTR_ATIME or P9_SETATTR_MTIME))<>0 then begin
+   if (aMask and P9_SETATTR_ATIME)<>0 then begin
+    if (aMask and P9_SETATTR_ATIME_SET)<>0 then begin
+     ts[0].tv_sec:=aATimeSec;
+     ts[0].tv_nsec:=aATimeNSec;
+    end else begin
+     ts[0].tv_sec:=0;
+     ts[0].tv_nsec:=UTIME_NOW;
+    end;
    end else begin
     ts[0].tv_sec:=0;
-    ts[0].tv_nsec:=UTIME_NOW;
+    ts[0].tv_nsec:=UTIME_OMIT;
    end;
-  end else begin
-   ts[0].tv_sec:=0;
-   ts[0].tv_nsec:=UTIME_OMIT;
-  end;
-  if (aMask and P9_SETATTR_MTIME)<>0 then begin
-   if (aMask and P9_SETATTR_MTIME_SET)<>0 then begin
-    ts[1].tv_sec:=aMTimeSec;
-    ts[1].tv_nsec:=aMTimeNSec;
+   if (aMask and P9_SETATTR_MTIME)<>0 then begin
+    if (aMask and P9_SETATTR_MTIME_SET)<>0 then begin
+     ts[1].tv_sec:=aMTimeSec;
+     ts[1].tv_nsec:=aMTimeNSec;
+    end else begin
+     ts[1].tv_sec:=0;
+     ts[1].tv_nsec:=UTIME_NOW;
+    end;
    end else begin
     ts[1].tv_sec:=0;
-    ts[1].tv_nsec:=UTIME_NOW;
+    ts[1].tv_nsec:=UTIME_OMIT;
    end;
-  end else begin
-   ts[1].tv_sec:=0;
-   ts[1].tv_nsec:=UTIME_OMIT;
+   // Direct syscall, since the utimensat() of the FPC RTL ignores AT_SYMLINK_NOFOLLOW
+   if PasRISCVSysUTimeNSAt(DirFD,PAnsiChar(Name),@ts,PASRISCV_AT_SYMLINK_NOFOLLOW)<0 then begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+    exit;
+   end;
+   ctime_updated:=true;
   end;
-  if utimensat(AT_FDCWD,PAnsiChar(aFile.fPath),ts,AT_SYMLINK_NOFOLLOW)<0 then begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-   exit;
-  end;
-  ctime_updated:=true;
- end;
 
- if ((aMask and P9_SETATTR_CTIME)<>0) and not ctime_updated then begin
-  if LChown(PAnsiChar(aFile.fPath),TUID(-1),TGID(-1))<0 then begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
-   exit;
+  if ((aMask and P9_SETATTR_CTIME)<>0) and not ctime_updated then begin
+   if PasRISCVSysFChOwnAt(DirFD,PAnsiChar(Name),-1,-1,PASRISCV_AT_SYMLINK_NOFOLLOW)<0 then begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+    exit;
+   end;
   end;
- end;
 
- result:=0;
+  result:=0;
+
+ finally
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
 
 end;
 
 function TPasRISCV9PFileSystemPOSIX.Link(const aDestFile,aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString):TPasRISCVInt32;
-var Path:TPasRISCVRawByteString;
+var OldDirFD,NewDirFD:cint;
+    OldName,NewName:TPasRISCVRawByteString;
 begin
- Path:=ComposePath(aDestFile.fPath,aName);
- if fpLink(PAnsiChar(aFile.fPath),PAnsiChar(Path))<0 then begin
+ OldDirFD:=OpenParent(aFile.fPath,OldName);
+ if OldDirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  result:=0;
+  try
+   NewDirFD:=OpenParent(ComposePath(aDestFile.fPath,aName),NewName);
+   if NewDirFD<0 then begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+   end else begin
+    try
+     if PasRISCVSysLinkAt(OldDirFD,PAnsiChar(OldName),NewDirFD,PAnsiChar(NewName))<0 then begin
+      result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+     end else begin
+      result:=0;
+     end;
+    finally
+     PasRISCVCloseKeepErrNo(NewDirFD);
+    end;
+   end;
+  finally
+   PasRISCVCloseKeepErrNo(OldDirFD);
+  end;
  end;
 end;
 
 function TPasRISCV9PFileSystemPOSIX.SymLink(const aQID:TPasRISCV9PFileSystem.PFSQID;const aFile:TPasRISCV9PFileSystem.TFSFile;const aName,aTarget:TPasRISCVRawByteString;const aGID:TPasRISCVUInt32):TPasRISCVInt32;
-var Path:TPasRISCVRawByteString;
+var Name:TPasRISCVRawByteString;
     StatData:TStat;
+    DirFD:cint;
 begin
- Path:=ComposePath(aFile.fPath,aName);
- if fpSymLink(PAnsiChar(aTarget),PAnsiChar(Path))<0 then begin
+ // The target is stored verbatim, it is only ever resolved by the guest, never by the host
+ DirFD:=OpenParent(ComposePath(aFile.fPath,aName),Name);
+ if DirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  if fpLStat(PAnsiChar(Path),@StatData)=0 then begin
-   StatToQID(aQID,@StatData);
-   result:=0;
-  end else begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+  try
+   if PasRISCVSysSymLinkAt(PAnsiChar(aTarget),DirFD,PAnsiChar(Name))<0 then begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+   end else begin
+    if PasRISCVLStatAt(DirFD,PAnsiChar(Name),StatData)=0 then begin
+     StatToQID(aQID,@StatData);
+     result:=0;
+    end else begin
+     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+    end;
+   end;
+  finally
+   PasRISCVCloseKeepErrNo(DirFD);
   end;
  end;
 end;
 
 function TPasRISCV9PFileSystemPOSIX.MkNod(const aQID:TPasRISCV9PFileSystem.PFSQID;const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString;const aMode,aMajor,aMinor,aGID:TPasRISCVUInt32):TPasRISCVInt32;
-var NodeMode:TPasRISCVUInt32;
-    Path:TPasRISCVRawByteString;
+var NodeMode,Dev:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
     StatData:TStat;
+    DirFD:cint;
 begin
- Path:=ComposePath(aFile.fPath,aName);
  NodeMode:=aMode and (P9_S_IFMT or P9_S_IRWXUGO or P9_S_ISUID or P9_S_ISGID or P9_S_ISVTX);
- if MkNod_(PAnsiChar(Path),NodeMode,((aMajor and $fff) shl 8) or (aMinor and $ff))<0 then begin
+ // Linux 32-bit device number encoding (new_encode_dev): minor bits 7:0 at 7:0, major bits 11:0 at 19:8,
+ // minor bits 19:8 at 31:20
+ Dev:=TPasRISCVUInt32(TPasRISCVUInt32(aMinor and TPasRISCVUInt32($ff)) or
+                      TPasRISCVUInt32(TPasRISCVUInt32(aMajor and TPasRISCVUInt32($fff)) shl 8) or
+                      TPasRISCVUInt32(TPasRISCVUInt32(aMinor and TPasRISCVUInt32($fff00)) shl 12));
+ DirFD:=OpenParent(ComposePath(aFile.fPath,aName),Name);
+ if DirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  fpChmod(PAnsiChar(Path),NodeMode and (P9_S_IRWXUGO or P9_S_ISUID or P9_S_ISGID or P9_S_ISVTX));
-  if fpLStat(PAnsiChar(Path),@StatData)=0 then begin
-   StatToQID(aQID,@StatData);
-   result:=0;
-  end else begin
-   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+  try
+   if PasRISCVSysMkNodAt(DirFD,PAnsiChar(Name),NodeMode,Dev)<0 then begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+   end else begin
+    PasRISCVFChModAtNoFollow(DirFD,PAnsiChar(Name),NodeMode and (P9_S_IRWXUGO or P9_S_ISUID or P9_S_ISGID or P9_S_ISVTX));
+    if PasRISCVLStatAt(DirFD,PAnsiChar(Name),StatData)=0 then begin
+     StatToQID(aQID,@StatData);
+     result:=0;
+    end else begin
+     result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+    end;
+   end;
+  finally
+   PasRISCVCloseKeepErrNo(DirFD);
   end;
  end;
 end;
 
 function TPasRISCV9PFileSystemPOSIX.ReadLink(const aBuffer:Pointer;const aSize:TPasRISCVInt64;const aFile:TPasRISCV9PFileSystem.TFSFile):TPasRISCVInt64;
+var Name:TPasRISCVRawByteString;
+    DirFD:cint;
 begin
- result:=fpReadLink(PAnsiChar(aFile.fPath),aBuffer,aSize-1);
- if result<0 then begin
+ DirFD:=OpenParent(aFile.fPath,Name);
+ if DirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  PPasRISCVUInt8Array(aBuffer)^[result]:=0;
+  result:=PasRISCVSysReadLinkAt(DirFD,PAnsiChar(Name),aBuffer,aSize-1);
+  PasRISCVCloseKeepErrNo(DirFD);
+  if result<0 then begin
+   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+  end else begin
+   PPasRISCVUInt8Array(aBuffer)^[result]:=0;
+  end;
  end;
 end;
 
 function TPasRISCV9PFileSystemPOSIX.RenameAt(const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString;const aNewFile:TPasRISCV9PFileSystem.TFSFile;const aNewName:TPasRISCVRawByteString):TPasRISCVInt32;
-var Path,NewPath:TPasRISCVRawByteString;
+var OldDirFD,NewDirFD:cint;
+    OldName,NewName:TPasRISCVRawByteString;
 begin
- Path:=ComposePath(aFile.fPath,aName);
- NewPath:=ComposePath(aNewFile.fPath,aNewName);
- if fpRename(PAnsiChar(Path),PAnsiChar(NewPath))<0 then begin
+ OldDirFD:=OpenParent(ComposePath(aFile.fPath,aName),OldName);
+ if OldDirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  result:=0;
+  try
+   NewDirFD:=OpenParent(ComposePath(aNewFile.fPath,aNewName),NewName);
+   if NewDirFD<0 then begin
+    result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+   end else begin
+    try
+     if PasRISCVSysRenameAt(OldDirFD,PAnsiChar(OldName),NewDirFD,PAnsiChar(NewName))<0 then begin
+      result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+     end else begin
+      result:=0;
+     end;
+    finally
+     PasRISCVCloseKeepErrNo(NewDirFD);
+    end;
+   end;
+  finally
+   PasRISCVCloseKeepErrNo(OldDirFD);
+  end;
  end;
 end;
 
 function TPasRISCV9PFileSystemPOSIX.UnlinkAt(const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString):TPasRISCVInt32;
-var Path:TPasRISCVRawByteString;
+var Name:TPasRISCVRawByteString;
+    DirFD,Status:cint;
 begin
- Path:=ComposePath(aFile.fPath,aName);
- if Remove_(PAnsiChar(Path))<0 then begin
+ DirFD:=OpenParent(ComposePath(aFile.fPath,aName),Name);
+ if DirFD<0 then begin
   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
  end else begin
-  result:=0;
+  // Like remove(): unlink a file, or a directory when the name refers to one
+  Status:=PasRISCVSysUnlinkAt(DirFD,PAnsiChar(Name),0);
+  if (Status<0) and (fpGetErrNo=ESysEISDIR) then begin
+   Status:=PasRISCVSysUnlinkAt(DirFD,PAnsiChar(Name),PASRISCV_AT_REMOVEDIR);
+  end;
+  PasRISCVCloseKeepErrNo(DirFD);
+  if Status<0 then begin
+   result:=-POSIXErrorCodeToP9ErrorCode(fpGetErrNo);
+  end else begin
+   result:=0;
+  end;
  end;
 end;
 
@@ -27499,7 +28315,18 @@ begin
  if (not aFile.fIsOpened) or (aFile.fIsDirectory) then begin
   result:=-P9_EPROTO;
  end else begin
-  fl.l_type:=aLock^.Type_;
+  // 9P lock types to the host's values (the same numbers on Linux, not on the BSDs)
+  case aLock^.Type_ of
+   P9_LOCK_TYPE_RDLCK:begin
+    fl.l_type:=PASRISCV_F_RDLCK;
+   end;
+   P9_LOCK_TYPE_WRLCK:begin
+    fl.l_type:=PASRISCV_F_WRLCK;
+   end;
+   else begin
+    fl.l_type:=PASRISCV_F_UNLCK;
+   end;
+  end;
   fl.l_whence:=SEEK_SET;
   fl.l_start:=aLock^.Start;
   fl.l_len:=aLock^.Length;
@@ -27509,6 +28336,12 @@ begin
    errno:=fpGetErrNo;
    if (errno=ESysEAGAIN) or (errno=ESysEACCES) then begin
     result:=P9_LOCK_BLOCKED;
+   end else if errno=ESysEBADF then begin
+    // The open mode does not allow this lock on the host (a write lock through a read-only
+    // descriptor: v9fs turns every flock into a POSIX lock). The guest kernel keeps its own lock
+    // table for mutual exclusion between guest processes anyway, and QEMU does not lock on the
+    // host at all, so only the host lock is skipped here.
+    result:=P9_LOCK_SUCCESS;
    end else begin
     result:=-POSIXErrorCodeToP9ErrorCode(errno);
    end;
@@ -27522,12 +28355,24 @@ begin
  if (not aFile.fIsOpened) or (aFile.fIsDirectory) then begin
   result:=-P9_EPROTO;
  end else begin
-  fl.l_type:=aLock^.Type_;
+  // Linux always asks with type UNLCK ("is there any conflicting lock"), which F_GETLK rejects
+  // with EINVAL; a write lock conflicts with every other lock, so that is the question asked
+  if aLock^.Type_=P9_LOCK_TYPE_RDLCK then begin
+   fl.l_type:=PASRISCV_F_RDLCK;
+  end else begin
+   fl.l_type:=PASRISCV_F_WRLCK;
+  end;
   fl.l_whence:=SEEK_SET;
   fl.l_start:=aLock^.Start;
   fl.l_len:=aLock^.Length;
   if fpFcntl(aFile.fFile,F_GETLK,fl)=0 then begin
-   aLock^.Type_:=fl.l_type;
+   if fl.l_type=PASRISCV_F_RDLCK then begin
+    aLock^.Type_:=P9_LOCK_TYPE_RDLCK;
+   end else if fl.l_type=PASRISCV_F_WRLCK then begin
+    aLock^.Type_:=P9_LOCK_TYPE_WRLCK;
+   end else begin
+    aLock^.Type_:=P9_LOCK_TYPE_UNLCK;
+   end;
    aLock^.Start:=fl.l_start;
    aLock^.Length:=fl.l_len;
    result:=0;
@@ -28650,7 +29495,10 @@ begin
   aQID^.Type_:=aQID^.Type_ or P9_QTTMP;
  end;
  aQID^.Version:=0; // No caching on client
- aQID^.Path:=(TPasRISCVUInt64(aFileInfo.nFileIndexHigh) shl 32) or aFileInfo.nFileIndexLow;
+ // The file index is unique per volume only, so the volume serial number goes into the path as
+ // well (mixed in, the client only compares the value)
+ aQID^.Path:=(((TPasRISCVUInt64(aFileInfo.nFileIndexHigh) shl 32) or aFileInfo.nFileIndexLow) xor
+              (TPasRISCVUInt64(aFileInfo.dwVolumeSerialNumber)*TPasRISCVUInt64($9e3779b97f4a7c15)));
 end;
 
 function TPasRISCV9PFileSystemWindows.ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
@@ -29913,6 +30761,11 @@ begin
  result:=FUSE_OK;
 end;
 
+function TPasRISCVFUSEFileSystem.FSyncDir(const aHandle:TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
+begin
+ result:=FUSE_OK;
+end;
+
 function TPasRISCVFUSEFileSystem.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TFileHandle):TPasRISCVInt32;
 begin
  aHandle:=0;
@@ -29997,12 +30850,30 @@ constructor TPasRISCVFUSEFileSystemPOSIX.Create(const aRootPath:TPasRISCVRawByte
 begin
  inherited Create;
  fRootPath:=aRootPath;
+ fRootFD:=-1;
+ GetRootFD;
 end;
 
 destructor TPasRISCVFUSEFileSystemPOSIX.Destroy;
 begin
+ if fRootFD>=0 then begin
+  fpClose(fRootFD);
+  fRootFD:=-1;
+ end;
  fRootPath:='';
  inherited Destroy;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.GetRootFD:cint;
+begin
+ result:=PasRISCVGetRootFD(fRootFD,fRootPath);
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.OpenParent(const aPath:TPasRISCVRawByteString;out aName:TPasRISCVRawByteString):cint;
+begin
+ // The virtio-fs node paths are relative to the share root ('/' for the root itself, see ComposePath),
+ // and are resolved securely below the root descriptor (see PasRISCVOpenParentNoFollow)
+ result:=PasRISCVOpenParentNoFollow(GetRootFD,aPath,aName);
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.POSIXErrorToFUSEError(const aErrno:TPasRISCVInt32):TPasRISCVInt32;
@@ -30050,8 +30921,73 @@ begin
   ESysENOTEMPTY:begin
    result:=-FUSE_ENOTEMPTY;
   end;
+  ESysELOOP:begin
+   result:=-FUSE_ELOOP;
+  end;
   ESysENODATA:begin
    result:=-FUSE_ENODATA;
+  end;
+  // Everything below used to end up as EIO, which hid what really happened (a rename across file
+  // systems for example looked like an input/output error instead of EXDEV)
+  ESysENXIO:begin
+   result:=-FUSE_ENXIO;
+  end;
+  ESysEBADF:begin
+   result:=-FUSE_EBADF;
+  end;
+  ESysEAGAIN:begin
+   result:=-FUSE_EAGAIN;
+  end;
+  ESysENOMEM:begin
+   result:=-FUSE_ENOMEM;
+  end;
+  ESysEBUSY:begin
+   result:=-FUSE_EBUSY;
+  end;
+  ESysEXDEV:begin
+   result:=-FUSE_EXDEV;
+  end;
+  ESysENODEV:begin
+   result:=-FUSE_ENODEV;
+  end;
+  ESysENFILE:begin
+   result:=-FUSE_ENFILE;
+  end;
+  ESysEMFILE:begin
+   result:=-FUSE_EMFILE;
+  end;
+  ESysETXTBSY:begin
+   result:=-FUSE_ETXTBSY;
+  end;
+  ESysEFBIG:begin
+   result:=-FUSE_EFBIG;
+  end;
+  ESysESPIPE:begin
+   result:=-FUSE_ESPIPE;
+  end;
+  ESysEMLINK:begin
+   result:=-FUSE_EMLINK;
+  end;
+  ESysEPIPE:begin
+   result:=-FUSE_EPIPE;
+  end;
+  ESysERANGE:begin
+   result:=-FUSE_ERANGE;
+  end;
+  ESysENOLCK:begin
+   result:=-FUSE_ENOLCK;
+  end;
+  ESysEOPNOTSUPP:begin
+   result:=-FUSE_ENOTSUP;
+  end;
+  ESysEOVERFLOW:begin
+   result:=-FUSE_EOVERFLOW;
+  end;
+  ESysESTALE:begin
+   result:=-FUSE_ESTALE;
+  end;
+  ESysEDQUOT:begin
+   result:=-FUSE_EDQUOT;
   end;
   else begin
    result:=-FUSE_EIO;
@@ -30080,14 +31016,24 @@ begin
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.Stat(const aPath:TPasRISCVRawByteString;out aStat:TPasRISCVFUSEFileSystem.TFileStat):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
+var {$ifdef PasRISCVDebugVirtIOFS}FullPath,{$endif}Name:TPasRISCVRawByteString;
     SB:BaseUnix.Stat;
+    DirFD,Status:cint;
 begin
+{$ifdef PasRISCVDebugVirtIOFS}
  FullPath:=fRootPath+aPath;
+{$endif}
 {$ifdef PasRISCVDebugVirtIOFS}
  writeln('FUSEFileSystemPOSIX.Stat: rootPath="',fRootPath,'" path="',aPath,'" fullPath="',FullPath,'"');
 {$endif}
- if fpLStat(FullPath,SB)=0 then begin
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
+  Status:=-1;
+ end else begin
+  Status:=PasRISCVLStatAt(DirFD,PAnsiChar(Name),SB);
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
+ if Status=0 then begin
   StatBufToFileStat(@SB,aStat);
 {$ifdef PasRISCVDebugVirtIOFS}
   writeln('FUSEFileSystemPOSIX.Stat: OK mode=$',IntToHex(aStat.Mode,8),' size=',aStat.Size,' nlink=',aStat.NLink);
@@ -30122,11 +31068,10 @@ begin
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.OpenFile(const aPath:TPasRISCVRawByteString;const aFlags:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
-    FD:cint;
+var Name:TPasRISCVRawByteString;
+    FD,DirFD:cint;
     POSIXFlags:cint;
 begin
- FullPath:=fRootPath+aPath;
  POSIXFlags:=aFlags and $3; // O_RDONLY/O_WRONLY/O_RDWR
  if (aFlags and O_APPEND)<>0 then begin
   POSIXFlags:=POSIXFlags or O_APPEND;
@@ -30134,7 +31079,14 @@ begin
  if (aFlags and O_TRUNC)<>0 then begin
   POSIXFlags:=POSIXFlags or O_TRUNC;
  end;
- FD:=fpOpen(FullPath,POSIXFlags);
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
+  FD:=-1;
+ end else begin
+  // O_NOFOLLOW: a symlink is never opened through, the guest resolves symlinks itself
+  FD:=PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),POSIXFlags or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
  if FD>=0 then begin
   aHandle:=TFileHandle(FD);
   result:=FUSE_OK;
@@ -30145,12 +31097,11 @@ begin
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.CreateFile(const aPath:TPasRISCVRawByteString;const aFlags,aMode:TPasRISCVUInt32;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
-    FD:cint;
+var Name:TPasRISCVRawByteString;
+    FD,DirFD:cint;
     POSIXFlags:cint;
     CreateMode:TPasRISCVUInt32;
 begin
- FullPath:=fRootPath+aPath;
  POSIXFlags:=(aFlags and $3) or O_CREAT;
  if (aFlags and O_EXCL)<>0 then begin
   POSIXFlags:=POSIXFlags or O_EXCL;
@@ -30162,9 +31113,16 @@ begin
   POSIXFlags:=POSIXFlags or O_APPEND;
  end;
  CreateMode:=aMode and (S_IRWXU or S_IRWXG or S_IRWXO or S_ISUID or S_ISGID or S_ISVTX);
- FD:=fpOpen(FullPath,POSIXFlags,CreateMode);
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
+  FD:=-1;
+ end else begin
+  // O_NOFOLLOW: an existing symlink with that name fails with ELOOP instead of being followed
+  FD:=PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),POSIXFlags or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,CreateMode);
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
  if FD>=0 then begin
-  fpChmod(FullPath,CreateMode);
+  PasRISCVSysFChMod(FD,CreateMode);
   aHandle:=TFileHandle(FD);
   result:=FUSE_OK;
  end else begin
@@ -30218,15 +31176,34 @@ begin
  end;
 end;
 
-function TPasRISCVFUSEFileSystemPOSIX.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
-    Dir:PDIR;
+function TPasRISCVFUSEFileSystemPOSIX.FSyncDir(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aDataSync:Boolean):TPasRISCVInt32;
 begin
+ // A directory handle is a DIR pointer, fsync goes to its descriptor
+ if fpfsync({%H-}PDIR(TPasRISCVPtrUInt(aHandle))^.dd_fd)=0 then begin
+  result:=FUSE_OK;
+ end else begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+ end;
+end;
+
+function TPasRISCVFUSEFileSystemPOSIX.OpenDir(const aPath:TPasRISCVRawByteString;out aHandle:TPasRISCVFUSEFileSystem.TFileHandle):TPasRISCVInt32;
+var {$ifdef PasRISCVDebugVirtIOFS}FullPath,{$endif}Name:TPasRISCVRawByteString;
+    Dir:PDIR;
+    DirFD:cint;
+begin
+{$ifdef PasRISCVDebugVirtIOFS}
  FullPath:=fRootPath+aPath;
+{$endif}
 {$ifdef PasRISCVDebugVirtIOFS}
  writeln('FUSEFileSystemPOSIX.OpenDir: rootPath="',fRootPath,'" path="',aPath,'" fullPath="',FullPath,'"');
 {$endif}
- Dir:=fpOpenDir(PAnsiChar(FullPath));
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
+  Dir:=nil;
+ end else begin
+  Dir:=PasRISCVFDOpenDir(PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),O_RDONLY or PASRISCV_O_DIRECTORY or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0));
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
  if assigned(Dir) then begin
   aHandle:=TFileHandle({%H-}TPasRISCVPtrUInt(Dir));
 {$ifdef PasRISCVDebugVirtIOFS}
@@ -30340,114 +31317,215 @@ begin
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.MkDir(const aPath:TPasRISCVRawByteString;const aMode:TPasRISCVUInt32):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
+var Name:TPasRISCVRawByteString;
     CreateMode:TPasRISCVUInt32;
+    DirFD:cint;
 begin
- FullPath:=fRootPath+aPath;
  CreateMode:=aMode and (S_IRWXU or S_IRWXG or S_IRWXO or S_ISUID or S_ISGID or S_ISVTX);
- if fpMkDir(FullPath,CreateMode)=0 then begin
-  fpChmod(FullPath,CreateMode);
-  result:=FUSE_OK;
- end else begin
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  if PasRISCVSysMkDirAt(DirFD,PAnsiChar(Name),CreateMode)=0 then begin
+   PasRISCVFChModAtNoFollow(DirFD,PAnsiChar(Name),CreateMode);
+   result:=FUSE_OK;
+  end else begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end;
+  PasRISCVCloseKeepErrNo(DirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.Unlink(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
+var Name:TPasRISCVRawByteString;
+    DirFD:cint;
 begin
- FullPath:=fRootPath+aPath;
- if fpUnlink(FullPath)=0 then begin
-  result:=FUSE_OK;
- end else begin
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  if PasRISCVSysUnlinkAt(DirFD,PAnsiChar(Name),0)=0 then begin
+   result:=FUSE_OK;
+  end else begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end;
+  PasRISCVCloseKeepErrNo(DirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
+var Name:TPasRISCVRawByteString;
+    DirFD:cint;
 begin
- FullPath:=fRootPath+aPath;
- if fpRmDir(FullPath)=0 then begin
-  result:=FUSE_OK;
- end else begin
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  if PasRISCVSysUnlinkAt(DirFD,PAnsiChar(Name),PASRISCV_AT_REMOVEDIR)=0 then begin
+   result:=FUSE_OK;
+  end else begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end;
+  PasRISCVCloseKeepErrNo(DirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
-var FullOldPath,FullNewPath:TPasRISCVRawByteString;
+var OldName,NewName:TPasRISCVRawByteString;
+    OldDirFD,NewDirFD:cint;
 begin
- FullOldPath:=fRootPath+aOldPath;
- FullNewPath:=fRootPath+aNewPath;
- if fpRename(FullOldPath,FullNewPath)=0 then begin
-  result:=FUSE_OK;
- end else begin
+ OldDirFD:=OpenParent(aOldPath,OldName);
+ if OldDirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  NewDirFD:=OpenParent(aNewPath,NewName);
+  if NewDirFD<0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end else begin
+   if PasRISCVSysRenameAt(OldDirFD,PAnsiChar(OldName),NewDirFD,PAnsiChar(NewName))=0 then begin
+    result:=FUSE_OK;
+   end else begin
+    result:=POSIXErrorToFUSEError(fpGetErrno);
+   end;
+   PasRISCVCloseKeepErrNo(NewDirFD);
+  end;
+  PasRISCVCloseKeepErrNo(OldDirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
-    fd:cint;
+const FATTR_MODE=TPasRISCVUInt32($1);
+      FATTR_UID=TPasRISCVUInt32($2);
+      FATTR_GID=TPasRISCVUInt32($4);
+      FATTR_SIZE=TPasRISCVUInt32($8);
+      FATTR_ATIME=TPasRISCVUInt32($10);
+      FATTR_MTIME=TPasRISCVUInt32($20);
+      FATTR_ATIME_NOW=TPasRISCVUInt32($80);
+      FATTR_MTIME_NOW=TPasRISCVUInt32($100);
+      FATTR_CTIME=TPasRISCVUInt32($400);
+var Name:TPasRISCVRawByteString;
+    fd,DirFD:cint;
     ts:tkernel_timespecs;
+    UID,GID:TPasRISCVInt32;
 begin
- FullPath:=fRootPath+aPath;
- result:=FUSE_OK;
- if (aMask and $1)<>0 then begin // FATTR_MODE
-  if fpChmod(FullPath,aMode)<>0 then begin
-   result:=POSIXErrorToFUSEError(fpGetErrno);
-   exit;
-  end;
+ // Resolved once, all changes below are done relative to it without following a final symlink
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
+  result:=POSIXErrorToFUSEError(fpGetErrno);
+  exit;
  end;
- if (aMask and ($2 or $4))<>0 then begin // FATTR_UID | FATTR_GID
-  if lchown(PAnsiChar(FullPath),aUID,aGID)<>0 then begin
-   result:=POSIXErrorToFUSEError(fpGetErrno);
-   exit;
-  end;
- end;
- if (aMask and $8)<>0 then begin // FATTR_SIZE
-  fd:=fpOpen(PAnsiChar(FullPath),O_WRONLY);
-  if fd>=0 then begin
-   if fpFTruncate(fd,aSize)<>0 then begin
+ try
+  result:=FUSE_OK;
+  if (aMask and FATTR_MODE)<>0 then begin
+   if PasRISCVFChModAtNoFollow(DirFD,PAnsiChar(Name),aMode)<>0 then begin
     result:=POSIXErrorToFUSEError(fpGetErrno);
-    fpClose(fd);
     exit;
    end;
-   fpClose(fd);
-  end else begin
-   result:=POSIXErrorToFUSEError(fpGetErrno);
-   exit;
   end;
- end;
- if (aMask and ($10 or $20))<>0 then begin // FATTR_ATIME | FATTR_MTIME
-  ts[0].tv_sec:=aATimeSec;
-  ts[0].tv_nsec:=aATimeNSec;
-  ts[1].tv_sec:=aMTimeSec;
-  ts[1].tv_nsec:=aMTimeNSec;
-  if utimensat(AT_FDCWD,PAnsiChar(FullPath),ts,AT_SYMLINK_NOFOLLOW)<0 then begin
-   result:=POSIXErrorToFUSEError(fpGetErrno);
-   exit;
+  if (aMask and (FATTR_UID or FATTR_GID))<>0 then begin
+   // Only the fields flagged as valid are changed, -1 leaves the other one untouched
+   // (the kernel zeroes the unused field, which would otherwise mean root)
+   if (aMask and FATTR_UID)<>0 then begin
+    UID:=TPasRISCVInt32(aUID);
+   end else begin
+    UID:=-1;
+   end;
+   if (aMask and FATTR_GID)<>0 then begin
+    GID:=TPasRISCVInt32(aGID);
+   end else begin
+    GID:=-1;
+   end;
+   if PasRISCVSysFChOwnAt(DirFD,PAnsiChar(Name),UID,GID,PASRISCV_AT_SYMLINK_NOFOLLOW)<>0 then begin
+    result:=POSIXErrorToFUSEError(fpGetErrno);
+    exit;
+   end;
   end;
+  if (aMask and FATTR_SIZE)<>0 then begin
+   // O_NOFOLLOW: truncating through a symlink fails with ELOOP instead of hitting its target
+   fd:=PasRISCVSysOpenAt(DirFD,PAnsiChar(Name),O_WRONLY or PASRISCV_O_NOFOLLOW or PASRISCV_O_CLOEXEC,0);
+   if fd>=0 then begin
+    if fpFTruncate(fd,aSize)<>0 then begin
+     result:=POSIXErrorToFUSEError(fpGetErrno);
+     fpClose(fd);
+     exit;
+    end;
+    fpClose(fd);
+   end else begin
+    result:=POSIXErrorToFUSEError(fpGetErrno);
+    exit;
+   end;
+  end;
+  if (aMask and (FATTR_ATIME or FATTR_MTIME))<>0 then begin
+   // A time that is not flagged as valid must stay untouched (UTIME_OMIT), and the *_NOW flags ask
+   // for the current time instead of the transferred value (e.g. touch -a, touch -m, plain touch)
+   if (aMask and FATTR_ATIME)=0 then begin
+    ts[0].tv_sec:=0;
+    ts[0].tv_nsec:=PASRISCV_UTIME_OMIT;
+   end else if (aMask and FATTR_ATIME_NOW)<>0 then begin
+    ts[0].tv_sec:=0;
+    ts[0].tv_nsec:=PASRISCV_UTIME_NOW;
+   end else begin
+    ts[0].tv_sec:=aATimeSec;
+    ts[0].tv_nsec:=aATimeNSec;
+   end;
+   if (aMask and FATTR_MTIME)=0 then begin
+    ts[1].tv_sec:=0;
+    ts[1].tv_nsec:=PASRISCV_UTIME_OMIT;
+   end else if (aMask and FATTR_MTIME_NOW)<>0 then begin
+    ts[1].tv_sec:=0;
+    ts[1].tv_nsec:=PASRISCV_UTIME_NOW;
+   end else begin
+    ts[1].tv_sec:=aMTimeSec;
+    ts[1].tv_nsec:=aMTimeNSec;
+   end;
+   // Direct syscall, since the utimensat() of the FPC RTL ignores AT_SYMLINK_NOFOLLOW
+   if PasRISCVSysUTimeNSAt(DirFD,PAnsiChar(Name),@ts,PASRISCV_AT_SYMLINK_NOFOLLOW)<0 then begin
+    result:=POSIXErrorToFUSEError(fpGetErrno);
+    exit;
+   end;
+  end else if (aMask and (FATTR_CTIME or FATTR_MODE or FATTR_UID or FATTR_GID or FATTR_SIZE))=FATTR_CTIME then begin
+   // Only a ctime update was requested, a no-op chown does exactly that
+   if PasRISCVSysFChOwnAt(DirFD,PAnsiChar(Name),-1,-1,PASRISCV_AT_SYMLINK_NOFOLLOW)<>0 then begin
+    result:=POSIXErrorToFUSEError(fpGetErrno);
+    exit;
+   end;
+  end;
+ finally
+  PasRISCVCloseKeepErrNo(DirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32;
+var Name:TPasRISCVRawByteString;
+    DirFD:cint;
 begin
- if fpSymLink(PAnsiChar(aTarget),PAnsiChar(fRootPath+aLinkPath))=0 then begin
-  result:=FUSE_OK;
- end else begin
+ // The target is stored verbatim, it is only ever resolved by the guest, never by the host
+ DirFD:=OpenParent(aLinkPath,Name);
+ if DirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  if PasRISCVSysSymLinkAt(PAnsiChar(aTarget),DirFD,PAnsiChar(Name))=0 then begin
+   result:=FUSE_OK;
+  end else begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end;
+  PasRISCVCloseKeepErrNo(DirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32;
-var FullPath:TPasRISCVRawByteString;
+var Name:TPasRISCVRawByteString;
     Buf:array[0..4095] of AnsiChar;
-    Len:TSSize;
+    Len:TPasRISCVSizeInt;
+    DirFD:cint;
 begin
- FullPath:=fRootPath+aPath;
- Len:=fpReadLink(PAnsiChar(FullPath),@Buf[0],SizeOf(Buf)-1);
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
+  Len:=-1;
+ end else begin
+  Len:=PasRISCVSysReadLinkAt(DirFD,PAnsiChar(Name),@Buf[0],SizeOf(Buf)-1);
+  PasRISCVCloseKeepErrNo(DirFD);
+ end;
  if Len>=0 then begin
   Buf[Len]:=#0;
   aTarget:=Buf;
@@ -30459,33 +31537,77 @@ begin
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32;
+var OldName,NewName:TPasRISCVRawByteString;
+    OldDirFD,NewDirFD:cint;
 begin
- if fpLink(PAnsiChar(fRootPath+aOldPath),PAnsiChar(fRootPath+aNewPath))=0 then begin
-  result:=FUSE_OK;
- end else begin
+ OldDirFD:=OpenParent(aOldPath,OldName);
+ if OldDirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  NewDirFD:=OpenParent(aNewPath,NewName);
+  if NewDirFD<0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end else begin
+   if PasRISCVSysLinkAt(OldDirFD,PAnsiChar(OldName),NewDirFD,PAnsiChar(NewName))=0 then begin
+    result:=FUSE_OK;
+   end else begin
+    result:=POSIXErrorToFUSEError(fpGetErrno);
+   end;
+   PasRISCVCloseKeepErrNo(NewDirFD);
+  end;
+  PasRISCVCloseKeepErrNo(OldDirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.MkNod(const aPath:TPasRISCVRawByteString;const aMode,aRDev:TPasRISCVUInt32):TPasRISCVInt32;
 var CreateMode,NodeMode:TPasRISCVUInt32;
+    Name:TPasRISCVRawByteString;
+    DirFD:cint;
 begin
  NodeMode:=aMode and (S_IFMT or S_IRWXU or S_IRWXG or S_IRWXO or S_ISUID or S_ISGID or S_ISVTX);
- if MkNod_(PAnsiChar(fRootPath+aPath),NodeMode,aRDev)=0 then begin
-  CreateMode:=NodeMode and (S_IRWXU or S_IRWXG or S_IRWXO or S_ISUID or S_ISGID or S_ISVTX);
-  fpChmod(fRootPath+aPath,CreateMode);
-  result:=FUSE_OK;
- end else begin
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  if PasRISCVSysMkNodAt(DirFD,PAnsiChar(Name),NodeMode,aRDev)=0 then begin
+   CreateMode:=NodeMode and (S_IRWXU or S_IRWXG or S_IRWXO or S_ISUID or S_ISGID or S_ISVTX);
+   PasRISCVFChModAtNoFollow(DirFD,PAnsiChar(Name),CreateMode);
+   result:=FUSE_OK;
+  end else begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end;
+  PasRISCVCloseKeepErrNo(DirFD);
  end;
 end;
 
 function TPasRISCVFUSEFileSystemPOSIX.Access(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32):TPasRISCVInt32;
+var Name:TPasRISCVRawByteString;
+    DirFD,Status:cint;
+    StatData:TStat;
 begin
- if fpAccess(fRootPath+aPath,aMask)=0 then begin
-  result:=FUSE_OK;
- end else begin
+ DirFD:=OpenParent(aPath,Name);
+ if DirFD<0 then begin
   result:=POSIXErrorToFUSEError(fpGetErrno);
+ end else begin
+  // faccessat2 with AT_SYMLINK_NOFOLLOW (Linux 5.8+), so a final symlink is checked itself and not its
+  // target. Older kernels lack it, then a final symlink is refused before the plain faccessat.
+  Status:=cint(do_syscall(PASRISCV_SYSCALL_NR_FACCESSAT2,TSysParam(DirFD),TSysParam(PAnsiChar(Name)),TSysParam(aMask),TSysParam(PASRISCV_AT_SYMLINK_NOFOLLOW)));
+  if (Status<0) and (fpGetErrno=ESysENOSYS) then begin
+   if PasRISCVLStatAt(DirFD,PAnsiChar(Name),StatData)<>0 then begin
+    Status:=-1;
+   end else if (StatData.st_mode and S_IFMT)=S_IFLNK then begin
+    fpSetErrNo(ESysELOOP);
+    Status:=-1;
+   end else begin
+    Status:=cint(do_syscall(syscall_nr_faccessat,TSysParam(DirFD),TSysParam(PAnsiChar(Name)),TSysParam(aMask)));
+   end;
+  end;
+  if Status=0 then begin
+   result:=FUSE_OK;
+  end else begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+  end;
+  PasRISCVCloseKeepErrNo(DirFD);
  end;
 end;
 
@@ -43438,8 +44560,8 @@ begin
  AddInstruction32('sinval.vma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$0b));
  AddInstruction32('hfence.vvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$11));
  AddInstruction32('hfence.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$31));
- AddInstruction32('hinval.vvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$16));
- AddInstruction32('hinval.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$66));
+ AddInstruction32('hinval.vvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$13));
+ AddInstruction32('hinval.gvma',TInstructionFormat.SFence,MaskOpcodeFunct7Funct3,ValueR(OpcodeSystem,0,$33));
  // H-extension load/store instructions
  AddInstruction32('hlv.b',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$30) or (0 shl 20));
  AddInstruction32('hlv.bu',TInstructionFormat.HLV,MaskOpcodeFunct7Rs2Funct3,ValueR(OpcodeSystem,4,$30) or (1 shl 20));
@@ -43758,7 +44880,7 @@ begin
  AddInstruction16('c.zext.b',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(0) shl 2));
  AddInstruction16('c.sext.b',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(1) shl 2));
  AddInstruction16('c.zext.h',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(2) shl 2));
- AddInstruction16('c.sext.w',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(3) shl 2));
+ AddInstruction16('c.sext.h',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(3) shl 2));
  AddInstruction16('c.zext.w',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(4) shl 2));
  AddInstruction16('c.not',TCompressedFormat.RDPrime,TRegisterKind.Integer,Mask,Value or (TPasRISCVUInt32(5) shl 2));
 
@@ -52307,6 +53429,12 @@ var Opcode:TPasRISCVUInt8;
     NLB:TPasRISCVUInt16;
     Status:TPasRISCVUInt32;
 begin
+ // The controller has exactly one namespace, so every other identifier is invalid. It was
+ // ignored before, which made a command for another namespace read or write this one
+ if PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_NSID])^<>1 then begin
+  CompleteCommand(aCommand,SC_BAD_NAMESPACE);
+  exit;
+ end;
  Opcode:=PPasRISCVUInt8Array(aCommand^.Ptr)^[0];
  Pos:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10])^ shl NVME_LBA_SHIFT;
  case Opcode of
@@ -59009,12 +60137,21 @@ function TPasRISCV.TVirtIODevice.GetDescriptor(const aDescriptor:PVirtIODescript
 var QueueState:PQueue;
 begin
  QueueState:=@fQueues[aQueueIndex];
- result:=CopyMemoryFromRAM(aDescriptor,QueueState^.DescriptorAddress+(aDescriptorIndex*SizeOf(TVirtIODescriptor)),SizeOf(TVirtIODescriptor));
+ // A descriptor index (also a guest-written Next) outside the table is an error, not a read of
+ // whatever guest memory follows the table
+ if aDescriptorIndex>=QueueState^.Size then begin
+  result:=false;
+ end else begin
+  result:=CopyMemoryFromRAM(aDescriptor,QueueState^.DescriptorAddress+(aDescriptorIndex*SizeOf(TVirtIODescriptor)),SizeOf(TVirtIODescriptor));
+ end;
 end;
 
 function TPasRISCV.TVirtIODevice.CopyMemoryFromToQueue(const aBuf:Pointer;const aQueueIndex,aDescriptorIndex,aOffset,aCount:TPasRISCVUInt64;const aToQueue:Boolean):Boolean;
+// Steps counts the descriptors visited: a chain has at most as many as the queue, a longer walk
+// is a loop built by the guest (for example of zero-length descriptors), which must not hang the
+// device.
 var Descriptor:TVirtIODescriptor;
-    Len,WriteFlag,Count,Offset,QueueIndex,DescriptorIndex,NextDescriptorIndex:TPasRISCVUInt64;
+    Len,WriteFlag,Count,Offset,QueueIndex,DescriptorIndex,NextDescriptorIndex,Steps,MaximumSteps:TPasRISCVUInt64;
     Buf:PPasRISCVUInt8;
 begin
 
@@ -59038,6 +60175,9 @@ begin
   exit;
  end;
 
+ Steps:=1;
+ MaximumSteps:=fQueues[QueueIndex].Size;
+
  if aToQueue then begin
 
   WriteFlag:=VRING_DESC_F_WRITE;
@@ -59052,7 +60192,8 @@ begin
     exit;
    end;
    DescriptorIndex:=Descriptor.Next;
-   if not GetDescriptor(@Descriptor,QueueIndex,DescriptorIndex) then begin
+   inc(Steps);
+   if (Steps>MaximumSteps) or not GetDescriptor(@Descriptor,QueueIndex,DescriptorIndex) then begin
     result:=false;
     exit;
    end;
@@ -59074,7 +60215,8 @@ begin
    end;
    DescriptorIndex:=Descriptor.Next;
    dec(Offset,Descriptor.Len);
-   if not GetDescriptor(@Descriptor,QueueIndex,DescriptorIndex) then begin
+   inc(Steps);
+   if (Steps>MaximumSteps) or not GetDescriptor(@Descriptor,QueueIndex,DescriptorIndex) then begin
     result:=false;
     exit;
    end;
@@ -59108,7 +60250,8 @@ begin
      exit;
     end;
     NextDescriptorIndex:=Descriptor.Next;
-    if not GetDescriptor(@Descriptor,QueueIndex,NextDescriptorIndex) then begin
+    inc(Steps);
+    if (Steps>MaximumSteps) or not GetDescriptor(@Descriptor,QueueIndex,NextDescriptorIndex) then begin
      result:=false;
      exit;
     end;
@@ -59336,10 +60479,13 @@ end;
 {$endif}
 
 function TPasRISCV.TVirtIODevice.GetDescriptors(out aReadSize,aWriteSize:TPasRISCVUInt64;const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64):Boolean;
+// Walks the descriptor chain: first the device-readable, then the device-writable descriptors.
+// A chain can have at most as many descriptors as the queue; a longer walk means the guest built
+// a loop, which must not hang the device (or grow the descriptor lists without end).
 var Queue:PQueue;
     QueueDescriptor:PQueueDescriptor;
     Descriptor:TVirtIODescriptor;
-    DescriptorIndex:TPasRISCVUInt64;
+    DescriptorIndex,Steps:TPasRISCVUInt64;
 begin
 
  Queue:=@fQueues[aQueueIndex];
@@ -59352,7 +60498,12 @@ begin
 
  DescriptorIndex:=aDescriptorIndex;
 
- GetDescriptor(@Descriptor,aQueueIndex,DescriptorIndex);
+ if not GetDescriptor(@Descriptor,aQueueIndex,DescriptorIndex) then begin
+  result:=false;
+  exit;
+ end;
+
+ Steps:=1;
 
  repeat
   if (Descriptor.Flags and VRING_DESC_F_WRITE)<>0 then begin
@@ -59374,7 +60525,11 @@ begin
    exit;
   end;
   DescriptorIndex:=Descriptor.Next;
-  GetDescriptor(@Descriptor,aQueueIndex,DescriptorIndex);
+  inc(Steps);
+  if (Steps>Queue^.Size) or not GetDescriptor(@Descriptor,aQueueIndex,DescriptorIndex) then begin
+   result:=false;
+   exit;
+  end;
  until false;
 
  repeat
@@ -59397,7 +60552,11 @@ begin
    break;
   end;
   DescriptorIndex:=Descriptor.Next;
-  GetDescriptor(@Descriptor,aQueueIndex,DescriptorIndex);
+  inc(Steps);
+  if (Steps>Queue^.Size) or not GetDescriptor(@Descriptor,aQueueIndex,DescriptorIndex) then begin
+   result:=false;
+   exit;
+  end;
  until false;
 
  result:=true;
@@ -59977,7 +61136,7 @@ begin
       end;
      end;
      VIRTIO_MMIO_QUEUE_NUM:begin
-      if ((aValue and (aValue-1))=0) and (aValue>0) then begin
+      if ((aValue and (aValue-1))=0) and (aValue>0) and (aValue<=MAXIMUM_QUEUE_SIZE) then begin
        fQueues[fSelectedQueue].Size:=aValue;
       end;
      end;
@@ -60183,7 +61342,7 @@ begin
        end;
       end;
       VIRTIO_PCI_QUEUE_SIZE:begin
-       if ((aValue and (aValue-1))=0) and (aValue>0) then begin
+       if ((aValue and (aValue-1))=0) and (aValue>0) and (aValue<=MAXIMUM_QUEUE_SIZE) then begin
         fQueues[fSelectedQueue].Size:=aValue;
        end;
       end;
@@ -61687,6 +62846,10 @@ begin
 end;
 
 function TPasRISCV.TVirtIOSoundDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
+// The sizes come from the guest's descriptors; above these limits (far beyond any real control
+// request or PCM period) a request is refused instead of allocated
+const MaximumControlRequestSize=65536;
+      MaximumPCMBufferSize=4194304;
 var Index:TPasRISCVSizeInt;
     SoundHeader:PVirtIOSoundHeader;
     SoundQueryInfo:PVirtIOSoundQueryInfo;
@@ -61710,7 +62873,7 @@ begin
    fCommandQueueLock.Acquire;
    try
 
-    if aReadSize>=SizeOf(TVirtIOSoundHeader) then begin
+    if (aReadSize>=SizeOf(TVirtIOSoundHeader)) and (aReadSize<=MaximumControlRequestSize) then begin
 
      GetMem(Input,aReadSize);
      try
@@ -62135,7 +63298,7 @@ begin
 
   VIRTIO_SND_VQ_TX:begin
 
-   if aReadSize>=SizeOf(TVirtIOSoundPCMXfer) then begin
+   if (aReadSize>=SizeOf(TVirtIOSoundPCMXfer)) and (aReadSize<=(SizeOf(TVirtIOSoundPCMXfer)+MaximumPCMBufferSize)) then begin
 
     GetMem(Input,aReadSize);
     try
@@ -62198,7 +63361,8 @@ begin
   end;
 
   VIRTIO_SND_VQ_RX:begin
-   if (aReadSize>=SizeOf(TVirtIOSoundPCMXfer)) and (aWriteSize>SizeOf(TVirtIOSoundPCMStatus)) then begin
+   if (aReadSize>=SizeOf(TVirtIOSoundPCMXfer)) and (aReadSize<=MaximumControlRequestSize) and
+      (aWriteSize>SizeOf(TVirtIOSoundPCMStatus)) and (aWriteSize<=(SizeOf(TVirtIOSoundPCMStatus)+MaximumPCMBufferSize)) then begin
     GetMem(Input,aReadSize);
     try
      if CopyMemoryFromQueue(Input,aQueueIndex,aDescriptorIndex,0,aReadSize) then begin
@@ -62716,13 +63880,32 @@ begin
 end;
 
 function TPasRISCV.TVirtIO9PDevice.TFIDDescriptors.Add(const aFID:TPasRISCVUInt32;const aFile:TPasRISCV9PFileSystem.TFSFile):TFIDDescriptor;
+// A FID that is still in use (Twalk with newfid=fid, or a guest that reuses a FID without
+// Tclunk, for example after a reboot) replaces the old descriptor, which is released with its file
+// instead of staying behind in the list
+var Old:TFIDDescriptor;
 begin
  result:=TFIDDescriptor.Create;
  result.fDevice:=fDevice;
  result.fFID:=aFID;
  result.fFile:=aFile;
+ Old:=nil;
  fLock.AcquireWrite;
  try
+  Old:=fHashMap[aFID];
+  if assigned(Old) then begin
+   fHashMap.Delete(aFID);
+   if assigned(Old.fPrevious) then begin
+    Old.fPrevious.fNext:=Old.fNext;
+   end else begin
+    fFirst:=Old.fNext;
+   end;
+   if assigned(Old.fNext) then begin
+    Old.fNext.fPrevious:=Old.fPrevious;
+   end else begin
+    fLast:=Old.fPrevious;
+   end;
+  end;
   if assigned(fLast) then begin
    fLast.fNext:=result;
    result.fPrevious:=fLast;
@@ -62734,6 +63917,43 @@ begin
   fHashMap.Add(aFID,result);
  finally
   fLock.ReleaseWrite;
+ end;
+ if assigned(Old) then begin
+  FreeDescriptor(Old);
+ end;
+end;
+
+procedure TPasRISCV.TVirtIO9PDevice.TFIDDescriptors.FreeDescriptor(const aDescriptor:TFIDDescriptor);
+// Releases a descriptor that is no longer in the table, together with its file (closing it)
+begin
+ if assigned(aDescriptor) then begin
+  if assigned(aDescriptor.fFile) then begin
+   if assigned(fDevice) and assigned(fDevice.fFileSystem) then begin
+    fDevice.fFileSystem.Delete(aDescriptor.fFile);
+   end;
+   aDescriptor.fFile:=nil;
+  end;
+  aDescriptor.Free;
+ end;
+end;
+
+procedure TPasRISCV.TVirtIO9PDevice.TFIDDescriptors.Clear;
+// Releases all descriptors with their files, for a device reset (the guest starts over with Tattach)
+var Current,Next:TFIDDescriptor;
+begin
+ fLock.AcquireWrite;
+ try
+  Current:=fFirst;
+  fFirst:=nil;
+  fLast:=nil;
+  fHashMap.Clear;
+ finally
+  fLock.ReleaseWrite;
+ end;
+ while assigned(Current) do begin
+  Next:=Current.fNext;
+  FreeDescriptor(Current);
+  Current:=Next;
  end;
 end;
 
@@ -62985,6 +64205,16 @@ procedure TPasRISCV.TVirtIO9PDevice.DeviceReset;
 begin
  inherited DeviceReset;
  fRequestInProcess:=false;
+ // The guest starts over with Tattach: all FIDs of the old session are released, open files
+ // included (they stayed open across every reboot before)
+ if assigned(fFIDDescriptors) and assigned(fLock) then begin
+  fLock.Acquire;
+  try
+   fFIDDescriptors.Clear;
+  finally
+   fLock.Release;
+  end;
+ end;
 end;
 
 function TPasRISCV.TVirtIO9PDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
@@ -62992,6 +64222,11 @@ const Val32Zero:TPasRISCVUInt32=0;
       Val64Zero:TPasRISCVUInt64=0;
       Val32MaxFileNameLength:TPasRISCVUInt32=256;
       HeaderLength=4+1+2;
+      // Largest message the device accepts and offers as msize (Linux uses at most 512 KB over
+      // virtio); requests and replies are limited to it instead of allocating guest-claimed sizes
+      MaximumMessageSizeLimit=4194304;
+      // Rread/Rreaddir: size[4] id[1] tag[2] count[4]
+      ReadReplyHeaderLength=4+1+2+4;
 var Index,RecvBufferOffset,SendBufferLength:TPasRISCVSizeInt;
     FID,AFID,NewFID,Flags,Mode,UID,GID,Val32,Major,Minor:TPasRISCVUInt32;
     Mask,ATimeSec,ATimeNSec,MTimeSec,MTimeNSec,CTimeSec,CTimeNSec,Size:TPasRISCVUInt64;
@@ -63009,7 +64244,7 @@ var Index,RecvBufferOffset,SendBufferLength:TPasRISCVSizeInt;
     QIDs:array of TPasRISCV9PFileSystem.TFSQID;
     Lock:TPasRISCV9PFileSystem.TFSLock;
     File_:TPasRISCV9PFileSystem.TFSFile;
-    NameString,OtherNameString,VersionString,UserNameString,AuthNameString:TPasRISCVRawByteString;
+    NameString,OtherNameString,VersionString,UserNameString,AuthNameString,ClientIDString:TPasRISCVRawByteString;
     Names:array of TPasRISCVRawByteString;
 begin
 
@@ -63027,6 +64262,18 @@ begin
    try
 
     result:=true;
+
+    if aReadSize>MaximumMessageSizeLimit then begin
+     // Larger than any message the device accepts: an error reply instead of an allocation of
+     // whatever size the guest claims for its descriptors
+     if CopyMemoryFromQueue(@fRecvBuffer[0],aQueueIndex,aDescriptorIndex,0,HeaderLength) then begin
+      Tag:=PPasRISCVUInt16(Pointer(@fRecvBuffer[5]))^;
+      SendError(aQueueIndex,aDescriptorIndex,Tag,-TPasRISCV9PFileSystem.P9_EPROTO);
+     end else begin
+      NotifyDeviceNeedsReset;
+     end;
+     exit;
+    end;
 
     if length(fRecvBuffer)<aReadSize then begin
      SetLength(fRecvBuffer,aReadSize);
@@ -63276,6 +64523,15 @@ begin
 {$ifdef PasRISCVDebugVirtIO9P}
          writeln('9p: READDIR fid=',FID,' offset=',FSOffset,' count=',Size,' path=',FIDDescriptor.fFile.fPath,' isOpened=',FIDDescriptor.fFile.fIsOpened,' isDir=',FIDDescriptor.fFile.fIsDirectory);
 {$endif}
+         // count is guest-controlled: the reply never exceeds msize nor the writable buffer
+         if Size>(fMaximumMessageSize-ReadReplyHeaderLength) then begin
+          Size:=fMaximumMessageSize-ReadReplyHeaderLength;
+         end;
+         if aWriteSize<ReadReplyHeaderLength then begin
+          Size:=0;
+         end else if Size>(aWriteSize-ReadReplyHeaderLength) then begin
+          Size:=aWriteSize-ReadReplyHeaderLength;
+         end;
          if length(fSendBuffer)<Size+4 then begin
           SetLength(fSendBuffer,(Size+4)*2);
          end;
@@ -63314,28 +64570,21 @@ begin
       end;
 
       VIRTIO_9P_LOCK:begin
-       if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wbwddws',[@FID,@Lock.Type_,@Lock.Flags,@Lock.Start,@Lock.Length,@Lock.ProcID,@Lock.ClientID]) then begin
+       // The client id is a string, so it goes into a string variable and the record keeps nil.
+       // (It was unpacked into the uninitialized ClientID pointer: the unpacking released that
+       // pointer as a string, and the new string leaked.)
+       FillChar(Lock,SizeOf(Lock),#0);
+       if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wbwddws',[@FID,@Lock.Type_,@Lock.Flags,@Lock.Start,@Lock.Length,@Lock.ProcID,@ClientIDString]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Lock.ClientID:=nil;
-         try
-          Error:=fFileSystem.Lock(FIDDescriptor.fFile,@Lock);
-          if Error<0 then begin
-           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
-          end else begin
-           Val8:=Error;
-           SendBufferLength:=0;
-           Marshall(@fSendBuffer[0],length(fSendBuffer),SendBufferLength,'b',[@Val8]);
-           SendReply(aQueueIndex,aDescriptorIndex,ID,Tag,@fSendBuffer[0],SendBufferLength);
-          end;
-         finally
-          if assigned(Lock.ClientID) then begin
-           try
-            FreeMem(Lock.ClientID);
-           finally
-            Lock.ClientID:=nil;
-           end;
-          end;
+         Error:=fFileSystem.Lock(FIDDescriptor.fFile,@Lock);
+         if Error<0 then begin
+          SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
+         end else begin
+          Val8:=Error;
+          SendBufferLength:=0;
+          Marshall(@fSendBuffer[0],length(fSendBuffer),SendBufferLength,'b',[@Val8]);
+          SendReply(aQueueIndex,aDescriptorIndex,ID,Tag,@fSendBuffer[0],SendBufferLength);
          end;
         end else begin
          SendError(aQueueIndex,aDescriptorIndex,Tag,-TPasRISCV9PFileSystem.P9_EPROTO);
@@ -63346,35 +64595,27 @@ begin
       end;
 
       VIRTIO_9P_GETLOCK:begin
-       if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wbddws',[@FID,@Lock.Type_,@Lock.Start,@Lock.Length,@Lock.ProcID,@Lock.ClientID]) then begin
+       // Client id in a string variable as for VIRTIO_9P_LOCK; Rgetlock returns it again (as
+       // QEMU does)
+       FillChar(Lock,SizeOf(Lock),#0);
+       if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wbddws',[@FID,@Lock.Type_,@Lock.Start,@Lock.Length,@Lock.ProcID,@ClientIDString]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
-         Lock.ClientID:=nil;
-         try
-          Error:=fFileSystem.GetLock(FIDDescriptor.fFile,@Lock);
-          if Error<0 then begin
-           SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
-          end else begin
-           SendBufferLength:=0;
-           Marshall(@fSendBuffer[0],
-                    length(fSendBuffer),
-                    SendBufferLength,
-                    'bddws',
-                    [@Lock.Type_,
-                     @Lock.Start,
-                     @Lock.Length,
-                     @Lock.ProcID,
-                     @Lock.ClientID]);
-           SendReply(aQueueIndex,aDescriptorIndex,ID,Tag,@fSendBuffer[0],SendBufferLength);
-          end;
-         finally
-          if assigned(Lock.ClientID) then begin
-           try
-            FreeMem(Lock.ClientID);
-           finally
-            Lock.ClientID:=nil;
-           end;
-          end;
+         Error:=fFileSystem.GetLock(FIDDescriptor.fFile,@Lock);
+         if Error<0 then begin
+          SendError(aQueueIndex,aDescriptorIndex,Tag,Error);
+         end else begin
+          SendBufferLength:=0;
+          Marshall(@fSendBuffer[0],
+                   length(fSendBuffer),
+                   SendBufferLength,
+                   'bddws',
+                   [@Lock.Type_,
+                    @Lock.Start,
+                    @Lock.Length,
+                    @Lock.ProcID,
+                    @ClientIDString]);
+          SendReply(aQueueIndex,aDescriptorIndex,ID,Tag,@fSendBuffer[0],SendBufferLength);
          end;
         end else begin
          SendError(aQueueIndex,aDescriptorIndex,Tag,-TPasRISCV9PFileSystem.P9_EPROTO);
@@ -63386,11 +64627,13 @@ begin
 
       VIRTIO_9P_LINK:begin
        NameString:='';
-       if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wws',[@FID,@FID,@NameString]) then begin
+       // Tlink: dfid[4] (directory of the new link) fid[4] (existing file) name[s]
+       if assigned(fFileSystem) and Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'wws',[@FID,@NewFID,@NameString]) then begin
         FIDDescriptor:=fFIDDescriptors.Find(FID);
-        if assigned(FIDDescriptor) then begin
+        OtherFIDDescriptor:=fFIDDescriptors.Find(NewFID);
+        if assigned(FIDDescriptor) and assigned(OtherFIDDescriptor) then begin
          if IsValidFileSystemName(NameString) then begin
-          Error:=fFileSystem.Link(FIDDescriptor.fFile,FIDDescriptor.fFile,NameString);
+          Error:=fFileSystem.Link(FIDDescriptor.fFile,OtherFIDDescriptor.fFile,NameString);
          end else begin
           Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
          end;
@@ -63482,7 +64725,12 @@ begin
 
       VIRTIO_9P_VERSION:begin
        VersionString:='';
-       if Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'ws',[@Val32,@VersionString]) then begin
+       if Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'ws',[@Val32,@VersionString]) and (Val32>=64) then begin
+        // The negotiated msize is the smaller of the client's and the device's limit (a client msize
+        // too small for any reply is refused)
+        if Val32>MaximumMessageSizeLimit then begin
+         Val32:=MaximumMessageSizeLimit;
+        end;
         fMaximumMessageSize:=Val32;
         VersionString:='9P2000.L';
         SendBufferLength:=0;
@@ -63553,7 +64801,13 @@ begin
              for Index:=0 to Count-1 do begin
               Marshall(@fSendBuffer[0],length(fSendBuffer),SendBufferLength,'Q',[@QIDs[Index]]);
              end;
-             fFIDDescriptors.Add(NewFID,File_);
+             // newfid only exists after a complete walk; after a partial one the client treats
+             // newfid as unused and never clunks it, so the new object is released right here
+             if Count=NWName then begin
+              fFIDDescriptors.Add(NewFID,File_);
+             end else begin
+              fFileSystem.Delete(File_);
+             end;
              SendReply(aQueueIndex,aDescriptorIndex,ID,Tag,@fSendBuffer[0],SendBufferLength);
             end else begin
              Error:=Count;
@@ -63587,6 +64841,15 @@ begin
         Size:=Val32;
         FIDDescriptor:=fFIDDescriptors.Find(FID);
         if assigned(FIDDescriptor) then begin
+         // count is guest-controlled: the reply never exceeds msize nor the writable buffer
+         if Size>(fMaximumMessageSize-ReadReplyHeaderLength) then begin
+          Size:=fMaximumMessageSize-ReadReplyHeaderLength;
+         end;
+         if aWriteSize<ReadReplyHeaderLength then begin
+          Size:=0;
+         end else if Size>(aWriteSize-ReadReplyHeaderLength) then begin
+          Size:=aWriteSize-ReadReplyHeaderLength;
+         end;
          if length(fSendBuffer)<Size+4 then begin
           SetLength(fSendBuffer,(Size+4)*2);
          end;
@@ -63636,7 +64899,9 @@ begin
 
       VIRTIO_9P_CLUNK:begin
        if Unmarshall(@fRecvBuffer[0],aReadSize,RecvBufferOffset,'w',[@FID]) then begin
-        fFIDDescriptors.Remove(FID);
+        // Tclunk ends the FID: the descriptor is released with its file (it leaked before, open
+        // descriptors and all, until the host ran out of file descriptors)
+        fFIDDescriptors.FreeDescriptor(fFIDDescriptors.Remove(FID));
         SendReply(aQueueIndex,aDescriptorIndex,ID,Tag,nil,0);
        end else begin
         SendError(aQueueIndex,aDescriptorIndex,Tag,-TPasRISCV9PFileSystem.P9_EPROTO);
@@ -63949,8 +65214,52 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOFSDevice.DeviceReset;
+// A guest reboot resets the device. Everything the old guest left open is dropped here: the file
+// and directory handles are closed (their host descriptors leaked over a reboot before) and the
+// node table goes back to the root node alone.
+var NodeEntity:TNodeEntryHashMap.TEntity;
+    FHEntity:TFHEntryHashMap.TEntity;
+    RootNode:TNodeEntry;
 begin
  inherited DeviceReset;
+ fLock.Acquire;
+ try
+  if assigned(fFHEntries) then begin
+   for FHEntity in fFHEntries.Entities do begin
+    if (FHEntity.State=TFHEntryHashMap.TEntity.Used) and assigned(FHEntity.Value) then begin
+     if assigned(fFileSystem) then begin
+      if FHEntity.Value.fIsDirectory then begin
+       fFileSystem.CloseDir(FHEntity.Value.fFileHandle);
+      end else begin
+       fFileSystem.CloseFile(FHEntity.Value.fFileHandle);
+      end;
+     end;
+     FHEntity.Value.Free;
+    end;
+   end;
+   fFHEntries.Clear;
+  end;
+  if assigned(fNodeEntries) then begin
+   for NodeEntity in fNodeEntries.Entities do begin
+    if (NodeEntity.State=TNodeEntryHashMap.TEntity.Used) and assigned(NodeEntity.Value) then begin
+     NodeEntity.Value.Free;
+    end;
+   end;
+   fNodeEntries.Clear;
+   RootNode:=TNodeEntry.Create;
+   RootNode.fNodeID:=FUSE_ROOT_ID;
+   RootNode.fParentNodeID:=FUSE_ROOT_ID;
+   RootNode.fLookupCount:=1;
+   RootNode.fName:='';
+   RootNode.fPath:='/';
+   RootNode.fIsDirectory:=true;
+   fNodeEntries[FUSE_ROOT_ID]:=RootNode;
+  end;
+  fNextNodeID:=FUSE_ROOT_ID+1;
+  fNextFH:=1;
+ finally
+  fLock.Release;
+ end;
  fInitDone:=false;
 end;
 
@@ -64039,10 +65348,89 @@ begin
  end;
 end;
 
+// Takes back the lookup reference counted by FindOrCreateChildNode when the operation that wanted to hand
+// the node to the guest failed. The node is only removed when no reference is left, since an already
+// existing node may still be in use by the guest kernel. The caller must hold fLock.
+procedure TPasRISCV.TVirtIOFSDevice.ReleaseNodeLookup(const aNodeID:TPasRISCVUInt64);
+var Node:TNodeEntry;
+begin
+ Node:=FindNode(aNodeID);
+ if assigned(Node) then begin
+  if Node.fLookupCount>0 then begin
+   dec(Node.fLookupCount);
+  end;
+  if (Node.fLookupCount=0) and (Node.fNodeID<>FUSE_ROOT_ID) then begin
+   RemoveNode(aNodeID);
+  end;
+ end;
+end;
+
+// Detaches the node of a name that no longer exists (unlink, rmdir, or replaced by a rename) from the
+// name lookup, so that a later LOOKUP or CREATE with that name gets a fresh node instead of aliasing the
+// old one. The node itself stays until the guest forgets it. The caller must hold fLock.
+procedure TPasRISCV.TVirtIOFSDevice.DetachChildNode(const aParentNodeID:TPasRISCVUInt64;const aName:TPasRISCVRawByteString);
+var Entity:TNodeEntryHashMap.TEntity;
+begin
+ for Entity in fNodeEntries.Entities do begin
+  if (Entity.State=TNodeEntryHashMap.TEntity.Used) and
+     assigned(Entity.Value) and
+     (Entity.Value.fParentNodeID=aParentNodeID) and
+     (Entity.Value.fName=aName) then begin
+   Entity.Value.fParentNodeID:=0;
+   Entity.Value.fName:='';
+  end;
+ end;
+end;
+
+// Keeps the path based node table in sync with a successful rename. The renamed node gets its new parent,
+// name and path, all nodes below it get the new path prefix, and a node that was replaced by the rename is
+// detached from the name lookup. The caller must hold fLock.
+procedure TPasRISCV.TVirtIOFSDevice.RenameNodes(const aOldParentNodeID:TPasRISCVUInt64;const aOldName:TPasRISCVRawByteString;const aNewParentNodeID:TPasRISCVUInt64;const aNewName,aOldPath,aNewPath:TPasRISCVRawByteString);
+var Entity:TNodeEntryHashMap.TEntity;
+    Node,RenamedNode:TNodeEntry;
+    OldPrefix:TPasRISCVRawByteString;
+begin
+ if (aOldParentNodeID=aNewParentNodeID) and (aOldName=aNewName) then begin
+  exit;
+ end;
+ RenamedNode:=nil;
+ OldPrefix:=aOldPath+'/';
+ for Entity in fNodeEntries.Entities do begin
+  if (Entity.State=TNodeEntryHashMap.TEntity.Used) and assigned(Entity.Value) then begin
+   Node:=Entity.Value;
+   if (Node.fParentNodeID=aOldParentNodeID) and (Node.fName=aOldName) then begin
+    RenamedNode:=Node;
+   end else begin
+    if (Node.fParentNodeID=aNewParentNodeID) and (Node.fName=aNewName) then begin
+     // Replaced by the rename
+     Node.fParentNodeID:=0;
+     Node.fName:='';
+    end;
+    if (length(Node.fPath)>length(OldPrefix)) and (Copy(Node.fPath,1,length(OldPrefix))=OldPrefix) then begin
+     // Below a renamed directory
+     Node.fPath:=aNewPath+'/'+Copy(Node.fPath,length(OldPrefix)+1,length(Node.fPath)-length(OldPrefix));
+    end;
+   end;
+  end;
+ end;
+ if assigned(RenamedNode) then begin
+  RenamedNode.fParentNodeID:=aNewParentNodeID;
+  RenamedNode.fName:=aNewName;
+  RenamedNode.fPath:=aNewPath;
+ end;
+end;
+
 procedure TPasRISCV.TVirtIOFSDevice.FillAttr(var aAttr:TFUSEAttr;const aStat:TPasRISCVFUSEFileSystem.TFileStat;const aNodeID:TPasRISCVUInt64);
 begin
  FillChar(aAttr,SizeOf(TFUSEAttr),#0);
- aAttr.Ino:=aNodeID;
+ // st_ino as seen by the guest is the host inode number, which is stable across lookups, equal for hard
+ // links, and consistent with the d_ino values of READDIR. The node ID only serves as a fallback for
+ // backends without inode numbers.
+ if aStat.Ino<>0 then begin
+  aAttr.Ino:=aStat.Ino;
+ end else begin
+  aAttr.Ino:=aNodeID;
+ end;
  aAttr.Size:=aStat.Size;
  aAttr.Blocks:=aStat.Blocks;
  aAttr.ATime:=aStat.ATimeSec;
@@ -64244,10 +65632,11 @@ begin
 {$ifdef PasRISCVDebugVirtIOFS}
     writeln('VirtIOFS: LOOKUP stat failed path="',ChildPath,'" err=',Err);
 {$endif}
-    // stat failed, remove node and report error
+    // stat failed, take back the lookup reference (an already existing node may still be in use by the
+    // guest kernel, so it must not simply be removed) and report the error
     fLock.Acquire;
     try
-     RemoveNode(ChildNodeID);
+     ReleaseNodeLookup(ChildNodeID);
     finally
      fLock.Release;
     end;
@@ -64498,7 +65887,8 @@ begin
   fLock.Acquire;
   try
    FHEntry:=fFHEntries[ReadIn.FH];
-   if assigned(FHEntry) then begin
+   // Only a file handle: a directory handle is a DIR pointer, not a descriptor
+   if assigned(FHEntry) and not FHEntry.fIsDirectory then begin
     LocalFH:=FHEntry.fFileHandle;
     FHFound:=true;
    end;
@@ -64551,6 +65941,8 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOFSDevice.HandleWrite(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+// WriteIn.Size is guest-controlled: nothing above the max_write announced in INIT is allocated
+const MaximumWriteSize={$ifdef VirtIOFSFastIO}1048576{$else}65536{$endif};
 var WriteIn:TFUSEWriteIn;
     WriteOut:TFUSEWriteOut;
     FHEntry:TFHEntry;
@@ -64564,14 +65956,17 @@ begin
   fLock.Acquire;
   try
    FHEntry:=fFHEntries[WriteIn.FH];
-   if assigned(FHEntry) then begin
+   // Only a file handle: a directory handle is a DIR pointer, not a descriptor
+   if assigned(FHEntry) and not FHEntry.fIsDirectory then begin
     LocalFH:=FHEntry.fFileHandle;
     FHFound:=true;
    end;
   finally
    fLock.Release;
   end;
-  if FHFound and assigned(fFileSystem) then begin
+  if FHFound and assigned(fFileSystem) and (WriteIn.Size>MaximumWriteSize) then begin
+   SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
+  end else if FHFound and assigned(fFileSystem) then begin
    GetMem(Buf,WriteIn.Size);
    try
     if CopyMemoryFromQueue(Buf,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSEWriteIn),WriteIn.Size) then begin
@@ -64629,7 +66024,8 @@ begin
   fLock.Acquire;
   try
    FHEntry:=fFHEntries[ReadIn.FH];
-   if assigned(FHEntry) then begin
+   // Only a directory handle: a file handle would be used as a DIR pointer (host crash)
+   if assigned(FHEntry) and FHEntry.fIsDirectory then begin
     LocalFH:=FHEntry.fFileHandle;
     LocalNodeID:=FHEntry.fNodeID;
     FHFound:=true;
@@ -65010,6 +66406,12 @@ begin
     Err:=fFileSystem.Unlink(Path);
    end;
    if Err=0 then begin
+    fLock.Acquire;
+    try
+     DetachChildNode(aHeader^.NodeID,Name);
+    finally
+     fLock.Release;
+    end;
     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
    end else begin
     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
@@ -65045,7 +66447,13 @@ begin
    while (NullPos<TPasRISCVInt32(NameLen)) and (NameBuf[NullPos]<>#0) do begin
     inc(NullPos);
    end;
-   OldName:=Copy(TPasRISCVRawByteString(@NameBuf[0]),1,NullPos);
+   // Copied explicitly: a hard cast of the untyped @NameBuf[0] to a string would reinterpret the buffer
+   // address as a string reference and take the length from whatever lies before the buffer on the stack
+   OldName:='';
+   SetLength(OldName,NullPos);
+   if NullPos>0 then begin
+    Move(NameBuf[0],OldName[1],NullPos);
+   end;
    if NullPos<TPasRISCVInt32(NameLen) then begin
     NewName:='';
     SetLength(NewName,TPasRISCVInt32(NameLen)-NullPos-1);
@@ -65081,6 +66489,12 @@ begin
     NewPath:=fFileSystem.ComposePath(NewParentPath,NewName);
     Err:=fFileSystem.Rename(OldPath,NewPath);
     if Err=0 then begin
+     fLock.Acquire;
+     try
+      RenameNodes(aHeader^.NodeID,OldName,RenameIn.NewDir,NewName,OldPath,NewPath);
+     finally
+      fLock.Release;
+     end;
      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
     end else begin
      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
@@ -65097,7 +66511,9 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOFSDevice.HandleRename2(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+const FUSE_RENAME_NOREPLACE=TPasRISCVUInt32($1);
 var Rename2In:TFUSERename2In;
+    FileStat:TPasRISCVFUSEFileSystem.TFileStat;
     NameBuf:array[0..8191] of AnsiChar;
     NameLen:TPasRISCVUInt32;
     OldName,NewName,OldPath,NewPath:TPasRISCVRawByteString;
@@ -65119,7 +66535,13 @@ begin
    while (NullPos<TPasRISCVInt32(NameLen)) and (NameBuf[NullPos]<>#0) do begin
     inc(NullPos);
    end;
-   OldName:=Copy(TPasRISCVRawByteString(@NameBuf[0]),1,NullPos);
+   // Copied explicitly: a hard cast of the untyped @NameBuf[0] to a string would reinterpret the buffer
+   // address as a string reference and take the length from whatever lies before the buffer on the stack
+   OldName:='';
+   SetLength(OldName,NullPos);
+   if NullPos>0 then begin
+    Move(NameBuf[0],OldName[1],NullPos);
+   end;
    if NullPos<TPasRISCVInt32(NameLen) then begin
     NewName:='';
     SetLength(NewName,TPasRISCVInt32(NameLen)-NullPos-1);
@@ -65150,11 +66572,26 @@ begin
 
    if not (IsValidFileSystemName(OldName) and IsValidFileSystemName(NewName)) then begin
     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
+   end else if (Rename2In.Flags and not TPasRISCVUInt32(FUSE_RENAME_NOREPLACE))<>0 then begin
+    // The guest only sends RENAME2 when flags are set. RENAME_EXCHANGE and RENAME_WHITEOUT are not
+    // supported, and a plain rename instead would silently overwrite the target.
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
    end else if BothFound and assigned(fFileSystem) then begin
     OldPath:=fFileSystem.ComposePath(ParentPath,OldName);
     NewPath:=fFileSystem.ComposePath(NewParentPath,NewName);
-    Err:=fFileSystem.Rename(OldPath,NewPath);
+    if ((Rename2In.Flags and TPasRISCVUInt32(FUSE_RENAME_NOREPLACE))<>0) and
+       (fFileSystem.Stat(NewPath,FileStat)=TPasRISCVFUSEFileSystem.FUSE_OK) then begin
+     Err:=-TPasRISCVFUSEFileSystem.FUSE_EEXIST;
+    end else begin
+     Err:=fFileSystem.Rename(OldPath,NewPath);
+    end;
     if Err=0 then begin
+     fLock.Acquire;
+     try
+      RenameNodes(aHeader^.NodeID,OldName,Rename2In.NewDir,NewName,OldPath,NewPath);
+     finally
+      fLock.Release;
+     end;
      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
     end else begin
      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
@@ -65227,23 +66664,31 @@ procedure TPasRISCV.TVirtIOFSDevice.HandleFSync(const aQueueIndex,aDescriptorInd
 var FSyncIn:TFUSEFSyncIn;
     FHEntry:TFHEntry;
     LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
-    FHFound:Boolean;
+    FHFound,IsDirectory:Boolean;
     Err:TPasRISCVInt32;
 begin
  if CopyMemoryFromQueue(@FSyncIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEFSyncIn)) then begin
   FHFound:=false;
+  IsDirectory:=false;
   fLock.Acquire;
   try
    FHEntry:=fFHEntries[FSyncIn.FH];
    if assigned(FHEntry) then begin
     LocalFH:=FHEntry.fFileHandle;
+    IsDirectory:=FHEntry.fIsDirectory;
     FHFound:=true;
    end;
   finally
    fLock.Release;
   end;
   if FHFound and assigned(fFileSystem) then begin
-   Err:=fFileSystem.FSyncFile(LocalFH,(FSyncIn.FSyncFlags and 1)<>0);
+   // FSYNC and FSYNCDIR both come here: the kind of the handle decides (a directory handle is a
+   // DIR pointer, not a descriptor; fsync on it as a descriptor always failed)
+   if IsDirectory then begin
+    Err:=fFileSystem.FSyncDir(LocalFH,(FSyncIn.FSyncFlags and 1)<>0);
+   end else begin
+    Err:=fFileSystem.FSyncFile(LocalFH,(FSyncIn.FSyncFlags and 1)<>0);
+   end;
    if Err=0 then begin
     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
    end else begin
@@ -65257,16 +66702,21 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TVirtIOFSDevice.HandleForget(const aHeader:PFUSEInHeader);
-var //ForgetIn:TFUSEForgetIn;
+procedure TPasRISCV.TVirtIOFSDevice.HandleForget(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+// FORGET gives up the lookup count the guest holds for the node, which is the nlookup of the
+// request and not one (taking one left every node of a busy directory behind forever)
+var ForgetIn:TFUSEForgetIn;
     Node:TNodeEntry;
 begin
  // FORGET has no reply
+ if not CopyMemoryFromQueue(@ForgetIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEForgetIn)) then begin
+  exit;
+ end;
  fLock.Acquire;
  try
   Node:=FindNode(aHeader^.NodeID);
   if assigned(Node) then begin
-   dec(Node.fLookupCount);
+   dec(Node.fLookupCount,TPasRISCVInt64(ForgetIn.NLookup));
    if (Node.fLookupCount<=0) and (Node.fNodeID<>FUSE_ROOT_ID) then begin
     RemoveNode(Node.fNodeID);
    end;
@@ -65277,24 +66727,32 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOFSDevice.HandleBatchForget(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
+// Count is guest-controlled (up to 4G): the loop ends with the first entry the request does not
+// contain, instead of trying (under the lock) every index up to Count
 var BatchForgetIn:TFUSEBatchForgetIn;
     ForgetOne:TFUSEForgetOne;
     Index:TPasRISCVUInt32;
+    Offset:TPasRISCVUInt64;
     Node:TNodeEntry;
 begin
  if CopyMemoryFromQueue(@BatchForgetIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSEBatchForgetIn)) then begin
   fLock.Acquire;
   try
-   for Index:=0 to BatchForgetIn.Count-1 do begin
-    if CopyMemoryFromQueue(@ForgetOne,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE+SizeOf(TFUSEBatchForgetIn)+(Index*SizeOf(TFUSEForgetOne)),SizeOf(TFUSEForgetOne)) then begin
-     Node:=FindNode(ForgetOne.NodeID);
-     if assigned(Node) then begin
-      dec(Node.fLookupCount,ForgetOne.NLookup);
-      if (Node.fLookupCount<=0) and (Node.fNodeID<>FUSE_ROOT_ID) then begin
-       RemoveNode(Node.fNodeID);
-      end;
+   Index:=0;
+   Offset:=FUSE_IN_HEADER_SIZE+SizeOf(TFUSEBatchForgetIn);
+   while Index<BatchForgetIn.Count do begin
+    if not CopyMemoryFromQueue(@ForgetOne,aQueueIndex,aDescriptorIndex,Offset,SizeOf(TFUSEForgetOne)) then begin
+     break;
+    end;
+    Node:=FindNode(ForgetOne.NodeID);
+    if assigned(Node) then begin
+     dec(Node.fLookupCount,ForgetOne.NLookup);
+     if (Node.fLookupCount<=0) and (Node.fNodeID<>FUSE_ROOT_ID) then begin
+      RemoveNode(Node.fNodeID);
      end;
     end;
+    inc(Offset,SizeOf(TFUSEForgetOne));
+    inc(Index);
    end;
   finally
    fLock.Release;
@@ -65365,6 +66823,9 @@ begin
     Move(NameBuf[0],Name[1],NameLen);
    end;
 
+   // The new name gets its own node. With path based nodes, handing out the node of the source instead
+   // would make the file unreachable under the new name once the source name is deleted. Hard links are
+   // still recognizable in the guest, since st_ino is the host inode number (see FillAttr).
    BothFound:=false;
    fLock.Acquire;
    try
@@ -65375,6 +66836,8 @@ begin
      ChildPath:=ChildNode.fPath;
      ChildNodeID:=ChildNode.fNodeID;
      BothFound:=true;
+    end else if assigned(ChildNode) then begin
+     ReleaseNodeLookup(ChildNode.fNodeID);
     end;
    finally
     fLock.Release;
@@ -65384,19 +66847,26 @@ begin
     Err:=fFileSystem.HardLink(OldPath,ChildPath);
     if Err=0 then begin
      Err:=fFileSystem.Stat(ChildPath,FileStat);
-     if Err=0 then begin
-      FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
-      EntryOut.NodeID:=ChildNodeID;
-      EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
-      EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
-      FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
-      SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
-     end else begin
-      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
-     end;
+    end;
+    if Err=0 then begin
+     FillChar(EntryOut,SizeOf(TFUSEEntryOut),#0);
+     EntryOut.NodeID:=ChildNodeID;
+     EntryOut.EntryValid:=FUSE_ENTRY_TIMEOUT;
+     EntryOut.AttrValid:=FUSE_ATTR_TIMEOUT;
+     FillAttr(EntryOut.Attr,FileStat,ChildNodeID);
+     SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,@EntryOut,SizeOf(TFUSEEntryOut));
     end else begin
+     // The guest never gets this node, so take back the reference counted by FindOrCreateChildNode
+     fLock.Acquire;
+     try
+      ReleaseNodeLookup(ChildNodeID);
+     finally
+      fLock.Release;
+     end;
      SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,Err);
     end;
+   end else if not IsValidFileSystemName(Name) then begin
+    SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_EINVAL);
    end else begin
     SendError(aQueueIndex,aDescriptorIndex,aHeader^.Unique,TPasRISCVFUSEFileSystem.FUSE_ENOENT);
    end;
@@ -65432,7 +66902,13 @@ begin
   while (NullPos<TPasRISCVInt32(NameLen)) and (NameBuf[NullPos]<>#0) do begin
    inc(NullPos);
   end;
-  LinkName:=Copy(TPasRISCVRawByteString(@NameBuf[0]),1,NullPos);
+  // Copied explicitly: a hard cast of the untyped @NameBuf[0] to a string would reinterpret the buffer
+  // address as a string reference and take the length from whatever lies before the buffer on the stack
+  LinkName:='';
+  SetLength(LinkName,NullPos);
+  if NullPos>0 then begin
+   Move(NameBuf[0],LinkName[1],NullPos);
+  end;
   if NullPos<TPasRISCVInt32(NameLen) then begin
    Target:='';
    SetLength(Target,TPasRISCVInt32(NameLen)-NullPos-1);
@@ -65591,17 +67067,26 @@ var SetupIn:TFUSESetupMappingIn;
     FHEntry:TFHEntry;
     LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
     BytesRead:TPasRISCVInt64;
+    FHFound:Boolean;
 begin
  if CopyMemoryFromQueue(@SetupIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSESetupMappingIn)) then begin
-  if (SetupIn.MOffset+SetupIn.Len)<=fDAXSize then begin
+  // Range check without overflow: MOffset+Len can wrap around and pass a plain sum check
+  if (SetupIn.MOffset<=fDAXSize) and (SetupIn.Len<=(fDAXSize-SetupIn.MOffset)) then begin
+   // The handle is read under the lock (a concurrent RELEASE frees the entry), and only a file
+   // handle is valid here, a directory handle is a DIR pointer
+   FHFound:=false;
+   LocalFH:=0;
    fLock.Acquire;
    try
     FHEntry:=fFHEntries[SetupIn.FH];
+    if assigned(FHEntry) and not FHEntry.fIsDirectory then begin
+     LocalFH:=FHEntry.fFileHandle;
+     FHFound:=true;
+    end;
    finally
     fLock.Release;
    end;
-   if assigned(FHEntry) then begin
-    LocalFH:=FHEntry.fFileHandle;
+   if FHFound then begin
     if assigned(fFileSystem) then begin
      BytesRead:=fFileSystem.ReadFile(LocalFH,SetupIn.FOffset,@fDAXData[SetupIn.MOffset],TPasRISCVUInt32(SetupIn.Len));
      if BytesRead>=0 then begin
@@ -65634,13 +67119,18 @@ var RemoveIn:TFUSERemoveMappingIn;
 begin
  if CopyMemoryFromQueue(@RemoveIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSERemoveMappingIn)) then begin
   Offset:=FUSE_IN_HEADER_SIZE+SizeOf(TFUSERemoveMappingIn);
-  for Index:=0 to RemoveIn.Count-1 do begin
-   if CopyMemoryFromQueue(@RemoveOne,aQueueIndex,aDescriptorIndex,Offset,SizeOf(TFUSERemoveMappingOne)) then begin
-    if (RemoveOne.MOffset+RemoveOne.Len)<=fDAXSize then begin
-     FillChar(fDAXData[RemoveOne.MOffset],RemoveOne.Len,0);
-    end;
+  // Count is guest-controlled: the loop ends with the first entry the request does not contain
+  Index:=0;
+  while Index<RemoveIn.Count do begin
+   if not CopyMemoryFromQueue(@RemoveOne,aQueueIndex,aDescriptorIndex,Offset,SizeOf(TFUSERemoveMappingOne)) then begin
+    break;
+   end;
+   // Range check without overflow, see HandleSetupMapping
+   if (RemoveOne.MOffset<=fDAXSize) and (RemoveOne.Len<=(fDAXSize-RemoveOne.MOffset)) then begin
+    FillChar(fDAXData[RemoveOne.MOffset],RemoveOne.Len,0);
    end;
    inc(Offset,SizeOf(TFUSERemoveMappingOne));
+   inc(Index);
   end;
   SendReply(aQueueIndex,aDescriptorIndex,aHeader^.Unique,nil,0);
  end else begin
@@ -65665,7 +67155,7 @@ begin
       UsedRingSync(aQueueIndex);
      end;
      FUSE_FORGET:begin
-      HandleForget(@Header);
+      HandleForget(aQueueIndex,aDescriptorIndex,@Header);
       ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
       UsedRingSync(aQueueIndex);
      end;
@@ -65762,7 +67252,7 @@ begin
    HandleFSync(aQueueIndex,aDescriptorIndex,@Header);
   end;
   FUSE_FORGET:begin
-   HandleForget(@Header);
+   HandleForget(aQueueIndex,aDescriptorIndex,@Header);
    // FORGET has no reply, but we need to consume the descriptor
    ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0);
    UsedRingSync(aQueueIndex);
@@ -65889,12 +67379,23 @@ begin
 end;
 
 function TPasRISCV.TVirtIONetDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
+// A transmitted frame is at most 64 KiB (plus the virtio-net header); aReadSize is the guest's
+// claim for its descriptors, so a larger one is dropped instead of allocated
+const MaximumTransmitSize=65536+SizeOf(TVirtIONetHeader);
 var Header:PVirtIONetHeader;
     Buffer:Pointer;
     Size:TPasRISCVSizeInt;
 begin
  case aQueueIndex of
   1:begin
+   if aReadSize>MaximumTransmitSize then begin
+    if not (ConsumeDescriptor(aQueueIndex,aDescriptorIndex,0) and
+            UsedRingSync(aQueueIndex)) then begin
+     NotifyDeviceNeedsReset;
+    end;
+    result:=true;
+    exit;
+   end;
    if length(fReceiveBuffer)<aReadSize then begin
     SetLength(fReceiveBuffer,aReadSize+((aReadSize+1) shr 1));
    end;
@@ -66096,28 +67597,30 @@ begin
 end;
 
 function TPasRISCV.TVirtIORandomGeneratorDevice.DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean;
+// virtio-rng requests carry no data, so readable descriptors are ignored. The buffer size is the
+// guest's claim; the device may fill less (the used length tells the driver how much), so each
+// request gets at most MaximumRequestSize bytes instead of an allocation of whatever was claimed.
+const MaximumRequestSize=65536;
+var Size:TPasRISCVUInt64;
 begin
- if length(fReceiveBuffer)<aReadSize then begin
-  SetLength(fReceiveBuffer,aReadSize+((aReadSize+1) shr 1));
+ Size:=aWriteSize;
+ if Size>MaximumRequestSize then begin
+  Size:=MaximumRequestSize;
  end;
- if CopyMemoryFromQueue(fReceiveBuffer,aQueueIndex,aDescriptorIndex,0,aReadSize) then begin
-  if length(fSendBuffer)<aWriteSize then begin
-   SetLength(fSendBuffer,aWriteSize+((aWriteSize+1) shr 1));
+ if length(fSendBuffer)<Size then begin
+  SetLength(fSendBuffer,Size);
+ end;
+ if Size>0 then begin
+  fMachine.fRandomGeneratorLock.Acquire;
+  try
+   fMachine.fRandomGenerator.GetRandomBytes(fSendBuffer[0],Size);
+  finally
+   fMachine.fRandomGeneratorLock.Release;
   end;
-  if aWriteSize>0 then begin
-   fMachine.fRandomGeneratorLock.Acquire;
-   try
-    fMachine.fRandomGenerator.GetRandomBytes(fSendBuffer[0],aWriteSize);
-   finally
-    fMachine.fRandomGeneratorLock.Release;
-   end;
-  end;
-  if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],aWriteSize) and
-          ConsumeDescriptor(aQueueIndex,aDescriptorIndex,aWriteSize) and
-          UsedRingSync(aQueueIndex)) then begin
-   NotifyDeviceNeedsReset;
-  end;
- end else begin
+ end;
+ if not (CopyMemoryToQueue(aQueueIndex,aDescriptorIndex,0,@fSendBuffer[0],Size) and
+         ConsumeDescriptor(aQueueIndex,aDescriptorIndex,Size) and
+         UsedRingSync(aQueueIndex)) then begin
   NotifyDeviceNeedsReset;
  end;
  result:=true;
@@ -69817,7 +71320,9 @@ var MsgType:TPasRISCVUInt16;
     ResponseSize:TPasRISCVUInt64;
 begin
  result:=true;
- if aReadSize<SIZE_REQ_HEAD then begin
+ // RTC messages are a few dozen bytes; the sizes are the guest's claims for its descriptors, so
+ // nothing far above that is allocated
+ if (aReadSize<SIZE_REQ_HEAD) or (aReadSize>65536) or (aWriteSize>65536) then begin
   NotifyDeviceNeedsReset;
   exit;
  end;
@@ -78037,6 +79542,57 @@ begin
  result:=nil;
 end;
 
+// True when no address of the 4 KiB page at aPageBase is answered by anything but aBusDevice (the
+// device FindBusDevice returned for an address of it), so the page may be cached for that device.
+// Addresses of the page outside of aBusDevice may still be unmapped, BusDeviceLoad/Store reject those.
+function TPasRISCV.TBus.IsOnlyDeviceInPage(const aBusDevice:TBusDevice;const aPageBase:TPasRISCVUInt64):Boolean;
+var Index,SubIndex:TPasRISCVSizeInt;
+    BusDevice,SubBusDevice:TBusDevice;
+    PageLast,Low,High:TPasRISCVUInt64;
+    IsParent:Boolean;
+begin
+ result:=false;
+ PageLast:=aPageBase+(PAGE_SIZE-1);
+ for Index:=0 to fCountBusDevices-1 do begin
+  BusDevice:=fBusDevices[Index];
+  if assigned(BusDevice) and (BusDevice.fSize>0) and
+     (BusDevice.fBase<=PageLast) and ((BusDevice.fBase+(BusDevice.fSize-1))>=aPageBase) then begin
+   IsParent:=false;
+   for SubIndex:=0 to BusDevice.fCountSubBusDevices-1 do begin
+    SubBusDevice:=BusDevice.fSubBusDevices[SubIndex];
+    if SubBusDevice=aBusDevice then begin
+     IsParent:=true;
+    end else if (SubBusDevice.fSize>0) and
+                (SubBusDevice.fBase<=PageLast) and ((SubBusDevice.fBase+(SubBusDevice.fSize-1))>=aPageBase) then begin
+     // Another sub device answers a part of this page
+     exit;
+    end;
+   end;
+   if IsParent then begin
+    // The parent answers the gaps between its sub devices itself, so within this page it must
+    // not reach beyond the sub device
+    if BusDevice.fBase>aPageBase then begin
+     Low:=BusDevice.fBase;
+    end else begin
+     Low:=aPageBase;
+    end;
+    if (BusDevice.fBase+(BusDevice.fSize-1))<PageLast then begin
+     High:=BusDevice.fBase+(BusDevice.fSize-1);
+    end else begin
+     High:=PageLast;
+    end;
+    if (Low<aBusDevice.fBase) or (High>(aBusDevice.fBase+(aBusDevice.fSize-1))) then begin
+     exit;
+    end;
+   end else if BusDevice<>aBusDevice then begin
+    // Another device answers a part of this page
+    exit;
+   end;
+  end;
+ end;
+ result:=true;
+end;
+
 {$if defined(PasRISCVAddressSpaceDispatch)}
 function TPasRISCV.TBus.FastFindBusDevice(const aHART:THART;const aAddress:TPasRISCVUInt64):TBusDevice;
 begin
@@ -78102,11 +79658,13 @@ begin
 {$else}
  BusDevice:=FindBusDevice(aAddress);
 {$endif}
- if assigned(BusDevice) then begin
+ // An access that reaches past the end of the device is not served silently (the memory device
+ // read zeros and dropped the write), it is an access fault like an address without a device
+ if assigned(BusDevice) and ((aAddress+aSize)<=(BusDevice.fBase+BusDevice.fSize)) then begin
   result:=BusDevice.Load(aAddress,aSize);
  end else begin
   if {((aAddress and THART.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aHART) then begin
-   aHART.SetException(THART.TExceptionValue.InstructionAccessFault,aAddress,aHART.fState.PC);
+   aHART.SetException(THART.TExceptionValue.InstructionAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
   end;
   result:=0;
  end;
@@ -78393,19 +79951,21 @@ begin
 {$else}
  BusDevice:=FindBusDevice(aAddress);
 {$endif}
- if assigned(BusDevice) then begin
+ // An access that reaches past the end of the device is not served silently (the memory device
+ // read zeros and dropped the write), it is an access fault like an address without a device
+ if assigned(BusDevice) and ((aAddress+aSize)<=(BusDevice.fBase+BusDevice.fSize)) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    result:=BusDevice.Load(aAddress,aSize);
   end else begin
    if not LoadUnaligned(BusDevice,aAddress,result,aSize) then begin
     if assigned(aHART) then begin
-     aHART.SetException(THART.TExceptionValue.LoadAccessFault,aAddress,aHART.fState.PC);
+     aHART.SetException(THART.TExceptionValue.LoadAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
     end;
    end;
   end;
  end else begin
   if {((aAddress and THART.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aHART) then begin
-   aHART.SetException(THART.TExceptionValue.LoadAccessFault,aAddress,aHART.fState.PC);
+   aHART.SetException(THART.TExceptionValue.LoadAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
   end;
   result:=0;
  end;
@@ -78439,31 +79999,39 @@ begin
 {$else}
  BusDevice:=FindBusDevice(aAddress);
 {$endif}
- if assigned(BusDevice) then begin
+ // An access that reaches past the end of the device is not served silently (the memory device
+ // read zeros and dropped the write), it is an access fault like an address without a device
+ if assigned(BusDevice) and ((aAddress+aSize)<=(BusDevice.fBase+BusDevice.fSize)) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    BusDevice.Store(aAddress,aValue,aSize);
   end else begin
    if not StoreUnaligned(BusDevice,aAddress,aValue,aSize) then begin
     if assigned(aHART) then begin
-     aHART.SetException(THART.TExceptionValue.StoreAccessFault,aAddress,aHART.fState.PC);
+     aHART.SetException(THART.TExceptionValue.StoreAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
     end;
    end;
   end;
  end else begin
   if {((aAddress and THART.TMMU.PHYSICAL_INVERSE_MASK)=0) and} assigned(aHART) then begin
-   aHART.SetException(THART.TExceptionValue.StoreAccessFault,aAddress,aHART.fState.PC);
+   aHART.SetException(THART.TExceptionValue.StoreAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
   end;
  end;
 end;
 
 function TPasRISCV.TBus.BusDeviceLoad(const aHART:THART;const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 begin
- if (aSize>=aBusDevice.fMinOpSize) and (aSize<=aBusDevice.fMaxOpSize) and (aBusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
+ if ((aAddress-aBusDevice.fBase)+aSize)>aBusDevice.fSize then begin
+  // Outside of the device, e.g. in the rest of a page that the MMIO TLB caches for a small device
+  result:=0;
+  if assigned(aHART) then begin
+   aHART.SetException(THART.TExceptionValue.LoadAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
+  end;
+ end else if (aSize>=aBusDevice.fMinOpSize) and (aSize<=aBusDevice.fMaxOpSize) and (aBusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
   result:=aBusDevice.Load(aAddress,aSize);
  end else begin
   if not LoadUnaligned(aBusDevice,aAddress,result,aSize) then begin
    if assigned(aHART) then begin
-    aHART.SetException(THART.TExceptionValue.LoadAccessFault,aAddress,aHART.fState.PC);
+    aHART.SetException(THART.TExceptionValue.LoadAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
    end;
   end;
  end;
@@ -78471,12 +80039,17 @@ end;
 
 procedure TPasRISCV.TBus.BusDeviceStore(const aHART:THART;const aBusDevice:TBusDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
 begin
- if (aSize>=aBusDevice.fMinOpSize) and (aSize<=aBusDevice.fMaxOpSize) and (aBusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
+ if ((aAddress-aBusDevice.fBase)+aSize)>aBusDevice.fSize then begin
+  // Outside of the device, e.g. in the rest of a page that the MMIO TLB caches for a small device
+  if assigned(aHART) then begin
+   aHART.SetException(THART.TExceptionValue.StoreAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
+  end;
+ end else if (aSize>=aBusDevice.fMinOpSize) and (aSize<=aBusDevice.fMaxOpSize) and (aBusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
   aBusDevice.Store(aAddress,aValue,aSize);
  end else begin
   if not StoreUnaligned(aBusDevice,aAddress,aValue,aSize) then begin
    if assigned(aHART) then begin
-    aHART.SetException(THART.TExceptionValue.StoreAccessFault,aAddress,aHART.fState.PC);
+    aHART.SetException(THART.TExceptionValue.StoreAccessFault,aHART.fAccessVirtualAddress,aHART.fState.PC); // xtval is the virtual address
    end;
   end;
  end;
@@ -78490,7 +80063,9 @@ begin
 {$else}
  BusDevice:=FindBusDevice(aAddress);
 {$endif}
- if assigned(BusDevice) then begin
+ // An access that reaches past the end of the device is not served silently (the memory device
+ // read zeros and dropped the write), it is an access fault like an address without a device
+ if assigned(BusDevice) and ((aAddress+aSize)<=(BusDevice.fBase+BusDevice.fSize)) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    aValue:=BusDevice.Load(aAddress,aSize);
    result:=true;
@@ -78511,7 +80086,9 @@ begin
 {$else}
  BusDevice:=FindBusDevice(aAddress);
 {$endif}
- if assigned(BusDevice) then begin
+ // An access that reaches past the end of the device is not served silently (the memory device
+ // read zeros and dropped the write), it is an access fault like an address without a device
+ if assigned(BusDevice) and ((aAddress+aSize)<=(BusDevice.fBase+BusDevice.fSize)) then begin
   if (aSize>=BusDevice.fMinOpSize) and (aSize<=BusDevice.fMaxOpSize) and (BusDevice.fUnalignedAccessSupport or ((aAddress and (aSize-1))=0)) then begin
    BusDevice.Store(aAddress,aValue,aSize);
    result:=true;
@@ -78597,7 +80174,7 @@ begin
 
  fData[TAddress.SENVCFG]:=TPasRISCVUInt64($00000000000000d0); // LPE/SSE off by default
 
- fData[TAddress.HENVCFG]:=TPasRISCVUInt64($e0000003000000d0); // LPE/SSE off by default
+ fData[TAddress.HENVCFG]:=TPasRISCVUInt64($e0000000000000d0); // LPE/SSE off by default, no VS-mode pointer masking (PMM=0)
  fData[TAddress.HENVCFGH]:=fData[TAddress.HENVCFG] shr 32;
 
  // H-extension: HSTATUS initial value with VSXL=2 (64-bit)
@@ -78626,10 +80203,18 @@ begin
    result:=fData[TAddress.MSTATUS];
   end;
   TAddress.TIME:begin
+   // With V=1 the guest sees the time shifted by htimedelta
    result:=fHART.fMachine.fACLINTDevice.GetTime;
+   if fHART.fState.VirtualMode then begin
+    result:=result+fData[TAddress.HTIMEDELTA];
+   end;
   end;
   TAddress.TIMEH:begin
-   result:=fHART.fMachine.fACLINTDevice.GetTime shr 32;
+   result:=fHART.fMachine.fACLINTDevice.GetTime;
+   if fHART.fState.VirtualMode then begin
+    result:=result+fData[TAddress.HTIMEDELTA];
+   end;
+   result:=result shr 32;
   end;
   TAddress.MCYCLE:begin
    result:=fHART.fState.Cycle;
@@ -78661,9 +80246,6 @@ begin
 { TAddress.MENVCFGH:begin
    result:=TPasRISCVUInt32(TPasRISCVUInt64(fData[TAddress.MENVCFG] and TPasRISCVUInt64($80000000000000dc)) shr 32);
   end;}
-  TAddress.SENVCFG:begin
-   result:=TPasRISCVUInt64(TPasRISCVUInt64(fData[TAddress.SENVCFG] and CSR_SENVCFG_MASK));
-  end;
   TAddress.SRMCFG:begin
    // Ssqosid: RCID[11:0] and MCID[27:16], all other bits WPRI
    result:=fData[TAddress.SRMCFG] and CSR_SRMCFG_MASK;
@@ -78691,6 +80273,31 @@ begin
    result:=fData[TAddress.SCTRDEPTH] and 7;
   end;
 {$endif}
+{$ifdef Zicfiss}
+  TAddress.HENVCFG:begin
+   // henvcfg.SSE reads as zero while menvcfg.SSE is clear
+   result:=fData[TAddress.HENVCFG];
+   if (fData[TAddress.MENVCFG] and ENVCFG_SSE)=0 then begin
+    result:=result and not ENVCFG_SSE;
+   end;
+  end;
+  TAddress.SENVCFG:begin
+   // senvcfg.SSE reads as zero while menvcfg.SSE (with V=1 also henvcfg.SSE) is clear
+   result:=fData[TAddress.SENVCFG] and CSR_SENVCFG_MASK;
+   if ((fData[TAddress.MENVCFG] and ENVCFG_SSE)=0) or
+      (fHART.fState.VirtualMode and ((fData[TAddress.HENVCFG] and ENVCFG_SSE)=0)) then begin
+    result:=result and not ENVCFG_SSE;
+   end;
+  end;
+{$endif}
+  TAddress.MIDELEG:begin
+   // The VS-level interrupts and SGEI are always delegated to HS-mode
+   result:=fData[TAddress.MIDELEG] or CSR_MIDELEG_RO1;
+  end;
+  TAddress.HGEIP:begin
+   // The guest external interrupt lines, from the guest interrupt files
+   result:=(TPasMPInterlocked.Read(fHART.fState.PendingIRQs) shr HGEIP_PENDING_SHIFT) and TMask.HGEIE_MASK;
+  end;
   TAddress.STIMECMP:begin
    result:=TPasMPInterlocked.Read(fHART.fSTIMECMP);
   end;
@@ -78719,10 +80326,28 @@ begin
   TAddress.SSTATUS:begin
    Value:=(fData[TAddress.MSTATUS] and not TPasRISCVUInt64(TMask.SSTATUS)) or (aValue and TPasRISCVUInt64(TMask.SSTATUS));
    fData[TAddress.MSTATUS]:=Value;
+   fHART.JITStateChanged; // FS is part of the JIT block tag
   end;
   TAddress.MENVCFG:begin
-   fData[TAddress.MENVCFG]:=aValue and CSR_MENVCFG_MASK;
+   Value:=aValue and CSR_MENVCFG_MASK;
+{$ifdef Zicfiss}
+   if ((fData[TAddress.MENVCFG] xor Value) and ENVCFG_SSE)<>0 then begin
+    // SSE decides whether xwr=010 is a shadow stack page or reserved, and a change takes effect
+    // at once, without an sfence.vma
+    fData[TAddress.MENVCFG]:=Value;
+    fHART.FlushTLB(false,true);
+   end;
+{$endif}
+   fData[TAddress.MENVCFG]:=Value;
+   fHART.JITStateChanged; // LPE is part of the JIT block tag
   end;
+{$ifndef PasRISCVSmepmp}
+  TAddress.MSECCFG:begin
+   // With Smepmp CSRHandlerPMPWrite writes mseccfg
+   fData[TAddress.MSECCFG]:=aValue and CSR_MSECCFG_MASK;
+   fHART.JITStateChanged; // MLPE is part of the JIT block tag
+  end;
+{$endif}
 { TAddress.MENVCFG:begin
    fData[TAddress.MENVCFG]:=((fData[TAddress.MENVCFG] and TPasRISCVUInt64($ffffffff00000000)) or
                              (TPasRISCVUInt64(aValue) and TPasRISCVUInt64($00000000ffffffff))) and TPasRISCVUInt64($80000000000000dc);
@@ -78733,7 +80358,18 @@ begin
    fData[TAddress.MENVCFGH]:=fData[TAddress.MENVCFG] shr 32;
   end;}
   TAddress.SENVCFG:begin
-   fData[TAddress.SENVCFG]:=aValue and CSR_SENVCFG_MASK;
+   Value:=aValue and CSR_SENVCFG_MASK;
+{$ifdef Zicfiss}
+   // senvcfg.SSE is read-only zero unless menvcfg.SSE is set; with V=1 and henvcfg.SSE=0 it reads
+   // as zero and a write leaves the bit of the shared senvcfg alone
+   if (fData[TAddress.MENVCFG] and ENVCFG_SSE)=0 then begin
+    Value:=Value and not ENVCFG_SSE;
+   end else if fHART.fState.VirtualMode and ((fData[TAddress.HENVCFG] and ENVCFG_SSE)=0) then begin
+    Value:=(Value and not ENVCFG_SSE) or (fData[TAddress.SENVCFG] and ENVCFG_SSE);
+   end;
+{$endif}
+   fData[TAddress.SENVCFG]:=Value;
+   fHART.JITStateChanged; // LPE is part of the JIT block tag
   end;
   TAddress.SRMCFG:begin
    // Ssqosid: store RCID[11:0] and MCID[27:16], all other bits WPRI
@@ -78788,12 +80424,32 @@ begin
   TAddress.HVICTL:begin
    fData[TAddress.HVICTL]:=aValue and HVICTL_VALID_MASK;
   end;
-{$ifdef PasRISCVSsdbltrp}
   TAddress.HENVCFG:begin
-   fData[TAddress.HENVCFG]:=aValue and CSR_HENVCFG_MASK;
-   fData[TAddress.HENVCFGH]:=fData[TAddress.HENVCFG] shr 32;
-  end;
+   Value:=aValue and CSR_HENVCFG_MASK;
+{$ifdef Zicfiss}
+   // henvcfg.SSE is read-only zero unless menvcfg.SSE is set
+   if (fData[TAddress.MENVCFG] and ENVCFG_SSE)=0 then begin
+    Value:=Value and not ENVCFG_SSE;
+   end;
+   if ((fData[TAddress.HENVCFG] xor Value) and ENVCFG_SSE)<>0 then begin
+    // The same for the VS-stage (see MENVCFG)
+    fData[TAddress.HENVCFG]:=Value;
+    fHART.FlushTLB(false,true);
+   end;
 {$endif}
+   fData[TAddress.HENVCFG]:=Value;
+   fData[TAddress.HENVCFGH]:=fData[TAddress.HENVCFG] shr 32;
+   fHART.JITStateChanged; // LPE is part of the JIT block tag
+  end;
+  TAddress.MCOUNTEREN,TAddress.SCOUNTEREN,TAddress.HCOUNTEREN:begin
+   // 32 bit wide. The JIT translates counter reads that the enables allow into inline code, which
+   // blocks only reach with the same enables (JIT state bits)
+   Value:=aValue and TPasRISCVUInt64($ffffffff);
+   if fData[aAddress]<>Value then begin
+    fData[aAddress]:=Value;
+    fHART.JITStateChanged;
+   end;
+  end;
   TAddress.HEDELEG:begin
    fData[TAddress.HEDELEG]:=aValue and CSR_HEDELEG_MASK;
   end;
@@ -78805,6 +80461,9 @@ begin
   end;
   TAddress.MIDELEG:begin
    fData[TAddress.MIDELEG]:=aValue and CSR_MIDELEG_MASK;
+  end;
+  TAddress.HGEIE:begin
+   fData[TAddress.HGEIE]:=aValue and TMask.HGEIE_MASK;
   end;
 { TAddress.STIMECMPH:begin
    fData[TAddress.STIMECMP]:=((TPasRISCVUInt64(aValue) shl 32) and TPasRISCVUInt64($ffffffff00000000)) or
@@ -78835,7 +80494,12 @@ end;
 
 procedure TPasRISCV.THART.TCSR.SetFPUException(const aValue:TPasRISCVUInt64);
 begin
- fData[TAddress.FFLAGS]:=(fData[TAddress.FFLAGS]{and not TFPUExceptionMasks.Mask}) or (aValue and TPasRISCVUInt64(TFPUExceptionMasks.Mask));
+ if (aValue and TPasRISCVUInt64(TFPUExceptionMasks.Mask))<>0 then begin
+  fData[TAddress.FFLAGS]:=(fData[TAddress.FFLAGS]{and not TFPUExceptionMasks.Mask}) or (aValue and TPasRISCVUInt64(TFPUExceptionMasks.Mask));
+  // fflags is FP state, so FS becomes Dirty (also for scalar compares and conversions to
+  // integers and for vector FP instructions, which write no FP register)
+  SetFSDirty;
+ end;
 end;
 
 procedure TPasRISCV.THART.TCSR.ClearFPUExceptions;
@@ -78859,6 +80523,10 @@ begin
    // Only JIT traces can hold a stale RMM rounding decision; the interpreter
    // re-checks FastRMMActive per op, so no flush is needed without the JIT.
    fHART.FlushTLB(true,true);
+   if assigned(fHART.fJustInTimeCompiler) then begin
+    // The TLBs alone are not enough, the blocks stay in the block map otherwise
+    fHART.fJustInTimeCompiler.ClearBlocks;
+   end;
 {$endif}
   end;
  end;
@@ -78943,7 +80611,9 @@ end;
 
 function TPasRISCV.THART.TCSR.IsFPUEnabled:Boolean;
 begin
- result:=((fData[TAddress.MSTATUS] shr 13) and 3)<>TFS.Off;
+ // With V=1 the HS-level FS (in the HS backing store) has to be on as well
+ result:=(((fData[TAddress.MSTATUS] shr 13) and 3)<>TFS.Off) and
+         ((not fHART.fState.VirtualMode) or (((fHART.fState.HSMode_MSTATUS shr 13) and 3)<>TFS.Off));
 end;
 
 procedure TPasRISCV.THART.TCSR.SetVSDirty;
@@ -78956,7 +80626,9 @@ end;
 
 function TPasRISCV.THART.TCSR.IsVectorEnabled:Boolean;
 begin
- result:=((fData[TAddress.MSTATUS] shr 9) and 3)<>TVS.Off;
+ // With V=1 the HS-level VS (in the HS backing store) has to be on as well
+ result:=(((fData[TAddress.MSTATUS] shr 9) and 3)<>TVS.Off) and
+         ((not fHART.fState.VirtualMode) or (((fHART.fState.HSMode_MSTATUS shr 9) and 3)<>TVS.Off));
 end;
 
 { TPasRISCV.THART.TAIARegFile }
@@ -79002,6 +80674,11 @@ begin
  fHARTMask:=fHART.fHARTMask;
 
  fEnabled:=false;
+
+ fHostHasLZCNT:=true;
+ fHostHasTZCNT:=true;
+ fHostHasPOPCNT:=true;
+ fHostHasF16C:=true;
 
  fCompiling:=false;
 
@@ -79103,15 +80780,99 @@ end;
 
 {$ifdef JITTLBTag}
 function TPasRISCV.THART.TJustInTimeCompiler.GetJITTLBTag(const aMode:TPasRISCVInt32;const aVirtualMode:TPasRISCVInt32):TPasRISCVUInt64;
+// Without arguments the tag of the current state, with a mode the tag of the block being traced
+// (whose state bits were taken at the start of the trace)
 begin
- result:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (IfThen(aMode<0,ord(fHART.fState.Mode),aMode) shl 1) or (IfThen(aVirtualMode<0,ord(fHART.fState.VirtualMode),aVirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+ result:={$ifdef PerModeTLB}(fJITTLBGeneration shl JIT_TAG_GENERATION_SHIFT) or
+         TPasRISCVUInt64(IfThen(aMode<0,TPasRISCVInt64(fJITStateBits),TPasRISCVInt64(fCurrentStateBits))) or
+         (IfThen(aMode<0,ord(fHART.fState.Mode),aMode) shl 1) or
+         (IfThen(aVirtualMode<0,ord(fHART.fState.VirtualMode),aVirtualMode) and 1){$else}(fJITTLBGeneration shl JIT_TAG_GENERATION_SHIFT) or TPasRISCVUInt64(IfThen(aMode<0,TPasRISCVInt64(fJITStateBits),TPasRISCVInt64(fCurrentStateBits))){$endif};
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.UpdateJITTLBTag;
+// Called on every change of mode, V and of the state in ComputeJITStateBits
 begin
- fHART.fState.JITTLBTag:={$ifdef PerModeTLB}(fJITTLBGeneration shl 3) or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}fJITTLBGeneration{$endif};
+ fJITStateBits:=ComputeJITStateBits;
+ fHART.fState.JITTLBTag:={$ifdef PerModeTLB}(fJITTLBGeneration shl JIT_TAG_GENERATION_SHIFT) or fJITStateBits or (ord(fHART.fState.Mode) shl 1) or (ord(fHART.fState.VirtualMode) and 1){$else}(fJITTLBGeneration shl JIT_TAG_GENERATION_SHIFT) or fJITStateBits{$endif};
 end;
 {$endif}
+
+function TPasRISCV.THART.TJustInTimeCompiler.ComputeJITStateBits:TPasRISCVUInt64;
+// State that translated code relies on without checking it at run time, so a block may only run
+// with the state it was traced with: FP instructions are translated without an FS check, with
+// landing pads enforced indirect jumps are left to the interpreter (which sets ELP), and reads of
+// cycle, time and instret are translated only when the counter enables allow them
+var Counters:TPasRISCVUInt64;
+begin
+ result:=0;
+ if fHART.fState.CSR.IsFPUEnabled then begin
+  result:=JIT_STATE_FPU_ENABLED;
+ end;
+{$ifdef Zicfilp}
+ if fHART.LandingPadsEnabled then begin
+  result:=result or JIT_STATE_LANDING_PADS;
+ end;
+{$endif}
+ // The same rules as in CounterAccessCheck
+ if fHART.fState.Mode=THART.TMode.Machine then begin
+  Counters:=7;
+ end else begin
+  Counters:=fHART.fState.CSR.fData[TCSR.TAddress.MCOUNTEREN];
+  if fHART.fState.VirtualMode then begin
+   Counters:=Counters and fHART.fState.CSR.fData[TCSR.TAddress.HCOUNTEREN];
+  end;
+  if fHART.fState.Mode=THART.TMode.User then begin
+   Counters:=Counters and fHART.fState.CSR.fData[TCSR.TAddress.SCOUNTEREN];
+  end;
+ end;
+ result:=result or ((Counters and 7) shl JIT_STATE_COUNTERS_SHIFT);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.MarkJITTLBPage(const aVirtualPC:TPasRISCVUInt64);
+begin
+ fJITTLBPagesSeen[(aVirtualPC shr (PAGE_SHIFT+6)) and 511]:=fJITTLBPagesSeen[(aVirtualPC shr (PAGE_SHIFT+6)) and 511] or (TPasRISCVUInt64(1) shl ((aVirtualPC shr PAGE_SHIFT) and 63));
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.JITTLBPageSeen(const aVirtualAddress:TPasRISCVUInt64):Boolean;
+begin
+ result:=(fJITTLBPagesSeen[(aVirtualAddress shr (PAGE_SHIFT+6)) and 511] and (TPasRISCVUInt64(1) shl ((aVirtualAddress shr PAGE_SHIFT) and 63)))<>0;
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompiler.FlushPageBlocks(const aPageBase:TPasRISCVUInt64);
+// Drops the blocks of a changed page, for every mode, V and state they got blocks in. The dirty
+// bit of the page is only there once, so the flush has to cover the other modes as well: they
+// would never get one of their own and could run stale code (physical code that runs in several
+// modes, for example a page shared between kernel and user space). fJITModeVirtualSeen and
+// fJITStateBitsSeen keep the loop down to the combinations that really got blocks.
+var Key:TBlockMapKey;
+    Index,StateIndex,ModeIndex:TPasRISCVInt32;
+{$ifdef PasRISCVJustInTimeCompilerNativeLinker}
+    PoolIndex:TPasRISCVInt32;
+{$endif}
+begin
+ for ModeIndex:=0 to 7 do begin
+  if (fJITModeVirtualSeen and (TPasRISCVUInt32(1) shl ModeIndex))<>0 then begin
+   Key.Mode:=TMode(ModeIndex shr 1);
+   Key.VirtualMode:=(ModeIndex and 1)<>0;
+   for StateIndex:=0 to 31 do begin
+    if (fJITStateBitsSeen and (TPasRISCVUInt32(1) shl StateIndex))<>0 then begin
+     Key.StateBits:=StateIndex;
+     for Index:=0 to 4095 do begin
+      Key.PhysicalPC:=aPageBase+TPasRISCVUInt64(Index);
+      fBlockMap.Delete(Key);
+{$ifdef PasRISCVJustInTimeCompilerNativeLinker}
+      if fBlockLinks.TryGet(Key,PoolIndex) then begin
+       fBlockLinkPoolCounts[PoolIndex]:=0;
+       fBlockLinkFreeList.Enqueue(PoolIndex);
+       fBlockLinks.Delete(Key);
+      end;
+{$endif}
+     end;
+    end;
+   end;
+  end;
+ end;
+end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.AllocateExecutableMemory(const aSize:TPasRISCVUInt64):Pointer;
 begin
@@ -79252,30 +81013,12 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompiler.FindBlockCodePtr(const aPhysicalPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean):TPasRISCVPtrUInt;
+function TPasRISCV.THART.TJustInTimeCompiler.FindBlockCodePtr(const aPhysicalPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aStateBits:TPasRISCVUInt64):TPasRISCVPtrUInt;
 var Key:TBlockMapKey;
-    PageBase:TPasRISCVUInt64;
-    i:TPasRISCVInt32;
-{$ifdef PasRISCVJustInTimeCompilerNativeLinker}
-    PoolIndex:TPasRISCVInt32;
-{$endif}
 begin
 
  if PageNeedsFlush(aPhysicalPC) then begin
-  PageBase:=aPhysicalPC and not TPasRISCVUInt64($fff);
-  Key.Mode:=aMode;
-  Key.VirtualMode:=aVirtualMode;
-  for i:=0 to 4095 do begin
-   Key.PhysicalPC:=PageBase+TPasRISCVUInt64(i);
-   fBlockMap.Delete(Key);
-{$ifdef PasRISCVJustInTimeCompilerNativeLinker}
-   if fBlockLinks.TryGet(Key,PoolIndex) then begin
-    fBlockLinkPoolCounts[PoolIndex]:=0;
-    fBlockLinkFreeList.Enqueue(PoolIndex);
-    fBlockLinks.Delete(Key);
-   end;
-{$endif}
-  end;
+  FlushPageBlocks(aPhysicalPC and not TPasRISCVUInt64($fff));
   result:=0;
   exit;
  end;
@@ -79283,6 +81026,7 @@ begin
  Key.PhysicalPC:=aPhysicalPC;
  Key.Mode:=aMode;
  Key.VirtualMode:=aVirtualMode;
+ Key.StateBits:=TPasRISCVUInt8(aStateBits shr JIT_STATE_SHIFT);
  result:=fBlockMap.GetValue(Key);
 
 end;
@@ -79290,7 +81034,14 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompiler.ClearBlocks;
 begin
 
+ // A trace in progress writes into the code buffer and would register a block that points into
+ // the memory dropped here, so it is discarded first (a CSR write can reach this from inside a
+ // trace: the strict FPU switch, the Smctr arming)
+ fCompiling:=false;
+
  fBlockMap.Clear;
+ fJITStateBitsSeen:=0;
+ fJITModeVirtualSeen:=0;
 
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
  fBlockLinks.Clear;
@@ -79333,9 +81084,16 @@ end;
 
 procedure TPasRISCV.THART.TJustInTimeCompiler.MarkPageJITed(const aPhysicalAddress:TPasRISCVUInt64);
 var Offset:TPasRISCVUInt32;
+    Bit:TPasRISCVUInt32;
 begin
  Offset:=(aPhysicalAddress shr JIT_DIRTY_WORD_SHIFT) and fDirtyPageBitmapMask;
- TPasMPInterlocked.BitwiseOr(fJITedPageBitmap[Offset],TPasMPUInt32(TPasRISCVUInt32(1) shl ((aPhysicalAddress shr JIT_DIRTY_PAGE_SHIFT) and $1f)));
+ Bit:=TPasRISCVUInt32(1) shl ((aPhysicalAddress shr JIT_DIRTY_PAGE_SHIFT) and $1f);
+ if (fJITedPageBitmap[Offset] and Bit)=0 then begin
+  TPasMPInterlocked.BitwiseOr(fJITedPageBitmap[Offset],TPasMPUInt32(Bit));
+  // First translated code on this page: stores through older write TLB entries would not mark it
+  // dirty (after the bit above, so that a store TLB fill from now on does)
+  fHART.fMachine.JITWriteProtectPage(aPhysicalAddress);
+ end;
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.PageNeedsFlush(const aPhysicalAddress:TPasRISCVUInt64):Boolean;
@@ -79359,11 +81117,16 @@ begin
  UpdateJITTLBTag;
 {$else}
  FillChar(fJITTLB,SizeOf(TJITTLBEntries),#0);
+ // Without the tag every change of mode, V and of the JIT state flushes, and the lookups after it
+ // take the state for the block map key from here
+ fJITStateBits:=ComputeJITStateBits;
 {$endif}
+ // No JIT TLB entry is valid any more
+ FillChar(fJITTLBPagesSeen,SizeOf(fJITTLBPagesSeen),#0);
 end;
 
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
-procedure TPasRISCV.THART.TJustInTimeCompiler.AddLinkEntry(const aDestPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aPatchPtr:TPasRISCVPtrUInt);
+procedure TPasRISCV.THART.TJustInTimeCompiler.AddLinkEntry(const aDestPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aStateBits:TPasRISCVUInt64;const aPatchPtr:TPasRISCVPtrUInt);
 begin
  if fLinkEntryCount>=TPasRISCVUInt32(length(fLinkEntries)) then begin
   SetLength(fLinkEntries,TPasRISCVUInt32(length(fLinkEntries))+64);
@@ -79371,11 +81134,12 @@ begin
  fLinkEntries[fLinkEntryCount].DestPhysicalPC:=aDestPhysPC;
  fLinkEntries[fLinkEntryCount].Mode:=aMode;
  fLinkEntries[fLinkEntryCount].VirtualMode:=aVirtualMode;
+ fLinkEntries[fLinkEntryCount].StateBits:=TPasRISCVUInt8(aStateBits shr JIT_STATE_SHIFT);
  fLinkEntries[fLinkEntryCount].PatchPtr:=aPatchPtr;
  inc(fLinkEntryCount);
 end;
 
-procedure TPasRISCV.THART.TJustInTimeCompiler.PatchPendingLinks(const aPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean);
+procedure TPasRISCV.THART.TJustInTimeCompiler.PatchPendingLinks(const aPhysPC:TPasRISCVUInt64;const aMode:TMode;const aVirtualMode:Boolean;const aStateBits:TPasRISCVUInt64);
 var Key:TBlockMapKey;
     PoolIndex:TPasRISCVInt32;
     SlotIndex:TPasRISCVInt32;
@@ -79385,6 +81149,7 @@ begin
  Key.PhysicalPC:=aPhysPC;
  Key.Mode:=aMode;
  Key.VirtualMode:=aVirtualMode;
+ Key.StateBits:=TPasRISCVUInt8(aStateBits shr JIT_STATE_SHIFT);
 
  if not fBlockLinks.TryGet(Key,PoolIndex) then begin
   exit;
@@ -79634,6 +81399,13 @@ function TPasRISCV.THART.TJustInTimeCompiler.GuestJITCanonicalNaNF64Offset:TPasR
 begin
  result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITCanonicalNaNF64));
 end;
+
+{$ifdef PasRISCVJITCanonicalHalfNaN}
+function TPasRISCV.THART.TJustInTimeCompiler.GuestJITCanonicalNaNF16Offset:TPasRISCVInt32;
+begin
+ result:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITCanonicalNaNF16));
+end;
+{$endif}
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerVector}
@@ -79756,6 +81528,10 @@ end;
 class function TPasRISCV.THART.TJustInTimeCompiler.JITRDTIMEHelper(aHART:Pointer):TPasRISCVUInt64;
 begin
  result:=THART(aHART).fMachine.fACLINTDevice.GetTime;
+ // With V=1 the guest sees the time shifted by htimedelta
+ if THART(aHART).fState.VirtualMode then begin
+  result:=result+THART(aHART).fState.CSR.fData[TCSR.TAddress.HTIMEDELTA];
+ end;
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.GuestJITRDTIMEHelperPtrOffset:TPasRISCVUInt64;
@@ -79808,7 +81584,7 @@ begin
       SFFFlags:=SFFFlags or SoftFloatFF_NV;
      end;
     end else begin
-     if (Address>31) or ((Address=31) and (Offset<>0)) then begin
+     if (Address>31) or ((Address=31) and ((Offset shr 21)<>0)) then begin // only the integer part counts, the fraction is truncated first
       SFFFlags:=SFFFlags or SoftFloatFF_NV;
      end;
     end;
@@ -79836,14 +81612,42 @@ end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerCBO}
-class procedure TPasRISCV.THART.TJustInTimeCompiler.CBOZeroHelper(aHART:Pointer;aAddress:TPasRISCVUInt64);
+class function TPasRISCV.THART.TJustInTimeCompiler.CBOZeroHelper(aHART:Pointer;aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
+// Zeroes the cache block for translated code. When that faults, the exception is dropped and the
+// result is 0: the translated code then leaves the block at the cbo.zero, and the interpreter
+// repeats it and raises the exception with the right PC
 begin
  THART(aHART).ExecuteInstructionCBOZero(aAddress);
+ if THART(aHART).fState.ExceptionValue<>TExceptionValue.None then begin
+  THART(aHART).ClearException;
+  result:=0;
+ end else begin
+  result:=1;
+ end;
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.GuestCBOZeroHelperAbsoluteOffset:TPasRISCVUInt64;
 begin
  result:=TPasRISCVUInt64(TPasRISCVPtrUInt(Pointer(@CBOZeroHelper)));
+end;
+
+class function TPasRISCV.THART.TJustInTimeCompiler.CBOAccessHelper(aHART:Pointer;aAddress:TPasRISCVUInt64):TPasRISCVUInt64;
+// Checks the access of cbo.clean, cbo.flush and cbo.inval for translated code, like CBOZeroHelper
+// does for cbo.zero: on a fault the exception is dropped and the result is 0, the block leaves at
+// the instruction and the interpreter repeats it with the right PC
+begin
+ THART(aHART).ExecuteInstructionCBOAccess(aAddress);
+ if THART(aHART).fState.ExceptionValue<>TExceptionValue.None then begin
+  THART(aHART).ClearException;
+  result:=0;
+ end else begin
+  result:=1;
+ end;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompiler.GuestCBOAccessHelperAbsoluteOffset:TPasRISCVUInt64;
+begin
+ result:=TPasRISCVUInt64(TPasRISCVPtrUInt(Pointer(@CBOAccessHelper)));
 end;
 
 function TPasRISCV.THART.TJustInTimeCompiler.GuestModeOffset:TPasRISCVInt32;
@@ -79925,12 +81729,13 @@ begin
  // MMIO TLB fast path, skips AddressTranslate + device lookup entirely
  VPN:=aVirtualAddress shr PAGE_SHIFT;
  MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
+ if (((aTLBFieldOffset=TLB_W) and (MMIOTLBEntry^.WriteVPN=VPN)) or ((aTLBFieldOffset<>TLB_W) and (MMIOTLBEntry^.ReadVPN=VPN))) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
   if NoMMIO then begin
    result:=0;
    exit;
   end;
   if aTLBFieldOffset=TLB_W then begin
+   HART.fAccessVirtualAddress:=aVirtualAddress; // the bus only gets the physical address, xtval needs this one
    HART.fBus.BusDeviceStore(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),HART.fState.JITMMIOScratch,aAlignment);
    if HART.fState.ExceptionValue<>TExceptionValue.None then begin
     HART.fState.ExceptionValue:=TExceptionValue.None;
@@ -79940,6 +81745,7 @@ begin
    result:=TPasRISCVPtrUInt(@HART.fState.JITMMIOScratch);
    exit;
   end else begin
+   HART.fAccessVirtualAddress:=aVirtualAddress; // the bus only gets the physical address, xtval needs this one
    HART.fState.JITMMIOScratch:=HART.fBus.BusDeviceLoad(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),aAlignment);
    if HART.fState.ExceptionValue<>TExceptionValue.None then begin
     HART.fState.ExceptionValue:=TExceptionValue.None;
@@ -79954,9 +81760,9 @@ begin
 
  // Do page walk to fill the data TLB
  if aTLBFieldOffset=TLB_W then begin
-  {$ifdef JITMMIOFastPath}PhysicalAddress:={$endif}HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[]);
+  {$ifdef JITMMIOFastPath}PhysicalAddress:={$endif}HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Store,[],aAlignment);
  end else begin
-  {$ifdef JITMMIOFastPath}PhysicalAddress:={$endif}HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[]);
+  {$ifdef JITMMIOFastPath}PhysicalAddress:={$endif}HART.AddressTranslate(aVirtualAddress,TMMU.TAccessType.Load,[],aAlignment);
  end;
 
  // If AddressTranslate raised an exception, clear it and bail out.
@@ -79978,8 +81784,9 @@ begin
    end;
 {$ifdef PasRISCVMMIOTLB}
 // MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-   if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
+   if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
     // MMIO TLB hit, use cached device pointer
+    HART.fAccessVirtualAddress:=aVirtualAddress; // the bus only gets the physical address, xtval needs this one
     HART.fBus.BusDeviceStore(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),HART.fState.JITMMIOScratch,aAlignment);
     if HART.fState.ExceptionValue<>TExceptionValue.None then begin
      HART.fState.ExceptionValue:=TExceptionValue.None;
@@ -80017,8 +81824,9 @@ begin
    end;
 {$ifdef PasRISCVMMIOTLB}
 // MMIOTLBEntry:=@{$ifdef PerModeTLB}HART.fMMIOTLBData^{$else}HART.fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-   if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
+   if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=HART.fMachine.fMMIOTLBGeneration) then begin
     // MMIO TLB hit, use cached device pointer
+    HART.fAccessVirtualAddress:=aVirtualAddress; // the bus only gets the physical address, xtval needs this one
     HART.fState.JITMMIOScratch:=HART.fBus.BusDeviceLoad(HART,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aVirtualAddress and PAGE_MASK),aAlignment);
     if HART.fState.ExceptionValue<>TExceptionValue.None then begin
      HART.fState.ExceptionValue:=TExceptionValue.None;
@@ -80363,13 +82171,30 @@ begin
   end;
  end;
 
- if LRUReg<>TFPURegister.f0 then begin
+ if LRUBest<>$ffffffff then begin
   result:=fHostFPURegisterInfos[LRUReg].HostRegister;
   FreeGuestFPURegister(LRUReg);
  end else begin
-  // Fallback: evict f0
-  result:=fHostFPURegisterInfos[TFPURegister.f0].HostRegister;
-  FreeGuestFPURegister(TFPURegister.f0);
+  // Nothing mapped outside the avoided registers: take the lowest host register that is not
+  // avoided and drop whatever is mapped to it. The fallback used to evict f0 unconditionally,
+  // which took an operand of the instruction being emitted away (Win64 has fewer usable XMM
+  // registers, so the allocator gets here sooner there)
+  Mask:=DefaultFPURegisterMask and not aAvoidRegisterMask;
+  if Mask=0 then begin
+   Mask:=DefaultFPURegisterMask;
+  end;
+  BitIndex:=0;
+  while (Mask and 1)=0 do begin
+   Mask:=Mask shr 1;
+   inc(BitIndex);
+  end;
+  result:=TPasRISCVUInt8(BitIndex);
+  for FPURegister:=TFPURegister.f0 to TFPURegister.f31 do begin
+   if fHostFPURegisterInfos[FPURegister].HostRegister=result then begin
+    FreeGuestFPURegister(FPURegister);
+    break;
+   end;
+  end;
  end;
 
  // FreeGuestFPURegister added the bit back to fHostFPURegisterMask, clear it since we're claiming it
@@ -80828,6 +82653,8 @@ begin
 
  fCurrentVirtualMode:=fHART.fState.VirtualMode;
 
+ fCurrentStateBits:=fJITStateBits;
+
  EmitInit;
 
 end;
@@ -80882,7 +82709,10 @@ begin
  Key.PhysicalPC:=fCurrentPhysicalPC;
  Key.Mode:=fCurrentMode;
  Key.VirtualMode:=fCurrentVirtualMode;
+ Key.StateBits:=TPasRISCVUInt8(fCurrentStateBits shr JIT_STATE_SHIFT);
  fBlockMap.Add(Key,TPasRISCVPtrUInt(CodeDest));
+ fJITStateBitsSeen:=fJITStateBitsSeen or (TPasRISCVUInt32(1) shl Key.StateBits);
+ fJITModeVirtualSeen:=fJITModeVirtualSeen or (TPasRISCVUInt32(1) shl ((TPasRISCVUInt32(ord(Key.Mode)) shl 1) or TPasRISCVUInt32(ord(Key.VirtualMode) and 1)));
 
  // Mark page as having JIT code (for dirty-tracking optimization)
  MarkPageJITed(fCurrentPhysicalPC);
@@ -80891,6 +82721,7 @@ begin
  TLBIndex:=(fBlockVirtualPC shr 1) and JIT_TLB_MASK;
  JITTLBEntry:=@fJITTLB[TLBIndex];
  JITTLBEntry^.VirtualPC:=fBlockVirtualPC;
+ MarkJITTLBPage(fBlockVirtualPC);
 {$ifdef JITTLBTag}
  JITTLBEntry^.Tag:=GetJITTLBTag(ord(fCurrentMode),ord(fCurrentVirtualMode) and 1);
 {$endif}
@@ -80905,6 +82736,7 @@ begin
   Key.PhysicalPC:=fLinkEntries[LinkIndex].DestPhysicalPC;
   Key.Mode:=fLinkEntries[LinkIndex].Mode;
   Key.VirtualMode:=fLinkEntries[LinkIndex].VirtualMode;
+  Key.StateBits:=fLinkEntries[LinkIndex].StateBits;
 
   if not fBlockLinks.TryGet(Key,PoolIndex) then begin
 
@@ -80945,7 +82777,7 @@ begin
  fLinkEntryCount:=0;
 
  // Patch any pending links that target this block
- PatchPendingLinks(fCurrentPhysicalPC,fCurrentMode,fHART.fState.VirtualMode);
+ PatchPendingLinks(fCurrentPhysicalPC,fCurrentMode,fHART.fState.VirtualMode,fCurrentStateBits);
 
 {$endif}
 
@@ -81030,7 +82862,9 @@ var VirtualPC:TPasRISCVUInt64;
     r:TRegister;}
 begin
 
- if ((fMachine.fRunState and RUNSTATE_SINGLESTEP)<>0){$ifdef Zicfilp}or (fHART.fState.ELP<>0){$endif} then begin
+ // fStaticRMActive: Trace comes here from inside ExecuteFPStaticRM, with the host rounding mode
+ // switched to the static rm of the instruction, but translated code relies on it being frm
+ if ((fMachine.fRunState and RUNSTATE_SINGLESTEP)<>0){$ifdef Zicfilp}or (fHART.fState.ELP<>0){$endif} or fHART.fStaticRMActive then begin
   result:=false;
   exit;
  end;
@@ -81109,19 +82943,34 @@ begin
  VPN:=VirtualPC shr PAGE_SHIFT;
  DirectAccessTLBEntry:={$ifdef PerModeTLB}@fHART.fDirectAccessTLBCache^{$else}@fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Execute<>VPN then begin
-  result:=false;
-  exit;
+  // The execute entry is gone while the interpreter still runs this page through its cached fetch
+  // pointer, typically because a data access to another page with the same TLB index took the slot
+  // (direct mapped, one slot for all access types). Giving up here left the code interpreted until
+  // the next trap or page change (N19), so translate the PC again, which refills the entry. This
+  // runs at the start of an instruction, so a fault of this translation (the G-stage does not honor
+  // NoTrap) is dropped and the interpreter executes the instruction, raising it properly.
+  PhysicalPC:=fHART.AddressTranslate(VirtualPC,TMMU.TAccessType.Instruction,[TMMU.TAccessFlag.NoTrap],2);
+  if fHART.fState.ExceptionValue<>TExceptionValue.None then begin
+   fHART.ClearException;
+   result:=false;
+   exit;
+  end;
+  if DirectAccessTLBEntry^.Execute<>VPN then begin
+   result:=false;
+   exit;
+  end;
  end;
  PhysicalPC:=TPasRISCVUInt64({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryExecute{$endif}+TPasRISCVPtrUInt(VirtualPC)+fRAMHostToPhysOffset);
 
  // Look up in block map
- CodePtr:=FindBlockCodePtr(PhysicalPC,fHART.fState.Mode,fHART.fState.VirtualMode);
+ CodePtr:=FindBlockCodePtr(PhysicalPC,fHART.fState.Mode,fHART.fState.VirtualMode,fJITStateBits);
  if CodePtr<>0 then begin
 {$ifdef PasRISCVJustInTimeCompilerStats}
   inc(fStatTLBSlowHits);
 {$endif}
   JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
   JITTLBEntry^.VirtualPC:=VirtualPC;
+  MarkJITTLBPage(VirtualPC);
 {$ifdef JITTLBTag}
   JITTLBEntry^.Tag:=Tag;
 {$endif}
@@ -81387,6 +83236,9 @@ begin
    fCTRBranchFallthrough:=TPasRISCVInt32(aFallthroughOffset);
 {$endif}
    inc(fPCOffset,aFallthroughOffset);
+   // The branch itself already counts here: the intrinsic emits the exit of the fall through
+   // path with EmitEnd, and that flushes the instruction count into the cycle counter
+   inc(fInstructionCount);
    if aIntrinsicMethod(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3) then begin
 {$ifdef PasRISCVJITFPUFlushAfterEachOp}
     FreeAllHostFPURegisters;
@@ -81401,9 +83253,9 @@ begin
                   false,0,(fPCOffset-TPasRISCVInt32(aFallthroughOffset))+TPasRISCVInt32(aTargetOffset));
 {$endif}
     inc(fPCOffset,aTargetOffset-aFallthroughOffset);
-    inc(fInstructionCount);
     fBlockEnds:=fTemporaryCodeSize>UNROLL_MAX_BLOCK_SIZE;
    end else begin
+    dec(fInstructionCount);
     fBlockEnds:=true;
    end;
   end;
@@ -82236,6 +84088,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZ(const aInstruction:TPa
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
+ if not fHostHasLZCNT then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -82252,6 +84109,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZ(const aInstruction:TPa
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
+ if not fHostHasTZCNT then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -82268,6 +84130,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOP(const aInstruction:TP
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
+ if not fHostHasPOPCNT then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -82284,6 +84151,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCLZW(const aInstruction:TP
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
+ if not fHostHasLZCNT then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -82300,6 +84172,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCTZW(const aInstruction:TP
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
+ if not fHostHasTZCNT then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -82316,6 +84193,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicCPOPW(const aInstruction:T
 var RD,RS1:TRegister;
     HostRD,HostRS1:TPasRISCVUInt8;
 begin
+ if not fHostHasPOPCNT then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -84351,7 +86233,9 @@ begin
   // RD is both source (expected value for CAS) and destination (receives old value)
   HostDest:=MapGuestToHostIntRegister(RD,REG_SRC or REG_DST,CurrentAMOHostRegAvoidMask);
  end else begin
+  // rd=x0: the expected value is zero (the claimed register holds anything)
   HostDest:=ClaimHostIntRegister(CurrentAMOHostRegAvoidMask);
+  EmitNativeSetReg32s(HostDest,0);
  end;
  EmitNativeAMOCAS(HostDest,HostAddr,HostSrc,Is32);
  if RD=TRegister.Zero then begin
@@ -86099,6 +87983,11 @@ var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -86122,6 +88011,11 @@ var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -86145,6 +88039,11 @@ var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -86168,6 +88067,11 @@ var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -86192,6 +88096,11 @@ var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86217,6 +88126,11 @@ var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86242,6 +88156,11 @@ var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86267,6 +88186,11 @@ var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86292,6 +88216,11 @@ var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -86359,6 +88288,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINH(const aInstruction:T
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86374,6 +88308,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXH(const aInstruction:T
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86390,6 +88329,11 @@ var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86410,6 +88354,11 @@ var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86430,6 +88379,11 @@ var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86452,6 +88406,11 @@ var RD:TRegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -86480,6 +88439,11 @@ var RD:TRegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -86508,6 +88472,11 @@ var RD:TRegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -86536,6 +88505,11 @@ var RD:TRegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -86564,6 +88538,11 @@ var FRD:TFPURegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
@@ -86588,6 +88567,11 @@ var FRD:TFPURegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
@@ -86612,6 +88596,11 @@ var FRD:TFPURegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
@@ -86636,6 +88625,11 @@ var FRD:TFPURegister;
     HostFRD,HostRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  RS1:=TRegister(aParameter1);
  HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
@@ -86692,6 +88686,11 @@ var RD:TRegister;
     FRS1:TFPURegister;
     HostRD,HostFRS1:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  if RD=TRegister.Zero then begin
@@ -86713,6 +88712,11 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86740,6 +88744,11 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86767,6 +88776,11 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -86794,6 +88808,11 @@ var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -87102,6 +89121,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMINMH(const aInstruction:
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -87117,6 +89141,11 @@ function TPasRISCV.THART.TJustInTimeCompiler.IntrinsicFMAXMH(const aInstruction:
 var FRD,FRS1,FRS2:TFPURegister;
     HostFRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -87133,6 +89162,11 @@ var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -87156,6 +89190,11 @@ var FRD,FRS1:TFPURegister;
     HostFRD,HostFRS1:TPasRISCVUInt8;
     RM,RMTmp:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  FRD:=TFPURegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  HostFRS1:=MapGuestToHostFPURegister(FRS1,REG_SRC);
@@ -87179,6 +89218,11 @@ var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -87199,6 +89243,11 @@ var RD:TRegister;
     FRS1,FRS2:TFPURegister;
     HostRD,HostFRS1,HostFRS2:TPasRISCVUInt8;
 begin
+ if not fHostHasF16C then begin
+  // The host lacks the instruction the native code needs
+  result:=false;
+  exit;
+ end;
  RD:=TRegister(aParameter0);
  FRS1:=TFPURegister(aParameter1);
  FRS2:=TFPURegister(aParameter2);
@@ -87391,6 +89440,12 @@ begin
  fHasAVX2:=(CPUFeatures and CPUFeatures_X86_AVX2_Mask)<>0;
  fHasPCLMUL:=(CPUFeatures and CPUFeatures_X86_PCLMUL_Mask)<>0;
  fHasF16C:=(CPUFeatures and CPUFeatures_X86_F16C_Mask)<>0;
+ // LZCNT and TZCNT would silently run as BSR/BSF without the feature, POPCNT and the VEX
+ // encoded F16C conversions would raise #UD
+ fHostHasLZCNT:=fHasLZCNT;
+ fHostHasTZCNT:=fHasBMI1;
+ fHostHasPOPCNT:=fHasPOPCNT;
+ fHostHasF16C:=fHasF16C;
 {$ifdef PasRISCVJustInTimeCompilerVector}
  fJITVLEN:=aHART.fVLEN;
  fJITVLENB:=aHART.fVLENB;
@@ -88709,9 +90764,9 @@ end;
 // The fixup sits behind a short branch and loads the constant through the VM pointer
 // rather than materializing it in a scratch register: a NaN result is rare, so the
 // common path stays at two instructions, the sequence is shorter (which matters
-// because the JIT ends a block by emitted code size), and above all no register is
-// claimed. A claim may spill via PUSH, and these emitters run inside the static
-// rounding mode window where RSP points at the saved MXCSR.
+// because the JIT ends a block by emitted code size), and no register is claimed.
+// (The static rounding mode window keeps its MXCSR copies in TState, so a claim there
+// that pushes a reclaimed register would be harmless as well.)
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCanonicalizeF32NaN(const aXMMReg:TPasRISCVUInt8);
 var BranchFixup:TPasRISCVSizeInt;
 begin
@@ -88837,50 +90892,21 @@ begin
 end;
 
 class function TPasRISCV.THART.TJustInTimeCompilerX8664.GetFLiHValue(const aIndex:TPasRISCVUInt8):TPasRISCVUInt16;
-const FLiHTable:array[0..31] of TPasRISCVUInt16=
-       (
-        $bc00, // 0: -1.0
-        $0400, // 1: minimum positive normal
-        $0100, // 2: 1.0 * 2^-16 (min subnormal in fp16)
-        $0200, // 3: 1.0 * 2^-15
-        $1400, // 4: 1.0 * 2^-8
-        $1800, // 5: 1.0 * 2^-7
-        $2c00, // 6: 0.0625
-        $3000, // 7: 0.125
-        $3400, // 8: 0.25
-        $3500, // 9: 0.3125
-        $3600, // 10: 0.375
-        $3700, // 11: 0.4375
-        $3800, // 12: 0.5
-        $3900, // 13: 0.625
-        $3a00, // 14: 0.75
-        $3b00, // 15: 0.875
-        $3c00, // 16: 1.0
-        $3d00, // 17: 1.25
-        $3e00, // 18: 1.5
-        $3f00, // 19: 1.75
-        $4000, // 20: 2.0
-        $4100, // 21: 2.5
-        $4200, // 22: 3.0
-        $4400, // 23: 4.0
-        $4800, // 24: 8.0
-        $4c00, // 25: 16.0
-        $5800, // 26: 128.0
-        $5c00, // 27: 256.0
-        $7800, // 28: 32768.0
-        $7c00, // 29: 65536.0 (actually +Inf in fp16)
-        $7c00, // 30: +Inf
-        $7e00  // 31: canonical NaN
-       );
+// Same table as the interpreter (its own copy had 2^-10 and 2^-9 at the indices 4 and 5 instead
+// of 2^-8 and 2^-7)
 begin
  if aIndex<=31 then begin
-  result:=FLiHTable[aIndex];
+  result:=PasRISCVFLIHalfTable[aIndex];
  end else begin
   result:=$7e00;
  end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSaveAndSetRoundingMode(const aRM:TPasRISCVUInt8;const aTempRegister:TPasRISCVUInt8);
+// The MXCSR save area lives in TState and is addressed through the VM pointer. It must not be on
+// the stack: the code between this and EmitRestoreRoundingMode may claim a callee-saved host
+// register, which pushes it and moves RSP, so [rsp] would no longer be the saved MXCSR (and the
+// later pop would restore the wrong slot).
 const RVRMToMXCSR:array[0..4] of TPasRISCVUInt32=
        (
         $0000, // 0: RNE => MXCSR 00
@@ -88889,41 +90915,45 @@ const RVRMToMXCSR:array[0..4] of TPasRISCVUInt32=
         $4000, // 3: RUP => MXCSR 10
         $0000  // 4: RMM => MXCSR 00 (best approximation)
        );
+var SavedOffset,ModifiedOffset:TPasRISCVInt32;
 begin
- // sub rsp, 8 (allocate for two MXCSR slots)
- EmitImmOp(ALU_SUB,TPasRISCVUInt8(ord(TX64Register.rRSP)),8,true);
- // STMXCSR [rsp], save original MXCSR: 0f ae /3 [rsp]
+ SavedOffset:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITSavedMXCSR));
+ ModifiedOffset:=TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITModifiedMXCSR));
+ // STMXCSR [vm+saved], save original MXCSR: 0f ae /3
+ if VMPtrRegister>=8 then begin
+  EmitREX(false,0,0,VMPtrRegister);
+ end;
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
- EmitByte($1c); // ModRM: 00 011 100 (reg=3, rm=RSP => SIB)
- EmitByte($24); // SIB: 00 100 100 (RSP base, no index)
- // MOV tmp, [rsp]
- EmitMemOp(X86_MOV_M_R,aTempRegister,TPasRISCVUInt8(ord(TX64Register.rRSP)),0,false);
+ EmitMemOperand(3,VMPtrRegister,SavedOffset);
+ // MOV tmp, [vm+saved]
+ EmitMemOp(X86_MOV_M_R,aTempRegister,VMPtrRegister,SavedOffset,false);
  // AND tmp, ~$6000 (clear RC bits 14:13)
  EmitImmOp(ALU_AND,aTempRegister,TPasRISCVInt32(not TPasRISCVInt32($6000)),false);
  // OR tmp, <new RC bits>
  if RVRMToMXCSR[aRM]<>0 then begin
   EmitImmOp(ALU_OR,aTempRegister,TPasRISCVInt32(RVRMToMXCSR[aRM]),false);
  end;
- // MOV [rsp+4], tmp
- EmitMemOp(X86_MOV_R_M,aTempRegister,TPasRISCVUInt8(ord(TX64Register.rRSP)),4,false);
- // LDMXCSR [rsp+4], load modified MXCSR: 0f ae /2 [rsp+4]
+ // MOV [vm+modified], tmp
+ EmitMemOp(X86_MOV_R_M,aTempRegister,VMPtrRegister,ModifiedOffset,false);
+ // LDMXCSR [vm+modified], load modified MXCSR: 0f ae /2
+ if VMPtrRegister>=8 then begin
+  EmitREX(false,0,0,VMPtrRegister);
+ end;
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
- EmitByte($54); // ModRM: 01 010 100 (reg=2, rm=RSP => SIB, disp8)
- EmitByte($24); // SIB: 00 100 100
- EmitByte($04); // disp8 = 4
+ EmitMemOperand(2,VMPtrRegister,ModifiedOffset);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitRestoreRoundingMode;
 begin
- // LDMXCSR [rsp], restore original MXCSR: 0f ae /2 [rsp]
+ // LDMXCSR [vm+saved], restore original MXCSR: 0f ae /2
+ if VMPtrRegister>=8 then begin
+  EmitREX(false,0,0,VMPtrRegister);
+ end;
  EmitByte(X86_FAR_BRANCH);
  EmitByte($ae);
- EmitByte($14); // ModRM: 00 010 100 (reg=2, rm=RSP => SIB)
- EmitByte($24); // SIB: 00 100 100
- // add rsp, 8
- EmitImmOp(ALU_ADD,TPasRISCVUInt8(ord(TX64Register.rRSP)),8,true);
+ EmitMemOperand(2,VMPtrRegister,TPasRISCVInt32(TPasRISCVPtrUInt(@PState(nil)^.JITSavedMXCSR)));
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitSetFSDirty;
@@ -88942,7 +90972,12 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitFPUEpilog;
-{$define EmitFPUEpilogStackAlignment}
+// The extra padding of EmitFPUEpilogStackAlignment is wrong here and stays off: both call sites
+// run right after EmitRestoreABIRegs, which pops all fABIReclaimCount saved registers, so RSP is
+// back at block entry level (the CALL of the caller left it 8 off a multiple of 16), and the push
+// of VMPtrRegister below makes it a multiple of 16 again, which is what the ABI wants at a call.
+// With the padding an odd fABIReclaimCount misaligned the stack for the helper call instead.
+{$undef EmitFPUEpilogStackAlignment}
 begin
 
  if fBlockFSDirtyEmitted then begin
@@ -89455,7 +91490,7 @@ var NextPhysicalPC:TPasRISCVUInt64;
 begin
  NextPhysicalPC:=fCurrentPhysicalPC+TPasRISCVUInt64(TPasRISCVInt64(fPCOffset));
  if (NextPhysicalPC shr PAGE_SHIFT)=(fCurrentPhysicalPC shr PAGE_SHIFT) then begin
-  TargetCodePointer:=FindBlockCodePtr(NextPhysicalPC,fCurrentMode,fHART.fState.VirtualMode);
+  TargetCodePointer:=FindBlockCodePtr(NextPhysicalPC,fCurrentMode,fHART.fState.VirtualMode,fCurrentStateBits);
   if TargetCodePointer<>0 then begin
    // Direct link: compute rel32 relative to final code buffer position
    FinalJumpAddress:=TPasRISCVPtrUInt(fCodeBuffer)+fCodeBufferUsed+fTemporaryCodeSize;
@@ -89464,7 +91499,7 @@ begin
    // Deferred link: store temp offset (converted to code addr in EndTrace)
    TemporaryOffset:=fTemporaryCodeSize;
    EmitPatchableRET;
-   AddLinkEntry(NextPhysicalPC,fCurrentMode,fHART.fState.VirtualMode,TemporaryOffset);
+   AddLinkEntry(NextPhysicalPC,fCurrentMode,fHART.fState.VirtualMode,fCurrentStateBits,TemporaryOffset);
   end;
  end else begin
   EmitLookupBlock;
@@ -90556,34 +92591,13 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOInval(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitCBOHelperCall(const aRS1:TRegister;const aHelperAddress:TPasRISCVUInt64);
+// Calls a CBO helper (the zeroing of cbo.zero or the access check of cbo.clean, cbo.flush and
+// cbo.inval) with the address from rs1. A result of 0 means the helper faulted: the block leaves
+// at this instruction with JITSkipExecution set, so that the interpreter repeats it and raises
+// the exception with the right PC. All guest registers are written back before the call.
+var DoneLabel:TPasRISCV.THART.TJustInTimeCompiler.TBranchLabel;
 begin
- EmitCBOENVCFGCheck(TCSR.ENVCFG_CBIE,fBlockCBOInvalChecked);
- EmitNativeCBOFence;
- result:=true;
-end;
-
-function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOClean(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
-begin
- EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
- EmitNativeCBOFence;
- result:=true;
-end;
-
-function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOFlush(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
-begin
- EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
- EmitNativeCBOFence;
- result:=true;
-end;
-
-function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOZero(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
-var RS1:TRegister;
-begin
- EmitCBOENVCFGCheck(TCSR.ENVCFG_CBZE,fBlockCBOZeroChecked);
-
- RS1:=TRegister(aParameter0);
-
  FreeAllHostIntRegisters;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
  FreeAllHostFPURegisters;
@@ -90598,9 +92612,9 @@ begin
 {$ifdef Windows}
  // Win64 ABI: RCX=arg1 (HART), RDX=arg2 (address)
  // Load RS1 value from TState into RDX (arg2)
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrRegister,GuestIntRegisterOffset(RS1),true);
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDX)),VMPtrRegister,GuestIntRegisterOffset(aRS1),true);
  // Load helper address into R8 (scratch)
- EmitNativeSetReg64(TPasRISCVUInt8(ord(TX64Register.rR8)),GuestCBOZeroHelperAbsoluteOffset);
+ EmitNativeSetReg64(TPasRISCVUInt8(ord(TX64Register.rR8)),aHelperAddress);
  // Load JITHART into RCX (arg1, clobbers VMPtrRegister)
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRCX)),VMPtrRegister,GuestJITHARTOffset,true);
 
@@ -90621,9 +92635,9 @@ begin
 {$else}
  // SysV ABI: RDI=arg1 (HART), RSI=arg2 (address)
  // Load RS1 value from TState into RSI (arg2)
- EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRSI)),VMPtrRegister,GuestIntRegisterOffset(RS1),true);
+ EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRSI)),VMPtrRegister,GuestIntRegisterOffset(aRS1),true);
  // Load helper address into RDX (scratch)
- EmitNativeSetReg64(TPasRISCVUInt8(ord(TX64Register.rRDX)),GuestCBOZeroHelperAbsoluteOffset);
+ EmitNativeSetReg64(TPasRISCVUInt8(ord(TX64Register.rRDX)),aHelperAddress);
  // Load JITHART into RDI (arg1, clobbers VMPtrRegister)
  EmitNativeLoad(TPasRISCVUInt8(ord(TX64Register.rRDI)),VMPtrRegister,GuestJITHARTOffset,true);
 
@@ -90642,6 +92656,55 @@ begin
  // Restore VMPtrRegister
  EmitNativePop(VMPtrRegister);
 
+ // The helper returns 0 when the zeroing faults (see CBOZeroHelper): leave the block at this
+ // cbo.zero with JITSkipExecution set, so that the interpreter repeats it and raises the exception
+ // precisely. All guest registers were written back before the call.
+ EmitTEST(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt8(ord(TX64Register.rRAX)),true);
+{$ifdef PasRISCVJustInTimeCompilerFlexibleBranch}
+ DoneLabel:=EmitBranchEntry(CC_NE,BRANCH_NEW);
+ EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt32(TPasMPBool32(true)));
+ EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrRegister,GuestJITSkipExecutionOffset,false);
+ EmitEnd(TLinkage.None);
+ EmitBranchTarget(DoneLabel);
+{$else}
+ EmitJccRel32(CC_NE,0);
+ DoneLabel:=fTemporaryCodeSize;
+ EmitMOVRegImm32(TPasRISCVUInt8(ord(TX64Register.rRAX)),TPasRISCVUInt32(TPasMPBool32(true)));
+ EmitNativeStore(TPasRISCVUInt8(ord(TX64Register.rRAX)),VMPtrRegister,GuestJITSkipExecutionOffset,false);
+ EmitEnd(TLinkage.None);
+ PatchBranchLabel(DoneLabel);
+{$endif}
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOInval(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBIE,fBlockCBOInvalChecked);
+ // The access check of the cache block belongs to the instruction, its faults as well
+ EmitCBOHelperCall(TRegister(aParameter0),GuestCBOAccessHelperAbsoluteOffset);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOClean(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
+ EmitCBOHelperCall(TRegister(aParameter0),GuestCBOAccessHelperAbsoluteOffset);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOFlush(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBCFE,fBlockCBOCleanFlushChecked);
+ EmitCBOHelperCall(TRegister(aParameter0),GuestCBOAccessHelperAbsoluteOffset);
+ EmitNativeCBOFence;
+ result:=true;
+end;
+
+function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCBOZero(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
+begin
+ EmitCBOENVCFGCheck(TCSR.ENVCFG_CBZE,fBlockCBOZeroChecked);
+ EmitCBOHelperCall(TRegister(aParameter0),GuestCBOZeroHelperAbsoluteOffset);
  result:=true;
 end;
 {$endif}
@@ -90765,168 +92828,189 @@ end;
 
 {$ifdef PasRISCVJustInTimeCompilerZknh}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
  // sha256sum0: ROR(x,2) ^ ROR(x,13) ^ ROR(x,22) on 32-bit, then sign-extend
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,2,false);
+ // rd and rs1 can share one host register, so the source is read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,false);
  EmitShiftRegImm(SHIFT_ROR,TempReg,13,false);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
- EmitMOVRegReg(TempReg,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROR,TempReg,22,false);
+ EmitMOVRegReg(TempReg2,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg2,22,false);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,false);
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,2,false);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
  EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sha256sum1: ROR(x,6) ^ ROR(x,11) ^ ROR(x,25)
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,6,false);
+ // sha256sum1: ROR(x,6) ^ ROR(x,11) ^ ROR(x,25), source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,false);
  EmitShiftRegImm(SHIFT_ROR,TempReg,11,false);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
- EmitMOVRegReg(TempReg,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROR,TempReg,25,false);
+ EmitMOVRegReg(TempReg2,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,TempReg2,25,false);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,false);
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,6,false);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
  EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sha256sig0: ROR(x,7) ^ ROR(x,18) ^ (x >> 3)
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,7,false);
+ // sha256sig0: ROR(x,7) ^ ROR(x,18) ^ (x >> 3), source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,false);
  EmitShiftRegImm(SHIFT_ROR,TempReg,18,false);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
- EmitMOVRegReg(TempReg,aHostSrc,false);
- EmitShiftRegImm(SHIFT_SHR,TempReg,3,false);
+ EmitMOVRegReg(TempReg2,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_SHR,TempReg2,3,false);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,false);
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,7,false);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
  EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA256SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sha256sig1: ROR(x,17) ^ ROR(x,19) ^ (x >> 10)
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,17,false);
+ // sha256sig1: ROR(x,17) ^ ROR(x,19) ^ (x >> 10), source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,false);
  EmitShiftRegImm(SHIFT_ROR,TempReg,19,false);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
- EmitMOVRegReg(TempReg,aHostSrc,false);
- EmitShiftRegImm(SHIFT_SHR,TempReg,10,false);
+ EmitMOVRegReg(TempReg2,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_SHR,TempReg2,10,false);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,false);
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,17,false);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
  EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SUM0(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sha512sum0: ROR(x,28) ^ ROR(x,34) ^ ROR(x,39) on 64-bit
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,true);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,28,true);
+ // sha512sum0: ROR(x,28) ^ ROR(x,34) ^ ROR(x,39) on 64-bit, source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,true);
  EmitShiftRegImm(SHIFT_ROR,TempReg,34,true);
+ EmitMOVRegReg(TempReg2,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg2,39,true);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,true);
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,28,true);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
- EmitMOVRegReg(TempReg,aHostSrc,true);
- EmitShiftRegImm(SHIFT_ROR,TempReg,39,true);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SUM1(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sha512sum1: ROR(x,14) ^ ROR(x,18) ^ ROR(x,41)
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,true);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,14,true);
+ // sha512sum1: ROR(x,14) ^ ROR(x,18) ^ ROR(x,41), source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,true);
  EmitShiftRegImm(SHIFT_ROR,TempReg,18,true);
+ EmitMOVRegReg(TempReg2,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,TempReg2,41,true);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,true);
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,14,true);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
- EmitMOVRegReg(TempReg,aHostSrc,true);
- EmitShiftRegImm(SHIFT_ROR,TempReg,41,true);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SIG0(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sha512sig0: ROR(x,1) ^ ROR(x,8) ^ (x >> 7) on 64-bit
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,true);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,1,true);
+ // sha512sig0: ROR(x,1) ^ ROR(x,8) ^ (x >> 7) on 64-bit, source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,true);
  EmitShiftRegImm(SHIFT_ROR,TempReg,8,true);
+ EmitMOVRegReg(TempReg2,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg2,7,true);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,true);
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,1,true);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
- EmitMOVRegReg(TempReg,aHostSrc,true);
- EmitShiftRegImm(SHIFT_SHR,TempReg,7,true);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSHA512SIG1(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sha512sig1: ROR(x,19) ^ ROR(x,61) ^ (x >> 6)
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,true);
- EmitShiftRegImm(SHIFT_ROR,aHostDest,19,true);
+ // sha512sig1: ROR(x,19) ^ ROR(x,61) ^ (x >> 6), source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,true);
  EmitShiftRegImm(SHIFT_ROR,TempReg,61,true);
+ EmitMOVRegReg(TempReg2,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_SHR,TempReg2,6,true);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,true);
+ EmitMOVRegReg(aHostDest,aHostSrc,true);
+ EmitShiftRegImm(SHIFT_ROR,aHostDest,19,true);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
- EmitMOVRegReg(TempReg,aHostSrc,true);
- EmitShiftRegImm(SHIFT_SHR,TempReg,6,true);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,true);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 {$endif}
 
 {$ifdef PasRISCVJustInTimeCompilerZksh}
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSM3P0(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sm3p0: x ^ ROL(x,9) ^ ROL(x,17) on 32-bit, then sign-extend
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,false);
+ // sm3p0: x ^ ROL(x,9) ^ ROL(x,17) on 32-bit, then sign-extend; source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,false);
  EmitShiftRegImm(SHIFT_ROL,TempReg,9,false);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
- EmitMOVRegReg(TempReg,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROL,TempReg,17,false);
+ EmitMOVRegReg(TempReg2,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROL,TempReg2,17,false);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,false);
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
  EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSM3P1(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg:TPasRISCVUInt8;
+var TempReg,TempReg2:TPasRISCVUInt8;
 begin
- // sm3p1: x ^ ROL(x,15) ^ ROL(x,23)
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc,false);
+ // sm3p1: x ^ ROL(x,15) ^ ROL(x,23), source read completely before rd is written
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc));
+ TempReg2:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc) or (TPasRISCVUInt32(1) shl TempReg));
  EmitMOVRegReg(TempReg,aHostSrc,false);
  EmitShiftRegImm(SHIFT_ROL,TempReg,15,false);
- Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
- EmitMOVRegReg(TempReg,aHostSrc,false);
- EmitShiftRegImm(SHIFT_ROL,TempReg,23,false);
+ EmitMOVRegReg(TempReg2,aHostSrc,false);
+ EmitShiftRegImm(SHIFT_ROL,TempReg2,23,false);
+ Emit2RegOp(X86_XOR,TempReg,TempReg2,false);
+ EmitMOVRegReg(aHostDest,aHostSrc,false);
  Emit2RegOp(X86_XOR,aHostDest,TempReg,false);
  EmitMOVSXD(aHostDest,aHostDest);
+ FreeHostIntRegister(TempReg2);
  FreeHostIntRegister(TempReg);
 end;
 {$endif}
@@ -90936,10 +93020,12 @@ procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePACK(const aHostDes
 var TempReg:TPasRISCVUInt8;
 begin
  // pack: rd = rs1[31:0] | (rs2[31:0] << 32)
- TempReg:=ClaimHostIntRegister;
- EmitMOVRegReg(aHostDest,aHostSrc1,false);
+ // The rs2 part goes first, as rd can share its host register with rs2
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc1) or (TPasRISCVUInt32(1) shl aHostSrc2));
  EmitMOVRegReg(TempReg,aHostSrc2,false);
  EmitShiftRegImm(SHIFT_SHL,TempReg,32,true);
+ // MOV r32, r32 always, also in place, since it clears the upper half of rs1
+ Emit2RegOp(X86_MOV_R_M,aHostDest,aHostSrc1,false);
  Emit2RegOp(X86_OR,aHostDest,TempReg,true);
  FreeHostIntRegister(TempReg);
 end;
@@ -90947,11 +93033,11 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePACKH(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg:TPasRISCVUInt8;
 begin
- // packh: rd = rs1[7:0] | (rs2[7:0] << 8)
- TempReg:=ClaimHostIntRegister;
- EmitMOVZX8(aHostDest,aHostSrc1);
+ // packh: rd = rs1[7:0] | (rs2[7:0] << 8), rs2 part first as rd can share its host register
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc1) or (TPasRISCVUInt32(1) shl aHostSrc2));
  EmitMOVZX8(TempReg,aHostSrc2);
  EmitShiftRegImm(SHIFT_SHL,TempReg,8,true);
+ EmitMOVZX8(aHostDest,aHostSrc1);
  Emit2RegOp(X86_OR,aHostDest,TempReg,true);
  FreeHostIntRegister(TempReg);
 end;
@@ -90959,11 +93045,11 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativePACKW(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8);
 var TempReg:TPasRISCVUInt8;
 begin
- // packw: rd = sext((rs1[15:0]) | (rs2[15:0] << 16))
- TempReg:=ClaimHostIntRegister;
- EmitMOVZX16(aHostDest,aHostSrc1);
+ // packw: rd = sext((rs1[15:0]) | (rs2[15:0] << 16)), rs2 part first as rd can share its host register
+ TempReg:=ClaimHostIntRegister((TPasRISCVUInt32(1) shl aHostDest) or (TPasRISCVUInt32(1) shl aHostSrc1) or (TPasRISCVUInt32(1) shl aHostSrc2));
  EmitMOVZX16(TempReg,aHostSrc2);
  EmitShiftRegImm(SHIFT_SHL,TempReg,16,false);
+ EmitMOVZX16(aHostDest,aHostSrc1);
  Emit2RegOp(X86_OR,aHostDest,TempReg,false);
  EmitMOVSXD(aHostDest,aHostDest);
  FreeHostIntRegister(TempReg);
@@ -91093,9 +93179,30 @@ begin
  FreeHostIntRegister(HostTemp);
 end;
 
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.FreeXMMForCLMUL;
+// The clmul emitters use XMM0 and XMM1 as fixed scratch registers: write back and unmap the guest
+// FP and vector registers held there (the register allocator hands out both)
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+var FPURegister:TFPURegister;
+{$endif}
+begin
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ for FPURegister:=TFPURegister.f0 to TFPURegister.f31 do begin
+  if fHostFPURegisterInfos[FPURegister].HostRegister<2 then begin
+   FreeGuestFPURegister(FPURegister);
+  end;
+ end;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerVector}
+ EvictVectorForFPU(3);
+{$endif}
+end;
+
 function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCLMUL(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  if fHasPCLMUL then begin
+  // PCLMULQDQ works in XMM0/XMM1, which may hold guest FP or vector registers
+  FreeXMMForCLMUL;
   result:=inherited IntrinsicCLMUL(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
  end else begin
   result:=false;
@@ -91105,6 +93212,8 @@ end;
 function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCLMULH(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  if fHasPCLMUL then begin
+  // PCLMULQDQ works in XMM0/XMM1, which may hold guest FP or vector registers
+  FreeXMMForCLMUL;
   result:=inherited IntrinsicCLMULH(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
  end else begin
   result:=false;
@@ -91114,6 +93223,8 @@ end;
 function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicCLMULR(const aInstruction:TPasRISCVUInt32;const aParameter0,aParameter1,aParameter2,aParameter3:TPasRISCVUInt64):Boolean;
 begin
  if fHasPCLMUL then begin
+  // PCLMULQDQ works in XMM0/XMM1, which may hold guest FP or vector registers
+  FreeXMMForCLMUL;
   result:=inherited IntrinsicCLMULR(aInstruction,aParameter0,aParameter1,aParameter2,aParameter3);
  end else begin
   result:=false;
@@ -91397,12 +93508,8 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSLLIUW(const aHostDest,aHostSrc:TPasRISCVUInt8;const aShamt:TPasRISCVUInt8);
 begin
  // rd = zext32(rs1) << shamt
- if aHostDest<>aHostSrc then begin
-  EmitMOVRegReg(aHostDest,aHostSrc,false); // zero-extend 32->64
- end else begin
-  // zero-extend in place: MOV r32, r32
-  EmitMOVRegReg(aHostDest,aHostDest,false);
- end;
+ // MOV r32, r32 zero-extends 32->64, also in place (EmitMOVRegReg would skip that case)
+ Emit2RegOp(X86_MOV_R_M,aHostDest,aHostSrc,false);
  if aShamt<>0 then begin
   EmitShiftRegImm(SHIFT_SHL,aHostDest,aShamt,true);
  end;
@@ -91943,6 +94050,14 @@ begin
  RD:=TRegister(aParameter0);
  RS1:=TRegister(aParameter1);
  RS2:=TRegister(aParameter2);
+
+ // Register pairs: x0 as a pair reads zero in both halves and is not written, odd registers are
+ // reserved; both are left to the interpreter
+ if (RD=TRegister.Zero) or (RS2=TRegister.Zero) or (((ord(RD) or ord(RS2)) and 1)<>0) then begin
+  result:=false;
+  exit;
+ end;
+
  RDp1:=TRegister((TPasRISCVUInt32(RD)+1) and $1f);
  RS2p1:=TRegister((TPasRISCVUInt32(RS2)+1) and $1f);
 
@@ -94588,7 +96703,7 @@ function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDS(const aInstru
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3,ScratchXMM:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
-    VexByte1,VexByte2,FMADst,ScratchInt:TPasRISCVUInt8;
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM2,ScratchXMM3,ScratchInt:TPasRISCVUInt8;
 {$endif}
@@ -94615,7 +96730,8 @@ begin
   FreeHostIntRegister(RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
- // fnmadd = -(a*b+c): VFMADD231SS gives a*b+c, then XOR sign bit for correct signed-zero
+ // fnmadd = (-a*b)-c: VFNMSUB231SS computes -(src1*src2)-dst with one rounding (negating a*b+c
+ // afterwards gives the wrong sign for an exact zero and rounds RDN/RUP the wrong way)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
   FMADst:=ClaimHostFPURegister;
  end else begin
@@ -94635,33 +96751,29 @@ begin
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte(X86_VEX_VFMADD231);
+ EmitByte(X86_VEX_VFNMSUB231);
  EmitModRM(3,FMADst,HostFRS2);
- ScratchInt:=ClaimHostIntRegister;
- EmitSSE2MovXMMToGPR(ScratchInt,FMADst,false);
- EmitImmOp(ALU_XOR,ScratchInt,TPasRISCVInt32(TPasRISCVUInt32($80000000)),false);
- EmitSSE2MovGPRToXMM(HostFRD,ScratchInt,false);
- FreeHostIntRegister(ScratchInt);
  if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,false);
   FreeHostFPURegister(FMADst);
  end;
 {$else}
- // emulated: frd = -(frs1*frs2+frs3) via double promotion, negate after fused add
+ // emulated: frd = -frs3 - frs1*frs2 = (-a*b)-c via double promotion (the product is exact)
  ScratchXMM2:=ClaimHostFPURegister;
  EmitSSE2Op($f3,$5a,ScratchXMM2,HostFRS1);    // cvtss2sd scratch2, frs1
  ScratchXMM3:=ClaimHostFPURegister;
  EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS2);    // cvtss2sd scratch3, frs2
  EmitSSE2Op($f2,$59,ScratchXMM2,ScratchXMM3); // mulsd scratch2, scratch3 (exact)
- EmitSSE2Op($f3,$5a,ScratchXMM3,HostFRS3);    // cvtss2sd scratch3, frs3
- EmitSSE2Op($f2,$58,ScratchXMM2,ScratchXMM3); // addsd scratch2, scratch3 = product+c
- FreeHostFPURegister(ScratchXMM3);
- EmitSSE2Op($f2,$5a,ScratchXMM2,ScratchXMM2); // cvtsd2ss scratch2, scratch2
  ScratchInt:=ClaimHostIntRegister;
- EmitSSE2MovXMMToGPR(ScratchInt,ScratchXMM2,false);
+ EmitSSE2MovXMMToGPR(ScratchInt,HostFRS3,false);
  EmitImmOp(ALU_XOR,ScratchInt,TPasRISCVInt32(TPasRISCVUInt32($80000000)),false);
- EmitSSE2MovGPRToXMM(HostFRD,ScratchInt,false);
+ EmitSSE2MovGPRToXMM(ScratchXMM3,ScratchInt,false); // -frs3, exact
  FreeHostIntRegister(ScratchInt);
+ EmitSSE2Op($f3,$5a,ScratchXMM3,ScratchXMM3); // cvtss2sd scratch3, scratch3
+ EmitSSE2Op($f2,$5c,ScratchXMM3,ScratchXMM2); // subsd scratch3, scratch2 = -c - product
  FreeHostFPURegister(ScratchXMM2);
+ EmitSSE2Op($f2,$5a,HostFRD,ScratchXMM3);     // cvtsd2ss frd, scratch3
+ FreeHostFPURegister(ScratchXMM3);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
@@ -94904,7 +97016,7 @@ function TPasRISCV.THART.TJustInTimeCompilerX8664.IntrinsicFNMADDD(const aInstru
 var FRD,FRS1,FRS2,FRS3:TFPURegister;
     HostFRD,HostFRS1,HostFRS2,HostFRS3:TPasRISCVUInt8;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
-    VexByte1,VexByte2,FMADst,ScratchInt:TPasRISCVUInt8;
+    VexByte1,VexByte2,FMADst:TPasRISCVUInt8;
 {$else}
     ScratchXMM2,ScratchInt:TPasRISCVUInt8;
 {$endif}
@@ -94931,7 +97043,8 @@ begin
   FreeHostIntRegister(RMTmp);
  end;
 {$ifdef PasRISCVJustInTimeCompilerUseRealFMA}
- // fnmadd = -(a*b+c): VFMADD231SD gives a*b+c, then BTC bit 63 for correct signed-zero
+ // fnmadd = (-a*b)-c: VFNMSUB231SD computes -(src1*src2)-dst with one rounding (negating a*b+c
+ // afterwards gives the wrong sign for an exact zero and rounds RDN/RUP the wrong way)
  if (HostFRD=HostFRS1) or (HostFRD=HostFRS2) then begin
   FMADst:=ClaimHostFPURegister;
  end else begin
@@ -94951,37 +97064,29 @@ begin
  EmitByte(X86_VEX3);
  EmitByte(VexByte1);
  EmitByte(VexByte2);
- EmitByte(X86_VEX_VFMADD231);
+ EmitByte(X86_VEX_VFNMSUB231);
  EmitModRM(3,FMADst,HostFRS2);
- ScratchInt:=ClaimHostIntRegister;
- EmitSSE2MovXMMToGPR(ScratchInt,FMADst,true);
- EmitREX(true,0,0,ScratchInt);
- EmitByte(X86_FAR_BRANCH);
- EmitByte(X86_BT_GROUP);
- EmitModRM(3,7,ScratchInt);
- EmitByte(63);
- EmitSSE2MovGPRToXMM(HostFRD,ScratchInt,true);
- FreeHostIntRegister(ScratchInt);
  if FMADst<>HostFRD then begin
+  EmitFPUMov(HostFRD,FMADst,true);
   FreeHostFPURegister(FMADst);
  end;
 {$else}
- // emulated: frd = -(frs1*frs2+frs3) via double precision, negate after fused add
+ // emulated: frd = -frs3 - frs1*frs2 = (-a*b)-c in double precision (the product rounds here,
+ // this path has no fused operation)
  ScratchXMM2:=ClaimHostFPURegister;
  EmitFPUMov(ScratchXMM2,HostFRS1,true);
  EmitSSE2Op($f2,$59,ScratchXMM2,HostFRS2); // mulsd
- EmitFPUMov(HostFRD,HostFRS3,true);
- EmitSSE2Op($f2,$58,HostFRD,ScratchXMM2); // frd = frs3 + product
- FreeHostFPURegister(ScratchXMM2);
  ScratchInt:=ClaimHostIntRegister;
- EmitSSE2MovXMMToGPR(ScratchInt,HostFRD,true);
+ EmitSSE2MovXMMToGPR(ScratchInt,HostFRS3,true);
  EmitREX(true,0,0,ScratchInt);
  EmitByte(X86_FAR_BRANCH);
  EmitByte(X86_BT_GROUP);
  EmitModRM(3,7,ScratchInt);
- EmitByte(63);
+ EmitByte(63);                             // btc: -frs3, exact
  EmitSSE2MovGPRToXMM(HostFRD,ScratchInt,true);
  FreeHostIntRegister(ScratchInt);
+ EmitSSE2Op($f2,$5c,HostFRD,ScratchXMM2); // subsd: frd = -frs3 - product
+ FreeHostFPURegister(ScratchXMM2);
 {$endif}
  if RM<=4 then begin
   EmitRestoreRoundingMode;
@@ -95007,12 +97112,8 @@ begin
  end;
  EmitByte($0f);
  EmitByte($b7);
- if aOffset<>0 then begin
-  EmitModRM(2,ScratchReg,aHostAddr);
-  EmitInt32(aOffset);
- end else begin
-  EmitModRM(0,ScratchReg,aHostAddr);
- end;
+ // [addr+offset] with SIB for RSP/R12 and a displacement for RBP/R13
+ EmitMemOperand(ScratchReg,aHostAddr,aOffset);
  // Move raw 16-bit value to XMM via MOVD
  EmitSSE2MovGPRToXMM(aHostFPUDest,ScratchReg,false);
  FreeHostIntRegister(ScratchReg);
@@ -95033,12 +97134,8 @@ begin
   EmitREX(false,ScratchReg,0,aHostAddr);
  end;
  EmitByte($89);
- if aOffset<>0 then begin
-  EmitModRM(2,ScratchReg,aHostAddr);
-  EmitInt32(aOffset);
- end else begin
-  EmitModRM(0,ScratchReg,aHostAddr);
- end;
+ // [addr+offset] with SIB for RSP/R12 and a displacement for RBP/R13
+ EmitMemOperand(ScratchReg,aHostAddr,aOffset);
  FreeHostIntRegister(ScratchReg);
 end;
 
@@ -95055,6 +97152,29 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtHS(const aHostDest,aHostSrc:TPasRISCVUInt8);
 var ScratchXMM:TPasRISCVUInt8;
 begin
+{$ifdef PasRISCVJITCanonicalHalfNaN}
+ // Every half result goes through here (the half arithmetic too) and has to be the canonical NaN
+ // for a NaN: vcvtps2ph keeps sign and payload, and the x86 default NaN of inf-inf is negative
+ // (0xfe00). Without a branch: a JNP around the fixup is taken on every non-NaN result and waits
+ // for the value, which cost about 28% in an FP loop with a long dependency chain.
+ ScratchXMM:=ClaimHostFPURegister;
+ // VCMPSS scratch, src, src, UNORD_Q: VEX.LIG.F3.0F C2 /r ib, all ones in lane 0 for a NaN (a
+ // signaling one raises invalid, as fcvt.h.s has to); lane 1 comes from src, its NaN-boxing
+ EmitVEXOp(2,false,false,1,$c2,ScratchXMM,aHostSrc,aHostSrc);
+ EmitByte($03);
+ // VCVTPS2PH xmm_dest, xmm_src, imm8: VEX.128.66.0F3A.W0 1D /r imm8 (PP=1, Map=3)
+ // Note: VCVTPS2PH has reversed operand encoding, xmm1=src (VEX.vvvv unused), r/m=dest
+ EmitVEX3(1,false,false,0,3,aHostSrc,0,aHostDest,$1d);
+ EmitModRM(3,aHostSrc,aHostDest);
+ EmitByte($04); // imm8: use MXCSR rounding
+ // VBLENDVPS dest, dest, [vm+canonical f16 NaN], scratch: VEX.128.66.0F3A.W0 4A /r /is4, takes
+ // the canonical NaN where the mask is set. The 16 bytes read there are the NaN-boxed constant
+ // and the two MXCSR fields after it; the lanes above bit 15 get NaN-boxed below anyway.
+ EmitVEXMemOp(1,false,false,3,$4a,aHostDest,VMPtrRegister,GuestJITCanonicalNaNF16Offset,aHostDest);
+ EmitByte(TPasRISCVUInt8(ScratchXMM shl 4));
+ EmitNaNBox16(aHostDest,ScratchXMM);
+ FreeHostFPURegister(ScratchXMM);
+{$else}
  ScratchXMM:=ClaimHostFPURegister;
  // VCVTPS2PH xmm_dest, xmm_src, imm8: VEX.128.66.0F3A.W0 1D /r imm8 (PP=1, Map=3)
  // Note: VCVTPS2PH has reversed operand encoding, xmm1=src (VEX.vvvv unused), r/m=dest
@@ -95063,6 +97183,7 @@ begin
  EmitByte($04); // imm8: use MXCSR rounding
  EmitNaNBox16(aHostDest,ScratchXMM);
  FreeHostFPURegister(ScratchXMM);
+{$endif}
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtDH(const aHostDest,aHostSrc:TPasRISCVUInt8);
@@ -95073,12 +97194,53 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtHD(const aHostDest,aHostSrc:TPasRISCVUInt8);
+// Double to half through single with round-to-odd, so that vcvtps2ph rounds only once (cvtsd2ss
+// and vcvtps2ph alone round twice, 1+2^-11+2^-40 became 1 instead of 1+2^-10). cvtsd2ss rounds in
+// the MXCSR mode, the integer fixup turns its result into the truncation with the lowest bit set
+// when bits were dropped, see Float64ToFloat32RoundToOdd. No MXCSR switch.
+var ScratchXMM,SourceBits,RoundedBits,SingleBits:TPasRISCVUInt8;
 begin
- if aHostDest<>aHostSrc then begin
-  EmitFPUMov(aHostDest,aHostSrc,true);
+ ScratchXMM:=ClaimHostFPURegister;
+ SourceBits:=ClaimHostIntRegister;
+ RoundedBits:=ClaimHostIntRegister;
+ SingleBits:=ClaimHostIntRegister;
+ // The source bits first, aHostDest may be aHostSrc
+ EmitSSE2MovXMMToGPR(SourceBits,aHostSrc,true);
+ // CVTSD2SS dest, src, and back with CVTSS2SD scratch, dest (exact) for the comparison
+ EmitSSE2Op(X86_PREFIX_F2,$5a,aHostDest,aHostSrc);
+ EmitSSE2Op(X86_PREFIX_F3,$5a,ScratchXMM,aHostDest);
+ EmitSSE2MovXMMToGPR(RoundedBits,ScratchXMM,true);
+ EmitSSE2MovXMMToGPR(SingleBits,aHostDest,false);
+ // Compare the magnitudes, without the sign bits
+ EmitShiftRegImm(SHIFT_SHL,SourceBits,1,true);
+ EmitShiftRegImm(SHIFT_SHL,RoundedBits,1,true);
+ // Rounded away from zero (CF of the CMP: |source| below |rounded|): one ulp back toward zero
+ Emit2RegOp(X86_CMP,SourceBits,RoundedBits,true);
+ EmitImmOp(ALU_SBB,SingleBits,0,false);
+ // Inexact (the magnitudes differ): the lowest bit, NEG gives CF for nonzero, SBB r32,r32 ($19)
+ // then all ones
+ Emit2RegOp(X86_XOR,SourceBits,RoundedBits,true);
+ EmitNEG(SourceBits,true);
+ Emit2RegOp($19,SourceBits,SourceBits,false);
+ EmitImmOp(ALU_AND,SourceBits,1,false);
+ Emit2RegOp(X86_OR,SingleBits,SourceBits,false);
+ // NaN (UCOMISS dest, dest sets PF): the canonical single NaN, which vcvtps2ph turns into the
+ // canonical half NaN. cvtsd2ss already quieted a signaling NaN and raised invalid for it, so
+ // UCOMISS raises nothing, and MOV keeps the flags for the CMOVP.
+ if aHostDest>=8 then begin
+  EmitREX(false,aHostDest,0,aHostDest);
  end;
- // CVTSD2SS
- EmitSSE2Op($f2,$5a,aHostDest,aHostDest);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_UCOMISS);
+ EmitModRM(3,aHostDest,aHostDest);
+ EmitMOVRegImm32(RoundedBits,TPasRISCVUInt32($7fc00000));
+ EmitCMOVCC(CC_P,SingleBits,RoundedBits,false);
+ EmitSSE2MovGPRToXMM(aHostDest,SingleBits,false);
+ FreeHostIntRegister(SingleBits);
+ FreeHostIntRegister(RoundedBits);
+ FreeHostIntRegister(SourceBits);
+ FreeHostFPURegister(ScratchXMM);
+ // VCVTPS2PH in the MXCSR mode, NaN-boxed
  EmitNativeFCvtHS(aHostDest,aHostDest);
 end;
 
@@ -96141,25 +98303,58 @@ begin
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeFCvtBF16S(const aHostDest,aHostSrc:TPasRISCVUInt8);
-var TempReg,TempReg2:TPasRISCVUInt8;
-    ScratchXMM:TPasRISCVUInt8;
+// Single to bfloat16 in the MXCSR rounding mode (frm, or the static rm the intrinsic sets). The
+// lowest kept bit and the 16 dropped bits form n, CVTSD2SI rounds the double +-(2+n/2^16), built
+// from the bits, to the integer +-(2+r): r (0 to 2) is n/2^16 rounded with the sign of the value.
+// The upper half with its lowest bit cleared plus r is the result, a carry gives the next binade
+// or infinity. A NaN becomes the canonical bfloat16 NaN (a fixed RNE bias turned NaNs into
+// infinities or zeros).
+var ScratchXMM,Bits,Sign,Rounded:TPasRISCVUInt8;
 begin
  ScratchXMM:=ClaimHostFPURegister;
- TempReg:=ClaimHostIntRegister;
- TempReg2:=ClaimHostIntRegister;
- EmitSSE2MovXMMToGPR(TempReg,aHostSrc,false);
- // Round to nearest even: add ((value >> 16) & 1) + $7fff as rounding bias
- EmitMOVRegReg(TempReg2,TempReg,false);
- EmitShiftRegImm(SHIFT_SHR,TempReg2,16,false);
- EmitImmOp(ALU_AND,TempReg2,1,false);
- EmitImmOp(ALU_ADD,TempReg2,$7fff,false);
- Emit2RegOp(X86_ADD,TempReg,TempReg2,false);
- EmitShiftRegImm(SHIFT_SHR,TempReg,16,false);
- EmitImmOp(ALU_AND,TempReg,$ffff,false);
- EmitSSE2MovGPRToXMM(aHostDest,TempReg,false);
+ Bits:=ClaimHostIntRegister;
+ Sign:=ClaimHostIntRegister;
+ Rounded:=ClaimHostIntRegister;
+ EmitSSE2MovXMMToGPR(Bits,aHostSrc,false);
+ // Sign: the sign bit alone, in bit 63
+ EmitMOVSXD(Sign,Bits);
+ EmitShiftRegImm(SHIFT_SHR,Sign,63,true);
+ EmitShiftRegImm(SHIFT_SHL,Sign,63,true);
+ // Rounded: the double 2+n/2^16, exponent 1 (bit 62) and n shl 35 as mantissa, with the sign
+ EmitMOVRegReg(Rounded,Bits,false);
+ EmitImmOp(ALU_AND,Rounded,TPasRISCVInt32($0001ffff),false);
+ EmitImmOp(ALU_OR,Rounded,TPasRISCVInt32($08000000),false);
+ EmitShiftRegImm(SHIFT_SHL,Rounded,35,true);
+ Emit2RegOp(X86_OR,Rounded,Sign,true);
+ EmitSSE2MovGPRToXMM(ScratchXMM,Rounded,true);
+ // CVTSD2SI r64, xmm: F2 REX.W 0F 2D /r, rounds in the MXCSR mode and raises inexact for n/2^16
+ // with a fraction, just when the conversion is inexact
+ EmitByte(X86_PREFIX_F2);
+ EmitREX(true,Rounded,0,ScratchXMM);
+ EmitByte(X86_FAR_BRANCH);
+ EmitByte(X86_SSE_CVT2SI);
+ EmitModRM(3,Rounded,ScratchXMM);
+ // Its magnitude 2+r: SAR spreads the sign to 0 or all ones for XOR and SUB
+ EmitShiftRegImm(SHIFT_SAR,Sign,63,true);
+ Emit2RegOp(X86_XOR,Rounded,Sign,true);
+ Emit2RegOp(X86_SUB,Rounded,Sign,true);
+ // Sign now takes the magnitude bits of the single, for the NaN check
+ EmitMOVRegReg(Sign,Bits,false);
+ EmitImmOp(ALU_AND,Sign,TPasRISCVInt32($7fffffff),false);
+ // The upper half with its lowest bit cleared, plus (2+r)-2
+ EmitShiftRegImm(SHIFT_SHR,Bits,16,false);
+ EmitImmOp(ALU_AND,Bits,TPasRISCVInt32($0000fffe),false);
+ Emit2RegOp(X86_ADD,Bits,Rounded,false);
+ EmitImmOp(ALU_SUB,Bits,2,false);
+ // NaN (magnitude above infinity): the canonical bfloat16 NaN, MOV keeps the flags for the CMOVA
+ EmitImmOp(ALU_CMP,Sign,TPasRISCVInt32($7f800000),false);
+ EmitMOVRegImm32(Rounded,TPasRISCVUInt32($00007fc0));
+ EmitCMOVCC(CC_A,Bits,Rounded,false);
+ EmitSSE2MovGPRToXMM(aHostDest,Bits,false);
  EmitNaNBox16(aHostDest,ScratchXMM);
- FreeHostIntRegister(TempReg2);
- FreeHostIntRegister(TempReg);
+ FreeHostIntRegister(Rounded);
+ FreeHostIntRegister(Sign);
+ FreeHostIntRegister(Bits);
  FreeHostFPURegister(ScratchXMM);
 end;
 
@@ -96424,31 +98619,28 @@ begin
   FreeHostIntRegister(HostTmp);
  end else begin
   // rs1!=x0 => AVL from register, VL = min(AVL, VLMAX)
+  // Computed in a scratch register: with rd=rs1 both map to the same host register,
+  // so loading VLMAX into the rd register first would destroy the AVL
   HostRS1:=MapGuestToHostIntRegister(RS1,REG_SRC);
-  if RD<>TRegister.Zero then begin
-   HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
-  end else begin
-   HostRD:=ClaimHostIntRegister;
-  end;
+  HostTmp:=ClaimHostIntRegister(TPasRISCVUInt32(1) shl HostRS1);
 
-  // HostRD = VLMAX
-  EmitNativeSetReg64(HostRD,VLMAX);
-  // CMP HostRS1, HostRD (unsigned comparison of AVL vs VLMAX)
-  Emit2RegOp(X86_CMP,HostRS1,HostRD,true);
-  // CMOVBE HostRD, HostRS1: if AVL <= VLMAX (CF=1 or ZF=1), VL = AVL
-  EmitCMOVCC(CC_BE,HostRD,HostRS1,true);
+  // HostTmp = VLMAX
+  EmitNativeSetReg64(HostTmp,VLMAX);
+  // CMP HostRS1, HostTmp (unsigned comparison of AVL vs VLMAX)
+  Emit2RegOp(X86_CMP,HostRS1,HostTmp,true);
+  // CMOVBE HostTmp, HostRS1: if AVL <= VLMAX (CF=1 or ZF=1), VL = AVL
+  EmitCMOVCC(CC_BE,HostTmp,HostRS1,true);
 
-  // Store VL to CSR (HostRD = min(AVL, VLMAX))
-  EmitNativeStore(HostRD,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
+  // Store VL to CSR (HostTmp = min(AVL, VLMAX))
+  EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VL)),true);
   // Store rd
   if RD<>TRegister.Zero then begin
+   HostRD:=MapGuestToHostIntRegister(RD,REG_DST);
+   EmitMOVRegReg(HostRD,HostTmp,true);
    EmitNativeStore(HostRD,VMPtrRegister,GuestIntRegisterOffset(RD),true);
-  end else begin
-   FreeHostIntRegister(HostRD);
   end;
 
   // Store VTYPE constant
-  HostTmp:=ClaimHostIntRegister;
   EmitNativeSetReg64(HostTmp,VTypeValue);
   EmitNativeStore(HostTmp,VMPtrRegister,GuestCSRDataOffset(TPasRISCVUInt32(TCSR.TAddress.VTYPE)),true);
   EmitVectorClearVStart(HostTmp);
@@ -99211,7 +101403,7 @@ begin
 
  fBus:=fMachine.fBus;
 
- fMMUMode:=TMMU.TMMUMode.SV39;
+ fMMUMode:=TMMU.TMMUMode.None;
  fRootPageTable:=0;
  FlushTLB(false,true);
 
@@ -99442,14 +101634,32 @@ begin
 
  fCSRHandlerMap[TCSR.TAddress.SSTATUS]:=CSRHandlerSTATUS; // SSTATUS
  fCSRHandlerMap[TCSR.TAddress.MSTATUS]:=CSRHandlerSTATUS; // MSTATUS
- fCSRHandlerMap[TCSR.TAddress.MISA]:=CSRHandlerDefaultReadOnly; // MISA
- fCSRHandlerMap[TCSR.TAddress.TDATA1]:=CSRHandlerDefaultReadOnly; // TDATA1
- fCSRHandlerMap[TCSR.TAddress.CYCLE]:=CSRHandlerEnforcedReadOnly; // CYCLE
+ // The M-mode ID and debug CSRs are readable in M-mode only (writes to misa and tdata1 are ignored,
+ // they are WARL here; the others are read-only)
+ fCSRHandlerMap[TCSR.TAddress.MISA]:=CSRHandlerPrivilegedReadOnly; // MISA
+ fCSRHandlerMap[TCSR.TAddress.TDATA1]:=CSRHandlerPrivilegedReadOnly; // TDATA1
+ // cycle, time, instret and hpmcounter3..31 below, with the counter enables
 //CSRHandlerMap[TCSR.TAddress.CYCLEH]:=CSRHandlerEnforcedReadOnly; // CYCLE
- fCSRHandlerMap[TCSR.TAddress.MVENDORID]:=CSRHandlerDefaultReadOnly; // MVENDORID
- fCSRHandlerMap[TCSR.TAddress.MARCHID]:=CSRHandlerDefaultReadOnly; // MARCHID
- fCSRHandlerMap[TCSR.TAddress.MIMPID]:=CSRHandlerDefaultReadOnly; // MIMPID
- fCSRHandlerMap[TCSR.TAddress.MHARTID]:=CSRHandlerDefaultReadOnly; // MHARTID
+ fCSRHandlerMap[TCSR.TAddress.MVENDORID]:=CSRHandlerPrivilegedReadOnly; // MVENDORID
+ fCSRHandlerMap[TCSR.TAddress.MARCHID]:=CSRHandlerPrivilegedReadOnly; // MARCHID
+ fCSRHandlerMap[TCSR.TAddress.MIMPID]:=CSRHandlerPrivilegedReadOnly; // MIMPID
+ fCSRHandlerMap[TCSR.TAddress.MHARTID]:=CSRHandlerPrivilegedReadOnly; // MHARTID
+
+ // Counters: read-only and gated by mcounteren/scounteren/hcounteren; the RV32-only upper halves
+ // (cycleh .. hpmcounter31h, mcycleh .. mhpmcounter31h) do not exist on RV64
+ for CSRIndex:=TCSR.TAddress.CYCLE to TCSR.TAddress.CYCLE+31 do begin
+  fCSRHandlerMap[CSRIndex]:=CSRHandlerCounter;
+ end;
+ for CSRIndex:=$c80 to $c9f do begin
+  fCSRHandlerMap[CSRIndex]:=CSRHandlerIllegal;
+ end;
+ for CSRIndex:=$b80 to $b9f do begin
+  fCSRHandlerMap[CSRIndex]:=CSRHandlerIllegal;
+ end;
+{$ifdef Zicfiss}
+ // ssp: only with the shadow stack enabled for the mode
+ fCSRHandlerMap[TCSR.TAddress.SSP]:=CSRHandlerSSP;
+{$endif}
 
 {$ifdef PasRISCVSmcntrpmf}
  fCSRHandlerMap[TCSR.TAddress.MCYCLECFG]:=CSRHandlerMCYCLECFG;   // Smcntrpmf: mcyclecfg
@@ -99460,7 +101670,11 @@ begin
 
 {$ifdef PasRISCVSmcdeleg}
  // Smcdeleg: mcounterdeleg (M-mode RW), scounterinhibit (S-mode RW)
- fCSRHandlerMap[TCSR.TAddress.MCOUNTERDELEG]:=CSRHandlerMCOUNTERDELEG;
+ // The address 0x309 of mcounterdeleg comes from a draft and belongs to mvip with AIA, so with
+ // AIA it stays free here (mvip itself is not implemented yet)
+ if not fMachine.fAIA then begin
+  fCSRHandlerMap[TCSR.TAddress.MCOUNTERDELEG]:=CSRHandlerMCOUNTERDELEG;
+ end;
  fCSRHandlerMap[TCSR.TAddress.SCOUNTERINHIBIT]:=CSRHandlerSCOUNTERINHIBIT;
 {$endif}
 
@@ -99606,9 +101820,11 @@ begin
   fCSRHandlerMap[TCSR.TAddress.SIREG]:=CSRHandlerIllegal; // SIREG
   fCSRHandlerMap[TCSR.TAddress.VSIREG]:=CSRHandlerIllegal; // VSIREG
 
-  fCSRHandlerMap[TCSR.TAddress.MPASRISCVCTL]:=CSRHandlerMPASRISCVCTL; // mpasriscvctl (PasRISCV custom M-mode)
-
  end;
+
+ // mpasriscvctl (PasRISCV custom M-mode) has nothing to do with AIA, so it exists in both cases
+ // (it was only registered on a machine without AIA)
+ fCSRHandlerMap[TCSR.TAddress.MPASRISCVCTL]:=CSRHandlerMPASRISCVCTL;
 
 {$ifdef PasRISCVSmctrSsctr}
  // Smctr and Ssctr reach their entry registers through Sscsrind, which is an
@@ -99715,6 +101931,9 @@ begin
  // unconditionally, so they do not depend on the JIT already existing at this point.
  fState.JITCanonicalNaNF32:=TPasRISCVUInt64($ffffffff7fc00000); // NaN-boxed canonical f32 NaN
  fState.JITCanonicalNaNF64:=TPasRISCVUInt64($7ff8000000000000); // canonical f64 NaN
+{$ifdef PasRISCVJITCanonicalHalfNaN}
+ fState.JITCanonicalNaNF16:=TPasRISCVUInt64($ffffffffffff7e00); // NaN-boxed canonical f16 NaN
+{$endif}
 {$ifend}
  fState.CSR.Init(self);
  fState.Mode:=TPasRISCV.THART.TMode.Machine;
@@ -99777,6 +101996,15 @@ begin
 
  fVSTIMECMP:=TPasRISCVUInt64($ffffffffffffffff);
 
+ // satp is zero after the CSR reset above, so the cached translation mode has to be
+ // Bare as well, and no translation from a previous run may stay in the TLB
+ fMMUMode:=TMMU.TMMUMode.None;
+ fRootPageTable:=0;
+{$ifdef PasRISCVSmepmp}
+ UpdatePMP;
+{$endif}
+ FlushTLB(false,true);
+
  fMachine.fRandomGeneratorLock.Acquire;
  try
   fPCG32.Init((fMachine.fRandomGenerator.GetUInt64 xor TPasRISCVPtrUInt(self)) xor GetCurrentTime);
@@ -99823,13 +102051,9 @@ begin
 
 {$ifdef PerModeTLB}
   // Per-mode TLB: no data TLB flush needed, just update mode base and JIT pointers
-  fDirectAccessTLBCache:=@fDirectAccessTLBCacheModes[aMode];
-{$ifdef PasRISCVMMIOTLB}
-  fMMIOTLBData:=@fMMIOTLBDataModes[aMode];
-{$endif}
+  SelectTLB;
 {$ifdef PasRISCVJustInTimeCompiler}
   if assigned(fJustInTimeCompiler) then begin
-   fState.JITTLBPtr:=@fDirectAccessTLBCache^[0];
 {$ifdef JITTLBTag}
    fJustInTimeCompiler.UpdateJITTLBTag;
 {$else}
@@ -99841,6 +102065,8 @@ begin
 {$else}
   // Flush the Translation Lookaside Buffer (TLB) to ensure memory access consistency after mode change
   FlushTLB(true,true);
+  // The JIT state bits depend on the mode (FlushTLB may skip the JIT TLB)
+  JITStateChanged;
 {$endif}
 
 {$ifdef PasRISCVMMIOTLB}
@@ -99865,7 +102091,8 @@ procedure TPasRISCV.THART.SetException(const aExceptionValue:TExceptionValue;
 begin
 {$ifdef PasRISCVJustInTimeCompiler}
  if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
-  if fState.ExceptionValue in [TExceptionValue.InstructionPageFault..TExceptionValue.StorePageFault] then begin
+  // The new exception decides (fState.ExceptionValue still holds the previous one here)
+  if aExceptionValue in [TExceptionValue.InstructionPageFault..TExceptionValue.StorePageFault] then begin
    fJustInTimeCompiler.Discard;
   end else begin
    fJustInTimeCompiler.Compile;
@@ -99876,6 +102103,12 @@ begin
   fState.ExceptionValue:=aExceptionValue;
   fState.ExceptionData:=aExceptionData;
   fState.ExceptionPC:=aExceptionPC;
+  // An address in tval is a guest virtual address when raised under V=1, which includes the
+  // temporary V=1 of HLV/HSV/HLVX translations (for hstatus.GVA/mstatus.GVA at trap entry)
+  fState.ExceptionGuestVirtual:=fState.VirtualMode;
+  // Set afterwards by RaiseGuestPageFault and implicit G-stage accesses only
+  fState.ExceptionGuestAddress:=0;
+  fState.ExceptionTransformedInstruction:=0;
   RestartExecution;
  end;
 end;
@@ -99885,6 +102118,9 @@ begin
  fState.ExceptionValue:=TExceptionValue.None;
  fState.ExceptionData:=0;
  fState.ExceptionPC:=0;
+ fState.ExceptionGuestAddress:=0;
+ fState.ExceptionTransformedInstruction:=0;
+ fState.ExceptionGuestVirtual:=false;
 end;
 
 procedure TPasRISCV.THART.UpdateMMU;
@@ -99955,11 +102191,13 @@ begin
 {$endif}
 end;
 
-procedure TPasRISCV.THART.RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
+procedure TPasRISCV.THART.RaiseGuestPageFault(const aGuestAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aNoTrap:Boolean);
 begin
- // Guest page faults: set htval to faulting GPA >> 2
- fState.CSR.fData[TCSR.TAddress.HTVAL]:=aGuestAddress shr 2;
- fState.CSR.fData[TCSR.TAddress.HTINST]:=0;
+ if aNoTrap then begin
+  // A probe (the debugger, or the load permission check of a cache block operation) must not
+  // raise a guest page fault, the caller sees the failure in the result
+  exit;
+ end;
  case aAccessType of
   TMMU.TAccessType.LoadInstruction,
   TMMU.TAccessType.Load:begin
@@ -99974,27 +102212,30 @@ begin
   else begin
   end;
  end;
+ // htval (or mtval2) gets the faulting GPA >> 2, written at trap entry
+ fState.ExceptionGuestAddress:=aGuestAddress shr 2;
 {$ifndef NoPageFaultTLBFlush}
  FlushTLB(false,{$ifdef NoPageFaultJITTLBFlush}false{$else}true{$endif});
 {$endif}
 end;
 
-function TPasRISCV.THART.GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aIsImplicit:Boolean):TPasRISCVUInt64;
-// G-stage address translation: Guest Physical Address => Host Physical Address using hgatp
-// aIsImplicit: true when translating PTE addresses during VS-stage page walk
+function TPasRISCV.THART.GStageTranslate(const aGuestPhysical:TPasRISCVUInt64;const aAccessType,aFaultType:TMMU.TAccessType;const aIsImplicit,aNoTrap:Boolean):TPasRISCVUInt64;
+// G-stage address translation: guest physical address => host physical address using hgatp.
+// aAccessType is checked against the G-stage permissions: the original access, or for an implicit
+// access of the VS-stage walk a load (PTE read) or store (A/D update). Faults are reported for the
+// original access type aFaultType. All G-stage accesses count as U-mode accesses, so a leaf PTE
+// needs U=1. For an implicit access htinst gets the matching pseudoinstruction.
 var HGATP,PageTable,PageTableEntry,BitOffset,PageTableOffset,
     VirtualMask,PhysicalMask,PageTableEntryShift,
-    PhysicalAddress,PageTableEntryAccessDirty:TPasRISCVUInt64;
+    PhysicalAddress,PageTableEntryAccessDirty,HSStatus,PTEAddress:TPasRISCVUInt64;
     PageTableEntryPointer:Pointer;
     Levels,Index:TPasRISCVSizeInt;
-    GStageMode:TPasRISCVUInt64;
-    ADUE{$ifdef GStageQEMUParity},PBMTE{$endif}:Boolean;
+    ADUE,PBMTE,MXR,Permitted,NextLevel:Boolean;
 begin
 
  HGATP:=fState.CSR.fData[TCSR.TAddress.HGATP];
- GStageMode:=(HGATP shr 60) and $f;
 
- case GStageMode of
+ case (HGATP shr 60) and $f of
   0:begin // Bare: no G-stage translation
    result:=aGuestPhysical;
    exit;
@@ -100009,24 +102250,44 @@ begin
    Levels:=5;
   end;
   else begin
-   // Invalid mode: guest page fault
-   RaiseGuestPageFault(aGuestPhysical,aAccessType);
-   result:=0;
-   exit;
+   // Not reachable, hgatp only accepts the modes above
+   Levels:=0;
   end;
+ end;
+
+ // The guest physical address space of SvXXx4 is 2 bits wider than the VS-stage virtual address
+ // space, all bits above have to be zero
+ if (Levels=0) or ((aGuestPhysical shr ((Levels*TMMU.VPN_BITS)+PAGE_SHIFT+2))<>0) then begin
+  RaiseGuestPageFault(aGuestPhysical,aFaultType,aNoTrap);
+  if aIsImplicit then begin
+   if aAccessType=TMMU.TAccessType.Store then begin
+    fState.ExceptionTransformedInstruction:=$3020;
+   end else begin
+    fState.ExceptionTransformedInstruction:=$3000;
+   end;
+  end;
+  result:=0;
+  exit;
  end;
 
  // ADUE: hardware A/D bit update for G-stage controlled by menvcfg.ADUE
  // (Spike uses menvcfg directly for G-stage; henvcfg.ADUE gates VS-stage only)
  ADUE:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_ADUE)<>0;
-
-{$ifdef GStageQEMUParity}
- // PBMTE for G-stage: QEMU checks Svpbmt enablement via menvcfg for second-stage
  PBMTE:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_PBMTE)<>0;
-{$endif}
 
- // Root page table from hgatp.PPN
- PageTable:=(HGATP and $00000fffffffffff) shl PAGE_SHIFT; // PPN field (44 bits)
+ // The HS-level MXR also makes execute-only G-stage pages readable. While V=1 the HS-level bits
+ // are in the HS backing store, during HLV/HSV/MPRV the real mstatus is saved aside.
+ if fForcedVirtualActive then begin
+  HSStatus:=fForcedVirtualHSStatus;
+ end else if fState.VirtualMode then begin
+  HSStatus:=fState.HSMode_MSTATUS;
+ end else begin
+  HSStatus:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
+ end;
+ MXR:=(HSStatus and TCSR.TMask.TStatus.MXR)<>0;
+
+ // Root page table from hgatp.PPN, which is 16 KiB aligned (PPN[1:0] are ignored)
+ PageTable:=((HGATP and $00000fffffffffff) and not TPasRISCVUInt64(3)) shl PAGE_SHIFT;
 
  // G-stage first level has 2 extra bits (16 KiB root page table)
  BitOffset:=(Levels*TMMU.VPN_BITS)+(PAGE_SHIFT-TMMU.VPN_BITS);
@@ -100039,171 +102300,163 @@ begin
   end else begin
    PageTableOffset:=((aGuestPhysical shr BitOffset) and TMMU.VPN_MASK) shl 3;
   end;
+  PTEAddress:=PageTable+PageTableOffset;
 
-  PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(self,PageTable+PageTableOffset,SizeOf(TPasRISCVUInt64),false,nil);
+{$ifdef PasRISCVSmepmp}
+  // G-stage page table reads are PMP-checked as S-mode loads, a denied one is an access fault
+  if not CheckPMPAccess(PTEAddress,SizeOf(TPasRISCVUInt64),TMMU.TAccessType.Load,THART.TMode.Supervisor) then begin
+   RaisePhysicalFault(aGuestPhysical,aFaultType);
+   result:=0;
+   exit;
+  end;
+{$endif}
+
+  PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(self,PTEAddress,SizeOf(TPasRISCVUInt64),false,nil);
   if not assigned(PageTableEntryPointer) then begin
-   RaiseGuestPageFault(aGuestPhysical,aAccessType);
+   // G-stage page table outside of RAM: access fault, not a guest page fault
+   RaisePhysicalFault(aGuestPhysical,aFaultType);
    result:=0;
    exit;
   end;
 
-  PageTableEntry:=PPasRISCVUInt64(PageTableEntryPointer)^;
+  NextLevel:=false;
 
-  // Check Valid bit
-  if (PageTableEntry and TMMU.TPTEMasks.Valid)=0 then begin
-   RaiseGuestPageFault(aGuestPhysical,aAccessType);
-   result:=0;
-   exit;
-  end;
+  repeat
 
-  // Check reserved bits (bits 58:54, excluding PBMT/N and the Svrsw60t59b software bits 60:59)
-  if (PageTableEntry and TMMU.TPTEMasks.Reserved)<>0 then begin
-   RaiseGuestPageFault(aGuestPhysical,aAccessType);
-   result:=0;
-   exit;
-  end;
+   PageTableEntry:=PPasRISCVUInt64(PageTableEntryPointer)^;
 
-  // Check PBMT: reserved without Svpbmt, mode 3 (11) always reserved
-{$ifdef GStageQEMUParity}
-  // QEMU behavior: honor Svpbmt via menvcfg.PBMTE for G-stage
-  if (not PBMTE) and ((PageTableEntry and TMMU.TPTEMasks.PBMT)<>0) then begin
-   // Reserved without Svpbmt
-   RaiseGuestPageFault(aGuestPhysical,aAccessType);
-   result:=0;
-   exit;
-  end;
-  if PBMTE and ((PageTableEntry and TMMU.TPTEMasks.PBMT)=TMMU.TPTEMasks.PBMT) then begin
-   // PBMT mode 3 (11) is reserved even with Svpbmt
-   RaiseGuestPageFault(aGuestPhysical,aAccessType);
-   result:=0;
-   exit;
-  end;
-{$else}
-  // Spike behavior: PBMT bits are always reserved in G-stage PTEs
-  if (PageTableEntry and TMMU.TPTEMasks.PBMT)<>0 then begin
-   // G-stage: PBMT is reserved (G-stage PTEs don't support PBMT per spec)
-   RaiseGuestPageFault(aGuestPhysical,aAccessType);
-   result:=0;
-   exit;
-  end;
-{$endif}
-
-  // Check for leaf
-  if (PageTableEntry and TMMU.TPTEMasks.Leaf)<>0 then begin
-   // Leaf PTE found
-
-   // Check for invalid RWX combinations: R=0,W=1 is reserved regardless of X
-   if ((PageTableEntry and TMMU.TPTEMasks.Read_)=0) and ((PageTableEntry and TMMU.TPTEMasks.Write_)<>0) then begin
-    RaiseGuestPageFault(aGuestPhysical,aAccessType);
-    result:=0;
-    exit;
+   // Valid bit, reserved bits 58:54 (excluding PBMT/N and the Svrsw60t59b software bits 60:59)
+   if ((PageTableEntry and TMMU.TPTEMasks.Valid)=0) or ((PageTableEntry and TMMU.TPTEMasks.Reserved)<>0) then begin
+    break;
    end;
 
-   // Check permissions (G-stage permissions checked against access type)
-{$ifdef GStageQEMUParity}
-   // QEMU behavior: G-stage leaf PTE with U=1 is invalid
-   if (PageTableEntry and TMMU.TPTEMasks.User)<>0 then begin
-    RaiseGuestPageFault(aGuestPhysical,aAccessType);
-    result:=0;
-    exit;
-   end;
-{$else}
-   // Spike/Spec behavior: G-stage does not check U-bit (reserved for future use)
-{$endif}
-   case aAccessType of
-    TMMU.TAccessType.Instruction:begin
-     if (PageTableEntry and TMMU.TPTEMasks.Execute)=0 then begin
-      RaiseGuestPageFault(aGuestPhysical,aAccessType);
-      result:=0;
-      exit;
-     end;
-    end;
-    TMMU.TAccessType.Store:begin
-     if (PageTableEntry and TMMU.TPTEMasks.Write_)=0 then begin
-      RaiseGuestPageFault(aGuestPhysical,aAccessType);
-      result:=0;
-      exit;
-     end;
-    end;
-    else begin // Load, LoadInstruction
-     if (PageTableEntry and TMMU.TPTEMasks.Read_)=0 then begin
-      RaiseGuestPageFault(aGuestPhysical,aAccessType);
-      result:=0;
-      exit;
-     end;
-    end;
+   // PBMT: reserved without Svpbmt (menvcfg.PBMTE, as in QEMU), mode 3 (11) always reserved
+   if (((not PBMTE) and ((PageTableEntry and TMMU.TPTEMasks.PBMT)<>0))) or
+      ((PageTableEntry and TMMU.TPTEMasks.PBMT)=TMMU.TPTEMasks.PBMT) then begin
+    break;
    end;
 
-   // Check A/D bits with ADUE support
-   if ADUE then begin
-    // Hardware A/D update: set A (and D for stores) automatically
+   if (PageTableEntry and TMMU.TPTEMasks.Leaf)<>0 then begin
+
+    // R=0 with W=1 is reserved, also with X=1
+    if (PageTableEntry and (TMMU.TPTEMasks.Read_ or TMMU.TPTEMasks.Write_))=TMMU.TPTEMasks.Write_ then begin
+     break;
+    end;
+
+    // All G-stage accesses are treated as U-mode accesses, so only user pages are accessible
+    if (PageTableEntry and TMMU.TPTEMasks.User)=0 then begin
+     break;
+    end;
+
+    case aAccessType of
+     TMMU.TAccessType.Instruction:begin
+      Permitted:=(PageTableEntry and TMMU.TPTEMasks.Execute)<>0;
+     end;
+     TMMU.TAccessType.Store:begin
+      Permitted:=(PageTableEntry and TMMU.TPTEMasks.Write_)<>0;
+     end;
+     else begin // Load, LoadInstruction (the VS-level MXR does not apply here, the HS-level one does)
+      Permitted:=((PageTableEntry and TMMU.TPTEMasks.Read_)<>0) or
+                 (MXR and ((PageTableEntry and TMMU.TPTEMasks.Execute)<>0));
+     end;
+    end;
+    if not Permitted then begin
+     break;
+    end;
+
+    // Superpage alignment
+    VirtualMask:=(TPasRISCVUInt64(1) shl BitOffset)-1;
+    PhysicalMask:=((TPasRISCVUInt64(1) shl (TMMU.PHYSICAL_BITS-BitOffset))-1) shl BitOffset;
+    PageTableEntryShift:=PageTableEntry shl 2;
+    if ((PageTableEntryShift and VirtualMask) and TMMU.PAGE_PNMASK)<>0 then begin
+     break;
+    end;
+
+    // Svnapot: only 64 KiB pages at the last level are defined
+    if ((PageTableEntry and TMMU.TPTEMasks.N)<>0) and
+       ((Index<>(Levels-1)) or ((((PageTableEntry and TMMU.TPTEMasks.PPN_MASK) shr TMMU.PPN_BITS) and $f)<>8)) then begin
+     break;
+    end;
+
+    // A/D bits: hardware update with ADUE, otherwise a fault when they would have to change
     PageTableEntryAccessDirty:=PageTableEntry or TMMU.TPTEMasks.Accessed;
     if aAccessType=TMMU.TAccessType.Store then begin
      PageTableEntryAccessDirty:=PageTableEntryAccessDirty or TMMU.TPTEMasks.Dirty;
     end;
-    if PageTableEntry<>PageTableEntryAccessDirty then begin
-     PPasRISCVUInt64(PageTableEntryPointer)^:=PageTableEntryAccessDirty;
+    if PageTableEntryAccessDirty<>PageTableEntry then begin
+     if not ADUE then begin
+      break;
+     end;
+{$ifdef PasRISCVSmepmp}
+     // The A/D update is an implicit S-mode store to the G-stage page table
+     if not CheckPMPAccess(PTEAddress,SizeOf(TPasRISCVUInt64),TMMU.TAccessType.Store,THART.TMode.Supervisor) then begin
+      RaisePhysicalFault(aGuestPhysical,aFaultType);
+      result:=0;
+      exit;
+     end;
+{$endif}
+     // Atomic against other harts, a changed PTE is walked again
+     if TPasMPInterlocked.CompareExchange(TPasMPUInt64(PageTableEntryPointer^),PageTableEntryAccessDirty,PageTableEntry)<>PageTableEntry then begin
+      continue;
+     end;
     end;
+
+    if (PageTableEntry and TMMU.TPTEMasks.N)<>0 then begin
+     // 64 KiB NAPOT page: PPN[3:0] come from the guest physical address
+     PhysicalAddress:=((((PageTableEntry and TMMU.TPTEMasks.PPN_MASK) shr TMMU.PPN_BITS) and not TPasRISCVUInt64($f)) shl PAGE_SHIFT) or
+                      (aGuestPhysical and TPasRISCVUInt64($ffff));
+    end else begin
+     PhysicalAddress:=(PageTableEntryShift and PhysicalMask) or (aGuestPhysical and VirtualMask);
+    end;
+    result:=PhysicalAddress;
+    exit;
+
    end else begin
-    // No ADUE: fault if A=0 or (store and D=0)
-    if (PageTableEntry and TMMU.TPTEMasks.Accessed)=0 then begin
-     RaiseGuestPageFault(aGuestPhysical,aAccessType);
-     result:=0;
-     exit;
+    // Pointer to the next level (R=X=0): W (the reserved R=0 W=1 case), D, A, U, PBMT and N are reserved
+    if (PageTableEntry and (TMMU.TPTEMasks.Write_ or TMMU.TPTEMasks.Dirty or TMMU.TPTEMasks.Accessed or TMMU.TPTEMasks.User or TMMU.TPTEMasks.Attr))<>0 then begin
+     break;
     end;
-    if (aAccessType=TMMU.TAccessType.Store) and ((PageTableEntry and TMMU.TPTEMasks.Dirty)=0) then begin
-     RaiseGuestPageFault(aGuestPhysical,aAccessType);
-     result:=0;
-     exit;
-    end;
+    PageTable:=((PageTableEntry shr 10) shl PAGE_SHIFT) and TMMU.PHYSICAL_MASK;
+    dec(BitOffset,TMMU.VPN_BITS);
+    NextLevel:=true;
    end;
 
-   // Check superpage alignment
-   VirtualMask:=(TPasRISCVUInt64(1) shl BitOffset)-1;
-   PhysicalMask:=((TPasRISCVUInt64(1) shl (TMMU.PHYSICAL_BITS-BitOffset))-1) shl BitOffset;
-   PageTableEntryShift:=PageTableEntry shl 2;
+   break;
 
-   if ((PageTableEntryShift and VirtualMask) and TMMU.PAGE_PNMASK)<>0 then begin
-    // Misaligned superpage
-    RaiseGuestPageFault(aGuestPhysical,aAccessType);
-    result:=0;
-    exit;
-   end;
+  until false;
 
-   PhysicalAddress:=(PageTableEntryShift and PhysicalMask) or (aGuestPhysical and VirtualMask);
-   result:=PhysicalAddress;
-   exit;
-
-  end else begin
-   // Non-leaf PTE: follow to next level
-   // Non-leaf with W/D/A/U/PBMT/N bits set is invalid (QEMU/Spike check these)
-   if (PageTableEntry and (TMMU.TPTEMasks.Write_ or TMMU.TPTEMasks.Dirty or TMMU.TPTEMasks.Accessed or TMMU.TPTEMasks.User or TMMU.TPTEMasks.Attr))<>0 then begin
-    RaiseGuestPageFault(aGuestPhysical,aAccessType);
-    result:=0;
-    exit;
-   end;
-   PageTable:=((PageTableEntry shr 10) shl PAGE_SHIFT) and TMMU.PHYSICAL_MASK;
-   dec(BitOffset,TMMU.VPN_BITS);
+  if not NextLevel then begin
+   break;
   end;
 
  end;
 
- // No leaf found after all levels
- RaiseGuestPageFault(aGuestPhysical,aAccessType);
+ // Invalid or not permitting PTE, or no leaf after all levels: guest page fault
+ RaiseGuestPageFault(aGuestPhysical,aFaultType,aNoTrap);
+ if aIsImplicit then begin
+  // htinst pseudoinstruction for the implicit 64-bit PTE read or write of the VS-stage walk
+  if aAccessType=TMMU.TAccessType.Store then begin
+   fState.ExceptionTransformedInstruction:=$3020;
+  end else begin
+   fState.ExceptionTransformedInstruction:=$3000;
+  end;
+ end;
  result:=0;
 end;
 
-function TPasRISCV.THART.ForcedVirtualTranslate(const aGuestVA:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType):TPasRISCVUInt64;
-// HLV/HSV/HLVX: two-stage translation as if V=1, using vsatp for VS-stage and hgatp for G-stage.
-// Effective privilege for VS-stage comes from hstatus.SPVP.
-// MXR/SUM for VS-stage come from vsstatus (not current mstatus).
-// Matches QEMU's forced-virt MMU index and Spike's guest_load/guest_store with forced_virt.
+function TPasRISCV.THART.ForcedVirtualTranslate(const aGuestVA:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aMode:TMode;const aExecute:Boolean;const aSize:TPasRISCVUInt64;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
+// Two-stage translation as if V=1 in aMode (VS or VU), with vsatp for the VS-stage and hgatp for
+// the G-stage: for HLV/HSV/HLVX (aMode from hstatus.SPVP) and for M-mode data accesses with MPRV=1
+// and MPV=1 (aMode from mstatus.MPP). SUM and MXR of the VS-stage come from vsstatus, the HS-level
+// in both stages, faults are reported as load faults, and PMP checks it as the load it is (R only).
+// in both stages, faults are reported as load faults, and PMP has to grant read permission as well.
+// There is no TLB fill, the TLBs only ever hold translations of the current mode.
 var SavedMMUMode:TMMU.TMMUMode;
     SavedRootPageTable:TPasRISCVUInt64;
     SavedVirtualMode:Boolean;
     SavedMode:TMode;
     SavedMSTATUS:TPasRISCVUInt64;
-    VSATP,HStatus,MSTATUS,VsStatus:TPasRISCVUInt64;
+    VSATP,MSTATUS,VsStatus:TPasRISCVUInt64;
 begin
  // Save current state
  SavedMMUMode:=fMMUMode;
@@ -100219,33 +102472,508 @@ begin
 
  // Enable two-stage translation (AddressTranslate checks fState.VirtualMode for TwoStage)
  fState.VirtualMode:=true;
+ fState.Mode:=aMode;
 
- // Set effective privilege from hstatus.SPVP
- HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
- if (HStatus and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP))<>0 then begin
-  fState.Mode:=TMode.Supervisor;
- end else begin
-  fState.Mode:=TMode.User;
- end;
-
- // Set MXR/SUM from vsstatus instead of current mstatus, clear MPRV
+ // SUM from vsstatus, MXR from vsstatus or the HS level (the HS-level MXR applies to both stages),
+ // MPRV cleared
  MSTATUS:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
  VsStatus:=fState.CSR.fData[TCSR.TAddress.VSSTATUS];
- MSTATUS:=MSTATUS and not (TCSR.TMask.TStatus.MXR or TCSR.TMask.TStatus.SUM or TCSR.TMask.TStatus.MPRV);
+ MSTATUS:=MSTATUS and not (TCSR.TMask.TStatus.SUM or TCSR.TMask.TStatus.MPRV);
  MSTATUS:=MSTATUS or (VsStatus and (TCSR.TMask.TStatus.MXR or TCSR.TMask.TStatus.SUM));
  fState.CSR.fData[TCSR.TAddress.MSTATUS]:=MSTATUS;
 
- // Perform two-stage translation (VS-stage via vsatp + G-stage via hgatp)
- // NoTLBUpdate: don't pollute TLB with forced-virt entries
- result:=AddressTranslate(aGuestVA,aAccessType,[TMMU.TAccessFlag.NoTLBUpdate]);
+ // The G-stage takes the HS-level MXR from the saved mstatus
+ fForcedVirtualActive:=true;
+ fForcedVirtualHSStatus:=SavedMSTATUS;
+
+ if aExecute then begin
+  result:=AddressTranslate(aGuestVA,TMMU.TAccessType.Instruction,aAccessFlags+[TMMU.TAccessFlag.NoTLBUpdate,TMMU.TAccessFlag.CallerChecksPMP],aSize);
+ end else begin
+  result:=AddressTranslate(aGuestVA,aAccessType,aAccessFlags+[TMMU.TAccessFlag.NoTLBUpdate],aSize);
+ end;
 
  // Restore state
+ fForcedVirtualActive:=false;
  fState.CSR.fData[TCSR.TAddress.MSTATUS]:=SavedMSTATUS;
  fState.Mode:=SavedMode;
  fState.VirtualMode:=SavedVirtualMode;
  fRootPageTable:=SavedRootPageTable;
  fMMUMode:=SavedMMUMode;
+
+ if aExecute then begin
+  // HLVX is a load: its faults are load faults, and the physical memory must be readable too
+  case fState.ExceptionValue of
+   TExceptionValue.InstructionPageFault:begin
+    fState.ExceptionValue:=TExceptionValue.LoadPageFault;
+   end;
+   TExceptionValue.InstructionGuestPageFault:begin
+    fState.ExceptionValue:=TExceptionValue.LoadGuestPageFault;
+   end;
+   TExceptionValue.InstructionAccessFault:begin
+    fState.ExceptionValue:=TExceptionValue.LoadAccessFault;
+   end;
+   TExceptionValue.None:begin
+{$ifdef PasRISCVSmepmp}
+    if not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
+     if not CheckPMPAccess(result,aSize,TMMU.TAccessType.Load,aMode) then begin
+      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+       RaisePhysicalFault(aGuestVA,TMMU.TAccessType.Load);
+       fState.ExceptionGuestVirtual:=true;
+      end;
+      result:=0;
+     end;
+    end;
+{$endif}
+   end;
+   else begin
+   end;
+  end;
+ end;
 end;
+
+function TPasRISCV.THART.HypervisorLoad(const aGuestVA,aSize:TPasRISCVUInt64;const aExecute:Boolean;out aValue:TPasRISCVUInt64):Boolean;
+// HLV/HLVX: loads aSize bytes as if V=1 with the privilege of hstatus.SPVP, also across a page
+// boundary. On any fault aValue is not meaningful and the result is false.
+var VSMode:TMode;
+    FirstSize,Address,SecondAddress,Index:TPasRISCVUInt64;
+begin
+ result:=false;
+ aValue:=0;
+ if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP))<>0 then begin
+  VSMode:=TMode.Supervisor;
+ end else begin
+  VSMode:=TMode.User;
+ end;
+ FirstSize:=PAGE_SIZE-(aGuestVA and PAGE_MASK);
+ if FirstSize>=aSize then begin
+  Address:=ForcedVirtualTranslate(aGuestVA,TMMU.TAccessType.Load,VSMode,aExecute,aSize,[]);
+  if fState.ExceptionValue<>TExceptionValue.None then begin
+   exit;
+  end;
+  aValue:=fBus.Load(self,Address,aSize);
+ end else begin
+  // Both pages are translated before anything is read
+  Address:=ForcedVirtualTranslate(aGuestVA,TMMU.TAccessType.Load,VSMode,aExecute,FirstSize,[]);
+  if fState.ExceptionValue<>TExceptionValue.None then begin
+   exit;
+  end;
+  SecondAddress:=ForcedVirtualTranslate(aGuestVA+FirstSize,TMMU.TAccessType.Load,VSMode,aExecute,aSize-FirstSize,[]);
+  if fState.ExceptionValue<>TExceptionValue.None then begin
+   exit;
+  end;
+  for Index:=0 to aSize-1 do begin
+   if Index<FirstSize then begin
+    aValue:=aValue or (TPasRISCVUInt64(TPasRISCVUInt8(fBus.Load(self,Address+Index,1))) shl (Index shl 3));
+   end else begin
+    aValue:=aValue or (TPasRISCVUInt64(TPasRISCVUInt8(fBus.Load(self,SecondAddress+(Index-FirstSize),1))) shl (Index shl 3));
+   end;
+   if fState.ExceptionValue<>TExceptionValue.None then begin
+    break;
+   end;
+  end;
+ end;
+ if fState.ExceptionValue<>TExceptionValue.None then begin
+  // A bus fault reports the guest virtual address as well
+  fState.ExceptionData:=aGuestVA;
+  fState.ExceptionGuestVirtual:=true;
+  exit;
+ end;
+ result:=true;
+end;
+
+function TPasRISCV.THART.HypervisorStore(const aGuestVA,aSize,aValue:TPasRISCVUInt64):Boolean;
+// HSV: stores aSize bytes as if V=1 with the privilege of hstatus.SPVP, also across a page
+// boundary (both pages are translated first), and marks the memory dirty for the JIT
+var VSMode:TMode;
+    FirstSize,Address,SecondAddress,Index:TPasRISCVUInt64;
+begin
+ result:=false;
+ if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP))<>0 then begin
+  VSMode:=TMode.Supervisor;
+ end else begin
+  VSMode:=TMode.User;
+ end;
+ FirstSize:=PAGE_SIZE-(aGuestVA and PAGE_MASK);
+ if FirstSize>=aSize then begin
+  Address:=ForcedVirtualTranslate(aGuestVA,TMMU.TAccessType.Store,VSMode,false,aSize,[]);
+  if fState.ExceptionValue<>TExceptionValue.None then begin
+   exit;
+  end;
+  fBus.Store(self,Address,aValue,aSize);
+{$ifdef PasRISCVJustInTimeCompiler}
+  fMachine.JITMarkDirtyMemory(Address and PAGE_ADDRESS_MASK);
+{$endif}
+ end else begin
+  Address:=ForcedVirtualTranslate(aGuestVA,TMMU.TAccessType.Store,VSMode,false,FirstSize,[]);
+  if fState.ExceptionValue<>TExceptionValue.None then begin
+   exit;
+  end;
+  SecondAddress:=ForcedVirtualTranslate(aGuestVA+FirstSize,TMMU.TAccessType.Store,VSMode,false,aSize-FirstSize,[]);
+  if fState.ExceptionValue<>TExceptionValue.None then begin
+   exit;
+  end;
+  for Index:=0 to aSize-1 do begin
+   if Index<FirstSize then begin
+    fBus.Store(self,Address+Index,(aValue shr (Index shl 3)) and $ff,1);
+   end else begin
+    fBus.Store(self,SecondAddress+(Index-FirstSize),(aValue shr (Index shl 3)) and $ff,1);
+   end;
+   if fState.ExceptionValue<>TExceptionValue.None then begin
+    break;
+   end;
+  end;
+{$ifdef PasRISCVJustInTimeCompiler}
+  fMachine.JITMarkDirtyMemory(Address and PAGE_ADDRESS_MASK);
+  fMachine.JITMarkDirtyMemory(SecondAddress and PAGE_ADDRESS_MASK);
+{$endif}
+ end;
+ if fState.ExceptionValue<>TExceptionValue.None then begin
+  // A bus fault reports the guest virtual address as well
+  fState.ExceptionData:=aGuestVA;
+  fState.ExceptionGuestVirtual:=true;
+  exit;
+ end;
+ result:=true;
+end;
+
+procedure TPasRISCV.THART.SetHostRoundingMode(const aRM:TPasRISCVUInt64);
+// The host rounding mode for a RISC-V rounding mode (RMM and the reserved values fall back to
+// nearest, as for frm)
+begin
+ case aRM of
+  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+   SetRoundMode({$ifdef fpc}TFPURoundingMode.{$endif}rmTruncate);
+  end;
+  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+   SetRoundMode({$ifdef fpc}TFPURoundingMode.{$endif}rmDown);
+  end;
+  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+   SetRoundMode({$ifdef fpc}TFPURoundingMode.{$endif}rmUp);
+  end;
+  else begin
+   SetRoundMode({$ifdef fpc}TFPURoundingMode.{$endif}rmNearest);
+  end;
+ end;
+end;
+
+function TPasRISCV.THART.StaticRMApplies(const aInstruction:TPasRISCVUInt32):Boolean;
+// The caller saw a static rm (RNE, RTZ, RDN or RUP) that differs from frm. The fast FPU path
+// computes with the host rounding mode, which follows frm, so the operations that round with it
+// have to run with the host mode switched: add, sub, mul, div, sqrt, the conversions between the
+// FP formats and from integers, and the fused multiply-adds. The conversions to integers (and
+// fround) apply rm themselves, the other OP-FP instructions do not round.
+begin
+ if fStaticRMActive{$ifdef PasRISCVStrictCompliantFPU} or fStrictCompliantFPU{$endif} then begin
+  result:=false;
+ end else if (aInstruction and $7f)=$53 then begin
+  case aInstruction shr 27 of
+   $00,$01,$02,$03,$08,$0b,$1a:begin
+    result:=true;
+   end;
+   else begin
+    result:=false;
+   end;
+  end;
+ end else begin
+  // fmadd, fmsub, fnmsub, fnmadd
+  result:=true;
+ end;
+end;
+
+
+function TPasRISCV.THART.HasRoundingModeField(const aInstruction:TPasRISCVUInt32):Boolean;
+// Whether funct3 of the instruction is a rounding mode and not a sub-opcode. It is one for add,
+// sub, mul, div, sqrt, the conversions between the FP formats (with fround and froundnx) and to
+// and from integers, and for the fused multiply-adds, but not for fsgnj, fmin/fmax, the compares,
+// fmv, fclass and fli.
+begin
+ if (aInstruction and $7f)=$53 then begin
+  case aInstruction shr 27 of
+   $00,$01,$02,$03,$08,$0b,$18,$1a:begin
+    result:=true;
+   end;
+   else begin
+    result:=false;
+   end;
+  end;
+ end else begin
+  // fmadd, fmsub, fnmsub, fnmadd
+  result:=true;
+ end;
+end;
+function TPasRISCV.THART.ExecuteFPStaticRM(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+// Runs the instruction with the host rounding mode of its static rm, then back to frm. No
+// translated block may start meanwhile, those rely on the host mode being frm (TLBLookup checks
+// fStaticRMActive); the JIT translates the instruction itself with the static rm when it traces.
+begin
+ fStaticRMActive:=true;
+ SetHostRoundingMode((aInstruction shr 12) and 7);
+ result:=ExecuteInstruction(aInstruction);
+ SetHostRoundingMode(fState.CSR.fData[TCSR.TAddress.FRM] and 7);
+ fStaticRMActive:=false;
+end;
+
+function TPasRISCV.THART.ExecuteHypervisorLoadStore(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
+// HLV.B/BU/H/HU/W/WU/D, HLVX.HU/WU and HSV.B/H/W/D (SYSTEM, funct3=4, funct7 $30 to $37): loads and
+// stores as if V=1 with the privilege of hstatus.SPVP. Allowed in M-mode, HS-mode and in U-mode with
+// hstatus.HU=1, with V=1 they cause a virtual-instruction exception. rd is only written when the
+// whole access succeeded.
+var Funct7,RS2Field,Size,Value:TPasRISCVUInt64;
+    rd,rs1:TRegister;
+    Valid:Boolean;
+begin
+ result:=4;
+
+ Funct7:=(aInstruction shr 25) and $7f;
+ RS2Field:=(aInstruction shr 20) and $1f;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ Size:=TPasRISCVUInt64(1) shl ((Funct7 shr 1) and 3);
+
+ // Only the defined encodings: HSV has rd=0, HLV has rs2=0 (signed), 1 (unsigned, not for the
+ // doubleword) or 3 (HLVX, halfword and word only)
+ if (Funct7 and 1)<>0 then begin
+  Valid:=rd=TRegister.Zero;
+ end else begin
+  case RS2Field of
+   0:begin
+    Valid:=true;
+   end;
+   1:begin
+    Valid:=Size<8;
+   end;
+   3:begin
+    Valid:=(Size=2) or (Size=4);
+   end;
+   else begin
+    Valid:=false;
+   end;
+  end;
+ end;
+ if not Valid then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+
+ if fState.VirtualMode then begin
+  SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+
+ if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
+
+ rs1:=TRegister((aInstruction shr 15) and $1f);
+
+ if (Funct7 and 1)<>0 then begin
+
+  // HSV.B/H/W/D
+  Value:=fState.Registers[TRegister(RS2Field)];
+  if Size<8 then begin
+   Value:=Value and ((TPasRISCVUInt64(1) shl (Size shl 3))-1);
+  end;
+  HypervisorStore(fState.Registers[rs1],Size,Value);
+
+ end else begin
+
+  // HLV/HLVX
+  if HypervisorLoad(fState.Registers[rs1],Size,RS2Field=3,Value) then begin
+   case Size of
+    1:begin
+     if RS2Field=0 then begin
+      Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(Value))));
+     end else begin
+      Value:=TPasRISCVUInt64(TPasRISCVUInt8(Value));
+     end;
+    end;
+    2:begin
+     if RS2Field=0 then begin
+      Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(Value))));
+     end else begin
+      Value:=TPasRISCVUInt64(TPasRISCVUInt16(Value));
+     end;
+    end;
+    4:begin
+     if RS2Field=0 then begin
+      Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(Value))));
+     end else begin
+      Value:=TPasRISCVUInt64(TPasRISCVUInt32(Value));
+     end;
+    end;
+    else begin
+    end;
+   end;
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=Value;
+   end;
+  end;
+
+ end;
+
+end;
+
+{$ifdef Zicfiss}
+function TPasRISCV.THART.ShadowStackAccessCheck:TExceptionValue;
+// For the ssp CSR and ssamoswap: below M-mode menvcfg.SSE has to be set (else illegal
+// instruction), in U-mode also senvcfg.SSE (illegal instruction); with V=1 henvcfg.SSE, and in
+// VU-mode senvcfg.SSE (else virtual-instruction exception)
+begin
+ result:=TExceptionValue.None;
+ if fState.Mode<>THART.TMode.Machine then begin
+  if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)=0 then begin
+   result:=TExceptionValue.IllegalInstruction;
+  end else if fState.VirtualMode then begin
+   if ((fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)=0) or
+      ((fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)=0)) then begin
+    result:=TExceptionValue.VirtualInstruction;
+   end;
+  end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)=0) then begin
+   result:=TExceptionValue.IllegalInstruction;
+  end;
+ end;
+end;
+
+function TPasRISCV.THART.ShadowStackTranslate(const aAddress,aSize:TPasRISCVUInt64;const aStore:Boolean):TPasRISCVUInt64;
+// Translates a shadow stack access, see AddressTranslate: only to shadow stack pages, never with
+// satp/vsatp Bare below M-mode and never at an effective M-mode. PMP has to grant read and write,
+// and the memory has to be RAM (idempotent, checked by the callers). A misaligned address and
+// every fault are store/AMO faults, also for the read of sspopchk. No TLB fill: ordinary stores
+// must never find a shadow stack page writable there.
+{$ifdef PasRISCVSmepmp}
+var EffectiveMode:TMode;
+{$endif}
+begin
+ if (aAddress and (aSize-1))<>0 then begin
+  SetException(TExceptionValue.StoreAccessFault,aAddress,fState.PC);
+  result:=0;
+  exit;
+ end;
+ if aStore then begin
+  result:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.ShadowStack,TMMU.TAccessFlag.NoTLBUpdate,TMMU.TAccessFlag.CallerChecksPMP],aSize);
+ end else begin
+  result:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[TMMU.TAccessFlag.ShadowStack,TMMU.TAccessFlag.NoTLBUpdate,TMMU.TAccessFlag.CallerChecksPMP],aSize);
+ end;
+ case fState.ExceptionValue of
+  TExceptionValue.None:begin
+{$ifdef PasRISCVSmepmp}
+   EffectiveMode:=fState.Mode;
+   if (EffectiveMode=THART.TMode.Machine) and
+      ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPRV))<>0) then begin
+    EffectiveMode:=THART.TMode((fState.CSR.fData[TCSR.TAddress.MSTATUS] shr 11) and 3);
+   end;
+   if not (CheckPMPAccess(result,aSize,TMMU.TAccessType.Load,EffectiveMode) and
+           CheckPMPAccess(result,aSize,TMMU.TAccessType.Store,EffectiveMode)) then begin
+    SetException(TExceptionValue.StoreAccessFault,aAddress,fState.PC);
+    result:=0;
+   end;
+{$endif}
+  end;
+  TExceptionValue.LoadAccessFault:begin
+   fState.ExceptionValue:=TExceptionValue.StoreAccessFault;
+  end;
+  TExceptionValue.LoadPageFault:begin
+   fState.ExceptionValue:=TExceptionValue.StorePageFault;
+  end;
+  TExceptionValue.LoadGuestPageFault:begin
+   fState.ExceptionValue:=TExceptionValue.StoreGuestPageFault;
+  end;
+  else begin
+  end;
+ end;
+end;
+
+function TPasRISCV.THART.ShadowStackLoad(const aAddress:TPasRISCVUInt64;out aValue:TPasRISCVUInt64):Boolean;
+// The read of sspopchk and c.sspopchk, only from RAM (else a store/AMO access fault)
+var Address:TPasRISCVUInt64;
+    Pointer_:Pointer;
+begin
+ aValue:=0;
+ Address:=ShadowStackTranslate(aAddress,8,false);
+ if fState.ExceptionValue=TExceptionValue.None then begin
+  Pointer_:=fBus.GetDirectMemoryAccessPointer(self,Address,8,false,nil);
+  if assigned(Pointer_) then begin
+   aValue:=TPasMPInterlocked.Read(PPasMPUInt64(Pointer_)^);
+  end else begin
+   SetException(TExceptionValue.StoreAccessFault,aAddress,fState.PC);
+  end;
+ end;
+ result:=fState.ExceptionValue=TExceptionValue.None;
+end;
+
+function TPasRISCV.THART.ShadowStackStore(const aAddress,aValue:TPasRISCVUInt64):Boolean;
+// The write of sspush and c.sspush, only to RAM (else a store/AMO access fault)
+var Address:TPasRISCVUInt64;
+    Pointer_:Pointer;
+begin
+ Address:=ShadowStackTranslate(aAddress,8,true);
+ if fState.ExceptionValue=TExceptionValue.None then begin
+  // With aWrite the bus marks the page dirty for the JIT
+  Pointer_:=fBus.GetDirectMemoryAccessPointer(self,Address,8,true,nil);
+  if assigned(Pointer_) then begin
+   TPasMPInterlocked.Write(PPasMPUInt64(Pointer_)^,TPasMPUInt64(aValue));
+  end else begin
+   SetException(TExceptionValue.StoreAccessFault,aAddress,fState.PC);
+  end;
+ end;
+ result:=fState.ExceptionValue=TExceptionValue.None;
+end;
+
+procedure TPasRISCV.THART.ExecuteShadowStackSwap(const aInstruction:TPasRISCVUInt32;const aSize:TPasRISCVUInt64);
+// ssamoswap.w/d: atomic swap on a shadow stack page, only on RAM (anything else is a store/AMO
+// access fault). The .w result is sign extended like the other AMOs.
+var ExceptionValue:TExceptionValue;
+    Address,OldValue,VirtualAddress:TPasRISCVUInt64;
+    Pointer_:Pointer;
+    rd:TRegister;
+begin
+ ExceptionValue:=ShadowStackAccessCheck;
+ if ExceptionValue<>TExceptionValue.None then begin
+  SetException(ExceptionValue,aInstruction,fState.PC);
+  exit;
+ end;
+ VirtualAddress:=fState.Registers[TRegister((aInstruction shr 15) and $1f)];
+ Address:=ShadowStackTranslate(VirtualAddress,aSize,true);
+ if fState.ExceptionValue<>TExceptionValue.None then begin
+  exit;
+ end;
+ // With aWrite the bus marks the page dirty for the JIT
+ Pointer_:=fBus.GetDirectMemoryAccessPointer(self,Address,aSize,true,nil);
+ if not assigned(Pointer_) then begin
+  SetException(TExceptionValue.StoreAccessFault,VirtualAddress,fState.PC);
+  exit;
+ end;
+ if aSize=4 then begin
+  OldValue:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasMPInterlocked.Exchange(PPasMPUInt32(Pointer_)^,TPasMPUInt32(fState.Registers[TRegister((aInstruction shr 20) and $1f)])))));
+ end else begin
+  OldValue:=TPasRISCVUInt64({$ifdef CPU64}TPasMPInterlocked.Exchange{$else}PasRISCVAtomicExchange64{$endif}(PPasMPUInt64(Pointer_)^,TPasMPUInt64(fState.Registers[TRegister((aInstruction shr 20) and $1f)])));
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+  fState.Registers[rd]:=OldValue;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerSSP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+// ssp: only with the shadow stack enabled for the mode (M-mode always). Bits 2:0 are read-only
+// zero, as UXLEN and SXLEN are always 64.
+var rd:TRegister;
+    CSRValue:TPasRISCVUInt64;
+    ExceptionValue:TExceptionValue;
+begin
+ ExceptionValue:=ShadowStackAccessCheck;
+ if ExceptionValue<>TExceptionValue.None then begin
+  SetException(ExceptionValue,aInstruction,fState.PC);
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  CSRValue:=fState.CSR.fData[TCSR.TAddress.SSP];
+  fState.CSR.fData[TCSR.TAddress.SSP]:=CSROperation(aOperation,CSRValue,aRHS) and not TPasRISCVUInt64(7);
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=CSRValue;
+  end;
+ end;
+end;
+{$endif}
 
 procedure TPasRISCV.THART.FlushTLB(const aInterrupt,aFlushJITTLB:Boolean);
 var DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
@@ -100279,6 +103007,10 @@ begin
 {$ifdef PasRISCVTLBHasExecuteEntriesFlag}
  fTLBHasExecuteEntries:=false;
 {$endif}
+ fTLBLargePageLow[0]:=TPasRISCVUInt64($ffffffffffffffff);
+ fTLBLargePageHigh[0]:=0;
+ fTLBLargePageLow[1]:=TPasRISCVUInt64($ffffffffffffffff);
+ fTLBLargePageHigh[1]:=0;
 {$ifdef PasRISCVMMIOTLB}
  {$ifdef CPU64}TPasMPInterlocked.Increment{$else}PasRISCVAtomicIncrement64{$endif}(fMachine.fMMIOTLBGeneration);
 {$endif}
@@ -100288,6 +103020,36 @@ begin
 {$endif}
   RestartExecution;
  end;
+end;
+
+procedure TPasRISCV.THART.TLBDropWriteEntries(const aHostPage:TPasRISCVPtrUInt);
+// Drops every write entry of this hart's data TLBs (all modes) that points to the host page, so
+// the next store to it takes the slow path, which marks the page dirty for the JIT (see
+// TPasRISCV.JITWriteProtectPage). Another hart may call this while this hart runs: an entry that
+// gets refilled right then goes through TLBPutBusDevice, which marks the page dirty itself.
+var Index:TPasRISCVSizeInt;
+    Entry:TMMU.PDirectAccessTLBEntry;
+{$ifdef PerModeTLB}
+    ModeIndex:TMode;
+{$endif}
+begin
+{$ifdef PerModeTLB}
+ for ModeIndex:=TMode.User to TMode.Machine do begin
+  for Index:=0 to TMMU.DIRECT_ACCESS_TLB_ENTRIES-1 do begin
+   Entry:=@fDirectAccessTLBCacheModes[ModeIndex][Index];
+   if (Entry^.{$ifdef CombinedDirectAccessTLBCache}RelativeMemory{$else}RelativeMemoryWrite{$endif}+TPasRISCVPtrUInt(Entry^.Write shl PAGE_SHIFT))=aHostPage then begin
+    Entry^.Write:=Entry^.Write-1;
+   end;
+  end;
+ end;
+{$else}
+ for Index:=0 to TMMU.DIRECT_ACCESS_TLB_ENTRIES-1 do begin
+  Entry:=@fDirectAccessTLBCache[Index];
+  if (Entry^.{$ifdef CombinedDirectAccessTLBCache}RelativeMemory{$else}RelativeMemoryWrite{$endif}+TPasRISCVPtrUInt(Entry^.Write shl PAGE_SHIFT))=aHostPage then begin
+   Entry^.Write:=Entry^.Write-1;
+  end;
+ end;
+{$endif}
 end;
 
 procedure TPasRISCV.THART.FlushTLBPage(const aInterrupt:Boolean;const aAddress:TPasRISCVUInt64);
@@ -100300,13 +103062,35 @@ var VPN:TPasRISCVUInt64;
     ModeIndex:TMode;
 {$endif}
 begin
+ // The address may lie in a superpage or Svnapot page whose other 4 KiB parts are in the TLB too
+ if (aAddress>=fTLBLargePageLow[aAddress shr 63]) and (aAddress<=fTLBLargePageHigh[aAddress shr 63]) then begin
+  FlushTLB(aInterrupt,true);
+  exit;
+ end;
  VPN:=aAddress shr PAGE_SHIFT;
+{$ifdef PasRISCVMMIOTLB}
+ // The MMIO TLB has to forget this page as well (its slot is dropped, whichever page it holds)
+{$ifdef PerModeTLB}
+ for ModeIndex:=TMode.User to TMode.Machine do begin
+  fMMIOTLBDataModes[ModeIndex][VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Generation:=0;
+ end;
+{$else}
+ fMMIOTLBData[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Generation:=0;
+{$endif}
+{$endif}
 {$ifdef PerModeTLB}
 {$if defined(SmartExecutionTLBFlush)}
- HadExecute:=fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN;
+ HadExecute:=false;
 {$ifend}
  for ModeIndex:=TMode.User to TMode.Machine do begin
   DirectAccessTLBEntry:=@fDirectAccessTLBCacheModes[ModeIndex][VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+{$if defined(SmartExecutionTLBFlush)}
+  // Code of any mode may be cached for this page (e.g. user code while S-mode runs the sfence.vma),
+  // and then the JIT TLB has to forget it as well
+  if DirectAccessTLBEntry^.Execute=VPN then begin
+   HadExecute:=true;
+  end;
+{$ifend}
 {$ifdef CombinedDirectAccessTLBCache}
   DirectAccessTLBEntry^.Read:=VPN-1;
   DirectAccessTLBEntry^.Write:=VPN-1;
@@ -100345,6 +103129,14 @@ begin
  end;
 {$endif}
 {$endif}
+{$if defined(PasRISCVJustInTimeCompiler) and defined(SmartExecutionTLBFlush)}
+ // The execute entry of this page may have lost its slot to another page (direct mapped, shared by
+ // all access types) while JIT TLB entries for the page are still valid: those have to go as well,
+ // else the JIT keeps running the code of the old mapping (N20)
+ if (not HadExecute) and assigned(fJustInTimeCompiler) and fJustInTimeCompiler.JITTLBPageSeen(aAddress) then begin
+  HadExecute:=true;
+ end;
+{$ifend}
 {$if defined(PasRISCVJustInTimeCompiler) and ((defined(SmartExecutionTLBFlush) and defined(SmartJITTLBFlushForceClear)) or not defined(SmartJITTLBFlushForceClear))}
  if assigned(fJustInTimeCompiler){$if defined(SmartExecutionTLBFlush)}and HadExecute{$ifend}then begin
   fJustInTimeCompiler.FlushJITTLB;
@@ -100372,12 +103164,42 @@ begin
 end;
 
 procedure TPasRISCV.THART.TLBPut(const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
+{$ifdef PerModeTLB}
+var VPN:TPasRISCVUInt64;
+{$endif}
+begin
+{$ifdef PerModeTLB}
+ VPN:=aVirtualAddress shr PAGE_SHIFT;
+ TLBPutEntry(@fDirectAccessTLBCache^[VPN and TMMU.DIRECT_ACCESS_TLB_MASK],aVirtualAddress,aTarget,aAccessType);
+ // S-mode sees a page that is not a user page the same way with SUM=0 and SUM=1, so it goes into
+ // both S-mode TLBs, and SUM toggles (on every Linux user copy) do not cost refills of kernel pages
+ if fTLBFillSharedBySUM and (fState.Mode=TMode.Supervisor) then begin
+  if fDirectAccessTLBCache=@fDirectAccessTLBCacheModes[TMode.Supervisor] then begin
+   TLBPutEntry(@fDirectAccessTLBCacheModes[TMode.Hypervisor][VPN and TMMU.DIRECT_ACCESS_TLB_MASK],aVirtualAddress,aTarget,aAccessType);
+  end else begin
+   TLBPutEntry(@fDirectAccessTLBCacheModes[TMode.Supervisor][VPN and TMMU.DIRECT_ACCESS_TLB_MASK],aVirtualAddress,aTarget,aAccessType);
+  end;
+ end;
+{$else}
+ TLBPutEntry(@fDirectAccessTLBCache[(aVirtualAddress shr PAGE_SHIFT) and TMMU.DIRECT_ACCESS_TLB_MASK],aVirtualAddress,aTarget,aAccessType);
+{$endif}
+end;
+
+procedure TPasRISCV.THART.TLBPutEntry(const aDirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;const aVirtualAddress:TPasRISCVUInt64;const aTarget:TPasRISCVPtrUInt;const aAccessType:TMMU.TAccessType);
 var VPN:TPasRISCVUInt64;
     DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
 begin
  VPN:=aVirtualAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}@fDirectAccessTLBCache^{$else}@fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
+ DirectAccessTLBEntry:=aDirectAccessTLBEntry;
 {$ifdef CombinedDirectAccessTLBCache}
+ // One memory pointer serves all three tags. When this fill maps the page to other memory (for
+ // example an MPRV data access through the M-mode TLB after an M-mode fetch of the same page),
+ // the tags of the other access types must not keep using the new pointer.
+ if DirectAccessTLBEntry^.RelativeMemory<>(aTarget-TPasRISCVPtrUInt(aVirtualAddress and PAGE_ADDRESS_MASK)) then begin
+  DirectAccessTLBEntry^.Read:=VPN-1;
+  DirectAccessTLBEntry^.Write:=VPN-1;
+  DirectAccessTLBEntry^.Execute:=VPN-1;
+ end;
  case aAccessType of
   TMMU.TAccessType.LoadInstruction,
   TMMU.TAccessType.Load:begin
@@ -100444,6 +103266,40 @@ begin
 {$endif}
 end;
 
+procedure TPasRISCV.THART.TLBNoteLargePage(const aVirtualAddress,aMask:TPasRISCVUInt64);
+begin
+ // Widen the large page range of this half of the address space by the page [va & ~mask, va | mask]
+ if (aVirtualAddress and not aMask)<fTLBLargePageLow[aVirtualAddress shr 63] then begin
+  fTLBLargePageLow[aVirtualAddress shr 63]:=aVirtualAddress and not aMask;
+ end;
+ if (aVirtualAddress or aMask)>fTLBLargePageHigh[aVirtualAddress shr 63] then begin
+  fTLBLargePageHigh[aVirtualAddress shr 63]:=aVirtualAddress or aMask;
+ end;
+end;
+
+{$ifdef PerModeTLB}
+procedure TPasRISCV.THART.SelectTLB;
+var TLBMode:TMode;
+begin
+ TLBMode:=fState.Mode;
+ // S-mode with SUM=1 may reach user pages, which S-mode with SUM=0 must not, so it gets its own
+ // TLB in the otherwise unused Hypervisor slot. A SUM toggle then needs no flush. (Under V=1 the
+ // VS-mode SUM lives in mstatus as well, as SwapHypervisorRegs swaps it in.)
+ if (TLBMode=TMode.Supervisor) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and TCSR.TMask.TStatus.SUM)<>0) then begin
+  TLBMode:=TMode.Hypervisor;
+ end;
+ fDirectAccessTLBCache:=@fDirectAccessTLBCacheModes[TLBMode];
+{$ifdef PasRISCVMMIOTLB}
+ fMMIOTLBData:=@fMMIOTLBDataModes[TLBMode];
+{$endif}
+{$ifdef PasRISCVJustInTimeCompiler}
+ if assigned(fJustInTimeCompiler) then begin
+  fState.JITTLBPtr:=@fDirectAccessTLBCache^[0];
+ end;
+{$endif}
+end;
+{$endif}
+
 procedure TPasRISCV.THART.TLBPutBusDevice(const aVirtualAddress,aPhysicalAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType);
 var Target:Pointer;
 begin
@@ -100481,13 +103337,41 @@ begin
  BusDevice:=fBus.FindBusDevice(aPhysicalAddress);
 {$endif}
 
- if assigned(BusDevice) then begin
+ // Only a device that is the only one in the page may be cached for it, otherwise accesses to
+ // other offsets of the page (further devices packed into the same page like small PCI I/O BARs)
+ // would all be routed to this one device. Gaps are rejected by BusDeviceLoad/Store.
+ if assigned(BusDevice) and fBus.IsOnlyDeviceInPage(BusDevice,aPhysicalAddress and PAGE_ADDRESS_MASK) then begin
 
   // Cache device, physical page base, VPN tag and current generation in the
   // separate MMIO TLB array. Does NOT touch DirectAccessTLBEntry at all -
   // the MMIO TLB is fully independent from the RAM TLB.
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[Index];
-  MMIOTLBEntry^.VPN:=VPN;
+
+  // The tags of the other access types stay only valid for the same page, device and generation
+  if (MMIOTLBEntry^.Generation<>fMachine.fMMIOTLBGeneration) or
+     (MMIOTLBEntry^.BusDevice<>BusDevice) or
+     (MMIOTLBEntry^.PhysicalPageBase<>(aPhysicalAddress and PAGE_ADDRESS_MASK)) or
+     ((MMIOTLBEntry^.ReadVPN<>VPN) and (MMIOTLBEntry^.WriteVPN<>VPN) and (MMIOTLBEntry^.ExecuteVPN<>VPN)) then begin
+   MMIOTLBEntry^.ReadVPN:=VPN-1;
+   MMIOTLBEntry^.WriteVPN:=VPN-1;
+   MMIOTLBEntry^.ExecuteVPN:=VPN-1;
+  end;
+
+  // Only the access type that was just translated and checked gets its tag
+  case aAccessType of
+   TMMU.TAccessType.Load,
+   TMMU.TAccessType.LoadInstruction:begin
+    MMIOTLBEntry^.ReadVPN:=VPN;
+   end;
+   TMMU.TAccessType.Store:begin
+    MMIOTLBEntry^.WriteVPN:=VPN;
+   end;
+   TMMU.TAccessType.Instruction:begin
+    MMIOTLBEntry^.ExecuteVPN:=VPN;
+   end;
+   else begin
+   end;
+  end;
   MMIOTLBEntry^.Generation:=fMachine.fMMIOTLBGeneration;
   MMIOTLBEntry^.PhysicalPageBase:=aPhysicalAddress and PAGE_ADDRESS_MASK;
   MMIOTLBEntry^.BusDevice:=BusDevice;
@@ -100510,7 +103394,7 @@ begin
  end;
 end;
 
-function TPasRISCV.THART.AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags):TPasRISCVUInt64;
+function TPasRISCV.THART.AddressTranslate(aVirtualAddress:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aAccessFlags:TMMU.TAccessFlags;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
 var Index:TPasRISCVSizeInt;
     CPUMode:THART.TMode;
     MSTATUS,Levels,PMM,ENVCFG:TPasRISCVUInt64;
@@ -100521,6 +103405,9 @@ var Index:TPasRISCVSizeInt;
     PageTableEntryPointer:Pointer;
     PBMTE,ADUE,NAPOT,TwoStage:boolean;
 begin
+
+ // The bus raises an access fault with the physical address, xtval needs the virtual one
+ fAccessVirtualAddress:=aVirtualAddress;
 
 {$ifdef PasRISCVJustInTimeCompilerStats}
  if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
@@ -100556,49 +103443,69 @@ begin
 
   if (MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MPRV))<>0 then begin
    CPUMode:=TPasRISCV.THART.TMode(TPasRISCVUInt64((fState.CSR.fData[TCSR.TAddress.MSTATUS] shr 11) and 3));
+   // M-mode with MPRV=1 and MPV=1: data accesses are translated and protected as if V=1 in the
+   // mode of MPP, with vsatp, vsstatus.SUM/MXR and hgatp (MPRV only has an effect in M-mode, it
+   // is cleared on any return to a lower mode)
+   if (fState.Mode=THART.TMode.Machine) and
+      (CPUMode<>THART.TMode.Machine) and
+      ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MPV))<>0) and
+      not fForcedVirtualActive then begin
+    result:=ForcedVirtualTranslate(aVirtualAddress,aAccessType,CPUMode,false,aSize,aAccessFlags+[TMMU.TAccessFlag.NoTLBUpdate]);
+    exit;
+   end;
   end;
 
-  // Pointer masking (Supm/Ssnpm/Sspm)
-  // When MPRV and MXR are both set, pointer masking does not apply (Zjpm spec)
+  // Pointer masking (Smmpm, Smnpm, Ssnpm, Supm)
+  // The configuration of the effective privilege mode decides, and CPUMode already follows MPRV.
+  // MXR switches pointer masking off below M-mode (and vsstatus.MXR does with V=1), M-mode takes
+  // its PMM from mseccfg and not from menvcfg, and the ignored bits are only sign extended where
+  // the address is a virtual one: with Bare translation or in M-mode they become zero.
   // TODO-Optimize: TLB fast-paths in Load32/Store32 etc. see the unmasked address and will
   // always miss when pointer masking is active, falling through to AddressTranslate. This is
   // performance-neutral when PMM=0, but could be optimized for PMM<>0 by masking the address
   // before the TLB lookup in the fast-paths as well.
-  if ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MPRV))=0) or
-     ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MXR))=0) then begin
+  if ((CPUMode=THART.TMode.Machine) or ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MXR))=0)) and
+     ((not TwoStage) or ((fState.CSR.fData[TCSR.TAddress.VSSTATUS] and TCSR.TMask.TStatus.MXR)=0)) then begin
    case CPUMode of
     THART.TMode.User:begin
      PMM:=(fState.CSR.fData[TCSR.TAddress.SENVCFG] shr 32) and 3;
     end;
     THART.TMode.Supervisor:begin
-     if fState.VirtualMode then begin
+     if TwoStage then begin
       PMM:=(fState.CSR.fData[TCSR.TAddress.HENVCFG] shr 32) and 3;
      end else begin
       PMM:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] shr 32) and 3;
      end;
     end;
     THART.TMode.Machine:begin
-     // Smmpm: M-mode pointer masking via menvcfg.PMM (bits 33:32)
-     PMM:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] shr 32) and 3;
+     // Smmpm: M-mode pointer masking comes from mseccfg
+     PMM:=(fState.CSR.fData[TCSR.TAddress.MSECCFG] shr 32) and 3;
     end;
     else begin
      PMM:=0;
     end;
    end;
-   case PMM of
-    2:begin // PMLEN=7
-     aVirtualAddress:=TPasRISCVUInt64(SARInt64(TPasRISCVInt64(aVirtualAddress shl 7),7));
+   if PMM>1 then begin
+    // PMM 2 means PMLEN 7, PMM 3 means PMLEN 16
+    if PMM=2 then begin
+     PMM:=7;
+    end else begin
+     PMM:=16;
     end;
-    3:begin // PMLEN=16
-     aVirtualAddress:=TPasRISCVUInt64(SARInt64(TPasRISCVInt64(aVirtualAddress shl 16),16));
-    end;
-    else begin
+    if (CPUMode<>THART.TMode.Machine) and
+       (((not TwoStage) and (fMMUMode<>TMMU.TMMUMode.None)) or
+        (TwoStage and (((fState.CSR.fData[TCSR.TAddress.VSATP] shr 60) and $f)<>0))) then begin
+     aVirtualAddress:=TPasRISCVUInt64(SARInt64(TPasRISCVInt64(aVirtualAddress shl PMM),TPasRISCVInt32(PMM)));
+    end else begin
+     aVirtualAddress:=(aVirtualAddress shl PMM) shr PMM;
     end;
    end;
   end;
 
+  // With V=1 the HS-level MXR (in the HS backing store while V=1) applies to the VS-stage as well
   if (EffectiveAccessType=TMMU.TAccessType.Load) and
-     ((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MXR))<>0) then begin
+     (((MSTATUS and (TPasRISCVUInt64(1) shl THART.TCSR.TMask.TMSTATUSBit.MXR))<>0) or
+      (TwoStage and (not fForcedVirtualActive) and ((fState.HSMode_MSTATUS and TCSR.TMask.TStatus.MXR)<>0))) then begin
    EffectiveAccessType:=TMMU.TAccessType.LoadInstruction;
   end;
 
@@ -100621,42 +103528,57 @@ begin
      Levels:=5;
     end;
     else {TMMU.TMMUMode.None:}begin
+{$ifdef Zicfiss}
+     if TMMU.TAccessFlag.ShadowStack in aAccessFlags then begin
+      // Shadow stack instructions below M-mode with satp (vsatp with V=1) Bare: store/AMO
+      // access fault
+      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+       RaisePhysicalFault(aVirtualAddress,aAccessType);
+      end;
+      result:=0;
+      exit;
+     end;
+{$endif}
      // No VS-stage paging; but in virtual mode, still need G-stage
      if TwoStage then begin
-      PhysicalAddress:=GStageTranslate(aVirtualAddress,aAccessType,false);
+      PhysicalAddress:=GStageTranslate(aVirtualAddress,aAccessType,aAccessType,false,TMMU.TAccessFlag.NoTrap in aAccessFlags);
       if fState.ExceptionValue<>TExceptionValue.None then begin
        result:=0;
        exit;
       end;
 {$ifdef PasRISCVSmepmp}
-      if not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
-       if not CheckPMPAccess(PhysicalAddress,aAccessType,CPUMode) then begin
-        if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
-         RaisePhysicalFault(aVirtualAddress,aAccessType);
-        end;
-        result:=0;
-        exit;
-       end;
-      end;
-{$endif}
-      if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
-       TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,PhysicalAddress and PAGE_ADDRESS_MASK,aAccessType);
-      end;
-      result:=PhysicalAddress;
-      exit;
-     end;
-{$ifdef PasRISCVSmepmp}
-     if not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
-      if not CheckPMPAccess(aVirtualAddress,aAccessType,CPUMode) then begin
+      if (aAccessFlags*[TMMU.TAccessFlag.IgnoreMMUProtection,TMMU.TAccessFlag.CallerChecksPMP])<>[] then begin
+       fPMPPageUniform:=false;
+      end else if not CheckPMPAccess(PhysicalAddress,aSize,aAccessType,CPUMode) then begin
        if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
         RaisePhysicalFault(aVirtualAddress,aAccessType);
        end;
        result:=0;
        exit;
       end;
+{$endif}
+      // Only a page that PMP treats uniformly may go into the TLB, otherwise the TLB entry
+      // would let later accesses to the same page bypass a PMP boundary inside it
+      if (not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags)){$ifdef PasRISCVSmepmp} and fPMPPageUniform{$endif} then begin
+       fTLBFillSharedBySUM:=true;
+       TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,PhysicalAddress and PAGE_ADDRESS_MASK,aAccessType);
+      end;
+      result:=PhysicalAddress;
+      exit;
+     end;
+{$ifdef PasRISCVSmepmp}
+     if TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags then begin
+      fPMPPageUniform:=false;
+     end else if not CheckPMPAccess(aVirtualAddress,aSize,aAccessType,CPUMode) then begin
+      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+       RaisePhysicalFault(aVirtualAddress,aAccessType);
+      end;
+      result:=0;
+      exit;
      end;
 {$endif}
-     if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
+     if (not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags)){$ifdef PasRISCVSmepmp} and fPMPPageUniform{$endif} then begin
+      fTLBFillSharedBySUM:=true;
       TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,aVirtualAddress and PAGE_ADDRESS_MASK,aAccessType);
      end;
      result:=aVirtualAddress;
@@ -100683,21 +103605,38 @@ begin
     // H-extension: G-stage translate PTE fetch addresses during VS-stage walk
     PTEFetchAddress:=PageTable+PageTableOffset;
     if TwoStage then begin
-     PTEFetchAddress:=GStageTranslate(PTEFetchAddress,TMMU.TAccessType.Load,true);
+     PTEFetchAddress:=GStageTranslate(PTEFetchAddress,TMMU.TAccessType.Load,aAccessType,true,TMMU.TAccessFlag.NoTrap in aAccessFlags);
      if fState.ExceptionValue<>TExceptionValue.None then begin
       // G-stage fault during PTE fetch: stval should be original VA, not GPA
       fState.ExceptionData:=aVirtualAddress;
-      fState.CSR.fData[TCSR.TAddress.HTINST]:=$3000; // pseudoinstruction for implicit G-stage fault
       result:=0;
       exit;
      end;
     end;
 
+{$ifdef PasRISCVSmepmp}
+    // Page table reads are PMP-checked as S-mode loads, a denied one is an access fault of the original
+    // access type. A table page found uniformly readable is remembered for this walk level.
+    if (not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags)) and
+       ((PTEFetchAddress and PAGE_ADDRESS_MASK)<>fPMPWalkPage[Index]) then begin
+     if not CheckPMPAccess(PTEFetchAddress,SizeOf(TPasRISCVUInt64),TMMU.TAccessType.Load,THART.TMode.Supervisor) then begin
+      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+       RaisePhysicalFault(aVirtualAddress,aAccessType);
+      end;
+      result:=0;
+      exit;
+     end;
+     if fPMPPageUniform then begin
+      fPMPWalkPage[Index]:=PTEFetchAddress and PAGE_ADDRESS_MASK;
+     end;
+    end;
+{$endif}
+
     PageTableEntryPointer:=fBus.GetDirectMemoryAccessPointer(self,PTEFetchAddress,SizeOf(TPasRISCVUInt64),false,nil);
     if not assigned(PageTableEntryPointer) then begin
-     // Physical fault
+     // Page table outside of RAM: access fault of the original access type, not a page fault
      if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
-      RaisePageFault(aVirtualAddress,aAccessType);
+      RaisePhysicalFault(aVirtualAddress,aAccessType);
      end;
      result:=0;
      exit;
@@ -100745,7 +103684,55 @@ begin
 
      if (PageTableEntry and TMMU.TPTEMasks.Valid)<>0 then begin
 
-      if (PageTableEntry and TMMU.TPTEMasks.Leaf)<>0 then begin
+       // A leaf has R, W or X set: W alone is a shadow stack page (Zicfiss) or reserved, see below
+       if (PageTableEntry and (TMMU.TPTEMasks.Leaf or TMMU.TPTEMasks.Write_))<>0 then begin
+
+       if (PageTableEntry and (TMMU.TPTEMasks.Read_ or TMMU.TPTEMasks.Write_))=TMMU.TPTEMasks.Write_ then begin
+{$ifdef Zicfiss}
+        // Zicfiss: xwr=010 is a shadow stack page when shadow stacks are enabled for this stage
+        // (menvcfg.SSE, for the VS-stage also henvcfg.SSE), otherwise reserved like every other
+        // R=0 W=1 encoding
+        if ((PageTableEntry and TMMU.TPTEMasks.Execute)=0) and
+           ((fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0) and
+           ((not TwoStage) or ((fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0)) then begin
+         // Shadow stack accesses read and write it, with the usual U and SUM checks below
+         if (not (TMMU.TAccessFlag.ShadowStack in aAccessFlags)) and
+            (EffectiveAccessType in [TMMU.TAccessType.Store,TMMU.TAccessType.Instruction]) then begin
+          // Ordinary stores and AMOs to a shadow stack page are store/AMO access faults, an
+          // instruction fetch is an instruction access fault
+          if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+           RaisePhysicalFault(aVirtualAddress,aAccessType);
+          end;
+          result:=0;
+          exit;
+         end;
+         // Ordinary loads read shadow stack pages, also without MXR (the permission check below
+         // lets xwr=010 pass)
+        end else
+{$endif}
+        begin
+         // R=0 with W=1 is reserved, also together with X=1
+         if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+          RaisePageFault(aVirtualAddress,aAccessType);
+         end;
+         result:=0;
+         exit;
+        end;
+{$ifdef Zicfiss}
+       end else if TMMU.TAccessFlag.ShadowStack in aAccessFlags then begin
+        // A shadow stack access to a page that is no shadow stack page: a store/AMO page fault
+        // for a read-only page (copy-on-write of shadow stacks), else a store/AMO access fault
+        if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+         if (PageTableEntry and (TMMU.TPTEMasks.Read_ or TMMU.TPTEMasks.Write_ or TMMU.TPTEMasks.Execute))=TMMU.TPTEMasks.Read_ then begin
+          RaisePageFault(aVirtualAddress,aAccessType);
+         end else begin
+          RaisePhysicalFault(aVirtualAddress,aAccessType);
+         end;
+        end;
+        result:=0;
+        exit;
+{$endif}
+       end;
 
        if ((PageTableEntry and TMMU.TPTEMasks.User)<>0)=(CPUMode<>THART.TMode.User) then begin
         if not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
@@ -100759,7 +103746,9 @@ begin
         end;
        end;
 
-       if (PageTableEntry and TMMU.AccessMasks[EffectiveAccessType])<>0 then begin
+       // A PTE with xwr=010 only gets here as a shadow stack page with a permitted access (see above)
+       if ((PageTableEntry and TMMU.AccessMasks[EffectiveAccessType])<>0){$ifdef Zicfiss} or
+          ((PageTableEntry and (TMMU.TPTEMasks.Read_ or TMMU.TPTEMasks.Write_ or TMMU.TPTEMasks.Execute))=TMMU.TPTEMasks.Write_){$endif} then begin
 
         VirtualMask:=(TPasRISCVUInt64(1) shl BitOffset)-1;
         PhysicalMask:=((TPasRISCVUInt64(1) shl (TMMU.PHYSICAL_BITS-BitOffset))-1) shl BitOffset;
@@ -100792,6 +103781,18 @@ begin
          exit;
         end;
 
+        // Svnapot: only 64 KiB pages at the last level are defined. Checked before the A/D
+        // update, so that an invalid PTE is never modified.
+        if NAPOT and ((PageTableEntry and TMMU.TPTEMasks.N)<>0) then begin
+         if (Index<>(Levels-1)) or ((CTZQWord((PageTableEntry and TMMU.TPTEMasks.PPN_MASK) shr TMMU.PPN_BITS)+1)<>4) then begin
+          if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+           RaisePageFault(aVirtualAddress,aAccessType);
+          end;
+          result:=0;
+          exit;
+         end;
+        end;
+
         if PageTableEntry<>PageTableEntryAccessDirty then begin
          if (not ADUE) and not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
           if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
@@ -100800,6 +103801,29 @@ begin
           result:=0;
           exit;
          end;
+
+         if TwoStage then begin
+          // Writing the VS-level PTE is an implicit store to guest physical memory: the G-stage
+          // has to permit writing (and gets its own D bit set)
+          GStageTranslate(PageTable+PageTableOffset,TMMU.TAccessType.Store,aAccessType,true,TMMU.TAccessFlag.NoTrap in aAccessFlags);
+          if fState.ExceptionValue<>TExceptionValue.None then begin
+           fState.ExceptionData:=aVirtualAddress;
+           result:=0;
+           exit;
+          end;
+         end;
+
+{$ifdef PasRISCVSmepmp}
+         // The A/D update is an implicit S-mode store to the page table
+         if (not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags)) and
+            not CheckPMPAccess(PTEFetchAddress,SizeOf(TPasRISCVUInt64),TMMU.TAccessType.Store,THART.TMode.Supervisor) then begin
+          if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+           RaisePhysicalFault(aVirtualAddress,aAccessType);
+          end;
+          result:=0;
+          exit;
+         end;
+{$endif}
 
          if TPasMPInterlocked.CompareExchange(TPasMPUInt64(PageTableEntryPointer^),PageTableEntryAccessDirty,PageTableEntry)<>PageTableEntry then begin
           continue;
@@ -100815,22 +103839,19 @@ begin
 
         if NAPOT and ((PageTableEntry and TMMU.TPTEMasks.N)<>0) then begin
 
+         // Validated above, before the A/D update
          PPN:=(PageTableEntry and TMMU.TPTEMasks.PPN_MASK) shr TMMU.PPN_BITS;
 
          NAPOTBits:=CTZQWord(PPN)+1;
-         if (Index<>(Levels-1)) or (NAPOTBits<>4) then begin
-          if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
-           RaisePageFault(aVirtualAddress,aAccessType);
-          end;
-          result:=0;
-          exit;
-         end;
 
          NAPOTMask:=(TPasRISCVUInt64(1) shl NAPOTBits)-1;
 
          PhysicalAddress:=(((PPN and not NAPOTMask) or
                             ((aVirtualAddress shr PAGE_SHIFT) and (NAPOTMask or ((TPasRISCVUInt64(1) shl (BitOffset-(TMMU.PAGE_VPN_DIFF+TMMU.VPN_BITS)))-1)))) shl PAGE_SHIFT) or
                            (aVirtualAddress and PAGE_MASK);
+
+         // From here on VirtualMask describes the whole NAPOT page, for the large page tracking below
+         VirtualMask:=(NAPOTMask shl PAGE_SHIFT) or PAGE_MASK;
 
         end else begin
 
@@ -100840,7 +103861,16 @@ begin
 
         // H-extension: G-stage translate the final guest physical address
         if TwoStage then begin
-         PhysicalAddress:=GStageTranslate(PhysicalAddress,aAccessType,false);
+{$ifdef Zicfiss}
+         if TMMU.TAccessFlag.ShadowStack in aAccessFlags then begin
+          // Shadow stack accesses need read-write permission in the G-stage, also the read of
+          // sspopchk (a fault is a store/AMO guest-page fault anyway)
+          PhysicalAddress:=GStageTranslate(PhysicalAddress,TMMU.TAccessType.Store,TMMU.TAccessType.Store,false,TMMU.TAccessFlag.NoTrap in aAccessFlags);
+         end else
+{$endif}
+         begin
+          PhysicalAddress:=GStageTranslate(PhysicalAddress,aAccessType,aAccessType,false,TMMU.TAccessFlag.NoTrap in aAccessFlags);
+         end;
          if fState.ExceptionValue<>TExceptionValue.None then begin
           // G-stage fault: stval should be original VA, not GPA
           fState.ExceptionData:=aVirtualAddress;
@@ -100850,18 +103880,23 @@ begin
         end;
 
 {$ifdef PasRISCVSmepmp}
-        if not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
-         if not CheckPMPAccess(PhysicalAddress,aAccessType,CPUMode) then begin
-          if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
-           RaisePhysicalFault(aVirtualAddress,aAccessType);
-          end;
-          result:=0;
-          exit;
+        if (aAccessFlags*[TMMU.TAccessFlag.IgnoreMMUProtection,TMMU.TAccessFlag.CallerChecksPMP])<>[] then begin
+         fPMPPageUniform:=false;
+        end else if not CheckPMPAccess(PhysicalAddress,aSize,aAccessType,CPUMode) then begin
+         if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+          RaisePhysicalFault(aVirtualAddress,aAccessType);
          end;
+         result:=0;
+         exit;
         end;
 {$endif}
 
-        if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
+        if (not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags)){$ifdef PasRISCVSmepmp} and fPMPPageUniform{$endif} then begin
+         if VirtualMask<>PAGE_MASK then begin
+          // Superpage or Svnapot page, which the TLB holds as independent 4 KiB parts
+          TLBNoteLargePage(aVirtualAddress,VirtualMask);
+         end;
+         fTLBFillSharedBySUM:=(PageTableEntry and TMMU.TPTEMasks.User)=0;
          TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,PhysicalAddress and PAGE_ADDRESS_MASK,aAccessType);
         end;
         result:=PhysicalAddress;
@@ -100902,19 +103937,31 @@ begin
 
   else {THART.TMode.Machine:}begin
 
-{$ifdef PasRISCVSmepmp}
-   if not (TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags) then begin
-    if not CheckPMPAccess(aVirtualAddress,aAccessType,THART.TMode.Machine) then begin
-     if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
-      RaisePhysicalFault(aVirtualAddress,aAccessType);
-     end;
-     result:=0;
-     exit;
+{$ifdef Zicfiss}
+   if TMMU.TAccessFlag.ShadowStack in aAccessFlags then begin
+    // ssamoswap at an effective privilege mode of M: store/AMO access fault
+    if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+     RaisePhysicalFault(aVirtualAddress,aAccessType);
     end;
+    result:=0;
+    exit;
    end;
 {$endif}
 
-   if not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags) then begin
+{$ifdef PasRISCVSmepmp}
+   if TMMU.TAccessFlag.IgnoreMMUProtection in aAccessFlags then begin
+    fPMPPageUniform:=false;
+   end else if not CheckPMPAccess(aVirtualAddress,aSize,aAccessType,THART.TMode.Machine) then begin
+    if not (TMMU.TAccessFlag.NoTrap in aAccessFlags) then begin
+     RaisePhysicalFault(aVirtualAddress,aAccessType);
+    end;
+    result:=0;
+    exit;
+   end;
+{$endif}
+
+   if (not (TMMU.TAccessFlag.NoTLBUpdate in aAccessFlags)){$ifdef PasRISCVSmepmp} and fPMPPageUniform{$endif} then begin
+    fTLBFillSharedBySUM:=false;
     TLBPutBusDevice(aVirtualAddress and PAGE_ADDRESS_MASK,aVirtualAddress and PAGE_ADDRESS_MASK,aAccessType);
    end;
    result:=aVirtualAddress;
@@ -100947,7 +103994,8 @@ begin
 {$ifdef PasRISCVMMIOTLB}
  // MMIO TLB check: separate from RAM TLB, uses generation counter
  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+ if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
   result:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
   exit;
  end;
@@ -100965,7 +104013,8 @@ begin
 {$endif}
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
- end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+ end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
   result:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
 {$endif}
  end else begin
@@ -100999,9 +104048,11 @@ begin
 
 {$ifdef PasRISCVMMIOTLB}
  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+ if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
   Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1)))));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
    fState.Registers[aRegister]:=Value;
   end;
   exit;
@@ -101021,9 +104072,11 @@ begin
     fState.Registers[aRegister]:=Value;
    end;
 {$ifdef PasRISCVMMIOTLB}
-  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1)))));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
     fState.Registers[aRegister]:=Value;
    end;
 {$endif}
@@ -101062,9 +104115,11 @@ begin
 
 {$ifdef PasRISCVMMIOTLB}
  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+ if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
   Value:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
    fState.Registers[aRegister]:=Value;
   end;
   exit;
@@ -101084,9 +104139,11 @@ begin
     fState.Registers[aRegister]:=Value;
    end;
 {$ifdef PasRISCVMMIOTLB}
-  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt8(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),1));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
     fState.Registers[aRegister]:=Value;
    end;
 {$endif}
@@ -101121,7 +104178,8 @@ begin
 
 {$ifdef PasRISCVMMIOTLB}
  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+ if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,1);
   exit;
  end;
@@ -101137,7 +104195,8 @@ begin
    PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,1);
 {$endif}
   end else{$endif}begin
@@ -101171,7 +104230,8 @@ begin
 
 {$ifdef PasRISCVMMIOTLB}
  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+ if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
   fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,1);
   exit;
  end;
@@ -101187,7 +104247,8 @@ begin
    PPasRISCVUInt8(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,1);
 {$endif}
   end else{$endif}begin
@@ -101219,12 +104280,13 @@ begin
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    result:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],2);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=0;
 {$ifdef PreferDirectMemoryAccess}
@@ -101236,7 +104298,8 @@ begin
 {$endif}
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    result:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
 {$endif}
   end else begin
@@ -101277,7 +104340,8 @@ begin
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2)))));
  {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
@@ -101285,7 +104349,7 @@ begin
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],2);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -101298,9 +104362,11 @@ begin
     fState.Registers[aRegister]:=Value;
     end;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2)))));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
     fState.Registers[aRegister]:=Value;
     end;
 {$endif}
@@ -101349,7 +104415,8 @@ begin
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
  {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
@@ -101357,7 +104424,7 @@ begin
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],2);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -101370,9 +104437,11 @@ begin
      fState.Registers[aRegister]:=Value;
     end;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt16(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),2));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
      fState.Registers[aRegister]:=Value;
     end;
 {$endif}
@@ -101417,12 +104486,13 @@ begin
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,2);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],2);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
@@ -101432,7 +104502,8 @@ begin
     PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,2);
 {$endif}
    end else{$endif}begin
@@ -101473,12 +104544,13 @@ begin
  if ((aAddress and PAGE_MASK)+1)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,2);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],2);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
@@ -101488,7 +104560,8 @@ begin
     PPasRISCVUInt16(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,2);
 {$endif}
    end else{$endif}begin
@@ -101526,12 +104599,13 @@ begin
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    result:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],4);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=0;
 {$ifdef PreferDirectMemoryAccess}
@@ -101543,7 +104617,8 @@ begin
 {$endif}
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    result:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
 {$endif}
   end else begin
@@ -101581,7 +104656,8 @@ begin
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4)))));
  {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
@@ -101589,7 +104665,7 @@ begin
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],4);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -101602,9 +104678,11 @@ begin
      fState.Registers[aRegister]:=Value;
     end;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4)))));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
      fState.Registers[aRegister]:=Value;
     end;
 {$endif}
@@ -101650,7 +104728,8 @@ begin
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
  {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
@@ -101658,7 +104737,7 @@ begin
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],4);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -101671,9 +104750,11 @@ begin
      fState.Registers[aRegister]:=Value;
     end;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
      fState.Registers[aRegister]:=Value;
     end;
 {$endif}
@@ -101718,14 +104799,15 @@ begin
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
    fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
    fState.CSR.SetFSDirty;
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],4);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -101737,7 +104819,8 @@ begin
     fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
     fState.CSR.SetFSDirty;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
     fState.FPURegisters[aRegister].ui64:=TPasRISCVUInt64(TPasRISCVUInt32(Value)) or TPasRISCVUInt64($ffffffff00000000);
     fState.CSR.SetFSDirty;
@@ -101782,12 +104865,13 @@ begin
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,4);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],4);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
@@ -101797,7 +104881,8 @@ begin
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,4);
 {$endif}
    end else{$endif} begin
@@ -101835,12 +104920,13 @@ begin
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],4);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
@@ -101850,7 +104936,8 @@ begin
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
 {$endif}
    end else{$endif} begin
@@ -101888,12 +104975,13 @@ begin
  if ((aAddress and PAGE_MASK)+3)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],4);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
@@ -101903,7 +104991,8 @@ begin
     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,4);
 {$endif}
    end else{$endif} begin
@@ -101938,12 +105027,13 @@ begin
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    result:=fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],8);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=0;
 {$ifdef PreferDirectMemoryAccess}
@@ -101955,7 +105045,8 @@ begin
 {$endif}
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-  end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    result:=fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8);
 {$endif}
   end else begin
@@ -101993,7 +105084,8 @@ begin
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt64(TPasRISCVInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8)));
  {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
@@ -102001,7 +105093,7 @@ begin
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],8);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -102014,9 +105106,11 @@ begin
      fState.Registers[aRegister]:=Value;
     end;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt64(TPasRISCVInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8)));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
      fState.Registers[aRegister]:=Value;
     end;
 {$endif}
@@ -102062,7 +105156,8 @@ begin
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
  {$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
     fState.Registers[aRegister]:=Value;
@@ -102070,7 +105165,7 @@ begin
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],8);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -102083,9 +105178,11 @@ begin
      fState.Registers[aRegister]:=Value;
     end;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
-{$ifndef ExplicitEnforceZeroRegister}if aRegister<>TRegister.Zero then{$endif}begin
+   // A device access can fault, then rd stays unwritten
+   if (fState.ExceptionValue=TExceptionValue.None){$ifndef ExplicitEnforceZeroRegister}and (aRegister<>TRegister.Zero){$endif}then begin
      fState.Registers[aRegister]:=Value;
     end;
 {$endif}
@@ -102130,14 +105227,15 @@ begin
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
    fState.FPURegisters[aRegister].ui64:=Value;
    fState.CSR.SetFSDirty;
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],8);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Read=VPN then begin
@@ -102149,7 +105247,8 @@ begin
     fState.FPURegisters[aRegister].ui64:=Value;
     fState.CSR.SetFSDirty;
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.ReadVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     Value:=TPasRISCVUInt64(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),8));
     fState.FPURegisters[aRegister].ui64:=Value;
     fState.CSR.SetFSDirty;
@@ -102194,12 +105293,13 @@ begin
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,8);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],8);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
@@ -102209,7 +105309,8 @@ begin
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=aValue;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),aValue,8);
 {$endif}
    end else{$endif}begin
@@ -102247,12 +105348,13 @@ begin
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],8);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
@@ -102262,7 +105364,8 @@ begin
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
 {$endif}
    end else{$endif}begin
@@ -102300,12 +105403,13 @@ begin
  if ((aAddress and PAGE_MASK)+7)<PAGE_SIZE then begin
 {$ifdef PasRISCVMMIOTLB}
   MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
-  if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+  if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
    fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
    exit;
   end;
 {$endif}
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],8);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
@@ -102315,7 +105419,8 @@ begin
     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=Value;
 {$endif}
 {$ifdef PasRISCVMMIOTLB}
-   end else if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+   end else if (MMIOTLBEntry^.WriteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) then begin
+    fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
     fBus.BusDeviceStore(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),Value,8);
 {$endif}
    end else{$endif}begin
@@ -102349,25 +105454,42 @@ begin
 
  if ((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE then begin
   if aReadOnly then begin
-   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.DirectMemoryPointer]);
+   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.DirectMemoryPointer],aSize);
   end else begin
-   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.DirectMemoryPointer]);
+   TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.TranslateIntoPhysicalAddress,TMMU.TAccessFlag.DirectMemoryPointer],aSize);
   end;
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=nil;
   end else begin
    result:=fBus.GetDirectMemoryAccessPointer(self,TranslatedAddress,aSize,not aReadOnly,aBounce);
-   if result=@aBounce then begin
+   if not assigned(result) then begin
+    // No memory there (or a device without direct access and no bounce buffer, as for cbo.zero):
+    // access fault instead of silently doing nothing
+    if aReadOnly then begin
+     SetException(TExceptionValue.LoadAccessFault,aAddress,fState.PC);
+    end else begin
+     SetException(TExceptionValue.StoreAccessFault,aAddress,fState.PC);
+    end;
+   end else if result=aBounce then begin
+    // A device without direct memory access: the value goes through the bounce buffer (read here
+    // from the physical address, written back to it by RMWCommit)
+    fBounceCommitAddress:=TranslatedAddress;
     case aSize of
+     1:begin
+      PPasRISCVUInt8(aBounce)^:=fBus.Load(self,TranslatedAddress,aSize);
+     end;
+     2:begin
+      PPasRISCVUInt16(aBounce)^:=fBus.Load(self,TranslatedAddress,aSize);
+     end;
      4:begin
-      PPasRISCVUInt32(aBounce)^:=fBus.Load(self,aAddress,aSize);
+      PPasRISCVUInt32(aBounce)^:=fBus.Load(self,TranslatedAddress,aSize);
      end;
      8:begin
-      PPasRISCVUInt64(aBounce)^:=fBus.Load(self,aAddress,aSize);
+      PPasRISCVUInt64(aBounce)^:=fBus.Load(self,TranslatedAddress,aSize);
      end;
      16:begin
-      PPasMPInt128Record(aBounce)^.Lo:=fBus.Load(self,aAddress,8);
-      PPasMPInt128Record(aBounce)^.Hi:=fBus.Load(self,aAddress+8,8);
+      PPasMPInt128Record(aBounce)^.Lo:=fBus.Load(self,TranslatedAddress,8);
+      PPasMPInt128Record(aBounce)^.Hi:=fBus.Load(self,TranslatedAddress+8,8);
      end;
      else begin
       if aReadOnly then begin
@@ -102376,6 +105498,9 @@ begin
        SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
       end;
      end;
+    end;
+    if fState.ExceptionValue<>TExceptionValue.None then begin
+     result:=nil;
     end;
    end;
   end;
@@ -102391,69 +105516,34 @@ begin
 end;
 
 procedure TPasRISCV.THART.RMWCommit(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64;const aBounce:Pointer);
-var VPN,TranslatedAddress:TPasRISCVUInt64;
-    DirectAccessTLBEntry:TMMU.PDirectAccessTLBEntry;
+// Writes the bounce buffer of a read-modify-write (AMO, SC, only for a device without direct memory
+// access) back to the physical address that MemoryPointerTranslate translated. The callers read
+// aAddress from rs1 after writing rd, so with rd=rs1 it is not the address any more; it is only
+// the tval of an exception.
 begin
-
- VPN:=aAddress shr PAGE_SHIFT;
- DirectAccessTLBEntry:={$ifdef PerModeTLB}@fDirectAccessTLBCache^{$else}@fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (DirectAccessTLBEntry^.Write=VPN) and (((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE) then begin
-  if assigned(aBounce) then begin
-   case aSize of
-    4:begin
-{$ifdef UseAtomicMemAccessForTLBFastPath}
-     AtomicMemStoreRelaxedUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),PPasRISCVUInt32(aBounce)^);
-{$else}
-     PPasRISCVUInt32(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=PPasRISCVUInt32(aBounce)^;
-{$endif}
-    end;
-    8:begin
-{$ifdef UseAtomicMemAccessForTLBFastPath}
-     AtomicMemStoreRelaxedUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)),PPasRISCVUInt64(aBounce)^);
-{$else}
-     PPasRISCVUInt64(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=PPasRISCVUInt64(aBounce)^;
-{$endif}
-    end;
-    16:begin
-     PPasMPInt128Record(Pointer(TPasRISCVPtrUInt({$ifdef CombinedDirectAccessTLBCache}DirectAccessTLBEntry^.RelativeMemory{$else}DirectAccessTLBEntry^.RelativeMemoryWrite{$endif}+aAddress)))^:=PPasMPInt128Record(aBounce)^;
-    end;
-    else begin
-     SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
-    end;
+ if assigned(aBounce) then begin
+  case aSize of
+   1:begin
+    fBus.Store(self,fBounceCommitAddress,PPasRISCVUInt8(aBounce)^,aSize);
+   end;
+   2:begin
+    fBus.Store(self,fBounceCommitAddress,PPasRISCVUInt16(aBounce)^,aSize);
+   end;
+   4:begin
+    fBus.Store(self,fBounceCommitAddress,PPasRISCVUInt32(aBounce)^,aSize);
+   end;
+   8:begin
+    fBus.Store(self,fBounceCommitAddress,PPasRISCVUInt64(aBounce)^,aSize);
+   end;
+   16:begin
+    fBus.Store(self,fBounceCommitAddress,PPasMPInt128Record(aBounce)^.Lo,8);
+    fBus.Store(self,fBounceCommitAddress+8,PPasMPInt128Record(aBounce)^.Hi,8);
+   end;
+   else begin
+    SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
    end;
   end;
-  exit;
  end;
-
- if ((aAddress and PAGE_MASK)+aSize)<=PAGE_SIZE then begin
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[TMMU.TAccessFlag.NoTrap,TMMU.TAccessFlag.DirectMemoryPointer]);
-  if (fState.ExceptionValue=TExceptionValue.None) and assigned(aBounce) then begin
-   case aSize of
-    1:begin
-     fBus.Store(self,TranslatedAddress,PPasRISCVUInt8(aBounce)^,aSize);
-    end;
-    2:begin
-     fBus.Store(self,TranslatedAddress,PPasRISCVUInt16(aBounce)^,aSize);
-    end;
-    4:begin
-     fBus.Store(self,TranslatedAddress,PPasRISCVUInt32(aBounce)^,aSize);
-    end;
-    8:begin
-     fBus.Store(self,TranslatedAddress,PPasRISCVUInt64(aBounce)^,aSize);
-    end;
-    16:begin
-     fBus.Store(self,TranslatedAddress,PPasMPInt128Record(aBounce)^.Lo,8);
-     fBus.Store(self,TranslatedAddress+8,PPasMPInt128Record(aBounce)^.Hi,8);
-    end;
-    else begin
-     SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
-    end;
-   end;
-  end;
- end else begin
-  SetException(TExceptionValue.StoreAddressMisaligned,aAddress,fState.PC);
- end;
-
 end;
 
 function TPasRISCV.THART.Load(const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -102484,7 +105574,7 @@ begin
    end;
    exit;
   end;
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Load,[],aSize);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    result:=0;
 {$ifdef PreferDirectMemoryAccess}
@@ -102578,7 +105668,7 @@ begin
    end;
    exit;
   end;
-  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[]);
+  TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Store,[],aSize);
   if fState.ExceptionValue=TExceptionValue.None then begin
 {$ifdef PreferDirectMemoryAccess}
    if DirectAccessTLBEntry^.Write=VPN then begin
@@ -102859,6 +105949,108 @@ begin
  result:=(((aCSR shr 10) and 3)=3) and CSRWriteIntent(aInstruction);
 end;
 
+function TPasRISCV.THART.CSRAccessDenied(const aCSR,aInstruction:TPasRISCVUInt64):Boolean;
+// Privilege check by the level in CSR address bits 9:8, with the rules of the H extension: an
+// access from VS- or VU-mode to a hypervisor or VS CSR (level 2), or from VU-mode to a supervisor
+// CSR (level 1), raises a virtual-instruction exception when HS-mode could do the same access
+// (so not for a write to a read-only CSR), every other access below the level of the CSR an
+// illegal instruction exception. The result is true when the exception has been raised.
+begin
+ case (aCSR shr 8) and 3 of
+  0:begin
+   result:=false;
+  end;
+  1:begin
+   result:=fState.Mode<TPasRISCV.THART.TMode.Supervisor;
+  end;
+  2:begin
+   result:=fState.VirtualMode or (fState.Mode<TPasRISCV.THART.TMode.Supervisor);
+  end;
+  else begin
+   result:=fState.Mode<>TPasRISCV.THART.TMode.Machine;
+  end;
+ end;
+ if result then begin
+  if fState.VirtualMode and (((aCSR shr 8) and 3)<>3) and not CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
+   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  end else begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  end;
+ end else if CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
+  // A write to a read-only CSR (address bits 11:10 = 11, for example mtopi or stopi) is an
+  // illegal instruction, whatever the privilege level is
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  result:=true;
+ end;
+end;
+
+function TPasRISCV.THART.CounterAccessCheck(const aCSR:TPasRISCVUInt64):TExceptionValue;
+// Counter enables for cycle, time, instret and hpmcounter3..31 (0xc00..0xc1f): below M-mode the
+// bit in mcounteren must be set (else illegal instruction); with V=1 also the bit in hcounteren,
+// and in VU-mode the one in scounteren (else virtual-instruction exception); in U-mode with V=0
+// the bit in scounteren (else illegal instruction)
+var Bit:TPasRISCVUInt64;
+begin
+ result:=TExceptionValue.None;
+ if fState.Mode<>THART.TMode.Machine then begin
+  Bit:=TPasRISCVUInt64(1) shl (aCSR and 31);
+  if (fState.CSR.fData[TCSR.TAddress.MCOUNTEREN] and Bit)=0 then begin
+   result:=TExceptionValue.IllegalInstruction;
+  end else if fState.VirtualMode then begin
+   if ((fState.CSR.fData[TCSR.TAddress.HCOUNTEREN] and Bit)=0) or
+      ((fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.SCOUNTEREN] and Bit)=0)) then begin
+    result:=TExceptionValue.VirtualInstruction;
+   end;
+  end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.SCOUNTEREN] and Bit)=0) then begin
+   result:=TExceptionValue.IllegalInstruction;
+  end;
+ end;
+end;
+
+function TPasRISCV.THART.CSRReadInlinable(const aCSR:TPasRISCVUInt64):Boolean;
+// Whether the JIT may translate a read of this CSR into inline code: the block runs again later
+// without any check, so only a read that is allowed right now qualifies. Blocks are per mode and
+// V, and the counter enables are part of the JIT state bits (see ComputeJITStateBits).
+begin
+ case (aCSR shr 8) and 3 of
+  0:begin
+   result:=true;
+  end;
+  1:begin
+   result:=fState.Mode>=THART.TMode.Supervisor;
+  end;
+  2:begin
+   result:=(not fState.VirtualMode) and (fState.Mode>=THART.TMode.Supervisor);
+  end;
+  else begin
+   result:=fState.Mode=THART.TMode.Machine;
+  end;
+ end;
+ if result and (aCSR>=TCSR.TAddress.CYCLE) and (aCSR<=(TCSR.TAddress.CYCLE+31)) then begin
+  result:=CounterAccessCheck(aCSR)=TExceptionValue.None;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerCounter(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+// cycle, time, instret, hpmcounter3..31: read-only, and gated by the counter enables
+var rd:TRegister;
+    ExceptionValue:TExceptionValue;
+begin
+ if CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else begin
+  ExceptionValue:=CounterAccessCheck(aCSR);
+  if ExceptionValue<>TExceptionValue.None then begin
+   SetException(ExceptionValue,aInstruction,fState.PC);
+  end else begin
+   rd:=TRegister((aInstruction shr 7) and $1f);
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=fState.CSR.Load(aCSR);
+   end;
+  end;
+ end;
+end;
+
 procedure TPasRISCV.THART.CSRHandlerDefault(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
@@ -102875,6 +106067,14 @@ procedure TPasRISCV.THART.CSRHandlerSEED(const aPC,aInstruction,aCSR,aRHS:TPasRI
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
+ // Below M-mode the seed CSR needs its enable in mseccfg (SSEED for S-mode, USEED for U-mode),
+ // otherwise the access is an illegal instruction (Zkr, entropy source CSR access control)
+ if (fState.Mode<THART.TMode.Machine) and
+    (((fState.Mode=THART.TMode.Supervisor) and ((fState.CSR.fData[TCSR.TAddress.MSECCFG] and TCSR.MSECCFG_SSEED)=0)) or
+     ((fState.Mode<THART.TMode.Supervisor) and ((fState.CSR.fData[TCSR.TAddress.MSECCFG] and TCSR.MSECCFG_USEED)=0))) then begin
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
  // seed CSR must be accessed with a read-write instruction (Zkr entropy source spec).
  // Only read-only forms trap: CSRRS/CSRRC with rs1=x0, CSRRSI/CSRRCI with uimm=0.
  // A nonzero rs1/uimm field (bits 19:15) or a Swap (CSRRW/CSRRWI) means a write occurs => legal.
@@ -102909,8 +106109,8 @@ procedure TPasRISCV.THART.CSRHandlerPrivileged(const aPC,aInstruction,aCSR,aRHS:
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else if StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   CSRValue:=fState.CSR.Load(aCSR);
@@ -102925,8 +106125,8 @@ procedure TPasRISCV.THART.CSRHandlerPrivilegedReadOnly(const aPC,aInstruction,aC
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else if StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
   if CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
    SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -102943,31 +106143,151 @@ end;
 {$ifdef PasRISCVSmepmp}
 procedure TPasRISCV.THART.CSRHandlerPMPWrite(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    CSRValue:TPasRISCVUInt64;
+    CSRValue,NewValue,StoredValue,MSECCFGValue,ConfigValue:TPasRISCVUInt64;
+    Index,EntryIndex:TPasRISCVSizeInt;
+    OldByte,NewByte,NextByte:TPasRISCVUInt8;
+    MML,RLB:Boolean;
 begin
- if fState.Mode<TPasRISCV.THART.TMode.Machine then begin
+ // pmpcfg1 and pmpcfg3 only exist on RV32
+ if (fState.Mode<TPasRISCV.THART.TMode.Machine) or (aCSR=$3a1) or (aCSR=$3a3) then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
- end else begin
-  rd:=TRegister((aInstruction shr 7) and $1f);
-  CSRValue:=fState.CSR.Load(aCSR);
-  fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
-  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   fState.Registers[rd]:=CSRValue;
+  exit;
+ end;
+ rd:=TRegister((aInstruction shr 7) and $1f);
+ CSRValue:=fState.CSR.Load(aCSR);
+ NewValue:=CSROperation(aOperation,CSRValue,aRHS);
+ MSECCFGValue:=fState.CSR.fData[TCSR.TAddress.MSECCFG];
+ MML:=(MSECCFGValue and TCSR.MSECCFG_MML)<>0;
+ RLB:=(MSECCFGValue and TCSR.MSECCFG_RLB)<>0;
+ case aCSR of
+  $3a0,$3a2:begin
+   // One WARL byte per entry, pmpcfg0 holds entries 0..7 and pmpcfg2 entries 8..15
+   StoredValue:=0;
+   for Index:=0 to 7 do begin
+    OldByte:=TPasRISCVUInt8((CSRValue shr (Index shl 3)) and $ff);
+    NewByte:=TPasRISCVUInt8((NewValue shr (Index shl 3)) and $9f); // bits 6:5 are reserved
+    if ((NewByte and 3)=2) and not MML then begin
+     // R=0 W=1 is reserved unless Smepmp MML=1 gives it a meaning, legalized to R=0 W=0 like Spike
+     NewByte:=NewByte and not TPasRISCVUInt8($02);
+    end;
+    if ((OldByte and $80)<>0) and not RLB then begin
+     // Locked entry, the write is ignored (Smepmp RLB=1 bypasses the lock)
+     NewByte:=OldByte;
+    end else if MML and (not RLB) and
+                (((((NewByte and $80) shr 4) or ((NewByte and $01) shl 2) or (NewByte and $02) or ((NewByte and $04) shr 2))) in [9,10,11,13]) then begin
+     // With MML=1 an executable M-mode only rule or locked shared region can only be added with RLB=1
+     NewByte:=OldByte;
+    end;
+    StoredValue:=StoredValue or (TPasRISCVUInt64(NewByte) shl (Index shl 3));
+   end;
+   fState.CSR.fData[aCSR]:=StoredValue;
   end;
-  FlushTLB(false,true);
+  $3b0..$3bf:begin
+   EntryIndex:=aCSR-$3b0;
+   if EntryIndex<8 then begin
+    OldByte:=TPasRISCVUInt8((fState.CSR.fData[$3a0] shr (EntryIndex shl 3)) and $ff);
+   end else begin
+    OldByte:=TPasRISCVUInt8((fState.CSR.fData[$3a2] shr ((EntryIndex-8) shl 3)) and $ff);
+   end;
+   if EntryIndex<15 then begin
+    if (EntryIndex+1)<8 then begin
+     NextByte:=TPasRISCVUInt8((fState.CSR.fData[$3a0] shr ((EntryIndex+1) shl 3)) and $ff);
+    end else begin
+     NextByte:=TPasRISCVUInt8((fState.CSR.fData[$3a2] shr ((EntryIndex-7) shl 3)) and $ff);
+    end;
+   end else begin
+    NextByte:=0;
+   end;
+   // Locked entries ignore address writes, and so does the bottom of a locked TOR entry above
+   if RLB or (((OldByte and $80)=0) and (((NextByte and $80)=0) or (((NextByte shr 3) and 3)<>1))) then begin
+    // Physical addresses have 56 bits, so pmpaddr bits 63:54 are read-only zero
+    fState.CSR.fData[aCSR]:=NewValue and ((TPasRISCVUInt64(1) shl 54)-1);
+   end;
+  end;
+  else begin
+   // mseccfg
+   StoredValue:=NewValue and TCSR.CSR_MSECCFG_MASK;
+   // MML and MMWP are sticky until reset
+   StoredValue:=StoredValue or (MSECCFGValue and (TCSR.MSECCFG_MML or TCSR.MSECCFG_MMWP));
+   // Once RLB is clear, it can not be set again while any entry is locked
+   ConfigValue:=fState.CSR.fData[$3a0] or fState.CSR.fData[$3a2];
+   if (not RLB) and ((ConfigValue and TPasRISCVUInt64($8080808080808080))<>0) then begin
+    StoredValue:=StoredValue and not TCSR.MSECCFG_RLB;
+   end;
+   fState.CSR.fData[aCSR]:=StoredValue;
+   // mseccfg.MLPE is part of the JIT block tag
+   JITStateChanged;
+  end;
+ end;
+ {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+  fState.Registers[rd]:=CSRValue;
+ end;
+ UpdatePMP;
+ FlushTLB(false,true);
+end;
+
+procedure TPasRISCV.THART.UpdatePMP;
+var Index:TPasRISCVSizeInt;
+    ConfigByte:TPasRISCVUInt8;
+    PMPAddress,PreviousAddress,TrailingMask:TPasRISCVUInt64;
+begin
+ for Index:=Low(fPMPWalkPage) to High(fPMPWalkPage) do begin
+  fPMPWalkPage[Index]:=TPasRISCVUInt64($ffffffffffffffff);
+ end;
+ fPMPEntryCount:=0;
+ PreviousAddress:=0;
+ for Index:=0 to 15 do begin
+  if Index<8 then begin
+   ConfigByte:=TPasRISCVUInt8((fState.CSR.fData[$3a0] shr (Index shl 3)) and $ff);
+  end else begin
+   ConfigByte:=TPasRISCVUInt8((fState.CSR.fData[$3a2] shr ((Index-8) shl 3)) and $ff);
+  end;
+  PMPAddress:=fState.CSR.fData[$3b0+Index] and ((TPasRISCVUInt64(1) shl 54)-1);
+  fPMPEntryConfig[Index]:=ConfigByte;
+  // Impossible range for OFF and empty entries, so they never intersect anything
+  fPMPEntryLow[Index]:=TPasRISCVUInt64($ffffffffffffffff);
+  fPMPEntryHigh[Index]:=0;
+  case (ConfigByte shr 3) and 3 of
+   1:begin
+    // TOR: [pmpaddr[i-1]<<2, pmpaddr[i]<<2), no match at all if the top is not above the bottom
+    if PMPAddress>PreviousAddress then begin
+     fPMPEntryLow[Index]:=PreviousAddress shl 2;
+     fPMPEntryHigh[Index]:=(PMPAddress shl 2)-1;
+    end;
+   end;
+   2:begin
+    // NA4: 4-byte region at pmpaddr<<2
+    fPMPEntryLow[Index]:=PMPAddress shl 2;
+    fPMPEntryHigh[Index]:=(PMPAddress shl 2)+3;
+   end;
+   3:begin
+    // NAPOT, decoded like QEMU's pmp_decode_napot, all-ones covers the whole address space
+    TrailingMask:=(PMPAddress shl 2) or 3;
+    fPMPEntryLow[Index]:=TrailingMask and (TrailingMask+1);
+    fPMPEntryHigh[Index]:=TrailingMask or (TrailingMask+1);
+   end;
+   else begin
+   end;
+  end;
+  if ((ConfigByte shr 3) and 3)<>0 then begin
+   fPMPEntryCount:=Index+1;
+  end;
+  PreviousAddress:=PMPAddress;
  end;
 end;
 
-// Standard PMP + Smepmp (MML/MMWP) physical address permission check.
-// First matching PMP entry wins. No match: M allowed unless MMWP=1; S/U always denied.
-function TPasRISCV.THART.CheckPMPAccess(const aPhysAddr:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aCPUMode:THART.TMode):Boolean;
+// Standard PMP + Smepmp (MML/MMWP) physical address permission check for the whole access
+// [aPhysAddr, aPhysAddr+aSize-1], which must not cross a page. The lowest-numbered entry that
+// matches any byte of the access decides, and if it does not match all of its bytes, the access
+// fails in every mode. No match: M allowed unless MMWP=1 (and with MML=1 no instruction fetch),
+// S/U always denied. Also sets fPMPPageUniform for the caller's TLB fill decision.
+function TPasRISCV.THART.CheckPMPAccess(const aPhysAddr,aSize:TPasRISCVUInt64;const aAccessType:TMMU.TAccessType;const aCPUMode:THART.TMode):Boolean;
 var Index:TPasRISCVSizeInt;
-    ConfigByte,AddressMode,SMEPMPOperation,AllowedPrivs:TPasRISCVUInt8;
+    ConfigByte,SMEPMPOperation,AllowedPrivs:TPasRISCVUInt8;
     Locked,ReadPermission,WritePermission,ExecutePermission:Boolean;
-    PMPAddress,PreviousAddress,TrailingMask,Base,Size:TPasRISCVUInt64;
+    LastAddress,PageLow,PageHigh,EntryLow,EntryHigh:TPasRISCVUInt64;
     MSECCFGValue:TPasRISCVUInt64;
-    MML,MMWP,IsModeM:Boolean;
-    Matched:Boolean;
+    MML,MMWP,IsModeM,PageDecided:Boolean;
 begin
 
  // Read Smepmp control bits from mseccfg
@@ -102989,66 +106309,68 @@ begin
 
  result:=true;
 
- PreviousAddress:=0;
+ if aSize>1 then begin
+  LastAddress:=aPhysAddr+(aSize-1);
+ end else begin
+  LastAddress:=aPhysAddr;
+ end;
+ PageLow:=aPhysAddr and PAGE_ADDRESS_MASK;
+ PageHigh:=PageLow or PAGE_MASK;
+ fPMPPageUniform:=true;
+ PageDecided:=false;
 
- // Scan PMP entries in priority order (entry 0 = highest priority)
- for Index:=0 to 15 do begin
+ // Scan the decoded PMP entries in priority order (entry 0 = highest priority)
+ for Index:=0 to fPMPEntryCount-1 do begin
 
-  // Decode config byte: entries 0-7 in pmpcfg0 ($3a0), entries 8-15 in pmpcfg2 ($3a2)
-  if Index<8 then begin
-   ConfigByte:=TPasRISCVUInt8((fState.CSR.fData[$3a0] shr (Index*8)) and $ff);
-  end else begin
-   ConfigByte:=TPasRISCVUInt8((fState.CSR.fData[$3a2] shr ((Index-8)*8)) and $ff);
-  end;
+  EntryLow:=fPMPEntryLow[Index];
+  EntryHigh:=fPMPEntryHigh[Index];
 
-  AddressMode:=(ConfigByte shr 3) and 3;
-  PMPAddress:=fState.CSR.fData[$3b0+Index];
-  Matched:=false;
+  if (EntryLow<=PageHigh) and (EntryHigh>=PageLow) then begin
 
-  // Address matching: OFF (AddressMode=0) = skip; TOR/NA4/NAPOT otherwise
-  if AddressMode<>0 then begin
-   case AddressMode of
-    1:begin
-     // TOR: physical range [PreviousAddress<<2, PMPAddress<<2)
-     if (aPhysAddr>=(PreviousAddress shl 2)) and (aPhysAddr<(PMPAddress shl 2)) then begin
-      Matched:=true;
-     end;
-    end;
-    2:begin
-     // NA4: 4-byte region at PMPAddress<<2
-     if (aPhysAddr>=(PMPAddress shl 2)) and (aPhysAddr<(PMPAddress shl 2)+4) then begin
-      Matched:=true;
-     end;
-    end;
-    3:begin
-     // NAPOT: naturally aligned power-of-2 region.
-     // pmp_decode_napot formula (QEMU-compatible): handles pmpaddr=all-ones (full address space) without overflow.
-     // TrailingMask = (pmpaddr<<2)|3; Base = sa = TrailingMask&(TrailingMask+1); Size = ea = TrailingMask|(TrailingMask+1)
-     TrailingMask:=(PMPAddress shl 2) or 3;
-     Base:=TrailingMask and (TrailingMask+1);
-     Size:=TrailingMask or (TrailingMask+1);
-     if (aPhysAddr>=Base) and (aPhysAddr<=Size) then begin
-      Matched:=true;
-     end;
-    end;
+   // The first entry that touches the page decides for all of the page only if it covers all of it
+   if not PageDecided then begin
+    PageDecided:=true;
+    fPMPPageUniform:=(EntryLow<=PageLow) and (EntryHigh>=PageHigh);
    end;
-  end;
 
-  PreviousAddress:=PMPAddress;
+   if (EntryLow<=LastAddress) and (EntryHigh>=aPhysAddr) then begin
 
-  if Matched then begin
+    if (EntryLow>aPhysAddr) or (EntryHigh<LastAddress) then begin
+     // The entry matches only a part of the access, which fails irrespective of L, R, W and X
+     result:=false;
+     exit;
+    end;
 
-   Locked:=(ConfigByte and $80)<>0;
-   ReadPermission:=(ConfigByte and $01)<>0;
-   WritePermission:=(ConfigByte and $02)<>0;
-   ExecutePermission:=(ConfigByte and $04)<>0;
+    ConfigByte:=fPMPEntryConfig[Index];
+    Locked:=(ConfigByte and $80)<>0;
+    ReadPermission:=(ConfigByte and $01)<>0;
+    WritePermission:=(ConfigByte and $02)<>0;
+    ExecutePermission:=(ConfigByte and $04)<>0;
 
-   if not MML then begin
+    if not MML then begin
 
-    // Standard RISC-V PMP (MML=0)
-    if IsModeM then begin
-     if Locked then begin
-      // Locked entry applies to M-mode; check required permission
+     // Standard RISC-V PMP (MML=0)
+     if IsModeM then begin
+      if Locked then begin
+       // Locked entry applies to M-mode; check required permission
+       case aAccessType of
+        TMMU.TAccessType.Load,
+        TMMU.TAccessType.LoadInstruction:begin
+         result:=ReadPermission;
+        end;
+        TMMU.TAccessType.Store:begin
+         result:=WritePermission;
+        end;
+        TMMU.TAccessType.Instruction:begin
+         result:=ExecutePermission;
+        end;
+       end;
+      end else begin
+       // Non-locked entry: M-mode bypasses (always allow)
+       result:=true;
+      end;
+     end else begin
+      // S/U-mode: requires explicit permission
       case aAccessType of
        TMMU.TAccessType.Load,
        TMMU.TAccessType.LoadInstruction:begin
@@ -103061,101 +106383,85 @@ begin
         result:=ExecutePermission;
        end;
       end;
-     end else begin
-      // Non-locked entry: M-mode bypasses (always allow)
-      result:=true;
      end;
+
     end else begin
-     // S/U-mode: requires explicit permission
+
+     // Smepmp MML=1: permission table (QEMU-compatible smepmp_operation lookup).
+     // SMEPMPOperation = (L<<3)|(R<<2)|(W<<1)|(X<<0), derived from ConfigByte bits.
+     SMEPMPOperation:=((ConfigByte and $80) shr 4) or
+                      ((ConfigByte and $01) shl 2) or
+                      (ConfigByte and $02) or
+                      ((ConfigByte and $04) shr 2);
+
+     AllowedPrivs:=0;
+
+     if IsModeM then begin
+
+      // M-mode allowed privileges indexed by SMEPMPOperation (bit0=R, bit1=W, bit2=X)
+      case SMEPMPOperation of
+       0,1,4,5,6,7,8:begin
+        AllowedPrivs:=0;
+       end;
+       2,3,14:begin
+        AllowedPrivs:=$03; // R+W
+       end;
+       9,10:begin
+        AllowedPrivs:=$04; // X
+       end;
+       11,13:begin
+        AllowedPrivs:=$05; // R+X
+       end;
+       12,15:begin
+        AllowedPrivs:=$01; // R
+       end;
+      end;
+
+     end else begin
+
+      // S/U-mode allowed privileges indexed by SMEPMPOperation
+      case SMEPMPOperation of
+       0,8,9,12,13,14:begin
+        AllowedPrivs:=0;
+       end;
+       1,10,11:begin
+        AllowedPrivs:=$04; // X
+       end;
+       2,4,15:begin
+        AllowedPrivs:=$01; // R
+       end;
+       3,6:begin
+        AllowedPrivs:=$03; // R+W
+       end;
+       5:begin
+        AllowedPrivs:=$05; // R+X
+       end;
+       7:begin
+        AllowedPrivs:=$07; // R+W+X
+       end;
+      end;
+
+     end;
+
+     // Check requested permission against AllowedPrivs
      case aAccessType of
       TMMU.TAccessType.Load,
       TMMU.TAccessType.LoadInstruction:begin
-       result:=ReadPermission;
+       result:=(AllowedPrivs and $01)<>0;
       end;
       TMMU.TAccessType.Store:begin
-       result:=WritePermission;
+       result:=(AllowedPrivs and $02)<>0;
       end;
       TMMU.TAccessType.Instruction:begin
-       result:=ExecutePermission;
-      end;
-     end;
-    end;
-
-   end else begin
-
-    // Smepmp MML=1: permission table (QEMU-compatible smepmp_operation lookup).
-    // SMEPMPOperation = (L<<3)|(R<<2)|(W<<1)|(X<<0), derived from ConfigByte bits.
-    SMEPMPOperation:=((ConfigByte and $80) shr 4) or
-                     ((ConfigByte and $01) shl 2) or
-                     (ConfigByte and $02) or
-                     ((ConfigByte and $04) shr 2);
-
-    AllowedPrivs:=0;
-
-    if IsModeM then begin
-
-     // M-mode allowed privileges indexed by SMEPMPOperation (bit0=R, bit1=W, bit2=X)
-     case SMEPMPOperation of
-      0,1,4,5,6,7,8:begin
-       AllowedPrivs:=0;
-      end;
-      2,3,14:begin
-       AllowedPrivs:=$03; // R+W
-      end;
-      9,10:begin
-       AllowedPrivs:=$04; // X
-      end;
-      11,13:begin
-       AllowedPrivs:=$05; // R+X
-      end;
-      12,15:begin
-       AllowedPrivs:=$01; // R
-      end;
-     end;
-
-    end else begin
-
-     // S/U-mode allowed privileges indexed by SMEPMPOperation
-     case SMEPMPOperation of
-      0,8,9,12,13,14:begin
-       AllowedPrivs:=0;
-      end;
-      1,10,11:begin
-       AllowedPrivs:=$04; // X
-      end;
-      2,4,15:begin
-       AllowedPrivs:=$01; // R
-      end;
-      3,6:begin
-       AllowedPrivs:=$03; // R+W
-      end;
-      5:begin
-       AllowedPrivs:=$05; // R+X
-      end;
-      7:begin
-       AllowedPrivs:=$07; // R+W+X
+       result:=(AllowedPrivs and $04)<>0;
       end;
      end;
 
     end;
 
-    // Check requested permission against AllowedPrivs
-    case aAccessType of
-     TMMU.TAccessType.Load,
-     TMMU.TAccessType.LoadInstruction:begin
-      result:=(AllowedPrivs and $01)<>0;
-     end;
-     TMMU.TAccessType.Store:begin
-      result:=(AllowedPrivs and $02)<>0;
-     end;
-     TMMU.TAccessType.Instruction:begin
-      result:=(AllowedPrivs and $04)<>0;
-     end;
-    end;
+    exit;
 
    end;
-
-   exit;
 
   end;
 
@@ -103163,7 +106469,9 @@ begin
 
  // No PMP entry matched
  if IsModeM then begin
-  result:=not MMWP; // M-mode: allowed by default, denied if MMWP=1 (whitelist policy)
+  // M-mode: allowed by default, denied if MMWP=1 (whitelist policy), and with MML=1 code
+  // can only run from memory with a matching M-mode or shared rule
+  result:=not (MMWP or (MML and (aAccessType=TMMU.TAccessType.Instruction)));
  end else begin
   result:=false; // S/U-mode: always denied when no entry matches
  end;
@@ -103186,6 +106494,10 @@ begin
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=CSRValue;
   end;
+  // Delegation and enables of guest external interrupts change which interrupts are taken
+  if (aCSR=TCSR.TAddress.HIDELEG) or (aCSR=TCSR.TAddress.HGEIE) then begin
+   CheckInterrupts;
+  end;
  end;
 end;
 
@@ -103193,7 +106505,10 @@ procedure TPasRISCV.THART.CSRHandlerHPrivilegedReadOnly(const aPC,aInstruction,a
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.VirtualMode then begin
+ if CSRReadOnlyWriteAttempt(aCSR,aInstruction) then begin
+  // A write HS-mode could not do either: illegal instruction, also from VS/VU-mode
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ end else if fState.VirtualMode then begin
   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
  end else if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -103234,6 +106549,12 @@ procedure TPasRISCV.THART.CSRHandlerFCSR(const aPC,aInstruction,aCSR,aRHS:TPasRI
 var rd:TRegister;
     CSRValue,OperationValue,FExceptions:TPasRISCVUInt64;
 begin
+ if not fState.CSR.IsFPUEnabled then begin
+  // fflags, frm and fcsr are FP state: with FS=Off (with V=1 also the HS-level FS) an access is an
+  // illegal instruction, and it must not set FS to Dirty
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
  FExceptions:=fState.CSR.fData[THART.TCSR.TAddress.FFLAGS] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask);
@@ -103252,6 +106573,12 @@ procedure TPasRISCV.THART.CSRHandlerFFLAGS(const aPC,aInstruction,aCSR,aRHS:TPas
 var rd:TRegister;
     CSRValue,OperationValue,FExceptions:TPasRISCVUInt64;
 begin
+ if not fState.CSR.IsFPUEnabled then begin
+  // fflags, frm and fcsr are FP state: with FS=Off (with V=1 also the HS-level FS) an access is an
+  // illegal instruction, and it must not set FS to Dirty
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.Load(aCSR);
  FExceptions:=CSRValue and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask);
@@ -103274,6 +106601,12 @@ procedure TPasRISCV.THART.CSRHandlerFRM(const aPC,aInstruction,aCSR,aRHS:TPasRIS
 var rd:TRegister;
     CSRValue,OperationValue:TPasRISCVUInt64;
 begin
+ if not fState.CSR.IsFPUEnabled then begin
+  // fflags, frm and fcsr are FP state: with FS=Off (with V=1 also the HS-level FS) an access is an
+  // illegal instruction, and it must not set FS to Dirty
+  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  exit;
+ end;
 
  rd:=TRegister((aInstruction shr 7) and $1f);
  CSRValue:=fState.CSR.fData[THART.TCSR.TAddress.FCSR] shr 5;
@@ -103293,19 +106626,31 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerSATP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    CSRValue:TPasRISCVUInt64;
+    Value,CSRValue:TPasRISCVUInt64;
 begin
- if fState.VirtualMode and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTVM))<>0) then begin
+ if fState.Mode<TPasRISCV.THART.TMode.Supervisor then begin
+  // satp is an S-level CSR: illegal from U-mode, virtual instruction exception from VU-mode
+  if fState.VirtualMode then begin
+   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+  end else begin
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+  end;
+ end else if fState.VirtualMode and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTVM))<>0) then begin
   // VS-mode with VTVM: VirtualInstruction trap
   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
- end else if (not fState.VirtualMode) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))<>0) then begin
+ end else if (fState.Mode=TPasRISCV.THART.TMode.Supervisor) and (not fState.VirtualMode) and ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TVM))<>0) then begin
+  // TVM only traps (H)S-mode, never M-mode
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  CSRValue:=fState.CSR.Load(aCSR);
-  fState.CSR.Store(aCSR,CSROperation(aOperation,CSRValue,aRHS));
+  Value:=fState.CSR.Load(aCSR);
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  // WARL: a write with an unsupported MODE (only Bare, Sv39, Sv48 and Sv57 exist) has no effect at all
+  if ((CSRValue shr 60) and $f) in [0,8,9,10] then begin
+   fState.CSR.Store(aCSR,CSRValue);
+  end;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   fState.Registers[rd]:=CSRValue;
+   fState.Registers[rd]:=Value;
   end;
   UpdateMMU;
  end;
@@ -103316,8 +106661,8 @@ var rd:TRegister;
     Status,OldStatus,OutStatus,fs,vs,xs,Mask:TPasRISCVUInt64;
 begin
 
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else begin
 
   if aCSR=TCSR.TAddress.MSTATUS then begin
@@ -103394,6 +106739,33 @@ begin
 
   fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
+  // FS decides whether translated FP code may run (JIT block tag)
+  if ((Status xor OldStatus) and TCSR.TMask.TStatus.FS)<>0 then begin
+   JITStateChanged;
+  end;
+
+  // M-mode data accesses with MPRV=1 are translated for MPP (and MPV), but they go through the
+  // M-mode TLB, so a change of that effective mode must not leave translations of the other behind
+  if (((Status xor OldStatus) and TCSR.TMask.TStatus.MPRV)<>0) or
+     (((Status and TCSR.TMask.TStatus.MPRV)<>0) and
+      (((Status xor OldStatus) and ((TPasRISCVUInt64(3) shl TCSR.TMask.TMSTATUSBit.MPP) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV)))<>0)) then begin
+   FlushTLB(true,true);
+  end;
+
+  if ((Status xor OldStatus) and TCSR.TMask.TStatus.SUM)<>0 then begin
+{$ifdef PerModeTLB}
+   if fState.Mode=THART.TMode.Machine then begin
+    // M-mode has no separate SUM=1 TLB, but SUM matters for its MPRV accesses
+    FlushTLB(true,true);
+   end else begin
+    // S-mode with SUM=1 has its own TLB, a SUM toggle just switches over
+    SelectTLB;
+   end;
+{$else}
+   FlushTLB(true,true);
+{$endif}
+  end;
+
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=OutStatus;
   end;
@@ -103406,8 +106778,8 @@ procedure TPasRISCV.THART.CSRHandlerSTIMECMP(const aPC,aInstruction,aCSR,aRHS:TP
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else if fState.VirtualMode then begin
   // V=1: sstc predicate - need mcounteren.TM && menvcfg.STCE && hcounteren.TM && henvcfg.STCE
   if ((fState.CSR.fData[TCSR.TAddress.MCOUNTEREN] and TCSR.COUNTEREN_TM)=0) or
@@ -103490,48 +106862,71 @@ procedure TPasRISCV.THART.CSRHandlerMIE(const aPC,aInstruction,aCSR,aRHS:TPasRIS
 var rd:TRegister;
     Value,CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  Value:=fState.CSR.fData[TCSR.TAddress.MIE];
-  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
-  fState.CSR.fData[TCSR.TAddress.MIE]:=(CSRValue and TCSR.CSR_MEIP_MASK) or (Value and not TCSR.CSR_MEIP_MASK);
+  Value:=fState.CSR.fData[TCSR.TAddress.MIE] and TCSR.CSR_MIE_MASK;
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and TCSR.CSR_MIE_MASK;
+  fState.CSR.fData[TCSR.TAddress.MIE]:=CSRValue;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   fState.Registers[rd]:=CSRValue;
+   fState.Registers[rd]:=Value;
   end;
   CheckInterrupts;
  end;
 end;
 
+function TPasRISCV.THART.CSRAccessVSIE(const aRHS:TPasRISCVUInt64;const aOperation:TCSROperation):TPasRISCVUInt64;
+// vsie, and sie with V=1: the VS-level enables in mie (VSSIE, VSTIE, VSEIE) that hideleg delegates,
+// at the S-level positions (SSIE, STIE, SEIE). The result is the old value.
+var Mask,Value:TPasRISCVUInt64;
+begin
+ Mask:=fState.CSR.fData[TCSR.TAddress.HIDELEG] and TCSR.CSR_HIDELEG_MASK;
+ result:=(fState.CSR.fData[TCSR.TAddress.MIE] and Mask) shr 1;
+ Value:=(CSROperation(aOperation,result,aRHS) shl 1) and Mask;
+ fState.CSR.fData[TCSR.TAddress.MIE]:=(fState.CSR.fData[TCSR.TAddress.MIE] and not Mask) or Value;
+end;
+
+function TPasRISCV.THART.CSRAccessVSIP(const aRHS:TPasRISCVUInt64;const aOperation:TCSROperation):TPasRISCVUInt64;
+// vsip, and sip with V=1: VSSIP, VSTIP and VSEIP of hip that hideleg delegates, at the S-level
+// positions. Only SSIP is writable, as an alias of hvip.VSSIP. The result is the old value.
+var Mask:TPasRISCVUInt64;
+begin
+ Mask:=fState.CSR.fData[TCSR.TAddress.HIDELEG] and TCSR.CSR_HIDELEG_MASK;
+ result:=(PendingInterruptBits and Mask) shr 1;
+ if (Mask and TInterruptValueMasks.HypervisorSoftware)<>0 then begin
+  fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TInterruptValueMasks.HypervisorSoftware) or
+                                        ((CSROperation(aOperation,result,aRHS) shl 1) and TInterruptValueMasks.HypervisorSoftware);
+ end;
+end;
+
 procedure TPasRISCV.THART.CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue,AliasMask:TPasRISCVUInt64;
+    Value,CSRValue,Mask:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else if fState.VirtualMode then begin
-  // V=1: sie redirects to vsie (MIE bits filtered by HIDELEG)
+  // V=1: sie is vsie
   if (fState.CSR.fData[TCSR.TAddress.HVICTL] and TCSR.HVICTL_VTI)<>0 then begin
    SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
   end else begin
    rd:=TRegister((aInstruction shr 7) and $1f);
-   AliasMask:=fState.CSR.fData[TCSR.TAddress.HIDELEG] and $222; // VS-level interrupt enable bits
-   Value:=fState.CSR.fData[TCSR.TAddress.MIE] and AliasMask;
-   CSRValue:=CSROperation(aOperation,Value,aRHS) and AliasMask;
-   fState.CSR.fData[TCSR.TAddress.MIE]:=(fState.CSR.fData[TCSR.TAddress.MIE] and not AliasMask) or CSRValue;
+   Value:=CSRAccessVSIE(aRHS,aOperation);
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=Value;
    end;
    CheckInterrupts;
   end;
  end else begin
+  // The S-level interrupts that mideleg delegates, the others are read-only zero in sie
   rd:=TRegister((aInstruction shr 7) and $1f);
-  Value:=fState.CSR.fData[TCSR.TAddress.MIE];
-  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
-  fState.CSR.fData[TCSR.TAddress.MIE]:=(CSRValue and TCSR.CSR_SEIP_MASK) or (Value and not TCSR.CSR_SEIP_MASK);
+  Mask:=TCSR.CSR_SEIP_MASK and fState.CSR.fData[TCSR.TAddress.MIDELEG];
+  Value:=fState.CSR.fData[TCSR.TAddress.MIE] and Mask;
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and Mask;
+  fState.CSR.fData[TCSR.TAddress.MIE]:=(fState.CSR.fData[TCSR.TAddress.MIE] and not Mask) or CSRValue;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   fState.Registers[rd]:=CSRValue;
+   fState.Registers[rd]:=Value;
   end;
   CheckInterrupts;
  end;
@@ -103541,51 +106936,54 @@ procedure TPasRISCV.THART.CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRIS
 var rd:TRegister;
     Value,CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  Value:=fState.CSR.fData[TCSR.TAddress.MIP];
-  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_MEIP_MASK,aRHS) and TCSR.CSR_MEIP_MASK;
-  fState.CSR.fData[TCSR.TAddress.MIP]:=(CSRValue and TCSR.CSR_MEIP_MASK) or (Value and not TCSR.CSR_MEIP_MASK);
+  // A read-modify-write works on the software-writable bits only (for SEIP not the OR with the
+  // external interrupt line), VSSIP is an alias of hvip.VSSIP
+  Value:=(fState.CSR.fData[TCSR.TAddress.MIP] and TCSR.CSR_MIP_WRITE_MASK) or
+         (fState.CSR.fData[TCSR.TAddress.HVIP] and TInterruptValueMasks.HypervisorSoftware);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_MEIP_MASK);
-   fState.Registers[rd]:=CSRValue;
+   fState.Registers[rd]:=PendingInterruptBits;
   end;
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  fState.CSR.fData[TCSR.TAddress.MIP]:=(fState.CSR.fData[TCSR.TAddress.MIP] and not TCSR.CSR_MIP_WRITE_MASK) or (CSRValue and TCSR.CSR_MIP_WRITE_MASK);
+  fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TInterruptValueMasks.HypervisorSoftware) or (CSRValue and TInterruptValueMasks.HypervisorSoftware);
   CheckInterrupts;
  end;
 end;
 
 procedure TPasRISCV.THART.CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue:TPasRISCVUInt64;
+    Value,CSRValue,Mask:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else if fState.VirtualMode then begin
-  // V=1: sip redirects to vsip (HVIP bits filtered by HIDELEG), only VSSIP writable
+  // V=1: sip is vsip
   if (fState.CSR.fData[TCSR.TAddress.HVICTL] and TCSR.HVICTL_VTI)<>0 then begin
    SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
   end else begin
    rd:=TRegister((aInstruction shr 7) and $1f);
-   // V=1: sip reads (hvip | mip) filtered by hideleg (matching QEMU/Spike)
-   Value:=(fState.CSR.fData[TCSR.TAddress.HVIP] or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
-   CSRValue:=CSROperation(aOperation,Value,aRHS) and $4; // Only VSSIP (bit 2) writable
-   fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
+   Value:=CSRAccessVSIP(aRHS,aOperation);
    {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
     fState.Registers[rd]:=Value;
    end;
    CheckInterrupts;
   end;
  end else begin
+  // The S-level interrupts that mideleg delegates, the others are read-only zero in sip. Only
+  // SSIP and LCOFIP are writable, STIP and SEIP only for M-mode through mip.
   rd:=TRegister((aInstruction shr 7) and $1f);
-  Value:=fState.CSR.fData[TCSR.TAddress.MIP];
-  CSRValue:=CSROperation(aOperation,Value and TCSR.CSR_SEIP_MASK,aRHS) and TCSR.CSR_SEIP_MASK;
-  fState.CSR.fData[TCSR.TAddress.MIP]:=(CSRValue and TCSR.CSR_SEIP_MASK) or (Value and not TCSR.CSR_SEIP_MASK);
+  Mask:=TCSR.CSR_SEIP_MASK and fState.CSR.fData[TCSR.TAddress.MIDELEG];
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   CSRValue:=CSRValue or (fState.PendingIRQs and TCSR.CSR_SEIP_MASK);
-   fState.Registers[rd]:=CSRValue;
+   fState.Registers[rd]:=PendingInterruptBits and Mask;
   end;
+  Mask:=Mask and TCSR.CSR_SIP_WRITE_MASK;
+  Value:=fState.CSR.fData[TCSR.TAddress.MIP] and Mask;
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and Mask;
+  fState.CSR.fData[TCSR.TAddress.MIP]:=(fState.CSR.fData[TCSR.TAddress.MIP] and not Mask) or CSRValue;
   CheckInterrupts;
  end;
 end;
@@ -103617,6 +107015,10 @@ begin
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value or (TPasRISCVUInt64(2) shl TCSR.TMask.THSTATUSBit.VSXL);
   end;
+  // VGEIN selects the guest external interrupt line that VSEIP shows
+  if ((Value xor CSRValue) and TCSR.TMask.HSTATUS_MASK_AIA)<>0 then begin
+   CheckInterrupts;
+  end;
  end;
 end;
 
@@ -103630,14 +107032,14 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  // hip reflects VS-level pending interrupts: (hvip | mip) projected through hideleg
-  Value:=(fState.CSR.fData[TCSR.TAddress.HVIP] or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
-  // Only VSSIP (bit 2) is writable via hip
-  CSRValue:=CSROperation(aOperation,Value,aRHS) and $4;
-  fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
+  // hip: VSSIP, VSTIP, VSEIP and SGEIP of mip, independent of hideleg (which only filters vsip).
+  // Only VSSIP is writable, as an alias of hvip.VSSIP.
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   fState.Registers[rd]:=Value;
+   fState.Registers[rd]:=PendingInterruptBits and TCSR.CSR_HIE_MASK;
   end;
+  Value:=fState.CSR.fData[TCSR.TAddress.HVIP] and TInterruptValueMasks.HypervisorSoftware;
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and TInterruptValueMasks.HypervisorSoftware;
+  fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TInterruptValueMasks.HypervisorSoftware) or CSRValue;
   CheckInterrupts;
  end;
 end;
@@ -103652,9 +107054,10 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  Value:=fState.CSR.fData[TCSR.TAddress.HIE];
-  CSRValue:=CSROperation(aOperation,Value,aRHS) and $1444;
-  fState.CSR.fData[TCSR.TAddress.HIE]:=CSRValue;
+  // hie: VSSIE, VSTIE, VSEIE and SGEIE are aliases of the same bits in mie
+  Value:=fState.CSR.fData[TCSR.TAddress.MIE] and TCSR.CSR_HIE_MASK;
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and TCSR.CSR_HIE_MASK;
+  fState.CSR.fData[TCSR.TAddress.MIE]:=(fState.CSR.fData[TCSR.TAddress.MIE] and not TCSR.CSR_HIE_MASK) or CSRValue;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value;
   end;
@@ -103698,7 +107101,10 @@ begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   Value:=fState.CSR.Load(aCSR);
   CSRValue:=CSROperation(aOperation,Value,aRHS);
-  fState.CSR.Store(aCSR,CSRValue);
+  // vsatp: like satp, a write with an unsupported MODE is ignored as a whole
+  if (aCSR<>TCSR.TAddress.VSATP) or (((CSRValue shr 60) and $f) in [0,8,9,10]) then begin
+   fState.CSR.Store(aCSR,CSRValue);
+  end;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value;
   end;
@@ -103734,7 +107140,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerVSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue:TPasRISCVUInt64;
+    Value:TPasRISCVUInt64;
 begin
  if fState.VirtualMode then begin
   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
@@ -103742,11 +107148,7 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  // vsip shows pending VS-level interrupts: (hvip | mip) filtered by hideleg
-  Value:=(fState.CSR.fData[TCSR.TAddress.HVIP] or fState.CSR.fData[TCSR.TAddress.MIP]) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
-  // Only VSSIP (bit 2) writable
-  CSRValue:=CSROperation(aOperation,Value,aRHS) and $4;
-  fState.CSR.fData[TCSR.TAddress.HVIP]:=(fState.CSR.fData[TCSR.TAddress.HVIP] and not TPasRISCVUInt64($4)) or CSRValue;
+  Value:=CSRAccessVSIP(aRHS,aOperation);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value;
   end;
@@ -103756,7 +107158,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerVSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue:TPasRISCVUInt64;
+    Value:TPasRISCVUInt64;
 begin
  if fState.VirtualMode then begin
   SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
@@ -103764,11 +107166,7 @@ begin
   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
-  // vsie shows enabled VS-level interrupts filtered by hideleg
-  Value:=fState.CSR.fData[TCSR.TAddress.HIE] and fState.CSR.fData[TCSR.TAddress.HIDELEG];
-  // Only hideleg-delegated bits are writable
-  CSRValue:=CSROperation(aOperation,Value,aRHS) and fState.CSR.fData[TCSR.TAddress.HIDELEG];
-  fState.CSR.fData[TCSR.TAddress.HIE]:=(fState.CSR.fData[TCSR.TAddress.HIE] and not fState.CSR.fData[TCSR.TAddress.HIDELEG]) or CSRValue;
+  Value:=CSRAccessVSIE(aRHS,aOperation);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value;
   end;
@@ -103797,6 +107195,8 @@ begin
    // Invalid mode: keep old value (QEMU/Spike behavior)
    CSRValue:=Value;
   end;
+  // The root table is 16 KiB aligned, so PPN[1:0] read as zero, and bits 59:58 are WPRI
+  CSRValue:=CSRValue and TPasRISCVUInt64($f3fffffffffffffc);
   fState.CSR.fData[TCSR.TAddress.HGATP]:=CSRValue;
   FlushTLB(true,true);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -103814,8 +107214,8 @@ var rd:TRegister;
     Tmp:TPasRISCVUInt64;
 {$endif}
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   PendingValue:=InterruptsPending and TCSR.CSR_MEIP_MASK;
@@ -103860,8 +107260,10 @@ var rd:TRegister;
     Tmp:TPasRISCVUInt64;
 {$endif}
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
+ end else if not StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
+  // Smstateen: the bit in mstateen0, hstateen0 or sstateen0 gates this CSR below M-mode
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   if fState.VirtualMode and fMachine.fAIA then begin
@@ -103911,8 +107313,8 @@ var rd:TRegister;
     IRQ,CSRValue:TPasRISCVUInt64;
     IsWrite:Boolean;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   IsWrite:=(aOperation=TCSROperation.Swap) or (TRegister((aInstruction shr 15) and $1f)<>TRegister.Zero); // rs1 determines write/claim
@@ -103929,8 +107331,10 @@ var rd:TRegister;
     IRQ,CSRValue:TPasRISCVUInt64;
     IsWrite:Boolean;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
+ end else if not StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
+  // Smstateen: the bit in mstateen0, hstateen0 or sstateen0 gates this CSR below M-mode
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   IsWrite:=(aOperation=TCSROperation.Swap) or (TRegister((aInstruction shr 15) and $1f)<>TRegister.Zero); // rs1 determines write/claim
@@ -103939,7 +107343,10 @@ begin
    if IsVGEINValid then begin
     IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
    end else begin
-    IRQ:=0; // VGEIN=0 or invalid: no guest file selected
+    // No valid VGEIN: stopei (vstopei) raises a virtual-instruction exception, and never reaches
+    // the interrupt file of the host
+    SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+    exit;
    end;
   end else begin
    IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.Supervisor,IsWrite);
@@ -103967,7 +107374,9 @@ begin
   if IsVGEINValid then begin
    IRQ:=GetAIAIRQ(TPasRISCV.TAIARegFileMode.VirtualSupervisor,IsWrite);
   end else begin
-   IRQ:=0; // VGEIN=0 or invalid: no guest file selected
+   // No valid VGEIN: illegal instruction exception
+   SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+   exit;
   end;
   CSRValue:=IRQ or (IRQ shl 16);
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -104066,8 +107475,10 @@ var rd:TRegister;
     CTRPtr:PPasRISCVUInt64;
 {$endif}
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin //if fState.Mode=TPasRISCV.THART.TMode.User then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
+ end else if not StateEnabled(CSRStateEnBit(aCSR),aInstruction) then begin
+  // Smstateen: the bit in mstateen0, hstateen0 or sstateen0 gates this CSR below M-mode
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   case aCSR of
@@ -104083,14 +107494,18 @@ begin
 {$endif}
    TCSR.TAddress.SIREG:begin
     if fState.VirtualMode then begin
-     // V=1: sireg access uses VS context (siselect already swapped to VS value)
+     // V=1: sireg is vsireg (siselect is already swapped to vsiselect). It only reaches the guest
+     // interrupt file that hstatus.VGEIN selects, never the one of the host: without a valid VGEIN
+     // the IMSIC registers, and at VS level the non-existent iprio array, raise a
+     // virtual-instruction exception.
      Mode:=THART.TMode.Supervisor;
-     if IsVGEINValid then begin
-      AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
-     end else begin
-      AIARegFileMode:=TPasRISCV.TAIARegFileMode.Supervisor; // VGEIN invalid: will fail gracefully as no VS file
-     end;
+     AIARegFileMode:=TPasRISCV.TAIARegFileMode.VirtualSupervisor;
      ISelect:=fState.CSR.fData[TCSR.TAddress.SISELECT];
+     if ((ISelect>=TCSR.CSRI_MIPRIO_0) and (ISelect<=TCSR.CSRI_MIPRIO_15)) or
+        ((ISelect>=TCSR.CSRI_EIDELIVERY) and (ISelect<=TCSR.CSRI_EIE63) and not IsVGEINValid) then begin
+      SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
+      exit;
+     end;
     end else begin
      Mode:=THART.TMode.Supervisor;
      AIARegFileMode:=TPasRISCV.TAIARegFileMode.Supervisor;
@@ -104114,6 +107529,11 @@ begin
      exit;
     end;
     ISelect:=fState.CSR.fData[TCSR.TAddress.VSISELECT];
+    if (ISelect>=TCSR.CSRI_MIPRIO_0) and (ISelect<=TCSR.CSRI_MIPRIO_15) then begin
+     // VS level has no iprio array (and must not reach the one of the host)
+     SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+     exit;
+    end;
     OK:=true;
    end;
    else begin
@@ -104573,8 +107993,8 @@ procedure TPasRISCV.THART.CSRHandlerCTR(const aPC,aInstruction,aCSR,aRHS:TPasRIS
 var rd:TRegister;
     CSRValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else if CTRStateEnabled(aInstruction) then begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   CSRValue:=fState.CSR.Load(aCSR);
@@ -104680,7 +108100,13 @@ var Exceptions:TPasRISCVUInt32;
 begin
  Exceptions:=fetestexcept(FE_ALL_EXCEPT);
  if Exceptions<>0 then begin
-  fState.CSR.fData[TCSR.TAddress.FFLAGS]:=(fState.CSR.fData[TCSR.TAddress.FFLAGS]{ and not TCSR.TFPUExceptionMasks.Mask)}) or (X86ToRISCVFPUExceptionLookUpTable[Exceptions and aMask] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask));
+  Exceptions:=TPasRISCVUInt32(TPasRISCVUInt64(X86ToRISCVFPUExceptionLookUpTable[Exceptions and aMask] and TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Mask)));
+  if Exceptions<>0 then begin
+   fState.CSR.fData[TCSR.TAddress.FFLAGS]:=(fState.CSR.fData[TCSR.TAddress.FFLAGS]{ and not TCSR.TFPUExceptionMasks.Mask)}) or Exceptions;
+   // fflags is FP state: FS becomes Dirty, also for instructions that write only an integer
+   // register (compares, conversions to integers)
+   fState.CSR.SetFSDirty;
+  end;
   feclearexcept(FE_ALL_EXCEPT);
  end;
 end;
@@ -104754,7 +108180,8 @@ begin
  if assigned(fMachine.fDebugger) and fMachine.fDebugger.Halt(self,fState.PC,aInstruction) then begin
   SetException(TExceptionValue.DebuggerBreakpoint,aInstruction,fState.PC);
  end else begin
-  SetException(TExceptionValue.Breakpoint,aInstruction,fState.PC);
+  // xtval of a breakpoint exception is the address of the breakpoint instruction, not its bits
+  SetException(TExceptionValue.Breakpoint,fState.PC,fState.PC);
  end;
 end;
 
@@ -104795,14 +108222,15 @@ begin
 
 {$ifdef PasRISCVMMIOTLB}
  MMIOTLBEntry:=@{$ifdef PerModeTLB}fMMIOTLBData^{$else}fMMIOTLBData{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
- if (MMIOTLBEntry^.VPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+ if (MMIOTLBEntry^.ExecuteVPN=VPN) and (MMIOTLBEntry^.Generation=fMachine.fMMIOTLBGeneration) and (((aAddress and PAGE_MASK)+3)<PAGE_SIZE) then begin
+  fAccessVirtualAddress:=aAddress; // the bus only gets the physical address, xtval needs this one
   aInstruction:=TPasRISCVUInt32(fBus.BusDeviceLoad(self,MMIOTLBEntry^.BusDevice,MMIOTLBEntry^.PhysicalPageBase or (aAddress and PAGE_MASK),4));
   result:=true;
   exit;
  end;
 {$endif}
 
- TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Instruction,[]);
+ TranslatedAddress:=AddressTranslate(aAddress,TMMU.TAccessType.Instruction,[],2);
  if fState.ExceptionValue<>TExceptionValue.None then begin
   aInstruction:=0;
   result:=false;
@@ -104816,6 +108244,18 @@ begin
 
   result:=fState.ExceptionValue=TExceptionValue.None;
 
+{$ifdef PasRISCVSmepmp}
+  // Only the first parcel was PMP-checked. On a page with a PMP boundary inside, the second
+  // parcel of a 32-bit instruction needs its own check (fault address is that of the parcel).
+  if result and ((aInstruction and 3)=3) and not fPMPPageUniform then begin
+   if not CheckPMPAccess(TranslatedAddress+2,2,TMMU.TAccessType.Instruction,fState.Mode) then begin
+    RaisePhysicalFault(aAddress+2,TMMU.TAccessType.Instruction);
+    aInstruction:=0;
+    result:=false;
+   end;
+  end;
+{$endif}
+
  end else{$endif}begin
 
   aInstruction:=TPasRISCVUInt32(fBus.Fetch(self,TranslatedAddress,2));
@@ -104827,7 +108267,7 @@ begin
 
   if (aInstruction and 3)=3 then begin
 
-   TranslatedAddress:=AddressTranslate(aAddress+2,TMMU.TAccessType.Instruction,[]);
+   TranslatedAddress:=AddressTranslate(aAddress+2,TMMU.TAccessType.Instruction,[],2);
    if fState.ExceptionValue<>TExceptionValue.None then begin
     aInstruction:=0;
     result:=false;
@@ -104873,6 +108313,10 @@ begin
  CSRValue:=fState.CSR.fData[TCSR.TAddress.VSTART];
  OperationValue:=CSROperation(aOperation,CSRValue,aRHS) and TPasRISCVUInt64(fVLEN-1);
  fState.CSR.fData[TCSR.TAddress.VSTART]:=OperationValue;
+ if OperationValue<>CSRValue then begin
+  // vstart is vector state, a change makes VS Dirty
+  fState.CSR.SetVSDirty;
+ end;
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue;
  end;
@@ -104891,6 +108335,10 @@ begin
  OperationValue:=CSROperation(aOperation,CSRValue,aRHS) and 1;
  fState.CSR.fData[TCSR.TAddress.VXSAT]:=OperationValue;
  fState.CSR.fData[TCSR.TAddress.VCSR]:=(fState.CSR.fData[TCSR.TAddress.VCSR] and not TPasRISCVUInt64(1)) or OperationValue;
+ if OperationValue<>CSRValue then begin
+  // vxsat is vector state, a change makes VS Dirty
+  fState.CSR.SetVSDirty;
+ end;
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue;
  end;
@@ -104909,6 +108357,10 @@ begin
  OperationValue:=CSROperation(aOperation,CSRValue,aRHS) and 3;
  fState.CSR.fData[TCSR.TAddress.VXRM]:=OperationValue;
  fState.CSR.fData[TCSR.TAddress.VCSR]:=(fState.CSR.fData[TCSR.TAddress.VCSR] and not TPasRISCVUInt64(6)) or (OperationValue shl 1);
+ if OperationValue<>CSRValue then begin
+  // vxrm is vector state, a change makes VS Dirty
+  fState.CSR.SetVSDirty;
+ end;
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue;
  end;
@@ -104929,6 +108381,10 @@ begin
  fState.CSR.fData[TCSR.TAddress.VXSAT]:=OperationValue and 1;
  fState.CSR.fData[TCSR.TAddress.VXRM]:=(OperationValue shr 1) and 3;
  fState.CSR.fData[TCSR.TAddress.VCSR]:=OperationValue;
+ if OperationValue<>CSRValue then begin
+  // vxsat and vxrm are vector state, a change makes VS Dirty
+  fState.CSR.SetVSDirty;
+ end;
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue;
  end;
@@ -105001,7 +108457,22 @@ begin
   exit;
  end;
  rd:=TRegister((aInstruction shr 7) and $1f);
- CSRValue:=TPasRISCVUInt64(ord(fStrictCompliantFPU)){$ifdef PasRISCVFastRMMFixup} or (TPasRISCVUInt64(ord(fFastRMMFixupEnabled)) shl 2){$endif}{$ifdef PasRISCVJITFPUInvalidFlag} or (TPasRISCVUInt64(ord(fJITFPUInvalidFlagEnabled)) shl 3){$endif};
+ // The fields are LongBools, whose ord is -1 for true, so the bits are set one by one (with ord
+ // a read gave all ones, and a csrs/csrc on it switched the other options along)
+ CSRValue:=0;
+ if fStrictCompliantFPU then begin
+  CSRValue:=CSRValue or TPasRISCVUInt64($0000000000000001);
+ end;
+{$ifdef PasRISCVFastRMMFixup}
+ if fFastRMMFixupEnabled then begin
+  CSRValue:=CSRValue or TPasRISCVUInt64($0000000000000004);
+ end;
+{$endif}
+{$ifdef PasRISCVJITFPUInvalidFlag}
+ if fJITFPUInvalidFlagEnabled then begin
+  CSRValue:=CSRValue or TPasRISCVUInt64($0000000000000008);
+ end;
+{$endif}
  NewValue:=CSROperation(aOperation,CSRValue,aRHS);
  fStrictCompliantFPU:=(NewValue and 1)<>0;
 {$ifdef PasRISCVFastRMMFixup}
@@ -105021,8 +108492,23 @@ begin
 {$endif}
   end;
   fMachine.FlushTLB;
+{$ifdef PasRISCVJustInTimeCompiler}
+  // Translated blocks were built for the old FPU mode, and flushing the TLBs alone leaves them in
+  // the block map, so they are dropped here as well (like the TLBs this expects the other harts
+  // to be quiescent while the mode is switched)
+  for Index:=0 to fMachine.fCountHARTs-1 do begin
+   if assigned(fMachine.fHARTs[Index].fJustInTimeCompiler) then begin
+    fMachine.fHARTs[Index].fJustInTimeCompiler.ClearBlocks;
+   end;
+  end;
+{$endif}
  end;
  FlushTLB(true,true);
+{$ifdef PasRISCVJustInTimeCompiler}
+ if assigned(fJustInTimeCompiler) then begin
+  fJustInTimeCompiler.ClearBlocks;
+ end;
+{$endif}
  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
   fState.Registers[rd]:=CSRValue;
  end;
@@ -105217,6 +108703,103 @@ begin
  end;
 end;
 
+function TPasRISCV.THART.VectorOverlapAllowed(const aDstReg:TPasRISCVUInt32;const aDstEMUL8:TPasRISCVInt32;const aSrcReg:TPasRISCVUInt32;const aSrcEMUL8:TPasRISCVInt32):Boolean;
+// The overlap rules of the vector spec (section 5.2, "Vector Operands"): a destination register
+// group may overlap a source register group when the element widths are the same, when the
+// destination has the smaller EEW and sits in the lowest part of the source group, or when it has
+// the larger EEW, the source EMUL is at least 1, and the source sits in the highest part of the
+// destination group. Within one instruction EMUL and EEW go together (EMUL = EEW*LMUL/SEW), so
+// the EMULs decide here.
+var DstRegs,SrcRegs:TPasRISCVInt32;
+begin
+ if aDstEMUL8<8 then begin
+  DstRegs:=1;
+ end else begin
+  DstRegs:=aDstEMUL8 shr 3;
+ end;
+ if aSrcEMUL8<8 then begin
+  SrcRegs:=1;
+ end else begin
+  SrcRegs:=aSrcEMUL8 shr 3;
+ end;
+ if ((aDstReg+TPasRISCVUInt32(DstRegs))<=aSrcReg) or ((aSrcReg+TPasRISCVUInt32(SrcRegs))<=aDstReg) then begin
+  // No overlap at all
+  result:=true;
+ end else if aDstEMUL8=aSrcEMUL8 then begin
+  result:=true;
+ end else if aDstEMUL8<aSrcEMUL8 then begin
+  // Narrower destination, only in the lowest part of the source group
+  result:=aDstReg=aSrcReg;
+ end else begin
+  // Wider destination, only with the source in its highest part and a source EMUL of at least 1
+  result:=(aSrcEMUL8>=8) and (aSrcReg=((aDstReg+TPasRISCVUInt32(DstRegs))-TPasRISCVUInt32(SrcRegs)));
+ end;
+end;
+
+function TPasRISCV.THART.VectorFloatToSmallInteger(const aValue:TPasRISCVFloat;const aBits:TPasRISCVUInt32;const aSigned,aRoundToZero:boolean):TPasRISCVUInt64;
+// Converts a float to an integer of aBits bits with the rounding mode from frm (or towards zero
+// for the rtz variants), saturating and with the exception flags of the vector spec: NaN and
+// values outside the range give NV and the border value, a changed value gives NX. Only for small
+// widths whose borders are exactly representable as a float (the fp16 to int8 conversions of
+// Zvfh), the wider conversions have their own paths.
+var Rounded,Minimum,Maximum:TPasRISCVFloat;
+begin
+ if aSigned then begin
+  Minimum:=-TPasRISCVFloat(TPasRISCVInt64(TPasRISCVInt64(1) shl (aBits-1)));
+  Maximum:=TPasRISCVFloat(TPasRISCVInt64(TPasRISCVInt64(TPasRISCVInt64(1) shl (aBits-1))-1));
+ end else begin
+  Minimum:=0.0;
+  Maximum:=TPasRISCVFloat(TPasRISCVInt64(TPasRISCVInt64(TPasRISCVInt64(1) shl aBits)-1));
+ end;
+ if IsNaN(aValue) then begin
+  fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
+  // NaN gives the largest value, signed or unsigned
+  result:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(Maximum))) and ((TPasRISCVUInt64(1) shl aBits)-1);
+  exit;
+ end;
+ if aRoundToZero then begin
+  if aValue<0.0 then begin
+   Rounded:=CeilToFloat32(aValue);
+  end else begin
+   Rounded:=FloorToFloat32(aValue);
+  end;
+ end else begin
+  case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+   TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+    if aValue<0.0 then begin
+     Rounded:=CeilToFloat32(aValue);
+    end else begin
+     Rounded:=FloorToFloat32(aValue);
+    end;
+   end;
+   TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+    Rounded:=FloorToFloat32(aValue);
+   end;
+   TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+    Rounded:=CeilToFloat32(aValue);
+   end;
+   TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+    Rounded:=RoundToNearestTiesToMaxMagnitude32(aValue);
+   end;
+   else begin
+    Rounded:=RoundToNearestTiesToEven32(aValue);
+   end;
+  end;
+ end;
+ if Rounded<Minimum then begin
+  fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
+  result:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(Minimum))) and ((TPasRISCVUInt64(1) shl aBits)-1);
+ end else if Rounded>Maximum then begin
+  fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
+  result:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(Maximum))) and ((TPasRISCVUInt64(1) shl aBits)-1);
+ end else begin
+  if Rounded<>aValue then begin
+   fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact));
+  end;
+  result:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(Rounded))) and ((TPasRISCVUInt64(1) shl aBits)-1);
+ end;
+end;
+
 function TPasRISCV.THART.VectorRoundoffShift(const aValue:TPasRISCVUInt64;const aShift:TPasRISCVUInt32):TPasRISCVUInt64;
 var RoundBit:TPasRISCVUInt64;
 begin
@@ -105310,8 +108893,8 @@ begin
    NormalizedSig:=NormalizedSig shl 1;
    inc(ShiftAmount);
   end;
-  NormalizedExp:=1-ShiftAmount;
-  NormalizedSig:=NormalizedSig and $003fffff; // remove leading 1
+  NormalizedExp:=-ShiftAmount;
+  NormalizedSig:=(NormalizedSig shl 1) and $007fffff; // shift the leading one out, like the normalization of the spec
  end;
  // Table index: exp[0] concatenated with sig[22:17] (top 6 bits of significand)
  TableIndex:=((NormalizedExp and 1) shl 6) or ((NormalizedSig shr 17) and $3f);
@@ -105336,8 +108919,8 @@ begin
    NormalizedSig:=NormalizedSig shl 1;
    inc(ShiftAmount);
   end;
-  NormalizedExp:=1-ShiftAmount;
-  NormalizedSig:=NormalizedSig and $0007ffffffffffff;
+  NormalizedExp:=-ShiftAmount;
+  NormalizedSig:=(NormalizedSig shl 1) and $000fffffffffffff; // shift the leading one out, like the normalization of the spec
  end;
  TableIndex:=((TPasRISCVInt32(NormalizedExp) and 1) shl 6) or (TPasRISCVInt32(NormalizedSig shr 46) and $3f);
  ResultExp:=TPasRISCVUInt64((((3*1023)-1)-NormalizedExp) shr 1);
@@ -105359,8 +108942,8 @@ begin
    NormalizedSig:=NormalizedSig shl 1;
    inc(ShiftAmount);
   end;
-  NormalizedExp:=1-ShiftAmount;
-  NormalizedSig:=NormalizedSig and $003fffff;
+  NormalizedExp:=-ShiftAmount;
+  NormalizedSig:=(NormalizedSig shl 1) and $007fffff; // shift the leading one out, like the normalization of the spec
  end;
  // Normalized output exponent
  NormalizedExpOut:=((2*127)-1)-NormalizedExp;
@@ -105371,10 +108954,9 @@ begin
   // Overflow/underflow to subnormal
   if NormalizedExpOut<0 then begin
    // Result is subnormal: shift significand right by (1 - normalizedExpOut)
-   // and set exponent to 0
+   // and set exponent to 0. Nothing is lost in doing so, so this raises neither underflow nor inexact
    ResultSig:=($00800000 or NormalizedSigOut) shr (1-NormalizedExpOut);
    result:=SignBit or ResultSig;
-   fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Underflow);
   end else begin
    // Overflow: result depends on rounding mode
    // For simplicity, use greatest finite value or infinity
@@ -105402,13 +108984,12 @@ begin
      result:=SignBit or $7f800000;
     end;
    end;
-   fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Overflow);
+   fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Overflow));
   end;
  end else if NormalizedExpOut=0 then begin
-  // Subnormal result: shift right by 1
+  // Subnormal result: shift right by 1, again without underflow or inexact
   ResultSig:=($00800000 or NormalizedSigOut) shr 1;
   result:=SignBit or ResultSig;
-  fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Underflow);
  end else begin
   // Normal result
   result:=SignBit or (TPasRISCVUInt32(NormalizedExpOut) shl 23) or NormalizedSigOut;
@@ -105429,8 +109010,8 @@ begin
    NormalizedSig:=NormalizedSig shl 1;
    inc(ShiftAmount);
   end;
-  NormalizedExp:=1-ShiftAmount;
-  NormalizedSig:=NormalizedSig and $0007ffffffffffff;
+  NormalizedExp:=-ShiftAmount;
+  NormalizedSig:=(NormalizedSig shl 1) and $000fffffffffffff; // shift the leading one out, like the normalization of the spec
  end;
  NormalizedExpOut:=((2*1023)-1)-NormalizedExp;
  TableIndex:=TPasRISCVInt32((NormalizedSig shr 45) and $7f);
@@ -105439,7 +109020,6 @@ begin
   if NormalizedExpOut<0 then begin
    ResultSig:=($0010000000000000 or NormalizedSigOut) shr (1-NormalizedExpOut);
    result:=SignBit or ResultSig;
-   fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Underflow);
   end else begin
    case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
     TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
@@ -105463,14 +109043,101 @@ begin
      result:=SignBit or $7ff0000000000000;
     end;
    end;
-   fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Overflow);
+   fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Overflow));
   end;
  end else if NormalizedExpOut=0 then begin
   ResultSig:=($0010000000000000 or NormalizedSigOut) shr 1;
   result:=SignBit or ResultSig;
-  fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Underflow);
  end else begin
   result:=SignBit or (TPasRISCVUInt64(NormalizedExpOut) shl 52) or NormalizedSigOut;
+ end;
+end;
+
+class function TPasRISCV.THART.VFRsqrt716(const aValue:TPasRISCVUInt16):TPasRISCVUInt16;
+// Half precision variant of VFRsqrt732 (Zvfh). The exponent arithmetic belongs to half precision,
+// the detour through single precision got the exponent of a subnormal input wrong.
+var NormalizedExp,ShiftAmount,TableIndex:TPasRISCVInt32;
+    NormalizedSig,ResultExp,ResultSig:TPasRISCVUInt32;
+begin
+ NormalizedExp:=TPasRISCVInt32((aValue shr 10) and $1f);
+ NormalizedSig:=aValue and $03ff;
+ if NormalizedExp=0 then begin
+  // Subnormal: normalize
+  ShiftAmount:=0;
+  while (NormalizedSig and $0200)=0 do begin
+   NormalizedSig:=NormalizedSig shl 1;
+   inc(ShiftAmount);
+  end;
+  NormalizedExp:=-ShiftAmount;
+  NormalizedSig:=(NormalizedSig shl 1) and $03ff; // shift the leading one out
+ end;
+ // Table index: exp[0] concatenated with sig[9:4] (top 6 bits of significand)
+ TableIndex:=((NormalizedExp and 1) shl 6) or (TPasRISCVInt32(NormalizedSig shr 4) and $3f);
+ ResultExp:=TPasRISCVUInt32((((3*15)-1)-NormalizedExp) shr 1);
+ ResultSig:=TPasRISCVUInt32(VFRsqrt7Table[TableIndex]) shl 3;
+ result:=TPasRISCVUInt16((ResultExp shl 10) or ResultSig);
+end;
+
+function TPasRISCV.THART.VFRec716(const aValue:TPasRISCVUInt16):TPasRISCVUInt16;
+// Half precision variant of VFRec732 (Zvfh). Only here can the result of a very small subnormal
+// input overflow, and then it follows frm, which the detour through single precision never saw.
+var NormalizedExp,NormalizedExpOut,ShiftAmount,TableIndex:TPasRISCVInt32;
+    NormalizedSig,NormalizedSigOut,ResultSig,SignBit:TPasRISCVUInt32;
+begin
+ SignBit:=aValue and $8000;
+ NormalizedExp:=TPasRISCVInt32((aValue shr 10) and $1f);
+ NormalizedSig:=aValue and $03ff;
+ if NormalizedExp=0 then begin
+  // Subnormal: normalize
+  ShiftAmount:=0;
+  while (NormalizedSig and $0200)=0 do begin
+   NormalizedSig:=NormalizedSig shl 1;
+   inc(ShiftAmount);
+  end;
+  NormalizedExp:=-ShiftAmount;
+  NormalizedSig:=(NormalizedSig shl 1) and $03ff; // shift the leading one out
+ end;
+ NormalizedExpOut:=((2*15)-1)-NormalizedExp;
+ // Table index: top 7 bits of the normalized significand
+ TableIndex:=TPasRISCVInt32(NormalizedSig shr 3) and $7f;
+ NormalizedSigOut:=TPasRISCVUInt32(VFRec7Table[TableIndex]) shl 3;
+ if (NormalizedExpOut<0) or (NormalizedExpOut>30) then begin
+  if NormalizedExpOut<0 then begin
+   // Subnormal result, nothing is lost, so neither underflow nor inexact
+   ResultSig:=($0400 or NormalizedSigOut) shr (1-NormalizedExpOut);
+   result:=TPasRISCVUInt16(SignBit or ResultSig);
+  end else begin
+   // Overflow: infinity or the greatest finite value, depending on frm
+   case fState.CSR.fData[TCSR.TAddress.FRM] and TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.Mask) of
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+     result:=TPasRISCVUInt16(SignBit or $7bff);
+    end;
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+     if SignBit<>0 then begin
+      result:=TPasRISCVUInt16(SignBit or $7bff);
+     end else begin
+      result:=TPasRISCVUInt16(SignBit or $7c00);
+     end;
+    end;
+    TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+     if SignBit<>0 then begin
+      result:=TPasRISCVUInt16(SignBit or $7c00);
+     end else begin
+      result:=TPasRISCVUInt16(SignBit or $7bff);
+     end;
+    end;
+    else begin
+     result:=TPasRISCVUInt16(SignBit or $7c00);
+    end;
+   end;
+   fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Inexact) or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Overflow));
+  end;
+ end else if NormalizedExpOut=0 then begin
+  // Subnormal result, again without underflow or inexact
+  ResultSig:=($0400 or NormalizedSigOut) shr 1;
+  result:=TPasRISCVUInt16(SignBit or ResultSig);
+ end else begin
+  result:=TPasRISCVUInt16(SignBit or (TPasRISCVUInt32(NormalizedExpOut) shl 10) or NormalizedSigOut);
  end;
 end;
 
@@ -105596,7 +109263,7 @@ begin
  DirectAccessTLBEntry:={$ifdef PerModeTLB}@fDirectAccessTLBCache^{$else}@fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Read<>VPN then begin
   // TLB miss - do page walk
-  AddressTranslate(Address,TMMU.TAccessType.Load,[]);
+  AddressTranslate(Address,TMMU.TAccessType.Load,[],TotalBytes);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    // Exception during translation - let normal interpreter handle it
    fState.ExceptionValue:=TExceptionValue.None;
@@ -105761,7 +109428,7 @@ begin
  DirectAccessTLBEntry:={$ifdef PerModeTLB}@fDirectAccessTLBCache^{$else}@fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK];
  if DirectAccessTLBEntry^.Write<>VPN then begin
   // TLB miss - do page walk
-  AddressTranslate(Address,TMMU.TAccessType.Store,[]);
+  AddressTranslate(Address,TMMU.TAccessType.Store,[],TotalBytes);
   if fState.ExceptionValue<>TExceptionValue.None then begin
    // Exception during translation - let normal interpreter handle it
    fState.ExceptionValue:=TExceptionValue.None;
@@ -106543,13 +110210,14 @@ begin
      fState.Registers[aRd]:=0;
     end;
    end else begin
-    // NV when result overflows i32: positive exponent>=31, negative exponent>31 or (=31 and mantissa<>0)
+    // NV when the truncated result overflows i32: positive exponent >= 31, negative exponent > 31
+    // or (= 31 and an integer part beyond 2^31)
     if (Temporary shr 63)=0 then begin
      if Address>=31 then begin
       SFFFlags:=SFFFlags or SoftFloatFF_NV;
      end;
     end else begin
-     if (Address>31) or ((Address=31) and ((Temporary and $fffffffffffff)<>0)) then begin
+     if (Address>31) or ((Address=31) and (((Temporary and $fffffffffffff) shr 21)<>0)) then begin // only the integer part counts, the fraction is truncated first
       SFFFlags:=SFFFlags or SoftFloatFF_NV;
      end;
     end;
@@ -108548,9 +112216,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     SFB.ui16:=TPasRISCVUInt16(VectorGetElement(aVS1,Index,16));
     if TPasRISCVSoftFloat16.CompareEQ(SFA,SFB,FFlags) then begin
@@ -108572,9 +112240,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     SFB.ui16:=TPasRISCVUInt16(VectorGetElement(aVS1,Index,16));
     if TPasRISCVSoftFloat16.CompareLE(SFA,SFB,FFlags) then begin
@@ -108596,9 +112264,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     SFB.ui16:=TPasRISCVUInt16(VectorGetElement(aVS1,Index,16));
     if TPasRISCVSoftFloat16.CompareLT(SFA,SFB,FFlags) then begin
@@ -108620,9 +112288,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     SFB.ui16:=TPasRISCVUInt16(VectorGetElement(aVS1,Index,16));
     if not TPasRISCVSoftFloat16.CompareEQ(SFA,SFB,FFlags) then begin
@@ -108644,9 +112312,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     SFB.ui32:=TPasRISCVUInt32(VectorGetElement(aVS1,Index,32));
     if TPasRISCVSoftFloat32.CompareEQ(SFA,SFB,FFlags) then begin
@@ -108668,9 +112336,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     SFB.ui32:=TPasRISCVUInt32(VectorGetElement(aVS1,Index,32));
     if TPasRISCVSoftFloat32.CompareLE(SFA,SFB,FFlags) then begin
@@ -108692,9 +112360,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     SFB.ui32:=TPasRISCVUInt32(VectorGetElement(aVS1,Index,32));
     if TPasRISCVSoftFloat32.CompareLT(SFA,SFB,FFlags) then begin
@@ -108716,9 +112384,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     SFB.ui32:=TPasRISCVUInt32(VectorGetElement(aVS1,Index,32));
     if not TPasRISCVSoftFloat32.CompareEQ(SFA,SFB,FFlags) then begin
@@ -108740,9 +112408,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     SFB.ui64:=TPasRISCVUInt64(VectorGetElement(aVS1,Index,64));
     if TPasRISCVSoftFloat64.CompareEQ(SFA,SFB,FFlags) then begin
@@ -108764,9 +112432,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     SFB.ui64:=TPasRISCVUInt64(VectorGetElement(aVS1,Index,64));
     if TPasRISCVSoftFloat64.CompareLE(SFA,SFB,FFlags) then begin
@@ -108788,9 +112456,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     SFB.ui64:=TPasRISCVUInt64(VectorGetElement(aVS1,Index,64));
     if TPasRISCVSoftFloat64.CompareLT(SFA,SFB,FFlags) then begin
@@ -108812,9 +112480,9 @@ begin
  FFlags:=0;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     SFB.ui64:=TPasRISCVUInt64(VectorGetElement(aVS1,Index,64));
     if not TPasRISCVSoftFloat64.CompareEQ(SFA,SFB,FFlags) then begin
@@ -110657,9 +114325,9 @@ begin
  SFScalar.ui16:=TPasRISCVUInt16(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     if TPasRISCVSoftFloat16.CompareEQ(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110681,9 +114349,9 @@ begin
  SFScalar.ui16:=TPasRISCVUInt16(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     if TPasRISCVSoftFloat16.CompareLE(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110705,9 +114373,9 @@ begin
  SFScalar.ui16:=TPasRISCVUInt16(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     if TPasRISCVSoftFloat16.CompareLT(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110729,9 +114397,9 @@ begin
  SFScalar.ui16:=TPasRISCVUInt16(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     if not TPasRISCVSoftFloat16.CompareEQ(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110753,9 +114421,9 @@ begin
  SFScalar.ui16:=TPasRISCVUInt16(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     if TPasRISCVSoftFloat16.CompareLT(SFScalar,SFA,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110777,9 +114445,9 @@ begin
  SFScalar.ui16:=TPasRISCVUInt16(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui16:=TPasRISCVUInt16(VectorGetElement(aVS2,Index,16));
     if TPasRISCVSoftFloat16.CompareLE(SFScalar,SFA,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110801,9 +114469,9 @@ begin
  SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     if TPasRISCVSoftFloat32.CompareEQ(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110825,9 +114493,9 @@ begin
  SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     if TPasRISCVSoftFloat32.CompareLE(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110849,9 +114517,9 @@ begin
  SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     if TPasRISCVSoftFloat32.CompareLT(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110873,9 +114541,9 @@ begin
  SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     if not TPasRISCVSoftFloat32.CompareEQ(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110897,9 +114565,9 @@ begin
  SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     if TPasRISCVSoftFloat32.CompareLT(SFScalar,SFA,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110921,9 +114589,9 @@ begin
  SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui32:=TPasRISCVUInt32(VectorGetElement(aVS2,Index,32));
     if TPasRISCVSoftFloat32.CompareLE(SFScalar,SFA,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110945,9 +114613,9 @@ begin
  SFScalar.ui64:=TPasRISCVUInt64(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     if TPasRISCVSoftFloat64.CompareEQ(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110969,9 +114637,9 @@ begin
  SFScalar.ui64:=TPasRISCVUInt64(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     if TPasRISCVSoftFloat64.CompareLE(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -110993,9 +114661,9 @@ begin
  SFScalar.ui64:=TPasRISCVUInt64(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     if TPasRISCVSoftFloat64.CompareLT(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -111017,9 +114685,9 @@ begin
  SFScalar.ui64:=TPasRISCVUInt64(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     if not TPasRISCVSoftFloat64.CompareEQ(SFA,SFScalar,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -111041,9 +114709,9 @@ begin
  SFScalar.ui64:=TPasRISCVUInt64(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     if TPasRISCVSoftFloat64.CompareLT(SFScalar,SFA,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -111065,9 +114733,9 @@ begin
  SFScalar.ui64:=TPasRISCVUInt64(aScalarFP);
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
-   if (not aUnmasked) and not VectorGetMaskBit(Index) then begin
-    fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
-   end else begin
+   // An inactive element keeps its mask bit (undisturbed, which the agnostic policy allows as
+   // well), clearing it was wrong
+   if aUnmasked or VectorGetMaskBit(Index) then begin
     SFA.ui64:=TPasRISCVUInt64(VectorGetElement(aVS2,Index,64));
     if TPasRISCVSoftFloat64.CompareLE(SFScalar,SFA,FFlags) then begin
      fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(aVD and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -111804,11 +115472,15 @@ procedure TPasRISCV.THART.SoftFloatExecVFWWAdd16(const aVS2,aVD:TPasRISCVUInt32;
 var Index:TPasRISCVUInt32;
     FFlags:TPasRISCVUInt8;
     SFScalar,SFAW,SFResult:TPasRISCVSoftFloat32;
+    SFScalarNarrow:TPasRISCVSoftFloat16;
     RM:TPasRISCVUInt8;
 begin
  FFlags:=0;
  RM:=fState.CSR.fData[TCSR.TAddress.FRM] and $7;
- SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
+ // The scalar of a .wf has SEW, so here it is a half and has to be widened first, only the vs2
+ // elements are single precision already
+ SFScalarNarrow.ui16:=TPasRISCVUInt16(aScalarFP);
+ SFScalar.ui32:=SoftFloatF16ToF32(SFScalarNarrow,FFlags).ui32;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
    if aUnmasked or VectorGetMaskBit(Index) then begin
@@ -111825,11 +115497,15 @@ procedure TPasRISCV.THART.SoftFloatExecVFWWSub16(const aVS2,aVD:TPasRISCVUInt32;
 var Index:TPasRISCVUInt32;
     FFlags:TPasRISCVUInt8;
     SFScalar,SFAW,SFResult:TPasRISCVSoftFloat32;
+    SFScalarNarrow:TPasRISCVSoftFloat16;
     RM:TPasRISCVUInt8;
 begin
  FFlags:=0;
  RM:=fState.CSR.fData[TCSR.TAddress.FRM] and $7;
- SFScalar.ui32:=TPasRISCVUInt32(aScalarFP);
+ // The scalar of a .wf has SEW, so here it is a half and has to be widened first, only the vs2
+ // elements are single precision already
+ SFScalarNarrow.ui16:=TPasRISCVUInt16(aScalarFP);
+ SFScalar.ui32:=SoftFloatF16ToF32(SFScalarNarrow,FFlags).ui32;
  if aVSTART<aEVL then begin
   for Index:=aVSTART to aEVL-1 do begin
    if aUnmasked or VectorGetMaskBit(Index) then begin
@@ -112468,12 +116144,14 @@ begin
      end;
      // Check EMUL range [1/8..8], EMUL*NFIELDS<=8, vd alignment, register group fits in v0-v31
      // Also check Index-EMUL range, vs2 alignment and vs2 register group fits
-     // Also check destination register groups don't overlap with index register group vs2
+     // Overlap of the destination with the index group vs2: a segment load (NFIELDS>1) forbids it
+     // outright, a plain indexed load follows the general rules of section 5.2
      if ((EEW*LMUL8)>(SEW*64)) or ((EEW*LMUL8*8)<(SEW*8)) or ((FieldStride*(NumFields+1))>8) or
         ((vd and (FieldStride-1))<>0) or ((vd+(NumFields*FieldStride)+FieldStride)>32) or
         (not VectorCheckRegAlign(vs2,SubIndex)) or ((vs2+OperandValue)>32) or
         ((not Unmasked) and (vd<FieldStride)) or
-        ((vd<(vs2+OperandValue)) and (vs2<(vd+((NumFields+1)*FieldStride)))) then begin
+        ((NumFields>0) and (vd<(vs2+OperandValue)) and (vs2<(vd+((NumFields+1)*FieldStride)))) or
+        ((NumFields=0) and not VectorOverlapAllowed(vd,LMUL8,vs2,SubIndex)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -112976,7 +116654,10 @@ begin
 
      // Special case: rs1=x0, rd=x0 means keep vl unchanged
      // But only if VLMAX doesn't change; otherwise reserved (set vill)
-     if (rs1=TRegister.Zero) and (rd=TRegister.Zero) then begin
+     // vsetivli has no rs1 register, its AVL is the 5-bit immediate in that field, so this holds
+     // for vsetvli and vsetvl only ("vsetivli x0,0" sets vl to 0)
+     if (rs1=TRegister.Zero) and (rd=TRegister.Zero) and
+        ((aInstruction and TPasRISCVUInt32($c0000000))<>TPasRISCVUInt32($c0000000)) then begin
       // Compute old VLMAX from current vtype
       OldVTypeValue:=fState.CSR.fData[TCSR.TAddress.VTYPE];
       // If current vtype has vill set, the operation is reserved, set vill
@@ -113090,19 +116771,21 @@ begin
      EVL:=fState.CSR.fData[TCSR.TAddress.VL];
      LMUL8:=VectorGetLMUL;
      if (not VectorCheckRegAlign(vs2,LMUL8)) or
-        ((not (funct6 in [$30,$31])) and not VectorCheckRegAlign(vs1,LMUL8)) or
+        // vrgatherei16.vv ($0e) reads its indices with EEW 16, so its vs1 group has the EMUL
+        // (16/SEW)*LMUL and is checked against that in the instruction itself
+        ((not (funct6 in [$0e,$30,$31])) and not VectorCheckRegAlign(vs1,LMUL8)) or
         ((not (funct6 in [$11,$13,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) and not VectorCheckRegAlign(vd,LMUL8)) or
         ((funct6 in [$32,$33,$34,$35,$36,$37]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
         ((funct6 in [$2c,$2d,$2e,$2f]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vadc/vsbc, vmerge/vmv, reductions)
         ((not Unmasked) and (vd=0) and not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) or
-        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
-        ((funct6 in [$32,$33,$36,$37]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
-        // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
-        ((funct6 in [$32,$33,$34,$35,$36,$37]) and ((vd=vs1) or ((LMUL8>=8) and (vs1>vd) and (vs1<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
-        // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
-        ((funct6 in [$2c,$2d,$2e,$2f]) and ((vd=vs2) or ((LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
+        // Widening: the vd group (2*LMUL) may overlap the narrow vs2 group only in its highest part
+        ((funct6 in [$32,$33,$36,$37]) and not VectorOverlapAllowed(vd,LMUL8*2,vs2,LMUL8)) or
+        // Widening: the vd group (2*LMUL) may overlap the narrow vs1 group only in its highest part
+        ((funct6 in [$32,$33,$34,$35,$36,$37]) and not VectorOverlapAllowed(vd,LMUL8*2,vs1,LMUL8)) or
+        // Narrowing: vd group (LMUL) may overlap the wide vs2 group (2*LMUL) only in its lowest part (vd=vs2)
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -113314,12 +116997,14 @@ begin
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
-          SubIndex:=VectorGetElement(vs1,Index,SEW);
+          // The index has the full element width, from 2^32 on it must give 0 and must not wrap
+          // into the register group, so it goes through the 64 bit wide SourceValue
+          SourceValue:=VectorGetElement(vs1,Index,SEW);
           VLMAX:=((fVLEN div SEW)*VectorGetLMUL) shr 3;
-          if SubIndex>=VLMAX then begin
+          if SourceValue>=VLMAX then begin
            VectorSetElement(vd,Index,SEW,0);
           end else begin
-           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,TPasRISCVUInt32(SourceValue),SEW));
           end;
          end;
         end;
@@ -113481,7 +117166,7 @@ begin
          end else begin
           Stride:=0;
          end;
-         if (SourceValue<(OperandValue+Stride)) then begin
+         if (SourceValue<OperandValue) or ((Stride<>0) and (SourceValue<=OperandValue)) then begin // the sum of vs1 and the borrow-in must not wrap at SEW=64
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
          end else begin
           fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
@@ -114216,21 +117901,23 @@ begin
      end;
      LMUL8:=VectorGetLMUL;
      if ((funct6<>$10) and not VectorCheckRegAlign(vs2,LMUL8)) or
-        ((not (funct6 in [$01,$03,$05,$07,$10,$12,$31,$33])) and not VectorCheckRegAlign(vs1,LMUL8)) or
+        // The vs1 field is a sub-opcode for VFUNARY0 ($12: vfcvt and friends) and VFUNARY1 ($13:
+        // vfsqrt, vfrsqrt7, vfrec7, vfclass), not a register, so no alignment applies to it
+        ((not (funct6 in [$01,$03,$05,$07,$10,$12,$13,$31,$33])) and not VectorCheckRegAlign(vs1,LMUL8)) or
         ((not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) and not VectorCheckRegAlign(vd,LMUL8)) or
         ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
         ((funct6 in [$34,$36]) and not VectorCheckRegAlign(vs2,LMUL8*2)) or
         ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except reductions, vfmv, and FP compares)
         ((not Unmasked) and (vd=0) and not (funct6 in [$01,$03,$05,$07,$10,$18,$19,$1b,$1c,$31,$33])) or
-        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
-        ((funct6 in [$30,$32,$38,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
-        // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
-        ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs1) or ((LMUL8>=8) and (vs1>vd) and (vs1<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
+        // Widening: the vd group (2*LMUL) may overlap the narrow vs2 group only in its highest part
+        ((funct6 in [$30,$32,$38,$3b,$3c,$3d,$3e,$3f]) and not VectorOverlapAllowed(vd,LMUL8*2,vs2,LMUL8)) or
+        // Widening: the vd group (2*LMUL) may overlap the narrow vs1 group only in its highest part
+        ((funct6 in [$30,$32,$34,$36,$38,$3b,$3c,$3d,$3e,$3f]) and not VectorOverlapAllowed(vd,LMUL8*2,vs1,LMUL8)) or
         // VFUNARY0 widening (vfwcvt.*): vd needs 2*LMUL alignment, SEW<64, no overlap with vs2
         ((funct6=$12) and (vs1 in [$08,$09,$0a,$0b,$0c,$0d,$0e,$0f,$1a]) and (not VectorCheckRegAlign(vd,LMUL8*2))) or
         ((funct6=$12) and (vs1 in [$08,$09,$0a,$0b,$0c,$0d,$0e,$0f,$1a]) and (SEW>=64)) or
-        ((funct6=$12) and (vs1 in [$08,$09,$0a,$0b,$0c,$0d,$0e,$0f,$1a]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
+        ((funct6=$12) and (vs1 in [$08,$09,$0a,$0b,$0c,$0d,$0e,$0f,$1a]) and not VectorOverlapAllowed(vd,LMUL8*2,vs2,LMUL8)) or
         // VFUNARY0 narrowing (vfncvt.*): vs2 needs 2*LMUL alignment
         ((funct6=$12) and (vs1 in [$10,$11,$12,$13,$14,$15,$16,$17,$1d]) and (not VectorCheckRegAlign(vs2,LMUL8*2))) or
         // VFUNARY0 narrowing (vfncvt.*): vd must not overlap the upper half of the wide vs2 group
@@ -114271,7 +117958,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA+FloatB;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -114345,7 +118032,7 @@ begin
           SourceValue:=VectorGetElement(vs1,0,16);
           FloatResult:=VectorGetFloat16(vs1,0);
           if IsNaN(FloatResult) and ((SourceValue and $0200)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
@@ -114353,7 +118040,7 @@ begin
              OperandValue:=VectorGetElement(vs2,Index,16);
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) and ((OperandValue and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatResult+FloatA;
             end;
@@ -114433,7 +118120,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA-FloatB;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -114507,7 +118194,7 @@ begin
           SourceValue:=VectorGetElement(vs1,0,16);
           FloatResult:=VectorGetFloat16(vs1,0);
           if IsNaN(FloatResult) and ((SourceValue and $0200)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
@@ -114515,7 +118202,7 @@ begin
              OperandValue:=VectorGetElement(vs2,Index,16);
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) and ((OperandValue and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatResult+FloatA;
             end;
@@ -114595,7 +118282,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatB) then begin
               VectorSetElement(vd,Index,16,$7e00);
@@ -114636,7 +118323,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(FloatA) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $00400000)=0)) or
                 (IsNaN(FloatB) and ((TPasRISCVUInt32(pointer(@FloatB)^) and $00400000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatB) then begin
               VectorSetElement(vd,Index,32,$7fc00000); // canonical NaN
@@ -114680,7 +118367,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(DoubleA) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $0008000000000000)=0)) or
                 (IsNaN(DoubleB) and ((TPasRISCVUInt64(pointer(@DoubleB)^) and $0008000000000000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(DoubleA) and IsNaN(DoubleB) then begin
               VectorSetElement(vd,Index,64,$7ff8000000000000); // canonical NaN
@@ -114729,14 +118416,14 @@ begin
          end else{$endif}begin
           FloatResult:=VectorGetFloat16(vs1,0);
           if IsNaN(FloatResult) and ((VectorGetElement(vs1,0,16) and $0200)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
             if Unmasked or VectorGetMaskBit(Index) then begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) and ((VectorGetElement(vs2,Index,16) and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatResult) then begin
               // Both NaN: canonical NaN, continue processing
@@ -114769,14 +118456,14 @@ begin
          end else{$endif}begin
           FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
           if IsNaN(FloatResult) and ((TPasRISCVUInt32(pointer(@FloatResult)^) and $00400000)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
             if Unmasked or VectorGetMaskBit(Index) then begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if IsNaN(FloatA) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $00400000)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatResult) then begin
               // Both NaN: produce canonical NaN
@@ -114809,14 +118496,14 @@ begin
          end else{$endif}begin
           DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
           if IsNaN(DoubleResult) and ((TPasRISCVUInt64(pointer(@DoubleResult)^) and $0008000000000000)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
             if Unmasked or VectorGetMaskBit(Index) then begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if IsNaN(DoubleA) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $0008000000000000)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(DoubleA) and IsNaN(DoubleResult) then begin
               // Both NaN: produce canonical NaN
@@ -114867,7 +118554,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatB) then begin
               VectorSetElement(vd,Index,16,$7e00);
@@ -114909,7 +118596,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(FloatA) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $00400000)=0)) or
                 (IsNaN(FloatB) and ((TPasRISCVUInt32(pointer(@FloatB)^) and $00400000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatB) then begin
               VectorSetElement(vd,Index,32,$7fc00000); // canonical NaN
@@ -114953,7 +118640,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(DoubleA) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $0008000000000000)=0)) or
                 (IsNaN(DoubleB) and ((TPasRISCVUInt64(pointer(@DoubleB)^) and $0008000000000000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(DoubleA) and IsNaN(DoubleB) then begin
               VectorSetElement(vd,Index,64,$7ff8000000000000); // canonical NaN
@@ -115002,14 +118689,14 @@ begin
          end else{$endif}begin
           FloatResult:=VectorGetFloat16(vs1,0);
           if IsNaN(FloatResult) and ((VectorGetElement(vs1,0,16) and $0200)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
             if Unmasked or VectorGetMaskBit(Index) then begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) and ((VectorGetElement(vs2,Index,16) and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatResult) then begin
               // Both NaN: canonical NaN, continue processing
@@ -115042,14 +118729,14 @@ begin
          end else{$endif}begin
           FloatResult:=TPasRISCVFloat(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
           if IsNaN(FloatResult) and ((TPasRISCVUInt32(pointer(@FloatResult)^) and $00400000)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
             if Unmasked or VectorGetMaskBit(Index) then begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if IsNaN(FloatA) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $00400000)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(FloatResult) then begin
               // Both NaN: produce canonical NaN
@@ -115082,14 +118769,14 @@ begin
          end else{$endif}begin
           DoubleResult:=TPasRISCVDouble(pointer(@fState.VectorRegisters[TVectorRegister(vs1)][0])^);
           if IsNaN(DoubleResult) and ((TPasRISCVUInt64(pointer(@DoubleResult)^) and $0008000000000000)=0) then begin
-           fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+           fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
           end;
           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
             if Unmasked or VectorGetMaskBit(Index) then begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if IsNaN(DoubleA) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $0008000000000000)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(DoubleA) and IsNaN(DoubleResult) then begin
               // Both NaN: produce canonical NaN
@@ -115302,21 +118989,21 @@ begin
        case SEW of
         $10:begin
          fState.FPURegisters[TFPURegister(ord(rd))].ui64:=$ffffffffffff0000 or TPasRISCVUInt64(TPasRISCVUInt16(VectorGetElement(vs2,0,16)));
-         //SetFPUExceptions;
+         fState.CSR.SetFSDirty; // writes an FP register
          fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
          result:=4;
          exit;
         end;
         $20:begin
          fState.FPURegisters[TFPURegister(ord(rd))].ui64:=$ffffffff00000000 or TPasRISCVUInt32(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][0])^);
-         //SetFPUExceptions;
+         fState.CSR.SetFSDirty; // writes an FP register
          fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
          result:=4;
          exit;
         end;
         $40:begin
          fState.FPURegisters[TFPURegister(ord(rd))].ui64:=TPasRISCVUInt64(pointer(@fState.VectorRegisters[TVectorRegister(vs2)][0])^);
-         //SetFPUExceptions;
+         fState.CSR.SetFSDirty; // writes an FP register
          fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
          result:=4;
          exit;
@@ -115400,10 +119087,10 @@ begin
                   VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(Trunc(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(Trunc(Floor(FloatA)))));
+                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(Trunc(FloorToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(Trunc(Ceil(FloatA)))));
+                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(Trunc(CeilToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)))));
@@ -115487,10 +119174,10 @@ begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(FloatA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloorToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(FloatA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(CeilToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)))));
@@ -115574,10 +119261,10 @@ begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(DoubleA)));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(DoubleA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloorToFloat64(DoubleA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(DoubleA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(CeilToFloat64(DoubleA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA))));
@@ -115631,10 +119318,10 @@ begin
                   VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVInt16(Trunc(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVInt16(Trunc(Floor(FloatA))))));
+                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVInt16(Trunc(FloorToFloat32(FloatA))))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVInt16(Trunc(Ceil(FloatA))))));
+                  VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVInt16(Trunc(CeilToFloat32(FloatA))))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(TPasRISCVInt16(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA))))));
@@ -115677,10 +119364,10 @@ begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(FloatA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloorToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(FloatA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(CeilToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)))));
@@ -115723,10 +119410,10 @@ begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(DoubleA)));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(DoubleA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloorToFloat64(DoubleA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(DoubleA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(CeilToFloat64(DoubleA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA))));
@@ -115803,7 +119490,7 @@ begin
              for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
               if Unmasked or VectorGetMaskBit(Index) then begin
                SourceValue:=VectorGetElement(vs2,Index,64);
-               VectorSetFloat64(vd,Index,TPasRISCVDouble(SourceValue));
+               VectorSetFloat64(vd,Index,UInt64ToFloat64(SourceValue)); // FPC would round twice above 2^63
               end;
              end;
             end;
@@ -116165,10 +119852,10 @@ begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(FloatA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloorToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(FloatA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(CeilToFloat32(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA)))));
@@ -116252,10 +119939,10 @@ begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloatA)));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(FloatA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloorToFloat32(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(FloatA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(CeilToFloat32(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA))));
@@ -116309,10 +119996,10 @@ begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(TPasRISCVInt32(Trunc(FloatA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(TPasRISCVInt32(Trunc(Floor(FloatA))))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(TPasRISCVInt32(Trunc(FloorToFloat32(FloatA))))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(TPasRISCVInt32(Trunc(Ceil(FloatA))))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(TPasRISCVInt32(Trunc(CeilToFloat32(FloatA))))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(TPasRISCVInt32(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA))))));
@@ -116355,10 +120042,10 @@ begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloatA)));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Floor(FloatA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(FloorToFloat32(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(Ceil(FloatA))));
+                  VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(CeilToFloat32(FloatA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,64,TPasRISCVUInt64(Trunc(RoundToNearestTiesToMaxMagnitude32(FloatA))));
@@ -116388,6 +120075,20 @@ begin
         $0a:begin
          // vfwcvt.f.xu.v
          case SEW of
+          $08:begin
+           // uint8 to fp16 (Zvfh), every value fits exactly, so no rounding and no flags, which
+           // also makes the strict path the same code
+           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+             if Unmasked or VectorGetMaskBit(Index) then begin
+              VectorSetFloat16(vd,Index,TPasRISCVFloat(TPasRISCVInt32(TPasRISCVUInt8(VectorGetElement(vs2,Index,8)))));
+             end;
+            end;
+           end;
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+           result:=4;
+           exit;
+          end;
           $10:begin
 {$ifdef PasRISCVStrictCompliantFPU}
            if fStrictCompliantFPU then begin
@@ -116437,6 +120138,19 @@ begin
         $0b:begin
          // vfwcvt.f.x.v
          case SEW of
+          $08:begin
+           // int8 to fp16 (Zvfh), exact like the unsigned variant
+           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+             if Unmasked or VectorGetMaskBit(Index) then begin
+              VectorSetFloat16(vd,Index,TPasRISCVFloat(TPasRISCVInt32(TPasRISCVInt8(TPasRISCVUInt8(VectorGetElement(vs2,Index,8))))));
+             end;
+            end;
+           end;
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+           result:=4;
+           exit;
+          end;
           $10:begin
 {$ifdef PasRISCVStrictCompliantFPU}
            if fStrictCompliantFPU then begin
@@ -116496,7 +120210,7 @@ begin
                SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
                FloatResult:=TPasRISCVFloat(TPasRISCVHalfFloat(pointer(@SourceValue)^));
                if IsNaN(FloatResult) and ((SourceValue and $0200)=0) then begin
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                end;
                VectorSetFloat32(vd,Index,FloatResult);
               end;
@@ -116718,6 +120432,22 @@ begin
         $10:begin
          // vfncvt.xu.f.w
          case SEW of
+          $08:begin
+           // fp16 to uint8 (Zvfh), rounding, saturation and flags come from the helper, which
+           // decides them itself, so the strict path is the same code and the host flags of the
+           // half to single conversion are thrown away
+           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+             if Unmasked or VectorGetMaskBit(Index) then begin
+              VectorSetElement(vd,Index,8,VectorFloatToSmallInteger(VectorGetFloat16(vs2,Index),8,false,false));
+             end;
+            end;
+           end;
+           feclearexcept(FE_ALL_EXCEPT);
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+           result:=4;
+           exit;
+          end;
           $10:begin
 {$ifdef PasRISCVStrictCompliantFPU}
            if fStrictCompliantFPU then begin
@@ -116793,7 +120523,7 @@ begin
                   VectorSetElement(vd,Index,16,SourceValue);
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  SourceValue:=TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(FloatA))));
+                  SourceValue:=TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloorToFloat32(FloatA))));
                   if SourceValue>$ffff then begin
                    fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                    SourceValue:=$ffff;
@@ -116801,7 +120531,7 @@ begin
                   VectorSetElement(vd,Index,16,SourceValue);
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  SourceValue:=TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(FloatA))));
+                  SourceValue:=TPasRISCVUInt64(TPasRISCVUInt32(Trunc(CeilToFloat32(FloatA))));
                   if SourceValue>$ffff then begin
                    fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                    SourceValue:=$ffff;
@@ -116900,10 +120630,10 @@ begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(DoubleA))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Floor(DoubleA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(FloorToFloat64(DoubleA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(Ceil(DoubleA)))));
+                  VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(CeilToFloat64(DoubleA)))));
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
                   VectorSetElement(vd,Index,32,TPasRISCVUInt64(TPasRISCVUInt32(Trunc(RoundToNearestTiesToMaxMagnitude64(DoubleA)))));
@@ -116933,6 +120663,20 @@ begin
         $11:begin
          // vfncvt.x.f.w
          case SEW of
+          $08:begin
+           // fp16 to int8 (Zvfh)
+           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+             if Unmasked or VectorGetMaskBit(Index) then begin
+              VectorSetElement(vd,Index,8,VectorFloatToSmallInteger(VectorGetFloat16(vs2,Index),8,true,false));
+             end;
+            end;
+           end;
+           feclearexcept(FE_ALL_EXCEPT);
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+           result:=4;
+           exit;
+          end;
           $10:begin
 {$ifdef PasRISCVStrictCompliantFPU}
            if fStrictCompliantFPU then begin
@@ -116973,7 +120717,7 @@ begin
                   VectorSetElement(vd,Index,16,OperandValue and $ffff);
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Trunc(Floor(FloatA)))));
+                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Trunc(FloorToFloat32(FloatA)))));
                   if TPasRISCVInt64(OperandValue)>32767 then begin
                    fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                    OperandValue:=32767;
@@ -116984,7 +120728,7 @@ begin
                   VectorSetElement(vd,Index,16,OperandValue and $ffff);
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Trunc(Ceil(FloatA)))));
+                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Trunc(CeilToFloat32(FloatA)))));
                   if TPasRISCVInt64(OperandValue)>32767 then begin
                    fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                    OperandValue:=32767;
@@ -117067,7 +120811,7 @@ begin
                   VectorSetElement(vd,Index,32,OperandValue and $ffffffff);
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(Floor(DoubleA))));;
+                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(FloorToFloat64(DoubleA))));;
                   if TPasRISCVInt64(OperandValue)>2147483647 then begin
                    fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                    OperandValue:=$7fffffff;
@@ -117078,7 +120822,7 @@ begin
                   VectorSetElement(vd,Index,32,OperandValue and $ffffffff);
                  end;
                  TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(Ceil(DoubleA))));;
+                  OperandValue:=TPasRISCVUInt64(TPasRISCVInt64(Trunc(CeilToFloat64(DoubleA))));;
                   if TPasRISCVInt64(OperandValue)>2147483647 then begin
                    fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                    OperandValue:=$7fffffff;
@@ -117161,7 +120905,7 @@ begin
              for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
               if Unmasked or VectorGetMaskBit(Index) then begin
                SourceValue:=VectorGetElement(vs2,Index,64);
-               VectorSetFloat32(vd,Index,TPasRISCVFloat(SourceValue));
+               VectorSetFloat32(vd,Index,UInt64ToFloat32(SourceValue)); // FPC would round twice above 2^63
               end;
              end;
             end;
@@ -117242,7 +120986,7 @@ begin
               if Unmasked or VectorGetMaskBit(Index) then begin
                FloatA:=VectorGetFloat32(vs2,Index);
                if IsNaN(FloatA) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $00400000)=0) then begin
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                end;
                TPasRISCVHalfFloat(pointer(@OperandValue)^):=TPasRISCVHalfFloat.FromFloat(FloatA);
                VectorSetElement(vd,Index,16,TPasRISCVUInt64(TPasRISCVUInt16(OperandValue)));
@@ -117265,7 +121009,7 @@ begin
               if Unmasked or VectorGetMaskBit(Index) then begin
                DoubleA:=VectorGetFloat64(vs2,Index);
                if IsNaN(DoubleA) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $0008000000000000)=0) then begin
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                end;
                VectorSetFloat32(vd,Index,DoubleA);
               end;
@@ -117321,6 +121065,20 @@ begin
         $16:begin
          // vfncvt.rtz.xu.f.w
          case SEW of
+          $08:begin
+           // fp16 to uint8 with rounding towards zero (Zvfh)
+           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+             if Unmasked or VectorGetMaskBit(Index) then begin
+              VectorSetElement(vd,Index,8,VectorFloatToSmallInteger(VectorGetFloat16(vs2,Index),8,false,true));
+             end;
+            end;
+           end;
+           feclearexcept(FE_ALL_EXCEPT);
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+           result:=4;
+           exit;
+          end;
           $10:begin
 {$ifdef PasRISCVStrictCompliantFPU}
            if fStrictCompliantFPU then begin
@@ -117407,6 +121165,20 @@ begin
         $17:begin
          // vfncvt.rtz.x.f.w
          case SEW of
+          $08:begin
+           // fp16 to int8 with rounding towards zero (Zvfh)
+           if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+            for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+             if Unmasked or VectorGetMaskBit(Index) then begin
+              VectorSetElement(vd,Index,8,VectorFloatToSmallInteger(VectorGetFloat16(vs2,Index),8,true,true));
+             end;
+            end;
+           end;
+           feclearexcept(FE_ALL_EXCEPT);
+           fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+           result:=4;
+           exit;
+          end;
           $10:begin
 {$ifdef PasRISCVStrictCompliantFPU}
            if fStrictCompliantFPU then begin
@@ -117521,7 +121293,7 @@ begin
                SourceValue:=VectorGetElement(vs2,Index,16);
                FloatA:=VectorGetFloat16(vs2,Index);
                if IsNaN(FloatA) and ((SourceValue and $0200)=0) then begin
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                end;
                FloatResult:=Sqrt(FloatA);
                VectorSetFloat16(vd,Index,FloatResult);
@@ -117589,33 +121361,33 @@ begin
             for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
              if Unmasked or VectorGetMaskBit(Index) then begin
               SourceValue:=TPasRISCVUInt16(VectorGetElement(vs2,Index,16));
-              if (SourceValue and $8000)<>0 then begin
+              // NaN before the sign: a quiet NaN gives the canonical NaN without NV, only a
+              // signaling one raises it (the sign check came first and made a negative quiet NaN
+              // raise NV)
+              if ((SourceValue and $7c00)=$7c00) and ((SourceValue and $03ff)<>0) then begin
+               if (SourceValue and $0200)=0 then begin
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
+               end;
+               VectorSetElement(vd,Index,16,TPasRISCVUInt64($7e00));
+              end else if (SourceValue and $8000)<>0 then begin
                if (SourceValue and $7fff)<>0 then begin
+                // Negative, also -inf: canonical NaN with NV
                 VectorSetElement(vd,Index,16,TPasRISCVUInt64($7e00));
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                end else begin
                 VectorSetElement(vd,Index,16,TPasRISCVUInt64($fc00));
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
                end;
               end else if (SourceValue and $7c00)=$7c00 then begin
-               if (SourceValue and $03ff)<>0 then begin
-                if (SourceValue and $0200)=0 then begin
-                 fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
-                end;
-                VectorSetElement(vd,Index,16,TPasRISCVUInt64($7e00));
-               end else begin
-                VectorSetElement(vd,Index,16,TPasRISCVUInt64($0000));
-               end;
+               // +inf -> +0
+               VectorSetElement(vd,Index,16,TPasRISCVUInt64($0000));
               end else if (SourceValue and $7fff)=0 then begin
                VectorSetElement(vd,Index,16,TPasRISCVUInt64($7c00));
-               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+               fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
               end else begin
-               // Normal/subnormal positive: widen to f32, apply spec-conformant lookup, narrow back
-               FloatA:=VectorGetFloat16(vs2,Index);
-               TPasRISCVFloat(pointer(@OperandValue)^):=FloatA;
-               OperandValue:=TPasRISCVUInt64(VFRsqrt732(TPasRISCVUInt32(OperandValue)));
-               FloatResult:=TPasRISCVFloat(pointer(@OperandValue)^);
-               VectorSetFloat16(vd,Index,FloatResult);
+               // Normal/subnormal positive: lookup in half precision (the detour through single
+               // precision got a subnormal input wrong)
+               VectorSetElement(vd,Index,16,TPasRISCVUInt64(VFRsqrt716(TPasRISCVUInt16(SourceValue))));
               end;
              end;
             end;
@@ -117630,33 +121402,31 @@ begin
             for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
              if Unmasked or VectorGetMaskBit(Index) then begin
               SourceValue:=TPasRISCVUInt32(VectorGetElement(vs2,Index,32));
-              // Handle special cases
-              if (SourceValue and $80000000)<>0 then begin
-               // Negative (not -0): canonical NaN, set NV
+              // Handle special cases, NaN before the sign: a quiet NaN gives the canonical NaN
+              // without NV, only a signaling one raises it
+              if ((SourceValue and $7f800000)=$7f800000) and ((SourceValue and $007fffff)<>0) then begin
+               if (SourceValue and $00400000)=0 then begin
+                // sNaN -> set NV
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
+               end;
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64($7fc00000));
+              end else if (SourceValue and $80000000)<>0 then begin
+               // Negative (not -0), also -inf: canonical NaN, set NV
                if (SourceValue and $7fffffff)<>0 then begin
                 VectorSetElement(vd,Index,32,TPasRISCVUInt64($7fc00000));
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                end else begin
                 // -0 -> -inf, set DZ
                 VectorSetElement(vd,Index,32,TPasRISCVUInt64($ff800000));
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
                end;
               end else if (SourceValue and $7f800000)=$7f800000 then begin
-               if (SourceValue and $007fffff)<>0 then begin
-                // NaN -> canonical NaN
-                if (SourceValue and $00400000)=0 then begin
-                 // sNaN -> set NV
-                 fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
-                end;
-                VectorSetElement(vd,Index,32,TPasRISCVUInt64($7fc00000));
-               end else begin
-                // +inf -> +0
-                VectorSetElement(vd,Index,32,TPasRISCVUInt64($00000000));
-               end;
+               // +inf -> +0
+               VectorSetElement(vd,Index,32,TPasRISCVUInt64($00000000));
               end else if (SourceValue and $7fffffff)=0 then begin
                // +0 -> +inf, set DZ
                VectorSetElement(vd,Index,32,TPasRISCVUInt64($7f800000));
-               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+               fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
               end else begin
                // Normal/subnormal positive: spec-conformant lookup
                VectorSetElement(vd,Index,32,TPasRISCVUInt64(VFRsqrt732(TPasRISCVUInt32(SourceValue))));
@@ -117674,26 +121444,27 @@ begin
             for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
              if Unmasked or VectorGetMaskBit(Index) then begin
               OperandValue:=VectorGetElement(vs2,Index,64);
-              if (OperandValue and $8000000000000000)<>0 then begin
+              // NaN before the sign: a quiet NaN gives the canonical NaN without NV, only a
+              // signaling one raises it
+              if ((OperandValue and $7ff0000000000000)=$7ff0000000000000) and ((OperandValue and $000fffffffffffff)<>0) then begin
+               if (OperandValue and $0008000000000000)=0 then begin
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
+               end;
+               VectorSetElement(vd,Index,64,$7ff8000000000000);
+              end else if (OperandValue and $8000000000000000)<>0 then begin
                if (OperandValue and $7fffffffffffffff)<>0 then begin
                 VectorSetElement(vd,Index,64,$7ff8000000000000);
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                end else begin
                 VectorSetElement(vd,Index,64,$fff0000000000000);
-                fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+                fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
                end;
               end else if (OperandValue and $7ff0000000000000)=$7ff0000000000000 then begin
-               if (OperandValue and $000fffffffffffff)<>0 then begin
-                if (OperandValue and $0008000000000000)=0 then begin
-                 fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
-                end;
-                VectorSetElement(vd,Index,64,$7ff8000000000000);
-               end else begin
-                VectorSetElement(vd,Index,64,$0000000000000000);
-               end;
+               // +inf -> +0
+               VectorSetElement(vd,Index,64,$0000000000000000);
               end else if (OperandValue and $7fffffffffffffff)=0 then begin
                VectorSetElement(vd,Index,64,$7ff0000000000000);
-               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+               fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
               end else begin
                // Normal/subnormal positive: spec-conformant lookup (f64)
                VectorSetElement(vd,Index,64,VFRsqrt764(OperandValue));
@@ -117725,7 +121496,7 @@ begin
                if (SourceValue and $03ff)<>0 then begin
                 // NaN -> canonical NaN
                 if (SourceValue and $0200)=0 then begin
-                 fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                 fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                 end;
                 VectorSetElement(vd,Index,16,TPasRISCVUInt64($7e00));
                end else begin
@@ -117735,14 +121506,11 @@ begin
               end else if (SourceValue and $7fff)=0 then begin
                // +/-0 -> +/-inf (preserve sign), set DZ
                VectorSetElement(vd,Index,16,TPasRISCVUInt64((SourceValue and $8000) or $7c00));
-               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+               fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
               end else begin
-               // Normal/subnormal: widen to f32, apply spec-conformant lookup, narrow back
-               FloatA:=VectorGetFloat16(vs2,Index);
-               TPasRISCVFloat(pointer(@OperandValue)^):=FloatA;
-               OperandValue:=TPasRISCVUInt64(VFRec732(TPasRISCVUInt32(OperandValue)));
-               FloatResult:=TPasRISCVFloat(pointer(@OperandValue)^);
-               VectorSetFloat16(vd,Index,FloatResult);
+               // Normal/subnormal: lookup in half precision (the detour through single precision
+               // got a subnormal input wrong and never saw the overflow that follows frm)
+               VectorSetElement(vd,Index,16,TPasRISCVUInt64(VFRec716(TPasRISCVUInt16(SourceValue))));
               end;
              end;
             end;
@@ -117761,7 +121529,7 @@ begin
                if (SourceValue and $007fffff)<>0 then begin
                 // NaN -> canonical NaN
                 if (SourceValue and $00400000)=0 then begin
-                 fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                 fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                 end;
                 VectorSetElement(vd,Index,32,TPasRISCVUInt64($7fc00000));
                end else begin
@@ -117771,7 +121539,7 @@ begin
               end else if (SourceValue and $7fffffff)=0 then begin
                // +/-0 -> +/-inf (preserve sign), set DZ
                VectorSetElement(vd,Index,32,TPasRISCVUInt64((SourceValue and $80000000) or $7f800000));
-               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+               fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
               end else begin
                // Normal/subnormal: spec-conformant lookup
                VectorSetElement(vd,Index,32,TPasRISCVUInt64(VFRec732(TPasRISCVUInt32(SourceValue))));
@@ -117792,7 +121560,7 @@ begin
               if (OperandValue and $7ff0000000000000)=$7ff0000000000000 then begin
                if (OperandValue and $000fffffffffffff)<>0 then begin
                 if (OperandValue and $0008000000000000)=0 then begin
-                 fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+                 fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
                 end;
                 VectorSetElement(vd,Index,64,$7ff8000000000000);
                end else begin
@@ -117800,7 +121568,7 @@ begin
                end;
               end else if (OperandValue and $7fffffffffffffff)=0 then begin
                VectorSetElement(vd,Index,64,(OperandValue and $8000000000000000) or $7ff0000000000000);
-               fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero);
+               fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.DivByZero));
               end else begin
                // Normal/subnormal: spec-conformant lookup (f64)
                VectorSetElement(vd,Index,64,VFRec764(OperandValue));
@@ -118005,7 +121773,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA=FloatB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118097,7 +121865,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              FloatB:=VectorGetFloat16(vs1,Index);
              if IsNaN(FloatA) or IsNaN(FloatB) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<=FloatB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118126,7 +121894,7 @@ begin
              FloatA:=VectorGetFloat32(vs2,Index);
              FloatB:=VectorGetFloat32(vs1,Index);
              if IsNaN(FloatA) or IsNaN(FloatB) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<=FloatB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118155,7 +121923,7 @@ begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              DoubleB:=VectorGetFloat64(vs1,Index);
              if IsNaN(DoubleA) or IsNaN(DoubleB) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if DoubleA<=DoubleB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118195,7 +121963,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              FloatB:=VectorGetFloat16(vs1,Index);
              if IsNaN(FloatA) or IsNaN(FloatB) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<FloatB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118224,7 +121992,7 @@ begin
              FloatA:=VectorGetFloat32(vs2,Index);
              FloatB:=VectorGetFloat32(vs1,Index);
              if IsNaN(FloatA) or IsNaN(FloatB) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<FloatB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118253,7 +122021,7 @@ begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              DoubleB:=VectorGetFloat64(vs1,Index);
              if IsNaN(DoubleA) or IsNaN(DoubleB) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if DoubleA<DoubleB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118296,7 +122064,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<>FloatB then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -118389,7 +122157,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA/FloatB;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -118469,7 +122237,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA*FloatB;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -118551,7 +122319,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -118635,7 +122403,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -118719,7 +122487,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -118803,7 +122571,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -118887,7 +122655,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -118971,7 +122739,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -119055,7 +122823,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -119139,7 +122907,7 @@ begin
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -119221,7 +122989,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA+FloatB;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119280,7 +123048,7 @@ begin
              OperandValue:=VectorGetElement(vs2,Index,16);
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) and ((OperandValue and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatResult+FloatA;
             end;
@@ -119343,7 +123111,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA-FloatB;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119402,7 +123170,7 @@ begin
              OperandValue:=VectorGetElement(vs2,Index,16);
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) and ((OperandValue and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatResult+FloatA;
             end;
@@ -119463,7 +123231,7 @@ begin
              OperandValue:=VectorGetElement(vs1,Index,16);
              FloatB:=VectorGetFloat16(vs1,Index);
              if IsNaN(FloatB) and ((OperandValue and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA+FloatB;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119521,7 +123289,7 @@ begin
              OperandValue:=VectorGetElement(vs1,Index,16);
              FloatB:=VectorGetFloat16(vs1,Index);
              if IsNaN(FloatB) and ((OperandValue and $0200)=0) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA-FloatB;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119581,7 +123349,7 @@ begin
              FloatB:=VectorGetFloat16(vs1,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA*FloatB;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119668,7 +123436,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119729,7 +123497,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119790,7 +123558,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119851,7 +123619,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(FloatA,FloatB,-FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -119925,7 +123693,18 @@ begin
       exit;
      end;
      if (not (funct6 in [$18,$19,$1a,$1b,$1c,$1d,$1e,$1f])) then begin
-      if (not VectorCheckRegAlign(vs2,LMUL8)) or
+      // vs2 is a register group of LMUL only for the arithmetic forms: VWXUNARY0 ($10: vmv.x.s,
+      // vcpop.m, vfirst.m) and VMUNARY0 ($14: vmsbf/vmsof/vmsif, viota, vid) read a single
+      // register, VXUNARY0 ($12: vzext/vsext) a narrower group, checked below
+      if ((not (funct6 in [$10,$12,$14])) and not VectorCheckRegAlign(vs2,LMUL8)) or
+         // vzext/vsext: EMUL of vs2 is LMUL/8, LMUL/4 or LMUL/2 by the vs1 encoding ($02 to $07),
+         // its EEW has to stay at least 8 bits and at least EMUL 1/8, and the wider destination
+         // may overlap it only in its highest part
+         ((funct6=$12) and ((vs1<$02) or (vs1>$07) or
+                            ((SEW shr (4-(vs1 shr 1)))<8) or
+                            ((LMUL8 shr (4-(vs1 shr 1)))=0) or
+                            (not VectorCheckRegAlign(vs2,LMUL8 shr (4-(vs1 shr 1)))) or
+                            (not VectorOverlapAllowed(vd,LMUL8,vs2,LMUL8 shr (4-(vs1 shr 1)))))) or
          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17,$28,$29,$2a,$2b])) and not VectorCheckRegAlign(vs1,LMUL8)) or
          ((not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$14])) and not VectorCheckRegAlign(vd,LMUL8)) or
          ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and not VectorCheckRegAlign(vd,LMUL8*2)) or
@@ -119933,10 +123712,10 @@ begin
          ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and (SEW>=64)) or
          // vd must not overlap v0 when masked (except reductions, mask-producing/vmv ops)
          ((not Unmasked) and (vd=0) and not (funct6 in [$00,$01,$02,$03,$04,$05,$06,$07,$10,$12,$14,$17])) or
-         // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
-         ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
-         // Widening: vd group (2*LMUL) must not overlap narrow vs1 group (LMUL)
-         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and ((vd=vs1) or ((LMUL8>=8) and (vs1>vd) and (vs1<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
+         // Widening: the vd group (2*LMUL) may overlap the narrow vs2 group only in its highest part
+         ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3f]) and not VectorOverlapAllowed(vd,LMUL8*2,vs2,LMUL8)) or
+         // Widening: the vd group (2*LMUL) may overlap the narrow vs1 group only in its highest part
+         ((funct6 in [$30,$31,$32,$33,$34,$35,$36,$37,$38,$3a,$3b,$3c,$3d,$3f]) and not VectorOverlapAllowed(vd,LMUL8*2,vs1,LMUL8)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -120761,7 +124540,7 @@ begin
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
-          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs1,Index,SEW))));
+          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs1,Index,SEW),SEW)*TPasRISCVInt64(VectorGetElement(vs2,Index,SEW))));
          end;
         end;
        end;
@@ -121350,11 +125129,14 @@ begin
          exit;
         end;
        end;
-       SubIndex:=0;
-       for Index:=0 to EVL-1 do begin
-        if (fState.VectorRegisters[TVectorRegister(vs1)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
-         VectorSetElement(vd,SubIndex,SEW,VectorGetElement(vs2,Index,SEW));
-         inc(SubIndex);
+       // With vl=0 there is nothing to compress, and the loop bound would wrap around
+       if EVL>0 then begin
+        SubIndex:=0;
+        for Index:=0 to EVL-1 do begin
+         if (fState.VectorRegisters[TVectorRegister(vs1)][Index shr 3] and (TPasRISCVUInt8(1) shl (Index and 7)))<>0 then begin
+          VectorSetElement(vd,SubIndex,SEW,VectorGetElement(vs2,Index,SEW));
+          inc(SubIndex);
+         end;
         end;
        end;
        fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
@@ -121578,8 +125360,8 @@ begin
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vmerge/vmv)
         ((not Unmasked) and (vd=0) and not (funct6 in [$11,$17,$18,$19,$1c,$1d,$1e,$1f])) or
-        // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
-        ((funct6 in [$2c,$2d,$2e,$2f]) and ((vd=vs2) or ((LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
+        // Narrowing: vd group (LMUL) may overlap the wide vs2 group (2*LMUL) only in its lowest part (vd=vs2)
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -121783,7 +125565,7 @@ begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end else begin
-           if Address<SourceValue then begin
+           if (Address<SourceValue) or ((OperandValue<>0) and (Address<=SourceValue)) then begin // with a carry-in a sum equal to vs2 means an all-ones immediate
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
@@ -122089,7 +125871,8 @@ begin
          result:=4;
          exit;
         end;
-        for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]) to TPasRISCVUInt32(NumFields*fVLENB)-1 do begin
+        // EEW = SEW for the whole register move, so vstart counts elements of SEW and not bytes
+        for Index:=TPasRISCVUInt32(fState.CSR.fData[TCSR.TAddress.VSTART]*(SEW shr 3)) to TPasRISCVUInt32(NumFields*fVLENB)-1 do begin
          fState.VectorRegisters[TVectorRegister((vd+(Index div fVLENB)) and 31)][Index and (fVLENB-1)]:=fState.VectorRegisters[TVectorRegister((vs2+(Index div fVLENB)) and 31)][Index and (fVLENB-1)];
         end;
        end else begin
@@ -122105,7 +125888,7 @@ begin
 
       $25:begin
        // vsll.vi
-       SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and (SEW-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122121,7 +125904,7 @@ begin
 
       $28:begin
        // vsrl.vi
-       SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and (SEW-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122137,7 +125920,7 @@ begin
 
       $29:begin
        // vsra.vi
-       SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and (SEW-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122153,7 +125936,7 @@ begin
 
       $2a:begin
        // vssrl.vi: scaling shift right logical with rounding (unsigned)
-       SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and (SEW-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122169,7 +125952,7 @@ begin
 
       $2b:begin
        // vssra.vi: scaling shift right arithmetic with rounding (signed)
-       SubIndex:=TPasRISCVUInt32(Stride) and (SEW-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and (SEW-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122185,7 +125968,7 @@ begin
 
       $2c:begin
        // vnsrl.wi
-       SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and ((SEW*2)-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122201,7 +125984,7 @@ begin
 
       $2d:begin
        // vnsra.wi
-       SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and ((SEW*2)-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122217,7 +126000,7 @@ begin
 
       $2e:begin
        // vnclipu.wi: narrowing clip unsigned with rounding per vxrm
-       SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and ((SEW*2)-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122255,7 +126038,7 @@ begin
 
       $2f:begin
        // vnclip.wi: narrowing clip signed with rounding per vxrm
-       SubIndex:=TPasRISCVUInt32(Stride) and ((SEW*2)-1);
+       SubIndex:=TPasRISCVUInt32((aInstruction shr 15) and $1f) and ((SEW*2)-1);
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
@@ -122283,7 +126066,7 @@ begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
           SourceValue:=VectorGetElement(vs2,Index,SEW);
-          OperandValue:=TPasRISCVUInt64(Stride) and ((SEW*2)-1);
+          OperandValue:=TPasRISCVUInt64((aInstruction shr 15) and $1f) and ((SEW*2)-1);
           VectorSetElement(vd,Index,SEW*2,SourceValue shl OperandValue);
          end;
         end;
@@ -122340,10 +126123,10 @@ begin
         ((funct6 in [$2c,$2d,$2e,$2f,$30,$31,$32,$33,$34,$35,$36,$37]) and (SEW>=64)) or
         // vd must not overlap v0 when masked (except mask-result ops, vadc/vsbc, vmerge/vmv, reductions)
         ((not Unmasked) and (vd=0) and not (funct6 in [$10,$11,$12,$13,$17,$18,$19,$1a,$1b,$1c,$1d,$1e,$1f,$30,$31])) or
-        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
-        ((funct6 in [$32,$33,$36,$37]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) or
-        // Narrowing: vd group (LMUL) must not overlap wide vs2 group (2*LMUL)
-        ((funct6 in [$2c,$2d,$2e,$2f]) and ((vd=vs2) or ((LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
+        // Widening: the vd group (2*LMUL) may overlap the narrow vs2 group only in its highest part
+        ((funct6 in [$32,$33,$36,$37]) and not VectorOverlapAllowed(vd,LMUL8*2,vs2,LMUL8)) or
+        // Narrowing: vd group (LMUL) may overlap the wide vs2 group (2*LMUL) only in its lowest part (vd=vs2)
+        ((funct6 in [$2c,$2d,$2e,$2f]) and (LMUL8>=8) and (vd>vs2) and (vd<vs2+TPasRISCVUInt32(LMUL8 shr 2))) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -122547,15 +126330,17 @@ begin
          exit;
         end;
        end;
-       SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
+       // The scalar index has XLEN bits, from 2^32 on it must give 0 and must not wrap into the
+       // register group, so it goes through the 64 bit wide SourceValue
+       SourceValue:=fState.Registers[rs1];
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
           VLMAX:=((fVLEN div SEW)*VectorGetLMUL) shr 3;
-          if SubIndex>=VLMAX then begin
+          if SourceValue>=VLMAX then begin
            VectorSetElement(vd,Index,SEW,0);
           end else begin
-           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,SubIndex,SEW));
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,TPasRISCVUInt32(SourceValue),SEW));
           end;
          end;
         end;
@@ -122575,12 +126360,13 @@ begin
         result:=4;
         exit;
        end;
-       SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
+       // The offset has XLEN bits and must not be cut to 32 bit (SourceValue is 64 bit wide)
+       SourceValue:=fState.Registers[rs1];
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
-          if Index>=SubIndex then begin
-           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-SubIndex,SEW));
+          if SourceValue<=Index then begin
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index-TPasRISCVUInt32(SourceValue),SEW));
           end;
          end;
         end;
@@ -122593,13 +126379,15 @@ begin
 
       $0f:begin
        // vslidedown.vx
-       SubIndex:=TPasRISCVUInt32(fState.Registers[rs1]);
+       // The offset has XLEN bits, it must not be cut to 32 bit and its sum with the element
+       // index must not wrap, so both go through the 64 bit wide SourceValue
+       SourceValue:=fState.Registers[rs1];
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
           VLMAX:=((fVLEN div SEW)*VectorGetLMUL) shr 3;
-          if (Index+SubIndex)<VLMAX then begin
-           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,Index+SubIndex,SEW));
+          if (SourceValue<VLMAX) and ((SourceValue+Index)<VLMAX) then begin
+           VectorSetElement(vd,Index,SEW,VectorGetElement(vs2,TPasRISCVUInt32(SourceValue)+Index,SEW));
           end else begin
            VectorSetElement(vd,Index,SEW,0);
           end;
@@ -122657,7 +126445,7 @@ begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
            end;
           end else begin
-           if Address<SourceValue then begin
+           if (Address<SourceValue) or ((OperandValue<>0) and (Address<=SourceValue)) then begin // with a carry-in a sum equal to vs2 means an all-ones scalar
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
            end else begin
             fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
@@ -122708,7 +126496,7 @@ begin
           end else begin
            OperandValue:=0;
           end;
-          if (SourceValue<(Stride+OperandValue)) then begin
+          if (SourceValue<Stride) or ((OperandValue<>0) and (SourceValue<=Stride)) then begin // the sum of the scalar and the borrow-in must not wrap at SEW=64
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
           end else begin
            fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] and not (TPasRISCVUInt8(1) shl (Index and 7));
@@ -123461,8 +127249,8 @@ begin
         ((funct6=$0e) and (vd=vs2)) or
         // vd must not overlap v0 when masked (except vfmv, FP compares, reductions)
         ((not Unmasked) and (vd=0) and not (funct6 in [$10,$18,$19,$1b,$1c,$1d,$1f])) or
-        // Widening: vd group (2*LMUL) must not overlap narrow vs2 group (LMUL)
-        ((funct6 in [$30,$32,$38,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
+        // Widening: the vd group (2*LMUL) may overlap the narrow vs2 group only in its highest part
+        ((funct6 in [$30,$32,$38,$3b,$3c,$3d,$3e,$3f]) and not VectorOverlapAllowed(vd,LMUL8*2,vs2,LMUL8)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -123483,7 +127271,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((OperandValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA+ScalarFloat;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -123559,7 +127347,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((OperandValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA-ScalarFloat;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -123636,7 +127424,7 @@ begin
              // Check for signaling NaN in fp16
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(ScalarFloat) then begin
               VectorSetElement(vd,Index,16,$7e00); // canonical NaN
@@ -123677,7 +127465,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(FloatA) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $00400000)=0)) or
                 (IsNaN(ScalarFloat) and ((TPasRISCVUInt32(pointer(@ScalarFloat)^) and $00400000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(ScalarFloat) then begin
               VectorSetElement(vd,Index,32,$7fc00000); // canonical NaN
@@ -123718,7 +127506,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(DoubleA) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $0008000000000000)=0)) or
                 (IsNaN(ScalarDouble) and ((TPasRISCVUInt64(pointer(@ScalarDouble)^) and $0008000000000000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(DoubleA) and IsNaN(ScalarDouble) then begin
               VectorSetElement(vd,Index,64,$7ff8000000000000); // canonical NaN
@@ -123771,7 +127559,7 @@ begin
              // Check for signaling NaN in fp16
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(ScalarFloat) then begin
               VectorSetElement(vd,Index,16,$7e00); // canonical NaN
@@ -123812,7 +127600,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(FloatA) and ((TPasRISCVUInt32(pointer(@FloatA)^) and $00400000)=0)) or
                 (IsNaN(ScalarFloat) and ((TPasRISCVUInt32(pointer(@ScalarFloat)^) and $00400000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(FloatA) and IsNaN(ScalarFloat) then begin
               VectorSetElement(vd,Index,32,$7fc00000); // canonical NaN
@@ -123853,7 +127641,7 @@ begin
              // Check for signaling NaN
              if (IsNaN(DoubleA) and ((TPasRISCVUInt64(pointer(@DoubleA)^) and $0008000000000000)=0)) or
                 (IsNaN(ScalarDouble) and ((TPasRISCVUInt64(pointer(@ScalarDouble)^) and $0008000000000000)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if IsNaN(DoubleA) and IsNaN(ScalarDouble) then begin
               VectorSetElement(vd,Index,64,$7ff8000000000000); // canonical NaN
@@ -123905,7 +127693,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((OperandValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=ScalarFloat-FloatA;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -124411,7 +128199,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA=ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124500,7 +128288,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<=ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124528,7 +128316,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<=ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124556,7 +128344,7 @@ begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if IsNaN(DoubleA) or IsNaN(ScalarDouble) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if DoubleA<=ScalarDouble then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124595,7 +128383,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124623,7 +128411,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124651,7 +128439,7 @@ begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if IsNaN(DoubleA) or IsNaN(ScalarDouble) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if DoubleA<ScalarDouble then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124692,7 +128480,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA<>ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124781,7 +128569,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA>ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124809,7 +128597,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA>ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124837,7 +128625,7 @@ begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if IsNaN(DoubleA) or IsNaN(ScalarDouble) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if DoubleA>ScalarDouble then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124876,7 +128664,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA>=ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124904,7 +128692,7 @@ begin
             end else begin
              FloatA:=VectorGetFloat32(vs2,Index);
              if IsNaN(FloatA) or IsNaN(ScalarFloat) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if FloatA>=ScalarFloat then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124932,7 +128720,7 @@ begin
             end else begin
              DoubleA:=VectorGetFloat64(vs2,Index);
              if IsNaN(DoubleA) or IsNaN(ScalarDouble) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              if DoubleA>=ScalarDouble then begin
               fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3]:=fState.VectorRegisters[TVectorRegister(vd and 31)][Index shr 3] or (TPasRISCVUInt8(1) shl (Index and 7));
@@ -124971,7 +128759,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((OperandValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA/ScalarFloat;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125047,7 +128835,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((OperandValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=ScalarFloat/FloatA;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125123,7 +128911,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((OperandValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA*ScalarFloat;
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125201,7 +128989,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125281,7 +129069,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125361,7 +129149,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125441,7 +129229,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vs2,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125521,7 +129309,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125601,7 +129389,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125681,7 +129469,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125761,7 +129549,7 @@ begin
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatB) and ((OperandValue and $0200)=0)) or
                 (IsNaN(FloatC) and ((VectorGetElement(vd,Index,16) and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatB,-FloatC);
              VectorSetFloat16(vd,Index,FloatResult);
@@ -125839,7 +129627,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA+ScalarFloat;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -125897,7 +129685,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA-ScalarFloat;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -126059,7 +129847,7 @@ begin
              FloatA:=VectorGetFloat16(vs2,Index);
              if (IsNaN(FloatA) and ((SourceValue and $0200)=0)) or
                 (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FloatA*ScalarFloat;
              VectorSetFloat32(vd,Index,FloatResult);
@@ -126145,7 +129933,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatA) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatA,FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -126203,7 +129991,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatA) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatA,FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -126261,7 +130049,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatA) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=FusedMultiplyAddFloat(ScalarFloat,FloatA,-FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -126319,7 +130107,7 @@ begin
              FloatC:=VectorGetFloat32(vd,Index);
              if (IsNaN(ScalarFloat) and ((ScalarFP and $0200)=0)) or
                 (IsNaN(FloatA) and ((OperandValue and $0200)=0)) then begin
-              fState.CSR.fData[TCSR.TAddress.FCSR]:=fState.CSR.fData[TCSR.TAddress.FCSR] or TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid);
+              fState.CSR.SetFPUException(TPasRISCVUInt64(TCSR.TFPUExceptionMasks.Invalid));
              end;
              FloatResult:=-FusedMultiplyAddFloat(ScalarFloat,FloatA,-FloatC);
              VectorSetFloat32(vd,Index,FloatResult);
@@ -126400,7 +130188,7 @@ begin
         // vd must not overlap v0 when masked (except vmv.s.x)
         ((not Unmasked) and (vd=0) and (funct6<>$10)) or
         // Widening narrow-source ops: vd group (2*LMUL) must not overlap vs2 group (LMUL)
-        ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and ((vd=vs2) or ((LMUL8>=8) and (vs2>vd) and (vs2<vd+TPasRISCVUInt32(LMUL8 shr 2))))) then begin
+        ((funct6 in [$30,$31,$32,$33,$38,$3a,$3b,$3c,$3d,$3e,$3f]) and not VectorOverlapAllowed(vd,LMUL8*2,vs2,LMUL8)) then begin
       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
       result:=4;
       exit;
@@ -126939,6 +130727,74 @@ begin
        exit;
       end;
 
+      $29:begin
+       // vmadd.vx: vd[i] = (x[rs1] * vd[i]) + vs2[i]
+       if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+        for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          SourceValue:=VectorGetElement(vd,Index,SEW);
+          Address:=VectorGetElement(vs2,Index,SEW);
+          VectorSetElement(vd,Index,SEW,(Stride*SourceValue)+Address);
+         end;
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $2b:begin
+       // vnmsub.vx: vd[i] = -(x[rs1] * vd[i]) + vs2[i]
+       if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+        for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          SourceValue:=VectorGetElement(vd,Index,SEW);
+          Address:=VectorGetElement(vs2,Index,SEW);
+          VectorSetElement(vd,Index,SEW,Address-(Stride*SourceValue));
+         end;
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $2d:begin
+       // vmacc.vx: vd[i] = (x[rs1] * vs2[i]) + vd[i]
+       if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+        for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          SourceValue:=VectorGetElement(vs2,Index,SEW);
+          Address:=VectorGetElement(vd,Index,SEW);
+          VectorSetElement(vd,Index,SEW,(Stride*SourceValue)+Address);
+         end;
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
+      $2f:begin
+       // vnmsac.vx: vd[i] = -(x[rs1] * vs2[i]) + vd[i]
+       if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
+        for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
+         if Unmasked or VectorGetMaskBit(Index) then begin
+          SourceValue:=VectorGetElement(vs2,Index,SEW);
+          Address:=VectorGetElement(vd,Index,SEW);
+          VectorSetElement(vd,Index,SEW,Address-(Stride*SourceValue));
+         end;
+        end;
+       end;
+       fState.CSR.fData[TCSR.TAddress.VSTART]:=0;
+       fState.CSR.SetVSDirty;
+       result:=4;
+       exit;
+      end;
+
       $30:begin
        // vwaddu.vx
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
@@ -127154,7 +131010,7 @@ begin
        if fState.CSR.fData[TCSR.TAddress.VSTART]<EVL then begin
         for Index:=fState.CSR.fData[TCSR.TAddress.VSTART] to EVL-1 do begin
          if Unmasked or VectorGetMaskBit(Index) then begin
-          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(VectorGetElement(vs2,Index,SEW),SEW)*TPasRISCVInt64(Stride)));
+          VectorSetElement(vd,Index,SEW*2,TPasRISCVUInt64(TPasRISCVInt64(VectorGetElement(vd,Index,SEW*2))+SignExtend(Stride,SEW)*TPasRISCVInt64(VectorGetElement(vs2,Index,SEW))));
          end;
         end;
        end;
@@ -127225,14 +131081,17 @@ begin
       result:=4;
       exit;
      end;
-     // Overlap constraint: vd register group must not overlap vs1 or vs2 register groups
+     // Overlap constraint: Zvksh does not forbid an overlap here, source and destination element
+     // group carry the same element indices, so an identical register group is allowed and vd=vs1
+     // is used exactly like that by the SM3 driver of Linux. Only a partial overlap stays illegal,
+     // because it would destroy source elements of later element groups
      begin
       OperandValue:=LMUL8 shr 3;
       if OperandValue<1 then begin
        OperandValue:=1;
       end;
-      if ((vd<(vs1+OperandValue)) and (vs1<(vd+OperandValue))) or
-         ((vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
+      if ((vd<>vs1) and (vd<(vs1+OperandValue)) and (vs1<(vd+OperandValue))) or
+         ((vd<>vs2) and (vd<(vs2+OperandValue)) and (vs2<(vd+OperandValue))) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -128117,6 +131976,38 @@ begin
  end;
 end;
 
+procedure TPasRISCV.THART.ExecuteInstructionCBOAccess(const aAddress:TPasRISCVUInt64);
+// cbo.clean, cbo.flush and cbo.inval may access the cache block whenever a load or a store to it
+// would be allowed (Zicbom: "a cache-block management instruction is permitted to access the
+// specified cache block whenever a load instruction or store instruction is permitted to access
+// the corresponding physical addresses"). There are no caches to manage here, but the translation
+// and its faults belong to the instruction: first a probe with load permission, and only if that
+// fails the store translation, whose fault is then the reported one.
+begin
+ if AddressTranslate(aAddress and TPasRISCVUInt64($ffffffffffffffc0),
+                     TMMU.TAccessType.Load,
+                     [TMMU.TAccessFlag.NoTrap,TMMU.TAccessFlag.NoTLBUpdate],
+                     64)=0 then begin
+  AddressTranslate(aAddress and TPasRISCVUInt64($ffffffffffffffc0),TMMU.TAccessType.Store,[],64);
+ end;
+end;
+
+function TPasRISCV.THART.ENVCFGDenialException(const aMask:TPasRISCVUInt64):TExceptionValue;
+// Which exception a feature disabled in an envcfg raises: a virtual instruction exception when
+// henvcfg denies it under V=1, or senvcfg does in VU-mode, an illegal instruction otherwise
+// (menvcfg, or senvcfg without V). Same order as the specification.
+begin
+ if (fState.Mode<TMode.Machine) and ((fState.CSR.fData[TCSR.TAddress.MENVCFG] and aMask)=0) then begin
+  result:=TExceptionValue.IllegalInstruction;
+ end else if fState.VirtualMode and
+             ((((fState.Mode=TMode.Supervisor) or (fState.Mode=TMode.User)) and ((fState.CSR.fData[TCSR.TAddress.HENVCFG] and aMask)=0)) or
+              ((fState.Mode=TMode.User) and ((fState.CSR.fData[TCSR.TAddress.SENVCFG] and aMask)=0))) then begin
+  result:=TExceptionValue.VirtualInstruction;
+ end else begin
+  result:=TExceptionValue.IllegalInstruction;
+ end;
+end;
+
 {$ifdef fpc}
  {$push}
  {$codealign jump=16}
@@ -128224,6 +132115,12 @@ begin
     end;
     {$ifndef TryToForceCaseJumpTableOnCompressedLevel2}$1:{$else}$01,$09,$11,$19,$21,$29,$31,$39,$41,$49,$51,$59,$61,$69,$71,$79,$81,$89,$91,$99,$a1,$a9,$b1,$b9,$c1,$c9,$d1,$d9,$e1,$e9,$f1,$f9:{$endif}begin
      // c.fld
+     if not fState.CSR.IsFPUEnabled then begin
+      // FS=Off (with V=1 also the HS-level FS): illegal instruction, like every FP access
+      SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
+      result:=2;
+      exit;
+     end;
      frd:=TFPURegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
@@ -128415,6 +132312,12 @@ begin
     end;
     {$ifndef TryToForceCaseJumpTableOnCompressedLevel2}$5:{$else}$05,$0d,$15,$1d,$25,$2d,$35,$3d,$45,$4d,$55,$5d,$65,$6d,$75,$7d,$85,$8d,$95,$9d,$a5,$ad,$b5,$bd,$c5,$cd,$d5,$dd,$e5,$ed,$f5,$fd:{$endif}begin
      // c.fsd
+     if not fState.CSR.IsFPUEnabled then begin
+      // FS=Off (with V=1 also the HS-level FS): illegal instruction, like every FP access
+      SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
+      result:=2;
+      exit;
+     end;
      frd:=TFPURegister(((aInstruction shr 2) and $7)+8);
      rs1:=TRegister(((aInstruction shr 7) and $7)+8);
      Offset:=((aInstruction shl 1) and $c0) or ((aInstruction shr 7) and $38);
@@ -128607,36 +132510,13 @@ begin
         // Zcmop - c.mop.N (rd is odd, 1..15) => NOP, with Zicfiss overrides
         if ((ord(rd) and 1)<>0) and (ord(rd)<=15) then begin
 {$ifdef Zicfiss}
-         // Check for Zicfiss compressed instructions
+         // Zicfiss compressed instructions (with the shadow stack enabled for the mode, see the
+         // full-size sspush/sspopchk)
          if ord(rd)=1 then begin
-          // C.MOP.1 => C.SSPUSH x1 (when xSSE active)
-          // Determine xSSE
-          Address:=0;
-          case fState.Mode of
-           THART.TMode.Supervisor:begin
-            if fState.VirtualMode then begin
-             if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-              Address:=1;
-             end;
-            end else begin
-             if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-              Address:=1;
-             end;
-            end;
-           end;
-           THART.TMode.User:begin
-            if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-             Address:=1;
-            end;
-           end;
-           else begin
-           end;
-          end;
-          if Address<>0 then begin
-           // C.SSPUSH x1: ssp -= 8, mem[ssp] = x1
+          // C.MOP.1 => C.SSPUSH x1
+          if ShadowStackEnabled then begin
            Temporary:=fState.CSR.fData[TCSR.TAddress.SSP]-8;
-           fBus.Store(self,Temporary,fState.Registers[TRegister.RA],8);
-           if fState.ExceptionValue=TExceptionValue.None then begin
+           if ShadowStackStore(Temporary,fState.Registers[TRegister.RA]) then begin
             fState.CSR.fData[TCSR.TAddress.SSP]:=Temporary;
            end;
           end;
@@ -128644,32 +132524,9 @@ begin
           result:=2;
           exit;
          end else if ord(rd)=5 then begin
-          // C.MOP.5 => C.SSPOPCHK x5 (when xSSE active)
-          Address:=0;
-          case fState.Mode of
-           THART.TMode.Supervisor:begin
-            if fState.VirtualMode then begin
-             if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-              Address:=1;
-             end;
-            end else begin
-             if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-              Address:=1;
-             end;
-            end;
-           end;
-           THART.TMode.User:begin
-            if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-             Address:=1;
-            end;
-           end;
-           else begin
-           end;
-          end;
-          if Address<>0 then begin
-           // C.SSPOPCHK x5: temp = mem[ssp], check, ssp += 8
-           Temporary:=fBus.Load(self,fState.CSR.fData[TCSR.TAddress.SSP],8);
-           if fState.ExceptionValue<>TExceptionValue.None then begin
+          // C.MOP.5 => C.SSPOPCHK x5
+          if ShadowStackEnabled then begin
+           if not ShadowStackLoad(fState.CSR.fData[TCSR.TAddress.SSP],Temporary) then begin
             result:=2;
             exit;
            end;
@@ -128933,17 +132790,17 @@ begin
             exit;
            end;
            $3:begin
-            // c.sext.w (Zcb + Zbb)
+            // c.sext.h (Zcb + Zbb)
             rd:=TRegister(((aInstruction shr 7) and $7)+8);
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerZcb) and defined(PasRISCVJustInTimeCompilerZbb)}
             if assigned(fJustInTimeCompiler) and
-               fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicADDIW,aInstruction,ord(rd),ord(rd),0,0,2) then begin
+               fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicSEXTH,aInstruction,ord(rd),ord(rd),0,0,2) then begin
              result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
              exit;
             end;
 {$ifend}
             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(fState.Registers[rd])));
+             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(fState.Registers[rd])));
             end;
             result:=2;
             exit;
@@ -129231,8 +133088,18 @@ begin
        $0:begin
         // c.jr
         rs1:=TRegister((aInstruction shr 7) and $1f);
+        if rs1=TRegister.Zero then begin
+         // c.jr with rs1=x0 is a reserved code point, it must not jump to 0
+         SetException(TExceptionValue.IllegalInstruction,aInstruction and $ffff,fState.PC);
+         result:=2;
+         exit;
+        end;
 {$if defined(PasRISCVJustInTimeCompiler) and true}
         if assigned(fJustInTimeCompiler) and
+{$if defined(Zicfilp)}
+           // Landing pads enforced: indirect jumps that set ELP stay with the interpreter
+           (((fJustInTimeCompiler.fJITStateBits and TJustInTimeCompiler.JIT_STATE_LANDING_PADS)=0) or (rs1=TRegister.RA) or (rs1=TRegister.T0) or (rs1=TRegister.T2)) and
+{$ifend}
            fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(TRegister.Zero),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
          exit;
@@ -129299,13 +133166,18 @@ begin
        end;
       end;
      end else begin
-      if ((aInstruction shr 7) and $1f)<>0 then begin
+      // rs1=x0 with rs2<>x0 is c.add x0,rs2, a HINT (e.g. Zihintntl c.ntl.*), only both zero is c.ebreak
+      if (((aInstruction shr 7) and $1f)<>0) or (((aInstruction shr 2) and $1f)<>0) then begin
        case (aInstruction shr 2) and $1f of
         $0:begin
          // c.jalr
          rs1:=TRegister((aInstruction shr 7) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
          if assigned(fJustInTimeCompiler) and
+{$if defined(Zicfilp)}
+            // Landing pads enforced: indirect jumps that set ELP stay with the interpreter
+            (((fJustInTimeCompiler.fJITStateBits and TJustInTimeCompiler.JIT_STATE_LANDING_PADS)=0) or (rs1=TRegister.RA) or (rs1=TRegister.T0) or (rs1=TRegister.T2)) and
+{$ifend}
             fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(TRegister.RA),ord(rs1),TPasRISCVUInt64(0),TPasRISCVUInt64(2)) then begin
           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}2{$endif};
           exit;
@@ -129679,73 +133551,85 @@ begin
        case aInstruction shr 20 of
         $00:begin
          // cbo.inval
-         if (((aInstruction shr 7) and 15)=0) and IsCSRENVCFGEnabled(TCSR.ENVCFG_CBIE) then begin
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
-          if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOInval,aInstruction,0,0,0,0,4) then begin
-           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
-           exit;
-          end;
-{$ifend}
-          TPasMPMemoryBarrier.ReadWrite;
-          result:=4;
-          exit;
-         end else begin
+         if ((aInstruction shr 7) and $1f)<>0 then begin
+          // rd is five bits wide and has to be x0 (only four of them were checked)
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
          end;
+         if not IsCSRENVCFGEnabled(TCSR.ENVCFG_CBIE) then begin
+          // Denied by henvcfg under V=1 is a virtual instruction, not an illegal one
+          SetException(ENVCFGDenialException(TCSR.ENVCFG_CBIE),aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOInval,aInstruction,ord(TRegister((aInstruction shr 15) and $1f)),0,0,0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
+         ExecuteInstructionCBOAccess(fState.Registers[TRegister((aInstruction shr 15) and $1f)]);
+         TPasMPMemoryBarrier.ReadWrite;
+         result:=4;
+         exit;
         end;
         $01,$02:begin
          // cbo.clean, cbo.flush
-         if (((aInstruction shr 7) and 15)=0) and IsCSRENVCFGEnabled(TCSR.ENVCFG_CBCFE) then begin
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
-          if assigned(fJustInTimeCompiler) then begin
-           if (aInstruction shr 20)=$01 then begin
-            if fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOClean,aInstruction,0,0,0,0,4) then begin
-             result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
-             exit;
-            end;
-           end else begin
-            if fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOFlush,aInstruction,0,0,0,0,4) then begin
-             result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
-             exit;
-            end;
-           end;
-          end;
-{$ifend}
-          TPasMPMemoryBarrier.ReadWrite;
-          result:=4;
-          exit;
-         end else begin
+         if ((aInstruction shr 7) and $1f)<>0 then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
          end;
+         if not IsCSRENVCFGEnabled(TCSR.ENVCFG_CBCFE) then begin
+          SetException(ENVCFGDenialException(TCSR.ENVCFG_CBCFE),aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
+         if assigned(fJustInTimeCompiler) then begin
+          if (aInstruction shr 20)=$01 then begin
+           if fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOClean,aInstruction,ord(TRegister((aInstruction shr 15) and $1f)),0,0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end else begin
+           if fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOFlush,aInstruction,ord(TRegister((aInstruction shr 15) and $1f)),0,0,0,4) then begin
+            result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+            exit;
+           end;
+          end;
+         end;
+{$ifend}
+         ExecuteInstructionCBOAccess(fState.Registers[TRegister((aInstruction shr 15) and $1f)]);
+         TPasMPMemoryBarrier.ReadWrite;
+         result:=4;
+         exit;
         end;
         $04:begin
          // cbo.zero
-         if (((aInstruction shr 7) and 15)=0) and IsCSRENVCFGEnabled(TCSR.ENVCFG_CBZE) then begin
-{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
-          if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOZero,aInstruction,ord(TRegister((aInstruction shr 15) and $1f)),0,0,0,4) then begin
-           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
-           exit;
-          end;
-{$ifend}
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          ExecuteInstructionCBOZero(fState.Registers[rs1]);
-{         Ptr:=MemoryPointerTranslate(fState.Registers[rs1] and TPasRISCVUInt64($ffffffffffffffc0),64,nil,false);
-          if assigned(Ptr) then begin
-           FillChar(Ptr^,64,#0);
-          end;}
-          result:=4;
-          exit;
-         end else begin
+         if ((aInstruction shr 7) and $1f)<>0 then begin
           SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
           result:=4;
           exit;
          end;
+         if not IsCSRENVCFGEnabled(TCSR.ENVCFG_CBZE) then begin
+          SetException(ENVCFGDenialException(TCSR.ENVCFG_CBZE),aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
+{$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerCBO)}
+         if assigned(fJustInTimeCompiler) and
+            fJustInTimeCompiler.TraceCBO(fJustInTimeCompiler.IntrinsicCBOZero,aInstruction,ord(TRegister((aInstruction shr 15) and $1f)),0,0,0,4) then begin
+          result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+          exit;
+         end;
+{$ifend}
+         rs1:=TRegister((aInstruction shr 15) and $1f);
+         ExecuteInstructionCBOZero(fState.Registers[rs1]);
+         result:=4;
+         exit;
         end;
         else begin
          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
@@ -130082,6 +133966,12 @@ begin
         end;
         $18:begin
          // Zknd/Zkne: aes64im / aes64ks1i
+         if ((aInstruction shr 25) and 1)<>0 then begin
+          // Bit 25 is not part of a shift amount here, aes64im and aes64ks1i have funct7=0011000
+          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+          result:=4;
+          exit;
+         end;
          case (aInstruction shr 24) and 1 of
           0:begin
            // aes64im (Zknd) - rs2 field must be 0
@@ -130370,8 +134260,7 @@ begin
        // ELP is LP_EXPECTED - check if we have a valid landing pad
        // Check 4-byte alignment of PC
        if (fState.PC and 3)<>0 then begin
-        fState.ELP:=0;
-        UpdateExecuteInstructionMethod;
+        // ELP stays set, the trap entry saves it into xPELP and clears it there
         SetException(TExceptionValue.SoftwareCheck,2,fState.PC); // landing pad fault (code=2)
         result:=4;
         exit;
@@ -130379,8 +134268,7 @@ begin
        // Check label: LPL is bits [31:12] of instruction
        Immediate:=(aInstruction shr 12) and $fffff;
        if (Immediate<>0) and (Immediate<>((fState.Registers[TRegister.T2] shr 12) and $fffff)) then begin
-        fState.ELP:=0;
-        UpdateExecuteInstructionMethod;
+        // ELP stays set, the trap entry saves it into xPELP and clears it there
         SetException(TExceptionValue.SoftwareCheck,2,fState.PC); // landing pad fault (code=2)
         result:=4;
         exit;
@@ -132159,12 +136047,22 @@ begin
     //////////////////////////////////////////////////////////////////////////////
     $67{$ifdef TryToForceCaseJumpTableOnLevel1},$e7{$endif}:begin
      // jalr
+     if ((aInstruction shr 12) and 7)<>0 then begin
+      // Only funct3=0 is jalr, the other code points are reserved
+      SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+      result:=4;
+      exit;
+     end;
      Temporary:=fState.PC+4;
      Immediate:=SARInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(aInstruction and TPasRISCVUInt32($fff00000)))),20);
      rd:=TRegister((aInstruction shr 7) and $1f);
      rs1:=TRegister((aInstruction shr 15) and $1f);
 {$if defined(PasRISCVJustInTimeCompiler) and true}
      if assigned(fJustInTimeCompiler) and
+{$if defined(Zicfilp)}
+        // Landing pads enforced: indirect jumps that set ELP stay with the interpreter
+        (((fJustInTimeCompiler.fJITStateBits and TJustInTimeCompiler.JIT_STATE_LANDING_PADS)=0) or (rs1=TRegister.RA) or (rs1=TRegister.T0) or (rs1=TRegister.T2)) and
+{$ifend}
         fJustInTimeCompiler.TraceJALR(fJustInTimeCompiler.IntrinsicJALR,aInstruction,ord(rd),ord(rs1),TPasRISCVUInt64(Immediate),TPasRISCVUInt64(4)) then begin
       result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
       exit;
@@ -132259,8 +136157,9 @@ begin
         $09:begin
          // SFENCEVMA
          if fState.VirtualMode then begin
-          // In VS-mode: check hstatus.VTVM
-          if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTVM))<>0 then begin
+          // In VS-mode: check hstatus.VTVM; in VU-mode a virtual instruction (HS-mode could execute it)
+          if (fState.Mode<THART.TMode.Supervisor) or
+             ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTVM))<>0) then begin
            SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
           end else begin
            rs1:=TRegister((aInstruction shr 15) and $1f);
@@ -132364,8 +136263,8 @@ begin
          result:=4;
          exit;
         end;
-        $16:begin
-         // HINVAL.VVMA (Svinval H-extension)
+        $13:begin
+         // HINVAL.VVMA (Svinval H-extension, funct7 0010011)
          if fState.VirtualMode then begin
           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
          end else if fState.Mode>=THART.TMode.Supervisor then begin
@@ -132377,8 +136276,8 @@ begin
          result:=4;
          exit;
         end;
-        $66:begin
-         // HINVAL.GVMA (Svinval H-extension)
+        $33:begin
+         // HINVAL.GVMA (Svinval H-extension, funct7 0110011)
          if fState.VirtualMode then begin
           SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
          end else if fState.Mode<THART.TMode.Supervisor then begin
@@ -132397,28 +136296,29 @@ begin
          case (aInstruction shr 20) and $1f of
           $00:begin
            // ecall
+           // An environment call is not one of the exceptions that write xtval, it stays 0
            case fState.Mode of
             THART.TMode.User:begin
-             SetException(TExceptionValue.ECallUMode,fState.PC,fState.PC);
+             SetException(TExceptionValue.ECallUMode,0,fState.PC);
              result:=4;
              exit;
             end;
             THART.TMode.Supervisor:begin
              if fState.VirtualMode then begin
-              SetException(TExceptionValue.ECallVSMode,fState.PC,fState.PC);
+              SetException(TExceptionValue.ECallVSMode,0,fState.PC);
              end else begin
-              SetException(TExceptionValue.ECallSMode,fState.PC,fState.PC);
+              SetException(TExceptionValue.ECallSMode,0,fState.PC);
              end;
              result:=4;
              exit;
             end;
             THART.TMode.Hypervisor:begin
-             SetException(TExceptionValue.ECallVSMode,fState.PC,fState.PC);
+             SetException(TExceptionValue.ECallVSMode,0,fState.PC);
              result:=4;
              exit;
             end;
             THART.TMode.Machine:begin
-             SetException(TExceptionValue.ECallMMode,fState.PC,fState.PC);
+             SetException(TExceptionValue.ECallMMode,0,fState.PC);
              result:=4;
              exit;
             end;
@@ -132448,8 +136348,10 @@ begin
              // sret
              if fState.VirtualMode then begin
 
-              // In VS-mode: check hstatus.VTSR
-              if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTSR))<>0 then begin
+              // In VS-mode: check hstatus.VTSR; in VU-mode SRET is a virtual instruction (HS-mode
+              // could execute it)
+              if (fState.Mode=THART.TMode.User) or
+                 ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTSR))<>0) then begin
                SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
                result:=4;
                exit;
@@ -132465,8 +136367,13 @@ begin
               Temporary:=Temporary or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE); // SPIE=1 per spec
 
 {$ifdef Zicfilp}
-              // Zicfilp: Restore ELP from SPELP, then clear SPELP
-              fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.SPELP) and 1;
+              // Zicfilp: Restore ELP from SPELP, but only when landing pads are enforced in the mode
+              // being returned to (yLPE), then clear SPELP
+              if LandingPadsEnabled then begin
+               fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.SPELP) and 1;
+              end else begin
+               fState.ELP:=0;
+              end;
               UpdateExecuteInstructionMethod;
               Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP);
 {$endif}
@@ -132510,11 +136417,20 @@ begin
               Temporary:=Temporary or (TPasRISCVUInt64(1) shl TCSR.TMask.TSSTATUSBit.SPIE);
 
               // SRET always returns to a mode < M (SPP is U or S), so xRET sets MPRV=0 (spec requirement)
+              if (Temporary and TCSR.TMask.TStatus.MPRV)<>0 then begin
+               // Only possible for an SRET in M-mode: its data translations for MPP must go
+               FlushTLB(true,true);
+              end;
               Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPRV);
 
 {$ifdef Zicfilp}
-              // Zicfilp: Restore ELP from SPELP, then clear SPELP
-              fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.SPELP) and 1;
+              // Zicfilp: Restore ELP from SPELP, but only when landing pads are enforced in the mode
+              // being returned to (yLPE), then clear SPELP
+              if LandingPadsEnabled then begin
+               fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.SPELP) and 1;
+              end else begin
+               fState.ELP:=0;
+              end;
               UpdateExecuteInstructionMethod;
               Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.SPELP);
 {$endif}
@@ -132525,6 +136441,10 @@ begin
 
               fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Temporary;
 
+              // The return address is the sepc of HS-mode, so it has to be read before a switch to
+              // V=1 swaps in the vsepc of the guest
+              Temporary:=fState.CSR.fData[TCSR.TAddress.SEPC];
+
               // Check hstatus.SPV: should we return to virtual mode?
               if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV))<>0 then begin
                // Return to VS/VU mode: swap HS => VS CSRs
@@ -132533,11 +136453,11 @@ begin
                SetVirtualMode(true);
               end;
 
-              // Set PC to CSR.SEPC
+              // Set PC to the sepc read above
 {$ifdef PasRISCVSmctrSsctr}
-              RecordCTRTrap(TCSR.TCTRType.TrapReturn,fState.PC,fState.CSR.fData[TCSR.TAddress.SEPC]);
+              RecordCTRTrap(TCSR.TCTRType.TrapReturn,fState.PC,Temporary);
 {$endif}
-              fState.PC:=fState.CSR.fData[TCSR.TAddress.SEPC]-4;
+              fState.PC:=Temporary-4;
 
 {$ifdef MRETSRETCheckInterrupts}
               CheckInterrupts;
@@ -132564,6 +136484,10 @@ begin
 
               // Clear MPRV when returning to less privileged mode
               if fState.Mode<THART.TMode.Machine then begin
+               if (Temporary and TCSR.TMask.TStatus.MPRV)<>0 then begin
+                // M-mode data accesses were translated for MPP until now, the M-mode TLB must not keep that
+                FlushTLB(true,true);
+               end;
                Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPRV);
               end;
 
@@ -132583,8 +136507,13 @@ begin
               Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
 
 {$ifdef Zicfilp}
-              // Zicfilp: Restore ELP from MPELP, then clear MPELP
-              fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.MPELP) and 1;
+              // Zicfilp: Restore ELP from MPELP, but only when landing pads are enforced in the mode
+              // being returned to (yLPE), then clear MPELP
+              if LandingPadsEnabled then begin
+               fState.ELP:=(Temporary shr TCSR.TMask.TMSTATUSBit.MPELP) and 1;
+              end else begin
+               fState.ELP:=0;
+              end;
               UpdateExecuteInstructionMethod;
               Temporary:=Temporary and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPELP);
 {$endif}
@@ -132646,6 +136575,15 @@ begin
               // Update mnstatus: set NMIE=1, clear MNPP to U, clear MNPV
               fState.CSR.fData[TCSR.TAddress.MNSTATUS]:=
                (fState.CSR.fData[TCSR.TAddress.MNSTATUS] and not (TCSR.MNSTATUS_MNPP or TCSR.MNSTATUS_MNPV)) or TCSR.MNSTATUS_NMIE;
+
+              // Like mret, mnret clears MPRV when it returns to a less privileged mode
+              if fState.Mode<THART.TMode.Machine then begin
+               if (fState.CSR.fData[TCSR.TAddress.MSTATUS] and TCSR.TMask.TStatus.MPRV)<>0 then begin
+                // M-mode data accesses were translated for MPP until now, the M-mode TLB must not keep that
+                FlushTLB(true,true);
+                fState.CSR.fData[TCSR.TAddress.MSTATUS]:=fState.CSR.fData[TCSR.TAddress.MSTATUS] and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPRV);
+               end;
+              end;
 
 {$ifdef PasRISCVSmdbltrp}
               // Smdbltrp: MNRET clears MDT (and SDT) when returning to non-Machine mode
@@ -132711,19 +136649,22 @@ begin
            // wfi
            case (aInstruction shr 25) and $7f of
             $08:begin
-             // wfi
-             if fState.VirtualMode then begin
-              // In VS-mode: check hstatus.VTW
-              if (fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTW))<>0 then begin
+             // wfi: always in M-mode; below M-mode mstatus.TW=1 makes it an illegal instruction
+             // (also with V=1); with V=1 VU-mode and hstatus.VTW=1 make it a virtual
+             // instruction; U-mode (V=0) gets an illegal instruction
+             if (fState.Mode<>THART.TMode.Machine) and
+                ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))<>0) then begin
+              SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+             end else if fState.VirtualMode then begin
+              if (fState.Mode=THART.TMode.User) or
+                 ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTW))<>0) then begin
                SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
               end else begin
                if InterruptsPending=0 then begin
                 SleepUntilNextInterrupt;
                end;
               end;
-             end else if ((fState.Mode>=THART.TMode.Supervisor) and
-                          ((fState.CSR.fData[TCSR.TAddress.MSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.TW))=0)) or
-                         (fState.Mode=THART.TMode.Machine) then begin
+             end else if fState.Mode>=THART.TMode.Supervisor then begin
               if InterruptsPending=0 then begin
                SleepUntilNextInterrupt;
               end;
@@ -132742,6 +136683,12 @@ begin
           end;
           $0d:begin
            // wrs.nto (Zawrs) - Wait on Reservation Set, No Timeout
+           if aInstruction<>TPasRISCVUInt32($00d00073) then begin
+            // Every other field is fixed at zero
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
            // NOP in emulator: no hardware reservation set to poll
 {$if defined(PasRISCVJustInTimeCompiler) and true}
            if assigned(fJustInTimeCompiler) and
@@ -132755,6 +136702,12 @@ begin
           end;
           $1d:begin
            // wrs.sto (Zawrs) - Wait on Reservation Set, Short Timeout
+           if aInstruction<>TPasRISCVUInt32($01d00073) then begin
+            // Every other field is fixed at zero
+            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+            result:=4;
+            exit;
+           end;
            // NOP in emulator: no hardware reservation set to poll
 {$if defined(PasRISCVJustInTimeCompiler) and true}
            if assigned(fJustInTimeCompiler) and
@@ -132786,6 +136739,7 @@ begin
        if (rs1=TRegister.Zero) and
           assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.IsCSRCompatible(Address,false) and
+          CSRReadInlinable(Address) and // the translated read runs later without any privilege check
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCSRRead,aInstruction,ord(TRegister((aInstruction shr 7) and $1f)),Address,0,0,4) then begin
         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
@@ -132803,6 +136757,7 @@ begin
        if (rs1=TRegister.Zero) and
           assigned(fJustInTimeCompiler) and
           fJustInTimeCompiler.IsCSRCompatible(Address,false) and
+          CSRReadInlinable(Address) and // the translated read runs later without any privilege check
           fJustInTimeCompiler.Trace(fJustInTimeCompiler.IntrinsicCSRRead,aInstruction,ord(TRegister((aInstruction shr 7) and $1f)),Address,0,0,4) then begin
         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
         exit;
@@ -132815,300 +136770,38 @@ begin
       {$ifndef TryToForceCaseJumpTableOnLevel2}$4:{$else}$04,$0c,$14,$1c,$24,$2c,$34,$3c,$44,$4c,$54,$5c,$64,$6c,$74,$7c,$84,$8c,$94,$9c,$a4,$ac,$b4,$bc,$c4,$cc,$d4,$dc,$e4,$ec,$f4,$fc:{$endif}begin
        // funct3=4: HLV/HSV (H-extension) and Zimop
        case (aInstruction shr 25) and $7f of
-        $30:begin
-         // HLV.B (rs2=0) / HLV.BU (rs2=1)
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rd:=TRegister((aInstruction shr 7) and $1f);
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end;
-          if ((aInstruction shr 20) and $1f)=0 then begin
-           // HLV.B - signed byte
-           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt8(TPasRISCVUInt8(fBus.Load(self,Address,1)))));
-           end;
-          end else begin
-           // HLV.BU - unsigned byte
-           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=TPasRISCVUInt8(fBus.Load(self,Address,1));
-           end;
-          end;
-          result:=4;
-          exit;
-         end;
-        end;
-        $31:begin
-         // HSV.B
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end else begin
-           fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt8(fState.Registers[rs2])),1);
-           result:=4;
-           exit;
-          end;
-         end;
-        end;
-        $32:begin
-         // HLV.H / HLV.HU / HLVX.HU
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rd:=TRegister((aInstruction shr 7) and $1f);
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          // HLVX uses Instruction access type for execute-permission check
-          if ((aInstruction shr 20) and $1f)=3 then begin
-           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction);
-          end else begin
-           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
-          end;
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end;
-          case (aInstruction shr 20) and $1f of
-           0:begin // HLV.H - signed half
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(TPasRISCVUInt16(fBus.Load(self,Address,2)))));
-            end;
-           end;
-           1:begin // HLV.HU - unsigned half
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt16(fBus.Load(self,Address,2));
-            end;
-           end;
-           3:begin // HLVX.HU - execute-permission unsigned half
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt16(fBus.Load(self,Address,2));
-            end;
-           end;
-           else begin
-            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-           end;
-          end;
-          result:=4;
-          exit;
-         end;
-        end;
-        $33:begin
-         // HSV.H
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end;
-          fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt16(fState.Registers[rs2])),2);
-          result:=4;
-          exit;
-         end;
-        end;
-        $34:begin
-         // HLV.W / HLV.WU / HLVX.WU
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rd:=TRegister((aInstruction shr 7) and $1f);
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          // HLVX uses Instruction access type for execute-permission check
-          if ((aInstruction shr 20) and $1f)=3 then begin
-           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Instruction);
-          end else begin
-           Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
-          end;
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end;
-          case (aInstruction shr 20) and $1f of
-           0:begin // HLV.W - signed word
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(TPasRISCVUInt32(fBus.Load(self,Address,4)))));
-            end;
-           end;
-           1:begin // HLV.WU - unsigned word
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt32(fBus.Load(self,Address,4));
-            end;
-           end;
-           3:begin // HLVX.WU - execute-permission unsigned word
-            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-             fState.Registers[rd]:=TPasRISCVUInt32(fBus.Load(self,Address,4));
-            end;
-           end;
-           else begin
-            SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-           end;
-          end;
-          result:=4;
-          exit;
-         end;
-        end;
-        $35:begin
-         // HSV.W
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end;
-          fBus.Store(self,Address,TPasRISCVUInt64(TPasRISCVUInt32(fState.Registers[rs2])),4);
-          result:=4;
-          exit;
-         end;
-        end;
-        $36:begin
-         // HLV.D
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rd:=TRegister((aInstruction shr 7) and $1f);
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Load);
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end;
-          {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-           fState.Registers[rd]:=fBus.Load(self,Address,8);
-          end;
-          result:=4;
-          exit;
-         end;
-        end;
-        $37:begin
-         // HSV.D
-         if fState.VirtualMode then begin
-          SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else if (fState.Mode=THART.TMode.User) and ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.HU))=0) then begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
-         end else begin
-          rs1:=TRegister((aInstruction shr 15) and $1f);
-          rs2:=TRegister((aInstruction shr 20) and $1f);
-          Address:=ForcedVirtualTranslate(fState.Registers[rs1],TMMU.TAccessType.Store);
-          if fState.ExceptionValue<>TExceptionValue.None then begin
-           result:=4;
-           exit;
-          end;
-          fBus.Store(self,Address,fState.Registers[rs2],8);
-          result:=4;
-          exit;
-         end;
+        $30..$37:begin
+         // HLV/HLVX/HSV (H extension)
+         result:=ExecuteHypervisorLoadStore(aInstruction);
+         exit;
         end;
         else begin
          // Zimop - mop.r.N / mop.rr.N (write 0 to rd), with Zicfiss overrides
-         if (aInstruction and $b0000000)=$80000000 then begin // bit[31]=1, bits[29:28]=00
+         // Zimop is only bit[31]=1 with bits[29:28]=00 and either bit[25]=1 (mop.rr.n) or
+         // bits[25:22]=0111 (mop.r.n), everything else in this space is reserved
+         if ((aInstruction and $b0000000)=$80000000) and
+            (((aInstruction and $02000000)<>0) or ((aInstruction and $03c00000)=$01c00000)) then begin
 {$ifdef Zicfiss}
-          // Check for Zicfiss instructions encoded as Zimop
-          // Determine xSSE for current privilege mode
-          // Note: Zicfiss is not supported in M-mode
-          Address:=0; // reuse as SSE flag
-          case fState.Mode of
-           THART.TMode.Supervisor:begin
-            if fState.VirtualMode then begin
-             if (fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-              Address:=1;
-             end;
-            end else begin
-             if (fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-              Address:=1;
-             end;
-            end;
-           end;
-           THART.TMode.User:begin
-            if (fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)<>0 then begin
-             Address:=1;
-            end;
-           end;
-           else begin
-            // M-mode: SSE never enabled
-           end;
-          end;
+          // Zicfiss instructions encoded as Zimop: with the shadow stack enabled for the mode
+          // (menvcfg/henvcfg/senvcfg.SSE, never in M-mode) they are sspush, sspopchk and ssrdp,
+          // otherwise Zimop (rd=0). Shadow stack accesses must hit shadow stack pages when paging
+          // is on, and all their faults are store/AMO faults (see ShadowStackTranslate).
           // Check if this is MOP.RR.7 (SSPUSH encoding)
           // MOP.RR.7 base: bits[31:25]=1100111, funct3=100, opcode=1110011
-          // Full mask: opcode+funct3+funct7+rs1+rd = $fe0ff07f
-          if ((aInstruction and $fe0ff07f)=$ce004073) then begin
+          // Full mask: opcode+funct3+funct7+rs1+rd = $fe0fff7f
+          if ((aInstruction and $fe0fff7f)=$ce004073) then begin // rd belongs in the mask, sspush has rd=x0
            // MOP.RR.7 with rs1=x0, rd=x0 => potential SSPUSH
            rs2:=TRegister((aInstruction shr 20) and $1f);
-           if (Address<>0) and ((rs2=TRegister.RA) or (rs2=TRegister.T0)) then begin
+           if ((rs2=TRegister.RA) or (rs2=TRegister.T0)) and ShadowStackEnabled then begin
             // SSPUSH x1 or SSPUSH x5
             Temporary:=fState.CSR.fData[TCSR.TAddress.SSP]-8;
-            fBus.Store(self,Temporary,fState.Registers[rs2],8);
-            if fState.ExceptionValue=TExceptionValue.None then begin
+            if ShadowStackStore(Temporary,fState.Registers[rs2]) then begin
              fState.CSR.fData[TCSR.TAddress.SSP]:=Temporary;
             end;
-            result:=4;
-            exit;
-           end else begin
-            // SSE not active or rs2 not x1/x5: Zimop NOP (write 0 to rd=x0)
-            result:=4;
-            exit;
            end;
+           // else: Zimop NOP (rd=x0)
+           result:=4;
+           exit;
           end;
           // Check if this is MOP.R.28 (SSPOPCHK / SSRDP encoding)
           // MOP.R.28 bits[31:20]=110011011100=$cdc, funct3=100, opcode=1110011
@@ -133117,9 +136810,8 @@ begin
            rd:=TRegister((aInstruction shr 7) and $1f);
            if (rd=TRegister.Zero) and ((rs1=TRegister.RA) or (rs1=TRegister.T0)) then begin
             // SSPOPCHK x1 or SSPOPCHK x5
-            if Address<>0 then begin
-             Temporary:=fBus.Load(self,fState.CSR.fData[TCSR.TAddress.SSP],8);
-             if fState.ExceptionValue<>TExceptionValue.None then begin
+            if ShadowStackEnabled then begin
+             if not ShadowStackLoad(fState.CSR.fData[TCSR.TAddress.SSP],Temporary) then begin
               result:=4;
               exit;
              end;
@@ -133136,7 +136828,7 @@ begin
             exit;
            end else if (rs1=TRegister.Zero) and (rd<>TRegister.Zero) then begin
             // SSRDP: read SSP into rd
-            if Address<>0 then begin
+            if ShadowStackEnabled then begin
              fState.Registers[rd]:=fState.CSR.fData[TCSR.TAddress.SSP];
             end else begin
              fState.Registers[rd]:=0; // Zimop: write 0 when SSE not active
@@ -133419,6 +137111,17 @@ begin
       result:=4;
       exit;
      end else begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one
+      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      // A static rm other than frm: the host rounding mode has to follow it (ExecuteFPStaticRM)
+      if (((aInstruction shr 12) and 7)<4) and (((aInstruction shr 12) and 7)<>(fState.CSR.fData[TCSR.TAddress.FRM] and 7)) and StaticRMApplies(aInstruction) then begin
+       result:=ExecuteFPStaticRM(aInstruction);
+       exit;
+      end;
       case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction and TPasRISCVUInt32($03000000)) shr 25) of
        {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
         // fmadd.s
@@ -133559,6 +137262,17 @@ begin
       result:=4;
       exit;
      end else begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one
+      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      // A static rm other than frm: the host rounding mode has to follow it (ExecuteFPStaticRM)
+      if (((aInstruction shr 12) and 7)<4) and (((aInstruction shr 12) and 7)<>(fState.CSR.fData[TCSR.TAddress.FRM] and 7)) and StaticRMApplies(aInstruction) then begin
+       result:=ExecuteFPStaticRM(aInstruction);
+       exit;
+      end;
       case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction and TPasRISCVUInt32($03000000)) shr 25) of
        {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
         // fmsub.s
@@ -133725,6 +137439,17 @@ begin
       result:=4;
       exit;
      end else begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one
+      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      // A static rm other than frm: the host rounding mode has to follow it (ExecuteFPStaticRM)
+      if (((aInstruction shr 12) and 7)<4) and (((aInstruction shr 12) and 7)<>(fState.CSR.fData[TCSR.TAddress.FRM] and 7)) and StaticRMApplies(aInstruction) then begin
+       result:=ExecuteFPStaticRM(aInstruction);
+       exit;
+      end;
       case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction and TPasRISCVUInt32($03000000)) shr 25) of
        {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
         // fnmsub.s
@@ -133867,6 +137592,17 @@ begin
       result:=4;
       exit;
      end else begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one
+      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      // A static rm other than frm: the host rounding mode has to follow it (ExecuteFPStaticRM)
+      if (((aInstruction shr 12) and 7)<4) and (((aInstruction shr 12) and 7)<>(fState.CSR.fData[TCSR.TAddress.FRM] and 7)) and StaticRMApplies(aInstruction) then begin
+       result:=ExecuteFPStaticRM(aInstruction);
+       exit;
+      end;
       case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction and TPasRISCVUInt32($03000000)) shr 25) of
        {$ifndef TryToForceCaseJumpTableOnLevel2}$0:{$else}$00,$08,$10,$18,$20,$28,$30,$38,$40,$48,$50,$58,$60,$68,$70,$78,$80,$88,$90,$98,$a0,$a8,$b0,$b8,$c0,$c8,$d0,$d8,$e0,$e8,$f0,$f8:{$endif}begin
         // fnmadd.s
@@ -133887,8 +137623,9 @@ begin
           exit;
          end;
 {$ifend}
-         fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
-         fState.FPURegisters[frd].ui32:=fState.FPURegisters[frd].ui32 xor TPasRISCVUInt32($80000000); // negate: -(a*b+c)
+         // fnmadd = (-a*b)-c = FMA(-a,b,-c): negating the result of FMA(a,b,c) instead gives the wrong
+         // sign for an exact zero (1*1-1 is +0, not -0) and rounds RDN/RUP the wrong way
+         fState.FPURegisters[frd].f32:=FusedMultiplyAddFloat(-ReadNormalizedFloatF32(fState.FPURegisters[frs1].ui64),ReadNormalizedFloatF32(fState.FPURegisters[frs2].ui64),-ReadNormalizedFloatF32(fState.FPURegisters[frs3].ui64));
          fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
 {$ifndef PasRISCVNewFPUNaNHandling}
          // Any NaN result becomes the canonical NaN. Whether NV is raised is decided
@@ -133930,8 +137667,8 @@ begin
           exit;
          end;
 {$ifend}
-         fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,fState.FPURegisters[frs3].f64);
-         fState.FPURegisters[frd].ui64:=fState.FPURegisters[frd].ui64 xor TPasRISCVUInt64($8000000000000000); // negate: -(a*b+c)
+         // fnmadd = (-a*b)-c = FMA(-a,b,-c), see fnmadd.s
+         fState.FPURegisters[frd].f64:=FusedMultiplyAddDouble(-fState.FPURegisters[frs1].f64,fState.FPURegisters[frs2].f64,-fState.FPURegisters[frs3].f64);
 {$ifndef PasRISCVNewFPUNaNHandling}
          // See the single-precision case: canonicalize, and derive NV from the operands
          if (fState.FPURegisters[frd].ui64 and TPasRISCVUInt64($7fffffffffffffff))>TPasRISCVUInt64($7ff0000000000000) then begin
@@ -134011,6 +137748,17 @@ begin
       result:=4;
       exit;
      end else begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one
+      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+       SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+       result:=4;
+       exit;
+      end;
+      // A static rm other than frm: the host rounding mode has to follow it (ExecuteFPStaticRM)
+      if (((aInstruction shr 12) and 7)<4) and (((aInstruction shr 12) and 7)<>(fState.CSR.fData[TCSR.TAddress.FRM] and 7)) and StaticRMApplies(aInstruction) then begin
+       result:=ExecuteFPStaticRM(aInstruction);
+       exit;
+      end;
       case {$ifdef TryToForceCaseJumpTableOnLevel2}TPasRISCVUInt8{$endif}((aInstruction shr 25) and $7f) of
        {$ifndef TryToForceCaseJumpTableOnLevel2}$00:{$else}$00,$80:{$endif}begin
         // fadd.s
@@ -134104,7 +137852,7 @@ begin
           exit;
          end;
 {$ifend}
-         if CheckF16IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) then begin
+         if CheckF16IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,false) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
@@ -134216,7 +137964,7 @@ begin
           exit;
          end;
 {$ifend}
-         if CheckF16IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64) then begin
+         if CheckF16IsInvalidAddOp(fState.FPURegisters[frs1].ui64,fState.FPURegisters[frs2].ui64,true) then begin
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($ffffffffffff7e00);
           fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
          end else begin
@@ -134476,7 +138224,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI32(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt32($7fffffff)) or (ReadNormalizedFloatUI32(fState.FPURegisters[frs2].ui64) and TPasRISCVUInt32($80000000))) or TPasRISCVUInt64($ffffffff00000000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134494,7 +138241,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI32(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt32($7fffffff)) or ((not ReadNormalizedFloatUI32(fState.FPURegisters[frs2].ui64)) and TPasRISCVUInt32($80000000))) or TPasRISCVUInt64($ffffffff00000000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134512,7 +138258,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI32(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt32($7fffffff)) or ((ReadNormalizedFloatUI32(fState.FPURegisters[frs1].ui64) xor ReadNormalizedFloatUI32(fState.FPURegisters[frs2].ui64)) and TPasRISCVUInt32($80000000))) or TPasRISCVUInt64($ffffffff00000000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134540,7 +138285,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=(fState.FPURegisters[frs1].ui64 and TPasRISCVUInt64($7fffffffffffffff)) or (fState.FPURegisters[frs2].ui64 and TPasRISCVUInt64($8000000000000000));
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134558,7 +138302,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=(fState.FPURegisters[frs1].ui64 and TPasRISCVUInt64($7fffffffffffffff)) or ((not fState.FPURegisters[frs2].ui64) and TPasRISCVUInt64($8000000000000000));
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134576,7 +138319,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=(fState.FPURegisters[frs1].ui64 and TPasRISCVUInt64($7fffffffffffffff)) or ((fState.FPURegisters[frs1].ui64 xor fState.FPURegisters[frs2].ui64) and TPasRISCVUInt64($8000000000000000));
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134604,7 +138346,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt16($7fff)) or (ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64) and TPasRISCVUInt16($8000))) or TPasRISCVUInt64($ffffffffffff0000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134622,7 +138363,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt16($7fff)) or ((not ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) and TPasRISCVUInt16($8000))) or TPasRISCVUInt64($ffffffffffff0000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -134640,7 +138380,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) and TPasRISCVUInt16($7fff)) or ((ReadNormalizedFloatUI16(fState.FPURegisters[frs1].ui64) xor ReadNormalizedFloatUI16(fState.FPURegisters[frs2].ui64)) and TPasRISCVUInt16($8000))) or TPasRISCVUInt64($ffffffffffff0000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -135296,10 +139035,10 @@ begin
               f32n:=Trunc(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              f32n:=Floor(f32);
+              f32n:=FloorToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              f32n:=Ceil(f32);
+              f32n:=CeilToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
               f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
@@ -135368,10 +139107,10 @@ begin
               f32n:=Trunc(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              f32n:=Floor(f32);
+              f32n:=FloorToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              f32n:=Ceil(f32);
+              f32n:=CeilToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
               f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
@@ -135541,10 +139280,10 @@ begin
               f64n:=Trunc(f64);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              f64n:=Floor(f64);
+              f64n:=FloorToFloat64(f64); // Math.Floor returns a 32-bit Integer
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              f64n:=Ceil(f64);
+              f64n:=CeilToFloat64(f64);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
               f64n:=RoundToNearestTiesToMaxMagnitude64(f64);
@@ -135612,10 +139351,10 @@ begin
               f64n:=Trunc(f64);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              f64n:=Floor(f64);
+              f64n:=FloorToFloat64(f64); // Math.Floor returns a 32-bit Integer
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              f64n:=Ceil(f64);
+              f64n:=CeilToFloat64(f64);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
               f64n:=RoundToNearestTiesToMaxMagnitude64(f64);
@@ -135739,7 +139478,9 @@ begin
             end;
             fState.FPURegisters[frd].ui16:=TPasRISCVUInt16($7e00); // Canonical f16 NaN
            end else begin
-            HalfFloat:=TPasRISCVHalfFloat.FromFloat(f64);
+            // Through single with round-to-odd, so that FromFloat rounds only once (frm or the
+            // static rm, via MXCSR)
+            HalfFloat:=TPasRISCVHalfFloat.FromFloat(Float64ToFloat32RoundToOdd(fState.FPURegisters[frs1].ui64));
             fState.FPURegisters[frd].ui16:=HalfFloat.Value;
            end;
            fState.FPURegisters[frd].ui64:=fState.FPURegisters[frd].ui64 or TPasRISCVUInt64($ffffffffffff0000);
@@ -135786,10 +139527,10 @@ begin
               f32n:=Trunc(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              f32n:=Floor(f32);
+              f32n:=FloorToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              f32n:=Ceil(f32);
+              f32n:=CeilToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
               f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
@@ -135851,10 +139592,10 @@ begin
               f32n:=Trunc(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
-              f32n:=Floor(f32);
+              f32n:=FloorToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
-              f32n:=Ceil(f32);
+              f32n:=CeilToFloat32(f32);
              end;
              TPasRISCVInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
               f32n:=RoundToNearestTiesToMaxMagnitude32(f32);
@@ -135914,8 +139655,33 @@ begin
              if (Temporary and $ffff)<>0 then begin
               fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Inexact);
              end;
-             // Round to nearest even: add rounding bias
-             Temporary:=Temporary+TPasRISCVUInt64($00007fff)+TPasRISCVUInt64((Temporary shr 16) and 1);
+             // Round with the static rm or frm by adding a bias to the dropped 16 bits (a carry
+             // into the exponent gives the next binade or infinity, as it should)
+             Offset:=(aInstruction shr 12) and 7;
+             if Offset=7 then begin
+              Offset:=fState.CSR.fData[TCSR.TAddress.FRM] and 7;
+             end;
+             case Offset of
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundToZero):begin
+               Offset:=TPasRISCVUInt64($00000000);
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundDown):begin
+               // Away from zero for negative values
+               Offset:=TPasRISCVUInt64(TPasRISCVUInt64(Temporary shr 31)*TPasRISCVUInt64($0000ffff));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundUp):begin
+               // Away from zero for positive values
+               Offset:=TPasRISCVUInt64(TPasRISCVUInt64(TPasRISCVUInt64(Temporary shr 31) xor TPasRISCVUInt64($00000001))*TPasRISCVUInt64($0000ffff));
+              end;
+              TPasRISCVUInt64(TCSR.TFloatingPointRoundingModes.RoundNearestMaxMagnitude):begin
+               Offset:=TPasRISCVUInt64($00008000);
+              end;
+              else begin
+               // Round to nearest even
+               Offset:=TPasRISCVUInt64(TPasRISCVUInt64($00007fff)+TPasRISCVUInt64(TPasRISCVUInt64(Temporary shr 16) and TPasRISCVUInt64($00000001)));
+              end;
+             end;
+             Temporary:=Temporary+Offset;
              fState.FPURegisters[frd].ui16:=TPasRISCVUInt16(Temporary shr 16);
              // OV: finite f32 rounded up to bf16 Inf
              if (fState.FPURegisters[frd].ui16 and $7fff)=$7f80 then begin
@@ -136565,10 +140331,12 @@ begin
 {$ifend}
            if IsFloat32NaNOrInfinite(f32) or (f32n<Low(TPasRISCVInt32)) or (f32n>=2147483648.0) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
-             fState.Registers[rd]:=TPasRISCVUInt32($000000007fffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($ffffffff80000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
+              fState.Registers[rd]:=TPasRISCVUInt32($000000007fffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($ffffffff80000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136602,10 +140370,12 @@ begin
 {$ifend}
            if IsFloat32NaNOrInfinite(f32) or (f32n<Low(TPasRISCVUInt32)) or (f32n>=4294967296.0) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
+              fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136635,10 +140405,12 @@ begin
 {$ifend}
            if IsFloat32NaNOrInfinite(f32) or (f32n<-9223372036854775808.0) or (f32n>=9223372036854775807.0) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64($7fffffffffffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($8000000000000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
+              fState.Registers[rd]:=TPasRISCVUInt64($7fffffffffffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($8000000000000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136672,10 +140444,12 @@ begin
 {$ifend}
            if IsFloat32NaNOrInfinite(f32) or (f32n<0.0) or (f32n>=18446744073709551615.0) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat32NaN(f32) or not IsFloat32Negative(f32) then begin
+              fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136755,10 +140529,12 @@ begin
 {$ifend}
            if IsFloat64NaNOrInfinite(f64) or (f64n<Low(TPasRISCVInt32)) or (f64n>High(TPasRISCVInt32)) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
-             fState.Registers[rd]:=TPasRISCVUInt32($000000007fffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($ffffffff80000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
+              fState.Registers[rd]:=TPasRISCVUInt32($000000007fffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($ffffffff80000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136792,10 +140568,12 @@ begin
 {$ifend}
            if IsFloat64NaNOrInfinite(f64) or (f64n<Low(TPasRISCVUInt32)) or (f64n>High(TPasRISCVUInt32)) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
+              fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136825,10 +140603,12 @@ begin
 {$ifend}
            if IsFloat64NaNOrInfinite(f64) or (f64n<-9223372036854775808.0) or (f64n>=9223372036854775807.0) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64($7fffffffffffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($8000000000000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
+              fState.Registers[rd]:=TPasRISCVUInt64($7fffffffffffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($8000000000000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136862,10 +140642,12 @@ begin
 {$ifend}
            if IsFloat64NaNOrInfinite(f64) or (f64n<0.0) or (f64n>=18446744073709551615.0) then begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
-            if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
-            end else begin
-             fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+            {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+             if IsFloat64NaN(f64) or not IsFloat64Negative(f64) then begin
+              fState.Registers[rd]:=TPasRISCVUInt64($ffffffffffffffff);
+             end else begin
+              fState.Registers[rd]:=TPasRISCVUInt64($0000000000000000);
+             end;
             end;
             fFPUInexact:=false; // out of range raises Invalid, not Inexact
             feclearexcept(FE_INEXACT);
@@ -136952,7 +140734,7 @@ begin
               end;
              end else begin
               // negative
-              if (Address>31) or ((Address=31) and ((Temporary and $fffffffffffff)<>0)) then begin
+              if (Address>31) or ((Address=31) and (((Temporary and $fffffffffffff) shr 21)<>0)) then begin // only the integer part counts, the fraction is truncated first
                // integer part overflows i32: NV, no NX
                fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
                if Address>=52 then begin
@@ -137048,10 +140830,14 @@ begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            end else begin
             if f32n>TPasRISCVFloat(TPasRISCVInt32($7fffffff)) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($7fffffff)));
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($7fffffff)));
+             end;
              fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
             end else if f32n<TPasRISCVFloat(TPasRISCVInt32($80000000)) then begin
-             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($80000000)));
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($80000000)));
+             end;
              fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
             end else begin
              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -137086,10 +140872,14 @@ begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            end else begin
             if f32n>=TPasRISCVFloat(TPasRISCVUInt32($ffffffff))+1.0 then begin
-             fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($ffffffff)));
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32($ffffffff)));
+             end;
              fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
             end else if f32n<0 then begin
-             fState.Registers[rd]:=0;
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=0;
+             end;
              fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
             end else begin
              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -137158,7 +140948,9 @@ begin
             fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
            end else begin
             if IsFloat32Infinite(f32) or (f32n<0) then begin
-             fState.Registers[rd]:=0;
+             {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+              fState.Registers[rd]:=0;
+             end;
              fState.CSR.SetFPUException(TCSR.TFPUExceptionMasks.Invalid);
             end else begin
              {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
@@ -137256,7 +141048,7 @@ begin
             exit;
            end;
 {$ifend}
-           fState.FPURegisters[frd].f32:=TPasRISCVUInt64(fState.Registers[rs1]);
+           fState.FPURegisters[frd].f32:=UInt64ToFloat32(fState.Registers[rs1]); // one rounding also from 2^63 on
            fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
           end;
          end;
@@ -137345,7 +141137,7 @@ begin
             exit;
            end;
 {$ifend}
-           fState.FPURegisters[frd].f64:=TPasRISCVUInt64(fState.Registers[rs1]);
+           fState.FPURegisters[frd].f64:=UInt64ToFloat64(fState.Registers[rs1]); // one rounding also from 2^63 on
           end;
          end;
          else begin
@@ -137473,7 +141265,6 @@ begin
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(fState.FPURegisters[frs1].ui32)));
           end;
-          SetFPUExceptions;
           result:=4;
           exit;
          end;
@@ -137564,7 +141355,6 @@ begin
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(fState.FPURegisters[frs1].ui64));
           end;
-          SetFPUExceptions;
           result:=4;
           exit;
          end;
@@ -137654,7 +141444,6 @@ begin
           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt16(fState.FPURegisters[frs1].ui16)));
           end;
-          SetFPUExceptions;
           result:=4;
           exit;
          end;
@@ -137729,6 +141518,12 @@ begin
        end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$78:{$else}$78,$f8:{$endif}begin
         // fmvwx / fli.s (Zfa)
+        if ((aInstruction shr 12) and 7)<>0 then begin
+         // funct3 is fixed at zero for fmv from an integer register and for fli
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         case (aInstruction shr 20) and $1f of
          $00:begin
@@ -137742,7 +141537,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=fState.Registers[rs1] or TPasRISCVUInt64($ffffffff00000000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -137758,7 +141552,6 @@ begin
 {$ifend}
           fState.FPURegisters[frd].ui32:=PasRISCVFLITable[(aInstruction shr 15) and $1f];
           fState.FPURegisters[frd].NaNBoxUI32:=TPasRISCVUInt64($ffffffff);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -137772,6 +141565,12 @@ begin
        end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$79:{$else}$79,$f9:{$endif}begin
         // fmvdx / fli.d (Zfa)
+        if ((aInstruction shr 12) and 7)<>0 then begin
+         // funct3 is fixed at zero for fmv from an integer register and for fli
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         case (aInstruction shr 20) and $1f of
          $00:begin
@@ -137785,7 +141584,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=fState.Registers[rs1];
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -137811,7 +141609,6 @@ begin
            fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(PasRISCVFLITable[Immediate]) or TPasRISCVUInt64($ffffffff00000000);
            fState.FPURegisters[frd].f64:=ReadNormalizedFloatF32(fState.FPURegisters[frd].ui64);
           end;
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -137825,6 +141622,12 @@ begin
        end;
        {$ifndef TryToForceCaseJumpTableOnLevel2}$7a:{$else}$7a,$fa:{$endif}begin
         // fmv.h.x / fli.h (Zfh + Zfa)
+        if ((aInstruction shr 12) and 7)<>0 then begin
+         // funct3 is fixed at zero for fmv from an integer register and for fli
+         SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+         result:=4;
+         exit;
+        end;
         frd:=TFPURegister((aInstruction shr 7) and $1f);
         case (aInstruction shr 20) and $1f of
          $00:begin
@@ -137838,7 +141641,6 @@ begin
           end;
 {$ifend}
           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(fState.Registers[rs1] and $ffff) or TPasRISCVUInt64($ffffffffffff0000);
-          SetFPUExceptions;
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -137852,20 +141654,9 @@ begin
            exit;
           end;
 {$ifend}
-          Immediate:=(aInstruction shr 15) and $1f;
-          if Immediate=1 then begin
-           // Minimum positive normal for f16: 2^(-14) = $0400
-           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($0400) or TPasRISCVUInt64($ffffffffffff0000);
-          end else if Immediate=31 then begin
-           // Canonical NaN for f16
-           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64($7e00) or TPasRISCVUInt64($ffffffffffff0000);
-          end else begin
-           // Convert from f32 FLI table to f16 via f32 intermediate
-           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(PasRISCVFLITable[Immediate]) or TPasRISCVUInt64($ffffffff00000000);
-           HalfFloat:=TPasRISCVHalfFloat.FromFloat(fState.FPURegisters[frd].f32);
-           fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(HalfFloat.Value) or TPasRISCVUInt64($ffffffffffff0000);
-          end;
-          SetFPUExceptions;
+          // Straight from the half precision table: the conversion from the single precision one
+          // raised overflow and inexact for the entry 2^16, and fli raises no flags at all
+          fState.FPURegisters[frd].ui64:=TPasRISCVUInt64(PasRISCVFLIHalfTable[(aInstruction shr 15) and $1f]) or TPasRISCVUInt64($ffffffffffff0000);
           fState.CSR.SetFSDirty;
           result:=4;
           exit;
@@ -138818,8 +142609,14 @@ begin
        rd:=TRegister((aInstruction shr 7) and $1f);
        rs1:=TRegister((aInstruction shr 15) and $1f);
        rs2:=TRegister((aInstruction shr 20) and $1f);
-       if (fState.Registers[rs1] and 3)<>0 then begin
-        SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
+       // ssamoswap checks its enables before the alignment (ExecuteShadowStackSwap)
+       if ((fState.Registers[rs1] and 3)<>0){$ifdef Zicfiss} and (((aInstruction shr 27) and $1f)<>$09){$endif} then begin
+        // lr is a load, its misalignment is a load exception (sc and the AMOs are stores)
+        if (((aInstruction shr 27) and $1f)=$02) then begin
+         SetException(TExceptionValue.LoadAddressMisaligned,fState.Registers[rs1],fState.PC);
+        end else begin
+         SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
+        end;
         result:=4;
         exit;
        end else begin
@@ -139037,24 +142834,8 @@ begin
          end;
 {$ifdef Zicfiss}
          $09:begin
-          // ssamoswap.w (Zicfiss)
-          // Atomically swap shadow stack memory with rs2, result in rd
-          // Check alignment (4-byte for .w)
-          if (fState.Registers[rs1] and 3)<>0 then begin
-           SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
-           result:=4;
-           exit;
-          end;
-          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],4,@fState.Bounce.ui32,false);
-          if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:=TPasMPInterlocked.Exchange(PPasMPUInt32(Ptr)^,TPasMPUInt32(fState.Registers[rs2]));
-           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=TPasRISCVUInt64(TPasRISCVInt64(TPasRISCVInt32(Temporary)));
-           end;
-           if Ptr=@fState.Bounce.ui32 then begin
-            RMWCommit(fState.Registers[rs1],4,@fState.Bounce.ui32);
-           end;
-          end;
+          // ssamoswap.w (Zicfiss), see ExecuteShadowStackSwap
+          ExecuteShadowStackSwap(aInstruction,4);
           result:=4;
           exit;
          end;
@@ -139251,8 +143032,14 @@ begin
        rd:=TRegister((aInstruction shr 7) and $1f);
        rs1:=TRegister((aInstruction shr 15) and $1f);
        rs2:=TRegister((aInstruction shr 20) and $1f);
-       if (fState.Registers[rs1] and 7)<>0 then begin
-        SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
+       // ssamoswap checks its enables before the alignment (ExecuteShadowStackSwap)
+       if ((fState.Registers[rs1] and 7)<>0){$ifdef Zicfiss} and (((aInstruction shr 27) and $1f)<>$09){$endif} then begin
+        // lr is a load, its misalignment is a load exception (sc and the AMOs are stores)
+        if (((aInstruction shr 27) and $1f)=$02) then begin
+         SetException(TExceptionValue.LoadAddressMisaligned,fState.Registers[rs1],fState.PC);
+        end else begin
+         SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
+        end;
         result:=4;
         exit;
        end else begin
@@ -139470,24 +143257,8 @@ begin
          end;
 {$ifdef Zicfiss}
          $09:begin
-          // ssamoswap.d (Zicfiss)
-          // Atomically swap shadow stack memory with rs2, result in rd
-          // Check alignment (8-byte for .d)
-          if (fState.Registers[rs1] and 7)<>0 then begin
-           SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
-           result:=4;
-           exit;
-          end;
-          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],8,@fState.Bounce.ui64,false);
-          if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           Temporary:={$ifdef CPU64}TPasMPInterlocked.Exchange{$else}PasRISCVAtomicExchange64{$endif}(PPasMPUInt64(Ptr)^,TPasMPUInt64(fState.Registers[rs2]));
-           {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-            fState.Registers[rd]:=TPasRISCVUInt64(Temporary);
-           end;
-           if Ptr=@fState.Bounce.ui64 then begin
-            RMWCommit(fState.Registers[rs1],8,@fState.Bounce.ui64);
-           end;
-          end;
+          // ssamoswap.d (Zicfiss), see ExecuteShadowStackSwap
+          ExecuteShadowStackSwap(aInstruction,8);
           result:=4;
           exit;
          end;
@@ -139684,47 +143455,54 @@ begin
        rd:=TRegister((aInstruction shr 7) and $1f);
        rs1:=TRegister((aInstruction shr 15) and $1f);
        rs2:=TRegister((aInstruction shr 20) and $1f);
-       if (fState.Registers[rs1] and 15)<>0 then begin
+       if (((aInstruction shr 27) and $1f)<>$05) or (((ord(rd) or ord(rs2)) and 1)<>0) then begin
+        // Only amocas.q exists here, and its register pairs need even registers (odd ones are
+        // reserved), checked before the alignment
+        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+        result:=4;
+        exit;
+       end else if (fState.Registers[rs1] and 15)<>0 then begin
         SetException(TExceptionValue.StoreAddressMisaligned,fState.Registers[rs1],fState.PC);
         result:=4;
         exit;
        end else begin
-        case ((aInstruction shr 25) and $7c) shr 2 of
-         $05:begin
-          // amocas.q (Zacas)
+        // amocas.q (Zacas)
 {$if defined(PasRISCVJustInTimeCompiler) and true and defined(PasRISCVJustInTimeCompilerAMO) and defined(PasRISCVJustInTimeCompilerZacas)}
-          if assigned(fJustInTimeCompiler) and
-             fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOCASQ,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
-           result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
-           exit;
-          end;
+        if assigned(fJustInTimeCompiler) and
+           fJustInTimeCompiler.TraceLDST(fJustInTimeCompiler.IntrinsicAMOCASQ,aInstruction,ord(rd),ord(rs1),ord(rs2),0,4) then begin
+         result:={$ifdef PasRISCVJustInTimeCompilerZeroInstructionSize}0{$else}4{$endif};
+         exit;
+        end;
 {$ifend}
-          Ptr:=MemoryPointerTranslate(fState.Registers[rs1],16,@fState.Bounce.ui128,false);
-          if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
-           fState.CAS128OldValue.Lo:=TPasMPUInt64(fState.Registers[rd]);
-           fState.CAS128OldValue.Hi:=TPasMPUInt64(fState.Registers[TRegister((TPasRISCVUInt32(rd)+1) and $1f)]);
-           fState.CAS128NewValue.Lo:=TPasMPUInt64(fState.Registers[rs2]);
-           fState.CAS128NewValue.Hi:=TPasMPUInt64(fState.Registers[TRegister((TPasRISCVUInt32(rs2)+1) and $1f)]);
-           fState.CAS128Result:={$ifdef CPU64}TPasMPInterlocked.CompareExchange{$else}PasRISCVAtomicCompareExchange128{$endif}(PPasMPInt128Record(Ptr)^,fState.CAS128NewValue,fState.CAS128OldValue);
-           if rd<>TRegister.Zero then begin
-            fState.Registers[rd]:=fState.CAS128Result.Lo;
-            if TRegister((TPasRISCVUInt32(rd)+1) and $1f)<>TRegister.Zero then begin
-             fState.Registers[TRegister((TPasRISCVUInt32(rd)+1) and $1f)]:=fState.CAS128Result.Hi;
-            end;
-           end;
-           if Ptr=@fState.Bounce.ui128 then begin
-            RMWCommit(fState.Registers[rs1],16,@fState.Bounce.ui128);
-           end;
-          end;
-          result:=4;
-          exit;
+        Ptr:=MemoryPointerTranslate(fState.Registers[rs1],16,@fState.Bounce.ui128,false);
+        if assigned(Ptr) and (fState.ExceptionValue=TExceptionValue.None) then begin
+         // x0 as a register pair reads zero in both halves (not x0 and x1), and as destination
+         // nothing is written
+         if rd<>TRegister.Zero then begin
+          fState.CAS128OldValue.Lo:=TPasMPUInt64(fState.Registers[rd]);
+          fState.CAS128OldValue.Hi:=TPasMPUInt64(fState.Registers[TRegister(ord(rd)+1)]);
+         end else begin
+          fState.CAS128OldValue.Lo:=0;
+          fState.CAS128OldValue.Hi:=0;
          end;
-         else begin
-          SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
-          result:=4;
-          exit;
+         if rs2<>TRegister.Zero then begin
+          fState.CAS128NewValue.Lo:=TPasMPUInt64(fState.Registers[rs2]);
+          fState.CAS128NewValue.Hi:=TPasMPUInt64(fState.Registers[TRegister(ord(rs2)+1)]);
+         end else begin
+          fState.CAS128NewValue.Lo:=0;
+          fState.CAS128NewValue.Hi:=0;
+         end;
+         fState.CAS128Result:={$ifdef CPU64}TPasMPInterlocked.CompareExchange{$else}PasRISCVAtomicCompareExchange128{$endif}(PPasMPInt128Record(Ptr)^,fState.CAS128NewValue,fState.CAS128OldValue);
+         if rd<>TRegister.Zero then begin
+          fState.Registers[rd]:=fState.CAS128Result.Lo;
+          fState.Registers[TRegister(ord(rd)+1)]:=fState.CAS128Result.Hi;
+         end;
+         if Ptr=@fState.Bounce.ui128 then begin
+          RMWCommit(fState.Registers[rs1],16,@fState.Bounce.ui128);
          end;
         end;
+        result:=4;
+        exit;
        end;
       end;
       else begin
@@ -139778,8 +143556,7 @@ begin
    // This is LPAD - will be handled in the AUIPC case inside ExecuteInstruction
   end else begin
    // Not LPAD - raise software-check exception with tval=2 (landing pad fault)
-   fState.ELP:=0;
-   UpdateExecuteInstructionMethod;
+   // ELP stays set, the trap entry saves it into xPELP and clears it there
    SetException(TExceptionValue.SoftwareCheck,2,fState.PC);
    result:=4;
    exit;
@@ -139795,15 +143572,103 @@ begin
 end;
 {$endif}
 
+procedure TPasRISCV.THART.JITStateChanged;
+// A change of state that the JIT block tag and block map key contain (see ComputeJITStateBits):
+// FS, the landing pad enables, the counter enables (and with them mode and V)
+begin
+{$ifdef PasRISCVJustInTimeCompiler}
+ if assigned(fJustInTimeCompiler) then begin
+{$ifdef JITTLBTag}
+  fJustInTimeCompiler.UpdateJITTLBTag;
+{$else}
+  fJustInTimeCompiler.FlushJITTLB;
+{$endif}
+ end;
+{$endif}
+end;
+
+{$ifdef Zicfilp}
+function TPasRISCV.THART.LandingPadsEnabled:Boolean;
+// xLPE of the current mode: mseccfg.MLPE in M-mode, menvcfg.LPE in (H)S-mode, henvcfg.LPE in
+// VS-mode, senvcfg.LPE in U- and VU-mode
+begin
+ case fState.Mode of
+  THART.TMode.Machine:begin
+   result:=(fState.CSR.fData[TCSR.TAddress.MSECCFG] and TCSR.MSECCFG_MLPE)<>0;
+  end;
+  THART.TMode.Supervisor:begin
+   if fState.VirtualMode then begin
+    result:=(fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_LPE)<>0;
+   end else begin
+    result:=(fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_LPE)<>0;
+   end;
+  end;
+  else begin
+   result:=(fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_LPE)<>0;
+  end;
+ end;
+end;
+{$endif}
+
+{$ifdef Zicfiss}
+function TPasRISCV.THART.ShadowStackEnabled:Boolean;
+// xSSE of the current mode. M-mode has no shadow stack. henvcfg.SSE and senvcfg.SSE only take
+// effect (and read as one) when the enables above them are set: S-mode menvcfg.SSE, VS-mode
+// menvcfg.SSE and henvcfg.SSE, U-mode menvcfg.SSE and senvcfg.SSE, VU-mode all three.
+begin
+ case fState.Mode of
+  THART.TMode.Machine:begin
+   result:=false;
+  end;
+  THART.TMode.Supervisor:begin
+   result:=((fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0) and
+           ((not fState.VirtualMode) or ((fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0));
+  end;
+  else begin
+   result:=((fState.CSR.fData[TCSR.TAddress.MENVCFG] and TCSR.ENVCFG_SSE)<>0) and
+           ((not fState.VirtualMode) or ((fState.CSR.fData[TCSR.TAddress.HENVCFG] and TCSR.ENVCFG_SSE)<>0)) and
+           ((fState.CSR.fData[TCSR.TAddress.SENVCFG] and TCSR.ENVCFG_SSE)<>0);
+  end;
+ end;
+end;
+{$endif}
+
 function TPasRISCV.THART.InterruptsRaised:TPasRISCVUInt64;
 begin
  result:=TPasMPInterlocked.Read(fState.PendingIRQs);
 end;
 
+function TPasRISCV.THART.GuestExternalInterrupts(const aHGEIP:TPasRISCVUInt64):TPasRISCVUInt64;
+// The interrupts that the pending guest external interrupt lines (hgeip) cause: SGEIP when one of
+// them is enabled in hgeie, VSEIP when the one that hstatus.VGEIN selects is pending
+begin
+ result:=0;
+ if (aHGEIP and fState.CSR.fData[TCSR.TAddress.HGEIE])<>0 then begin
+  result:=TInterruptValueMasks.Reserved; // SGEIP (bit 12)
+ end;
+ if ((aHGEIP shr GetVGEIN) and 1)<>0 then begin
+  result:=result or TInterruptValueMasks.HypervisorExternal; // VSEIP (bit 10)
+ end;
+end;
+
+function TPasRISCV.THART.PendingInterruptBits:TPasRISCVUInt64;
+// mip as read: the device lines, the software-writable bits, hvip and the interrupts of the guest
+// external interrupt lines, without the enables
+begin
+ result:=TPasMPInterlocked.Read(fState.PendingIRQs);
+ result:=((result or fState.CSR.fData[TCSR.TAddress.MIP] or fState.CSR.fData[TCSR.TAddress.HVIP]) and TCSR.CSR_MIE_MASK) or
+         GuestExternalInterrupts(result shr TCSR.HGEIP_PENDING_SHIFT);
+end;
+
 function TPasRISCV.THART.InterruptsPending:TPasRISCVUInt64;
 begin
- // Include HVIP as active interrupt source (QEMU/Spike treat hvip as alias into pending bits)
- result:=(TPasMPInterlocked.Read(fState.PendingIRQs) or fState.CSR.fData[TCSR.TAddress.MIP] or fState.CSR.fData[TCSR.TAddress.HVIP]) and fState.CSR.fData[TCSR.TAddress.MIE];
+ // hvip is an interrupt source as well (VSSIP, VSTIP and VSEIP of hip), and the guest external
+ // interrupt lines in the upper half of PendingIRQs become SGEIP and VSEIP
+ result:=TPasMPInterlocked.Read(fState.PendingIRQs);
+ if (result shr TCSR.HGEIP_PENDING_SHIFT)<>0 then begin
+  result:=result or GuestExternalInterrupts(result shr TCSR.HGEIP_PENDING_SHIFT);
+ end;
+ result:=(result or fState.CSR.fData[TCSR.TAddress.MIP] or fState.CSR.fData[TCSR.TAddress.HVIP]) and fState.CSR.fData[TCSR.TAddress.MIE];
 end;
 
 function TPasRISCV.THART.InterruptsNotPending:TPasRISCVUInt64;
@@ -139812,20 +143677,25 @@ begin
 end;
 
 procedure TPasRISCV.THART.ClearInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
-var Mask:TPasRISCVUInt64;
 begin
- Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
- {$ifdef CPU64}TPasMPInterlocked.BitwiseAnd{$else}PasRISCVAtomicBitwiseAnd64{$endif}(fState.PendingIRQs,TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
-//TPasMPInterlocked.BitwiseAnd(fState.CSR.fData[TCSR.TAddress.MIP],TPasRISCVUInt64(not TPasRISCVUInt64(Mask)));
+ ClearInterruptMask(TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue));
+end;
+
+procedure TPasRISCV.THART.ClearInterruptMask(const aMask:TPasRISCVUInt64);
+begin
+ {$ifdef CPU64}TPasMPInterlocked.BitwiseAnd{$else}PasRISCVAtomicBitwiseAnd64{$endif}(fState.PendingIRQs,TPasRISCVUInt64(not aMask));
 end;
 
 procedure TPasRISCV.THART.RaiseInterrupt(const aInterruptValue:TPasRISCV.THART.TInterruptValue);
-var Mask:TPasRISCVUInt64;
 begin
- Mask:=TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue);
- if ({$ifdef CPU64}TPasMPInterlocked.ExchangeBitwiseOr{$else}PasRISCVAtomicExchangeBitwiseOr64{$endif}(fState.PendingIRQs,Mask) and Mask)=0 then begin
+ RaiseInterruptMask(TPasRISCVUInt64(1) shl TPasRISCVUInt64(aInterruptValue));
+end;
+
+procedure TPasRISCV.THART.RaiseInterruptMask(const aMask:TPasRISCVUInt64);
+begin
+ if ({$ifdef CPU64}TPasMPInterlocked.ExchangeBitwiseOr{$else}PasRISCVAtomicExchangeBitwiseOr64{$endif}(fState.PendingIRQs,aMask) and aMask)=0 then begin
 {$ifdef PasRISCVDumpNVMeIO}
-  if aInterruptValue=TPasRISCV.THART.TInterruptValue.SupervisorExternal then begin
+  if aMask=TPasRISCV.THART.TInterruptValueMasks.SupervisorExternal then begin
    //writeln(StdErr,'HART ',fHARTID,' RaiseInterrupt S-ext (new) at ',GetTickCount64,'ms');
   end;
 {$endif}
@@ -139876,7 +143746,7 @@ begin
 {$endif}
  end else begin
 {$ifdef PasRISCVDumpNVMeIO}
-  if aInterruptValue=TPasRISCV.THART.TInterruptValue.SupervisorExternal then begin
+  if aMask=TPasRISCV.THART.TInterruptValueMasks.SupervisorExternal then begin
    //writeln(StdErr,'HART ',fHARTID,' RaiseInterrupt S-ext DEDUP (already pending) at ',GetTickCount64,'ms');
   end;
 {$endif}
@@ -139977,7 +143847,7 @@ end;
 
 procedure TPasRISCV.THART.SendAIAIRQ(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aIRQ:TPasRISCVUInt32);
 var AIARegFile:TPasRISCV.THART.TAIARegFile;
-    MSIP:THART.TInterruptValue;
+    MSIP:TPasRISCVUInt64; // the interrupt line of the file
     Threshold,Reg,Value,EIE,Previous:TPasRISCVUInt32;
 begin
  AIARegFile:=fAIARegFiles[aAIARegFileMode];
@@ -139993,22 +143863,24 @@ begin
    Threshold:=AIARegFile.fEIThreshold;
    case aAIARegFileMode of
     TPasRISCV.TAIARegFileMode.Machine:begin
-     MSIP:=THART.TInterruptValue.MachineExternal;
+     MSIP:=TInterruptValueMasks.MachineExternal;
     end;
     TPasRISCV.TAIARegFileMode.Supervisor:begin
-     MSIP:=THART.TInterruptValue.SupervisorExternal;
+     MSIP:=TInterruptValueMasks.SupervisorExternal;
     end;
     TPasRISCV.TAIARegFileMode.VirtualSupervisor:begin
-     MSIP:=THART.TInterruptValue.SupervisorExternal;
+     // Guest interrupt file 1 (GEILEN=1) drives the guest external interrupt line hgeip[1],
+     // which becomes VSEIP (hstatus.VGEIN=1) and SGEIP (hgeie[1]=1), not the SEIP of the host
+     MSIP:=TPasRISCVUInt64(1) shl (TCSR.HGEIP_PENDING_SHIFT+1);
     end;
     else begin
-     MSIP:=THART.TInterruptValue.None;
+     MSIP:=0;
     end;
    end;
    TPasMPMemoryBarrier.ReadDependency;
    EIE:=AIARegFile.fEIE[Reg];
    if ((Threshold=0) or (aIRQ<Threshold)) and ((Value and EIE)<>0) and ((Value and Previous)=0) then begin
-    RaiseInterrupt(MSIP);
+    RaiseInterruptMask(MSIP);
    end;
   end;
  end;
@@ -140016,7 +143888,7 @@ end;
 
 function TPasRISCV.THART.UpdateAIAInternal(const aAIARegFileMode:TPasRISCV.TAIARegFileMode;const aUpdate,aClaim:Boolean):TPasRISCVUInt32;
 var AIARegFile:TPasRISCV.THART.TAIARegFile;
-    MSIP:THART.TInterruptValue;
+    MSIP:TPasRISCVUInt64; // the interrupt line of the file
     Threshold,EIE,EIP,Bits,Bit,IRQ,Mask:TPasRISCVUInt32;
     Index:TPasRISCVInt32;
     DeliveryEnabled:Boolean;
@@ -140030,20 +143902,21 @@ begin
   DeliveryEnabled:=AIARegFile.fEIDelivery<>0;
   case aAIARegFileMode of
    TPasRISCV.TAIARegFileMode.Machine:begin
-    MSIP:=THART.TInterruptValue.MachineExternal;
+    MSIP:=TInterruptValueMasks.MachineExternal;
    end;
    TPasRISCV.TAIARegFileMode.Supervisor:begin
-    MSIP:=THART.TInterruptValue.SupervisorExternal;
+    MSIP:=TInterruptValueMasks.SupervisorExternal;
    end;
    TPasRISCV.TAIARegFileMode.VirtualSupervisor:begin
-    MSIP:=THART.TInterruptValue.SupervisorExternal;
+    // Guest interrupt file 1 drives hgeip[1], see SendAIAIRQ
+    MSIP:=TPasRISCVUInt64(1) shl (TCSR.HGEIP_PENDING_SHIFT+1);
    end;
    else begin
-    MSIP:=THART.TInterruptValue.None;
+    MSIP:=0;
    end;
   end;
   if aUpdate and DeliveryEnabled then begin
-   ClearInterrupt(MSIP);
+   ClearInterruptMask(MSIP);
   end;
   // Scan pending-and-enabled interrupts regardless of eidelivery (per AIA spec: *topei is not affected by eidelivery)
   for Index:=0 to TPasRISCV.THART.TAIARegFile.ARRAY_LENGTH-1 do begin
@@ -140055,7 +143928,7 @@ begin
    if Bits<>0 then begin
     if result<>0 then begin
      if DeliveryEnabled then begin
-      RaiseInterrupt(MSIP);
+      RaiseInterruptMask(MSIP);
      end;
      exit;
     end else begin
@@ -140071,7 +143944,7 @@ begin
       if aUpdate then begin
        if Bits<>0 then begin
         if DeliveryEnabled then begin
-         RaiseInterrupt(MSIP);
+         RaiseInterruptMask(MSIP);
         end;
         exit;
        end;
@@ -140179,8 +144052,8 @@ procedure TPasRISCV.THART.CSRHandlerMCYCLECFG(const aPC,aInstruction,aCSR,aRHS:T
 var rd:TRegister;
     OldValue,NewValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   OldValue:=fState.CycleCfg;
@@ -140207,8 +144080,8 @@ procedure TPasRISCV.THART.CSRHandlerMINSTRETCFG(const aPC,aInstruction,aCSR,aRHS
 var rd:TRegister;
     OldValue,NewValue:TPasRISCVUInt64;
 begin
- if fState.Mode<TPasRISCV.THART.TMode((aCSR shr 8) and 3) then begin
-  SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
  end else begin
   rd:=TRegister((aInstruction shr 7) and $1f);
   OldValue:=fState.InstRetCfg;
@@ -140359,6 +144232,34 @@ end;
 
 {$endif}
 
+class function TPasRISCV.THART.HighestPriorityInterrupt(const aIRQs:TPasRISCVUInt64):TPasRISCV.THART.TInterruptValue;
+// Among several interrupts for the same privilege mode the spec order is MEI, MSI, MTI, SEI, SSI,
+// STI, SGEI, VSEI, VSSI, VSTI, LCOFI (not simply the highest bit number)
+const PriorityOrder:array[0..10] of TPasRISCV.THART.TInterruptValue=
+       (
+        TPasRISCV.THART.TInterruptValue.MachineExternal,
+        TPasRISCV.THART.TInterruptValue.MachineSoftware,
+        TPasRISCV.THART.TInterruptValue.MachineTimer,
+        TPasRISCV.THART.TInterruptValue.SupervisorExternal,
+        TPasRISCV.THART.TInterruptValue.SupervisorSoftware,
+        TPasRISCV.THART.TInterruptValue.SupervisorTimer,
+        TPasRISCV.THART.TInterruptValue.Reserved, // SGEI
+        TPasRISCV.THART.TInterruptValue.HypervisorExternal, // VSEI
+        TPasRISCV.THART.TInterruptValue.HypervisorSoftware, // VSSI
+        TPasRISCV.THART.TInterruptValue.HypervisorTimer, // VSTI
+        TPasRISCV.THART.TInterruptValue.LocalCounterOverflow
+       );
+var Index:TPasRISCVSizeInt;
+begin
+ for Index:=Low(PriorityOrder) to High(PriorityOrder) do begin
+  if (aIRQs and (TPasRISCVUInt64(1) shl TPasRISCVUInt64(PriorityOrder[Index])))<>0 then begin
+   result:=PriorityOrder[Index];
+   exit;
+  end;
+ end;
+ result:=TPasRISCV.THART.TInterruptValue(TPasMPMath.BitScanReverse64(aIRQs));
+end;
+
 procedure TPasRISCV.THART.HandleInterrupts;
 var PC,Status,HStatus,PendingIRQs,IRQs,IDELEG,HIDELEG_Val:TPasRISCVUInt64;
     Mode,Privilege:THART.TMode;
@@ -140378,46 +144279,48 @@ begin
 
   WasVirtual:=fState.VirtualMode;
   DelegateToVS:=false;
+  Mode:=fState.Mode;
+  Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
 
-  Privilege:=TMode.Machine;
-  IDELEG:=fState.CSR.fData[TCSR.TAddress.MIDELEG];
+  // Interrupts go to the most privileged mode first. The VS-level interrupts and SGEI are always
+  // delegated to HS-mode, hideleg delegates the VS-level ones further to VS-mode.
+  IDELEG:=fState.CSR.fData[TCSR.TAddress.MIDELEG] or TCSR.CSR_MIDELEG_RO1;
+
+  // M-mode interrupts: taken below M-mode, and in M-mode with mstatus.MIE=1
   IRQs:=PendingIRQs and not IDELEG;
-  PendingIRQs:=PendingIRQs and IDELEG;
+  if (IRQs<>0) and ((Mode<>TMode.Machine) or ((Status and TCSR.TMask.TStatus.MIE)<>0)) then begin
 
-  if IRQs=0 then begin
+   Privilege:=TMode.Machine;
 
-   // All remaining interrupts are delegated from M to S/HS
+  end else begin
+
    Privilege:=TMode.Supervisor;
-{  IDELEG:=fState.CSR.fData[TCSR.TAddress.SIDELEG];
-   IRQs:=PendingIRQs and not IDELEG;
-   PendingIRQs:=PendingIRQs and IDELEG;}
 
-   // No TMode.User here, since User-level interrupts are optional for implementation were part of the
-   // "n" extension that has been removed from the RISC-V specs.
-{  if IRQs=0 then begin
-    Privilege:=TMode.User;
-   end;}
+   // HS-mode interrupts: taken in U-mode, always with V=1 (neither sstatus.SIE of the host nor
+   // vsstatus.SIE of the guest can block them there), and in HS-mode with sstatus.SIE=1
+   HIDELEG_Val:=fState.CSR.fData[TCSR.TAddress.HIDELEG];
+   IRQs:=PendingIRQs and IDELEG and not HIDELEG_Val;
+   if (IRQs=0) or
+      (Mode=TMode.Machine) or
+      ((Mode=TMode.Supervisor) and (not WasVirtual) and ((Status and TCSR.TMask.TStatus.SIE)=0)) then begin
 
-   // If in virtual mode, check hideleg for further delegation M => HS => VS
-   if WasVirtual then begin
-    HIDELEG_Val:=fState.CSR.fData[TCSR.TAddress.HIDELEG];
-    IRQs:=PendingIRQs and not HIDELEG_Val;
-    if IRQs=0 then begin
-     // All delegated to VS
-     IRQs:=PendingIRQs;
-     DelegateToVS:=true;
+    // VS-mode interrupts: only with V=1, taken in VU-mode, and in VS-mode with vsstatus.SIE=1 (while
+    // V=1 the SIE bit in mstatus is the one of vsstatus)
+    IRQs:=0;
+    if WasVirtual then begin
+     IRQs:=PendingIRQs and IDELEG and HIDELEG_Val;
+     if (IRQs<>0) and ((Mode=TMode.User) or ((Status and TCSR.TMask.TStatus.SIE)<>0)) then begin
+      DelegateToVS:=true;
+     end else begin
+      IRQs:=0;
+     end;
     end;
-   end else begin
-    IRQs:=PendingIRQs;
+
    end;
+
   end;
 
-  Mode:=fState.Mode;
-  if Mode>Privilege then begin
-   exit;
-  end else if ((fState.Mode=Privilege) and (((TPasRISCVUInt32(1) shl TPasRISCVUInt32(Mode)) and fState.CSR.fData[TCSR.TAddress.MSTATUS])=0)) then begin
-   exit;
-  end else if IRQs<>0 then begin
+  if IRQs<>0 then begin
 
 {$ifdef PasRISCVJustInTimeCompiler}
    if assigned(fJustInTimeCompiler) and fJustInTimeCompiler.fCompiling then begin
@@ -140427,7 +144330,7 @@ begin
 
    PC:=fState.PC;
 
-   InterruptValue:=TInterruptValue(TPasMPMath.BitScanReverse64(IRQs));
+   InterruptValue:=HighestPriorityInterrupt(IRQs);
 
    case Privilege of
 
@@ -140463,6 +144366,8 @@ begin
      end else begin
       Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
      end;
+     // An interrupt has no guest virtual address in mtval
+     Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.GVA);
 {$ifdef Zicfilp}
      // Zicfilp: Save ELP to MPELP and clear ELP
      Status:=(Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPELP)) or (TPasRISCVUInt64(fState.ELP) shl TCSR.TMask.TMSTATUSBit.MPELP);
@@ -140476,6 +144381,11 @@ begin
     TMode.Supervisor:begin
 
      if DelegateToVS then begin
+
+      // VS-mode sees its interrupts under the S-level causes: VSSI, VSTI and VSEI (2, 6, 10)
+      // become SSI, STI and SEI (1, 5, 9), in vscause as well as for the vector of vstvec
+      InterruptValue:=TPasRISCV.THART.TInterruptValue(TPasRISCVInt32(ord(InterruptValue))-1);
+
       // Trap to VS-mode (V stays 1, S-CSRs already contain VS values)
       SetMode(THART.TMode.Supervisor);
 
@@ -140500,14 +144410,18 @@ begin
       fState.CSR.fData[TCSR.TAddress.MSTATUS]:=Status;
 
      end else begin
-      // Trap to HS-mode
+
+      // Trap to HS-mode: hstatus.SPV gets the previous V, SPVP the previous privilege when V was 1,
+      // and GVA, htval and htinst are zero for an interrupt
+      HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS] and not ((TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV) or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.GVA));
       if WasVirtual then begin
        SetVirtualMode(false);
-       HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
-       HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV)) or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV);
+       HStatus:=HStatus or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV);
        HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP)) or ((TPasRISCVUInt64(Mode) and 1) shl TCSR.TMask.THSTATUSBit.SPVP);
-       fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
       end;
+      fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
+      fState.CSR.fData[TCSR.TAddress.HTVAL]:=0;
+      fState.CSR.fData[TCSR.TAddress.HTINST]:=0;
 
       SetMode(THART.TMode.Supervisor);
 
@@ -140606,6 +144520,16 @@ begin
   // V=0 => V=1: save HS state, restore VS state
   // Save current (HS) mstatus bits to HSMode backing store
   fState.HSMode_MSTATUS:=MStatus and TCSR.TMask.MSTATUS_SWAP_MASK;
+  // While V=1 the HS-level FS and VS fields have to become Dirty when the guest changes its FP or
+  // vector state (a hypervisor like KVM saves the guest registers only then). They are set Dirty
+  // right here, conservatively, unless they are Off; as HS-mode cannot change them before V=0
+  // again, this covers every change of the guest.
+  if (fState.HSMode_MSTATUS and TCSR.TMask.TStatus.FS)<>0 then begin
+   fState.HSMode_MSTATUS:=fState.HSMode_MSTATUS or TCSR.TMask.TStatus.FS;
+  end;
+  if (fState.HSMode_MSTATUS and TCSR.TMask.TStatus.VS)<>0 then begin
+   fState.HSMode_MSTATUS:=fState.HSMode_MSTATUS or TCSR.TMask.TStatus.VS;
+  end;
   // Restore VS mstatus bits
   fState.CSR.fData[TCSR.TAddress.MSTATUS]:=(MStatus and not TCSR.TMask.MSTATUS_SWAP_MASK) or fState.CSR.fData[TCSR.TAddress.VSSTATUS];
 
@@ -140653,12 +144577,13 @@ begin
   UpdateCTRState;
 {$endif}
   FlushTLB(true,true); // Flush the TLB on all virtual mode changes like QEmu
+{$ifdef PerModeTLB}
+  // The swap exchanged the SUM bit as well, while the mode may have stayed the same
+  SelectTLB;
+{$endif}
   UpdateMMU;
-{$if defined(PasRISCVJustInTimeCompiler) and defined(JITTLBTag)}
-  if assigned(fJustInTimeCompiler) then begin
-   fJustInTimeCompiler.UpdateJITTLBTag;
-  end;
-{$ifend}
+  // The JIT state bits depend on V (with the JIT TLB tag also the tag itself)
+  JITStateChanged;
 {$ifdef PasRISCVSmcntrpmf}
   // Smcntrpmf: recompute per-mode counter inhibit
   UpdateCycleCountInhibit;
@@ -140753,10 +144678,9 @@ begin
 
      SetMode(THART.TMode.Supervisor);
 
-     // PC: vector to HS-mode trap handler; cause=16 (synchronous exception).
-     // Vectored mode: BASE + 4*cause; direct mode: BASE.
-     fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+
-                ((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(16 shl 2));
+     // PC: HS-mode trap handler, cause=16. A double trap is a synchronous exception: BASE also in
+     // vectored mode
+     fState.PC:=fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc);
 {$ifdef PasRISCVSmctrSsctr}
      FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
@@ -140799,7 +144723,8 @@ begin
     SetMode(THART.TMode.Supervisor);
     // V remains 1
 
-    fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+    // Synchronous exceptions go to BASE also in vectored mode (only interrupts are vectored)
+    fState.PC:=fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc);
 {$ifdef PasRISCVSmctrSsctr}
     FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
@@ -140847,9 +144772,8 @@ begin
      SetMode(THART.TMode.Machine);
 
      // Vector PC to M-mode trap handler for cause=16.
-     // In vectored mode (MTVEC[0]=1): BASE + 4*cause; in direct mode: BASE.
-     fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+
-                ((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(16 shl 2));
+     // A double trap is a synchronous exception: BASE also in vectored mode (MTVEC[0]=1)
+     fState.PC:=fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc);
 {$ifdef PasRISCVSmctrSsctr}
      FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
@@ -140871,6 +144795,12 @@ begin
       HStatus:=HStatus or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
      end else begin
       HStatus:=HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+     end;
+
+     // With MPRV=1 the new MPP/MPV change how M-mode data accesses are translated
+     if ((HStatus and TCSR.TMask.TStatus.MPRV)<>0) and
+        (((HStatus xor fState.CSR.fData[TCSR.TAddress.MSTATUS]) and ((TPasRISCVUInt64(3) shl 11) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV)))<>0) then begin
+      FlushTLB(false,true);
      end;
 
      // Clear SDT (leaving the supervisor trap context); set MDT=1 for M-mode entry.
@@ -140901,26 +144831,41 @@ begin
      HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
      HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV)) or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV); // SPV=1
      HStatus:=(HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPVP)) or ((TPasRISCVUInt64(Mode) and 1) shl TCSR.TMask.THSTATUSBit.SPVP); // SPVP=prev priv
-     // GVA: set if this was a guest-page-fault or virtual instruction fault
-     if (fState.ExceptionValue=TExceptionValue.InstructionGuestPageFault) or
-        (fState.ExceptionValue=TExceptionValue.LoadGuestPageFault) or
-        (fState.ExceptionValue=TExceptionValue.StoreGuestPageFault) or
-        (fState.ExceptionValue=TExceptionValue.VirtualInstruction) then begin
-      HStatus:=HStatus or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.GVA);
-     end else begin
-      HStatus:=HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.GVA);
-     end;
-     fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
     end else begin
      // Coming from HS/U mode: clear hstatus.SPV
      HStatus:=fState.CSR.fData[TCSR.TAddress.HSTATUS];
      HStatus:=HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.SPV);
-     fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
     end;
+    // GVA: stval holds a guest virtual address, i.e. an address exception raised under V=1 or by
+    // HLV/HSV/HLVX (not a virtual instruction exception, whose stval is the instruction)
+    if fState.ExceptionGuestVirtual and
+       (fState.ExceptionValue in [TExceptionValue.InstructionAddressMisaligned,
+                                  TExceptionValue.InstructionAccessFault,
+                                  TExceptionValue.Breakpoint,
+                                  TExceptionValue.LoadAddressMisaligned,
+                                  TExceptionValue.LoadAccessFault,
+                                  TExceptionValue.StoreAddressMisaligned,
+                                  TExceptionValue.StoreAccessFault,
+                                  TExceptionValue.InstructionPageFault,
+                                  TExceptionValue.LoadPageFault,
+                                  TExceptionValue.StorePageFault,
+                                  TExceptionValue.InstructionGuestPageFault,
+                                  TExceptionValue.LoadGuestPageFault,
+                                  TExceptionValue.StoreGuestPageFault]) then begin
+     HStatus:=HStatus or (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.GVA);
+    end else begin
+     HStatus:=HStatus and not (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.GVA);
+    end;
+    fState.CSR.fData[TCSR.TAddress.HSTATUS]:=HStatus;
+    // htval/htinst belong to this trap only: the guest physical address and transformed
+    // instruction of a guest page fault, zero otherwise
+    fState.CSR.fData[TCSR.TAddress.HTVAL]:=fState.ExceptionGuestAddress;
+    fState.CSR.fData[TCSR.TAddress.HTINST]:=fState.ExceptionTransformedInstruction;
 
     SetMode(THART.TMode.Supervisor);
 
-    fState.PC:=(fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.STVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+    // Synchronous exceptions go to BASE also in vectored mode (only interrupts are vectored)
+    fState.PC:=fState.CSR.fData[TCSR.TAddress.STVEC] and TPasRISCVUInt64($fffffffffffffffc);
 {$ifdef PasRISCVSmctrSsctr}
     FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
@@ -140984,7 +144929,8 @@ begin
    SetVirtualMode(false);
    SetMode(THART.TMode.Machine);
 
-   fState.PC:=(fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc))+((fState.CSR.fData[TCSR.TAddress.MTVEC] and 1)*(TPasRISCVUInt32(fState.ExceptionValue) shl 2));
+   // Synchronous exceptions go to BASE also in vectored mode (only interrupts are vectored)
+   fState.PC:=fState.CSR.fData[TCSR.TAddress.MTVEC] and TPasRISCVUInt64($fffffffffffffffc);
 {$ifdef PasRISCVSmctrSsctr}
    FreezeCTROnTrap(fState.ExceptionValue=TExceptionValue.Breakpoint,false);
    RecordCTRTrap(TCSR.TCTRType.Exception_,fState.ExceptionPC,fState.PC);
@@ -140996,16 +144942,10 @@ begin
 
    fState.CSR.fData[TCSR.TAddress.MTVAL]:=fState.ExceptionData;
 
-   // H-extension: MTVAL2 and MTINST for M-mode traps
-   if (fState.ExceptionValue=TExceptionValue.InstructionGuestPageFault) or
-      (fState.ExceptionValue=TExceptionValue.LoadGuestPageFault) or
-      (fState.ExceptionValue=TExceptionValue.StoreGuestPageFault) then begin
-    fState.CSR.fData[TCSR.TAddress.MTVAL2]:=fState.CSR.fData[TCSR.TAddress.HTVAL];
-    fState.CSR.fData[TCSR.TAddress.MTINST]:=fState.CSR.fData[TCSR.TAddress.HTINST];
-   end else begin
-    fState.CSR.fData[TCSR.TAddress.MTVAL2]:=0;
-    fState.CSR.fData[TCSR.TAddress.MTINST]:=0;
-   end;
+   // H-extension: mtval2/mtinst get the guest physical address and transformed instruction of a
+   // guest page fault, zero otherwise (htval/htinst of HS stay untouched)
+   fState.CSR.fData[TCSR.TAddress.MTVAL2]:=fState.ExceptionGuestAddress;
+   fState.CSR.fData[TCSR.TAddress.MTINST]:=fState.ExceptionTransformedInstruction;
 
    Status:=fState.CSR.fData[TCSR.TAddress.MSTATUS];
    Status:=(Status and not ((TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPIE) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MIE))) or (((Status shr TCSR.TMask.TMSTATUSBit.MIE) and 1) shl TCSR.TMask.TMSTATUSBit.MPIE);
@@ -141016,6 +144956,33 @@ begin
     Status:=Status or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
    end else begin
     Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV);
+   end;
+
+   // GVA: mtval holds a guest virtual address (address exception under V=1 or from HLV/HSV/HLVX)
+   if fState.ExceptionGuestVirtual and
+      (fState.ExceptionValue in [TExceptionValue.InstructionAddressMisaligned,
+                                 TExceptionValue.InstructionAccessFault,
+                                 TExceptionValue.Breakpoint,
+                                 TExceptionValue.LoadAddressMisaligned,
+                                 TExceptionValue.LoadAccessFault,
+                                 TExceptionValue.StoreAddressMisaligned,
+                                 TExceptionValue.StoreAccessFault,
+                                 TExceptionValue.InstructionPageFault,
+                                 TExceptionValue.LoadPageFault,
+                                 TExceptionValue.StorePageFault,
+                                 TExceptionValue.InstructionGuestPageFault,
+                                 TExceptionValue.LoadGuestPageFault,
+                                 TExceptionValue.StoreGuestPageFault]) then begin
+    Status:=Status or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.GVA);
+   end else begin
+    Status:=Status and not (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.GVA);
+   end;
+
+   // With MPRV=1 the new MPP/MPV change how M-mode data accesses are translated (for example a
+   // fault during an MPRV access traps from M to M), so the M-mode TLB must not keep the old ones
+   if ((Status and TCSR.TMask.TStatus.MPRV)<>0) and
+      (((Status xor fState.CSR.fData[TCSR.TAddress.MSTATUS]) and ((TPasRISCVUInt64(3) shl 11) or (TPasRISCVUInt64(1) shl TCSR.TMask.TMSTATUSBit.MPV)))<>0) then begin
+    FlushTLB(false,true);
    end;
 
 {$ifdef Zicfilp}
@@ -141384,13 +145351,13 @@ begin
     end;
     if JITCodeExecuted then begin
 {$ifdef PasRISCVJustInTimeCompilerStats}
-     inc(fStatTLBFastDispatchHits);
+     inc(fJustInTimeCompiler.fStatTLBFastDispatchHits); // the counters live in the JIT, not in the HART
 {$endif}
      PageAddress:=TPasRISCVUInt64($7fffffffffffffff);
      continue;
     end else begin
 {$ifdef PasRISCVJustInTimeCompilerStats}
-     inc(fStatTLBFastDispatchMisses);
+     inc(fJustInTimeCompiler.fStatTLBFastDispatchMisses);
 {$endif}
     end;
    end;
@@ -141775,6 +145742,14 @@ begin
    fState.CSR.fData[CSRIndex]:=CSRNode.GetUInt64(TPasRISCVRawByteString(IntToStr(CSRIndex)),fState.CSR.fData[CSRIndex]);
   end;
  end;
+{$ifdef PasRISCVSmepmp}
+ UpdatePMP;
+{$endif}
+{$ifdef PerModeTLB}
+ // SetMode above ran with the previous mstatus, the TLB choice depends on the restored SUM bit
+ SelectTLB;
+{$endif}
+ FlushTLB(false,true);
 
  // THART outer fields
  fMMUMode:=TMMU.TMMUMode(aNode.GetUInt32('MMUMode',TPasRISCVUInt32(ord(TMMU.TMMUMode.None))));
@@ -141813,6 +145788,11 @@ begin
    end;
   end;
  end;
+ // The restored state decides how instructions are executed (Zicfilp ELP) and which host rounding
+ // mode the fast FPU path needs (frm), neither of which the plain field assignments above update
+ UpdateExecuteInstructionMethod;
+ SetHostRoundingMode(fState.CSR.fData[TCSR.TAddress.FRM] and 7);
+
 
 end;
 
@@ -146184,6 +150164,16 @@ begin
  fVirtIOCryptoSize:=aConfiguration.fVirtIOCryptoSize;
  fVirtIOCryptoIRQ:=aConfiguration.fVirtIOCryptoIRQ;
 
+ fVirtIOBalloonBase:=aConfiguration.fVirtIOBalloonBase;
+ fVirtIOBalloonSize:=aConfiguration.fVirtIOBalloonSize;
+ fVirtIOBalloonIRQ:=aConfiguration.fVirtIOBalloonIRQ;
+ fVirtIOBalloonEnabled:=aConfiguration.fVirtIOBalloonEnabled;
+
+ fWatchdogBase:=aConfiguration.fWatchdogBase;
+ fWatchdogSize:=aConfiguration.fWatchdogSize;
+ fWatchdogIRQ:=aConfiguration.fWatchdogIRQ;
+ fWatchdogEnabled:=aConfiguration.fWatchdogEnabled;
+
  fIVSHMEMSharedMemorySize:=aConfiguration.fIVSHMEMSharedMemorySize;
 
  fAIA:=aConfiguration.fAIA;
@@ -146197,6 +150187,8 @@ begin
  fJITFPUInvalidFlagEnabled:=aConfiguration.fJITFPUInvalidFlagEnabled;
 {$endif}
 
+ fSVVPTC:=aConfiguration.fSVVPTC;
+
  fVirtIOBlockEnabled:=aConfiguration.fVirtIOBlockEnabled;
 
  fVirtIOBlockMQ:=aConfiguration.fVirtIOBlockMQ;
@@ -146206,6 +150198,17 @@ begin
  fLRSCMaximumCycles:=aConfiguration.fLRSCMaximumCycles;
 
  fVector:=aConfiguration.fVector;
+
+{$ifdef PasRISCVJustInTimeCompiler}
+ fJITEnabled:=aConfiguration.fJITEnabled;
+{$ifdef PasRISCVJustInTimeCompilerFPU}
+ fJITFPUEnabled:=aConfiguration.fJITFPUEnabled;
+ fJITFastFPUCodePaths:=aConfiguration.fJITFastFPUCodePaths;
+{$endif}
+{$ifdef PasRISCVJustInTimeCompilerVector}
+ fJITVectorEnabled:=aConfiguration.fJITVectorEnabled;
+{$endif}
+{$endif}
 
  fBIOS.Clear;
  if aConfiguration.fBIOS.Size>0 then begin
@@ -147766,7 +151769,13 @@ begin
   AddISAExtension('zksed');
   AddISAExtension('zksh');
   AddISAExtension('zkt');
+{$if defined(cpu386) or defined(cpuamd64) or defined(cpux86_64) or defined(CPUX64)}
+  // RVTSO comes from the host here: an x86 host has total store ordering itself, so guest loads
+  // and stores keep their order without barriers. On a host with a weak memory model (ARM64 for
+  // example) that would need a barrier per access, which the emulator does not emit, so ztso is
+  // not advertised there
   AddISAExtension('ztso');
+{$ifend}
   if fVector then begin
    AddISAExtension('zvbb');
    AddISAExtension('zvbc');
@@ -149611,18 +153620,43 @@ end;
 
 {$ifdef PasRISCVJustInTimeCompiler}
 procedure TPasRISCV.JITMarkDirtyMemory(const aPhysicalAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64=0);
+// Every page the access touches is marked, from the page of the first byte to the page of the
+// last one. Stepping by 4096 from the start address missed the second page of a small access
+// across a page boundary (a two byte store on the last byte of a page, for example).
 var HARTIndex:TPasRISCVSizeInt;
     JustInTimeCompiler:THART.TJustInTimeCompiler;
-    PageOffset:TPasRISCVUInt64;
+    Page,LastPage:TPasRISCVUInt64;
 begin
+ if aSize>1 then begin
+  LastPage:=(aPhysicalAddress+(aSize-1)) and not TPasRISCVUInt64(4095);
+ end else begin
+  LastPage:=aPhysicalAddress and not TPasRISCVUInt64(4095);
+ end;
  for HARTIndex:=0 to length(fHARTs)-1 do begin
   JustInTimeCompiler:=fHARTs[HARTIndex].fJustInTimeCompiler;
   if assigned(JustInTimeCompiler) then begin
-   PageOffset:=0;
+   Page:=aPhysicalAddress and not TPasRISCVUInt64(4095);
    repeat
-    JustInTimeCompiler.MarkPageDirty(aPhysicalAddress+PageOffset);
-    inc(PageOffset,4096);
-   until PageOffset>=aSize;
+    JustInTimeCompiler.MarkPageDirty(Page);
+    inc(Page,4096);
+   until Page>LastPage;
+  end;
+ end;
+end;
+
+procedure TPasRISCV.JITWriteProtectPage(const aPhysicalAddress:TPasRISCVUInt64);
+// A page got translated code: every hart drops its write TLB entries for it, whatever mode and
+// virtual address they belong to. Stores through such an entry would change the code without
+// marking the page dirty (only the store TLB fill does that), and the stale translation would
+// survive a fence.i (a store from another hart, from another privilege mode or through another
+// virtual address, for example the kernel's linear map).
+var HARTIndex:TPasRISCVSizeInt;
+    HostPage:TPasRISCVPtrUInt;
+begin
+ HostPage:=TPasRISCVPtrUInt(fBus.GetDirectMemoryAccessPointer(nil,aPhysicalAddress and PAGE_ADDRESS_MASK,PAGE_SIZE,false,nil));
+ if HostPage<>0 then begin
+  for HARTIndex:=0 to length(fHARTs)-1 do begin
+   fHARTs[HARTIndex].TLBDropWriteEntries(HostPage);
   end;
  end;
 end;
@@ -150995,6 +155029,7 @@ procedure DoCheckCPU;
 {$if defined(cpu386) or defined(cpuamd64) or defined(cpux86_64) or defined(cpux64)}
 var CPUIDData:TCPUIDData;
     CPUID1ECX:TPasRISCVUInt32;
+    AVXUsable:Boolean;
 begin
  CPUFeatures:=0;
  begin
@@ -151003,16 +155038,23 @@ begin
  begin
   GetCPUID(1,CPUIDData);
   CPUID1ECX:=CPUIDData.ECX;
+  // The VEX-encoded instructions (F16C, FMA, AVX2) need AVX and an OS that saves the XMM and
+  // YMM state (OSXSAVE plus XCR0 bits 1 and 2), otherwise they raise #UD
+  AVXUsable:=((CPUID1ECX and (TPasRISCVUInt32(1) shl 28))<>0) and // AVX (CPUID.1:ECX bit 28)
+             ((CPUID1ECX and (TPasRISCVUInt32(1) shl 27))<>0);    // OSXSAVE (CPUID.1:ECX bit 27)
+  if AVXUsable then begin
+   AVXUsable:=(GetXGETBV(0) and $06)=$06; // bits 1 (XMM) + 2 (YMM) both set
+  end;
   if (CPUID1ECX and (TPasRISCVUInt32(1) shl 1))<>0 then begin
    CPUFeatures:=CPUFeatures or CPUFeatures_X86_PCLMUL_Mask;
   end;
   if (CPUID1ECX and (TPasRISCVUInt32(1) shl 20))<>0 then begin
    CPUFeatures:=CPUFeatures or CPUFeatures_X86_SSE42_Mask;
   end;
-  if (CPUID1ECX and (TPasRISCVUInt32(1) shl 29))<>0 then begin
+  if AVXUsable and ((CPUID1ECX and (TPasRISCVUInt32(1) shl 29))<>0) then begin
    CPUFeatures:=CPUFeatures or CPUFeatures_X86_F16C_Mask;
   end;
-  if (CPUID1ECX and (TPasRISCVUInt32(1) shl 12))<>0 then begin
+  if AVXUsable and ((CPUID1ECX and (TPasRISCVUInt32(1) shl 12))<>0) then begin
    CPUFeatures:=CPUFeatures or CPUFeatures_X86_FMA_Mask;
   end;
   if (CPUID1ECX and (TPasRISCVUInt32(1) shl 23))<>0 then begin
@@ -151024,16 +155066,9 @@ begin
   if (CPUIDData.EBX and (TPasRISCVUInt32(1) shl 3))<>0 then begin
    CPUFeatures:=CPUFeatures or CPUFeatures_X86_BMI1_Mask;
   end;
-  // AVX2: CPUID.7:EBX bit 5, but also need AVX+OSXSAVE from CPUID.1 and OS YMM support via XGETBV
-  if (CPUIDData.EBX and (TPasRISCVUInt32(1) shl 5))<>0 then begin
-   // AVX2 bit set in CPUID.7, now verify AVX+OSXSAVE and OS support
-   if ((CPUID1ECX and (TPasRISCVUInt32(1) shl 28))<>0) and // AVX (CPUID.1:ECX bit 28)
-      ((CPUID1ECX and (TPasRISCVUInt32(1) shl 27))<>0) then begin // OSXSAVE (CPUID.1:ECX bit 27)
-    // OS has XSAVE enabled, check that XMM and YMM state saving is enabled
-    if (GetXGETBV(0) and $06)=$06 then begin // bits 1 (XMM) + 2 (YMM) both set
-     CPUFeatures:=CPUFeatures or CPUFeatures_X86_AVX2_Mask;
-    end;
-   end;
+  // AVX2: CPUID.7:EBX bit 5, usable only with AVX and OS YMM support (see above)
+  if AVXUsable and ((CPUIDData.EBX and (TPasRISCVUInt32(1) shl 5))<>0) then begin
+   CPUFeatures:=CPUFeatures or CPUFeatures_X86_AVX2_Mask;
   end;
  end;
  begin

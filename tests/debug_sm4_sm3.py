@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Compute correct expected values for SM4 and SM3 tests with zero inputs."""
+
+sm4_sbox = [
+    0xD6,0x90,0xE9,0xFE,0xCC,0xE1,0x3D,0xB7,0x16,0xB6,0x14,0xC2,0x28,0xFB,0x2C,0x05,
+    0x2B,0x67,0x9A,0x76,0x2A,0xBE,0x04,0xC3,0xAA,0x44,0x13,0x26,0x49,0x86,0x06,0x99,
+    0x9C,0x42,0x50,0xF4,0x91,0xEF,0x98,0x7A,0x33,0x54,0x0B,0x43,0xED,0xCF,0xAC,0x62,
+    0xE4,0xB3,0x1C,0xA9,0xC9,0x08,0xE8,0x95,0x80,0xDF,0x94,0xFA,0x75,0x8F,0x3F,0xA6,
+    0x47,0x07,0xA7,0xFC,0xF3,0x73,0x17,0xBA,0x83,0x59,0x3C,0x19,0xE6,0x85,0x4F,0xA8,
+    0x68,0x6B,0x81,0xB2,0x71,0x64,0xDA,0x8B,0xF8,0xEB,0x0F,0x4B,0x70,0x56,0x9D,0x35,
+    0x1E,0x24,0x0E,0x5E,0x63,0x58,0xD1,0xA2,0x25,0x22,0x7C,0x3B,0x01,0x21,0x78,0x87,
+    0xD4,0x00,0x46,0x57,0x9F,0xD3,0x27,0x52,0x4C,0x36,0x02,0xE7,0xA0,0xC4,0xC8,0x9E,
+    0xEA,0xBF,0x8A,0xD2,0x40,0xC7,0x38,0xB5,0xA3,0xF7,0xF2,0xCE,0xF9,0x61,0x15,0xA1,
+    0xE0,0xAE,0x5D,0xA4,0x9B,0x34,0x1A,0x55,0xAD,0x93,0x32,0x30,0xF5,0x8C,0xB1,0xE3,
+    0x1D,0xF6,0xE2,0x2E,0x82,0x66,0xCA,0x60,0xC0,0x29,0x23,0xAB,0x0D,0x53,0x4E,0x6F,
+    0xD5,0xDB,0x37,0x45,0xDE,0xFD,0x8E,0x2F,0x03,0xFF,0x6A,0x72,0x6D,0x6C,0x5B,0x51,
+    0x8D,0x1B,0xAF,0x92,0xBB,0xDD,0xBC,0x7F,0x11,0xD9,0x5C,0x41,0x1F,0x10,0x5A,0xD8,
+    0x0A,0xC1,0x31,0x88,0xA5,0xCD,0x7B,0xBD,0x2D,0x74,0xD0,0x12,0xB8,0xE5,0xB4,0xB0,
+    0x89,0x69,0x97,0x4A,0x0C,0x96,0x77,0x7E,0x65,0xB9,0xF1,0x09,0xC5,0x6E,0xC6,0x84,
+    0x18,0xF0,0x7D,0xEC,0x3A,0xDC,0x4D,0x20,0x79,0xEE,0x5F,0x3E,0xD7,0xCB,0x39,0x48
+]
+
+sm4_ck = [
+    0x00070E15, 0x1C232A31, 0x383F464D, 0x545B6269,
+    0x70777E85, 0x8C939AA1, 0xA8AFB6BD, 0xC4CBD2D9,
+    0xE0E7EEF5, 0xFC030A11, 0x181F262D, 0x343B4249,
+    0x50575E65, 0x6C737A81, 0x888F969D, 0xA4ABB2B9,
+    0xC0C7CED5, 0xDCE3EAF1, 0xF8FF060D, 0x141B2229,
+    0x30373E45, 0x4C535A61, 0x686F767D, 0x848B9299,
+    0xA0A7AEB5, 0xBCC3CAD1, 0xD8DFE6ED, 0xF4FB0209,
+    0x10171E25, 0x2C333A41, 0x484F565D, 0x646B7279
+]
+
+def rol32(v, n):
+    return ((v << n) | (v >> (32 - n))) & 0xFFFFFFFF
+
+def sm4_sub_word(w):
+    return ((sm4_sbox[(w >> 24) & 0xff] << 24) |
+            (sm4_sbox[(w >> 16) & 0xff] << 16) |
+            (sm4_sbox[(w >> 8) & 0xff] << 8) |
+            sm4_sbox[w & 0xff])
+
+# === SM4 Key Expansion: vsm4k.vi v1, v2, 0 (v1=v2={0,0,0,0}) ===
+rk = [0, 0, 0, 0]
+tmp = list(rk)
+for j in range(4):
+    b = tmp[j+1] ^ tmp[j+2] ^ tmp[j+3] ^ sm4_ck[j]
+    s = sm4_sub_word(b)
+    tmp.append(tmp[j] ^ (s ^ rol32(s, 13) ^ rol32(s, 23)))
+v1_after_kf = tmp[4:8]
+print("vsm4k.vi result (v1):", ' '.join(f'{x:08x}' for x in v1_after_kf))
+
+# === SM4 Round: vsm4r.vv v1, v2 (v1=vsm4k result, v2={0,0,0,0}) ===
+# vd=v1 (state data), vs2=v2 (round keys)
+rk_round = [0, 0, 0, 0]  # v2
+buf = list(v1_after_kf) + [0]*4
+for j in range(4):
+    b = buf[j+1] ^ buf[j+2] ^ buf[j+3] ^ rk_round[j]
+    s = sm4_sub_word(b)
+    buf[j+4] = buf[j] ^ (s ^ rol32(s, 2) ^ rol32(s, 10) ^ rol32(s, 18) ^ rol32(s, 24))
+v1_after_rvv = buf[4:8]
+print("vsm4r.vv result (v1):", ' '.join(f'{x:08x}' for x in v1_after_rvv))
+
+# === vsm4r.vs v2, v1 (vd=v2={0,0,0,0}, vs2=v1 round key from first EG) ===
+rk_fixed = v1_after_rvv  # vs2 = v1 (fixed round key)
+data = [0, 0, 0, 0]  # vd = v2
+buf2 = list(data) + [0]*4
+for j in range(4):
+    b = buf2[j+1] ^ buf2[j+2] ^ buf2[j+3] ^ rk_fixed[j]
+    s = sm4_sub_word(b)
+    buf2[j+4] = buf2[j] ^ (s ^ rol32(s, 2) ^ rol32(s, 10) ^ rol32(s, 18) ^ rol32(s, 24))
+v2_after_rvs = buf2[4:8]
+print("vsm4r.vs result (v2):", ' '.join(f'{x:08x}' for x in v2_after_rvs))
+
+# Test stores:
+# vse32.v v1, (out)  -> out = v1 after vsm4r.vv
+# vse32.v v2, (b)    -> b = v2 after vsm4r.vs
+print()
+print("Test 'vsm4k.vi' reports: out (v1) =", ' '.join(f'{x:08x}' for x in v1_after_rvv))
+print("Test 'vsm4r.vv' reports: b  (v2) =", ' '.join(f'{x:08x}' for x in v2_after_rvs))
+print()
+print("PasRISCV got vsm4k.vi:", "82c8fe73 52800d3c 29427321 d5129568")
+print("PasRISCV got vsm4r.vv:", "5464bb5c dd43362e 5c0b3a56 d6ccef88")
+
+# === SM3 compression: vsm3c.vi v16, v0, 0  (v16=v0={0...0}) ===
+print("\n=== SM3 ===")
+def sm3_ff(x, y, z, j):
+    if j <= 15:
+        return (x ^ y ^ z) & 0xFFFFFFFF
+    else:
+        return ((x & y) | (x & z) | (y & z)) & 0xFFFFFFFF
+
+def sm3_gg(x, y, z, j):
+    if j <= 15:
+        return (x ^ y ^ z) & 0xFFFFFFFF
+    else:
+        return ((x & y) | (~x & z)) & 0xFFFFFFFF
+
+def sm3_t(j):
+    return 0x79cc4519 if j <= 15 else 0x7a879d8a
+
+def sm3_p0(x):
+    return (x ^ rol32(x, 9) ^ rol32(x, 17)) & 0xFFFFFFFF
+
+# vsm3c.vi: EGS=8, vd = state (8 elements), vs2 = message words (elements 0,1,4,5), uimm=0
+# All zeros
+# Per QEMU: A=vs2[0]=0, B=vs2[1]=0, ..., H=vs2[7]=0  (really: vd is the "vs1" in QEMU naming)
+# Actually looking at QEMU: sm3c(vd, vs1=vd_old, vs2)
+# The instruction is vsm3c.vi vd, vs2, uimm
+# QEMU sm3c(v1=output, v2=state_from_vd, v3=message_from_vs2, uimm)
+# State: vd -> {A=elem0...H=elem7}, bswapped  (our fix)
+# Message: vs2 -> {w[0]=elem0, w[1]=elem1, w[4]=elem4, w[5]=elem5}
+
+# With all zeros: A=B=...=H=0, w0=w1=w4=w5=0
+# Round j=0 (uimm*2+0 = 0):
+A,B,C,D,E,F,G,H = 0,0,0,0,0,0,0,0
+for j_iter in range(2):
+    j = 0*2 + j_iter
+    W = 0
+    WP = 0 ^ 0  # w[j] XOR w[j+4]
+    SS1 = rol32((rol32(A, 12) + E + rol32(sm3_t(j), j % 32)) & 0xFFFFFFFF, 7)
+    SS2 = (SS1 ^ rol32(A, 12)) & 0xFFFFFFFF
+    TT1 = (sm3_ff(A, B, C, j) + D + SS2 + WP) & 0xFFFFFFFF
+    TT2 = (sm3_gg(E, F, G, j) + H + SS1 + W) & 0xFFFFFFFF
+    D = C; C = rol32(B, 9); B = A; A = TT1
+    H = G; G = rol32(F, 19); F = E; E = sm3_p0(TT2)
+
+print(f"After SM3 compress (plain):")
+print(f"  A={A:08x} B={B:08x} C={C:08x} D={D:08x}")
+print(f"  E={E:08x} F={F:08x} G={G:08x} H={H:08x}")
+
+# Now bswap for output: output element[i] = bswap32(state_var)
+import struct
+def bswap32(v):
+    return struct.unpack('>I', struct.pack('<I', v))[0]
+
+out = [bswap32(A), bswap32(B), bswap32(C), bswap32(D),
+       bswap32(E), bswap32(F), bswap32(G), bswap32(H)]
+print("SM3 expected (bswapped):", ' '.join(f'{x:08x}' for x in out))
+print("PasRISCV got:           ", "45b7a561 bc8c22e6 00000000 00000000 2d45f727 353942ba 00000000 00000000")
