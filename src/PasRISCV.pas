@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-09-20-16-44-0000                       *
+ *                        Version 2026-09-20-18-17-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -1860,6 +1860,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; virtual;
        function SetAttrHandle(const aHandle:TFileHandle;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; virtual;
+       function StatHandle(const aHandle:TFileHandle;out aStat:TFileStat):TPasRISCVInt32; virtual;
        function SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
@@ -1901,6 +1902,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; override;
        function SetAttrHandle(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; override;
+       function StatHandle(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;out aStat:TPasRISCVFUSEFileSystem.TFileStat):TPasRISCVInt32; override;
        function SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
@@ -11256,6 +11258,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            JIT_TLB_SIZE=4096;
 {$endif}
                            JIT_TLB_MASK=JIT_TLB_SIZE-1;
+                           // Two entries form a set: the first way has an even index, the second
+                           // one sits right behind it, so two blocks whose addresses land in the
+                           // same set no longer throw each other out (see LookupJITTLB)
+                           JIT_TLB_SET_MASK=(JIT_TLB_SIZE-1) and not 1;
 {$ifdef JITTLBTag}
                            JIT_TLB_ENTRY_SHIFT=5; // 2^5 = 32 bytes per entry (VirtualPC + Tag + Block + padding)
                            // Tag layout: bit 0 V, bits 2:1 mode, then the state bits, then the generation
@@ -11466,6 +11472,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fStatBlocksCompiled:TPasRISCVUInt64;
                      fStatTotalInstructions:TPasRISCVUInt64;
                      fStatLinksPatched:TPasRISCVUInt64;
+                     fStatSelfLinks:TPasRISCVUInt64;
+                     fStatBreakRunState:TPasRISCVUInt64;
+                     fStatBreakCycle:TPasRISCVUInt64;
+                     fStatBreakTLB:TPasRISCVUInt64;
+                     fStatBreakSkip:TPasRISCVUInt64;
+                     fStatBreakPC:TPasRISCVUInt64;
+                     fStatBreakEmpty:TPasRISCVUInt64;
+                     fStatBreakTag:TPasRISCVUInt64;
+                     fStatBreakExec:TPasRISCVUInt64;
                      fStatLastReport:TPasRISCVUInt64;
                      fStatLastReportTime:TPasRISCVUInt64;
                      fStatFlushTLBFull:TPasRISCVUInt64;
@@ -11573,6 +11588,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function ComputeJITStateBits:TPasRISCVUInt64;
                      procedure MarkJITTLBPage(const aVirtualPC:TPasRISCVUInt64); inline;
                      function JITTLBPageSeen(const aVirtualAddress:TPasRISCVUInt64):Boolean; inline;
+                     function LookupJITTLB(const aVirtualPC:TPasRISCVUInt64{$ifdef JITTLBTag};const aTag:TPasRISCVUInt64{$endif}):PJITTLBEntry; inline;
                      procedure FlushPageBlocks(const aPageBase:TPasRISCVUInt64);
 
                      procedure SaveState;
@@ -11724,6 +11740,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
                      // Native emit helpers for intrinsics (virtual abstract, platform-specific)
                      procedure EmitNativeNOP; virtual; abstract;
+                     procedure EmitVZeroUpper; virtual;
                      procedure EmitNativeOnceNOP; virtual;
                      procedure EmitNativeAdd(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
                      procedure EmitNativeSub(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); virtual; abstract;
@@ -12778,6 +12795,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      procedure EmitNativeSetReg32s(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVInt32); override;
                      procedure EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64); override;
                      procedure EmitNativeNOP; override;
+                     procedure EmitVZeroUpper; override;
                      procedure EmitNativeAdd(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeSub(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
                      procedure EmitNativeXor(const aHostDest,aHostSrc1,aHostSrc2:TPasRISCVUInt8); override;
@@ -30846,6 +30864,12 @@ begin
  result:=-FUSE_ENOSYS;
 end;
 
+function TPasRISCVFUSEFileSystem.StatHandle(const aHandle:TFileHandle;out aStat:TFileStat):TPasRISCVInt32;
+begin
+ FillChar(aStat,SizeOf(TFileStat),#0);
+ result:=-FUSE_ENOSYS;
+end;
+
 function TPasRISCVFUSEFileSystem.SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32;
 begin
  result:=-FUSE_ENOSYS;
@@ -31615,6 +31639,20 @@ begin
    result:=POSIXErrorToFUSEError(fpGetErrno);
    exit;
   end;
+ end;
+end;
+
+// The attributes of an open handle, for a file that its path no longer reaches (the reply of a
+// SETATTR through FATTR_FH needs them)
+function TPasRISCVFUSEFileSystemPOSIX.StatHandle(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;out aStat:TPasRISCVFUSEFileSystem.TFileStat):TPasRISCVInt32;
+var SB:BaseUnix.Stat;
+begin
+ if fpFStat(cint(aHandle),SB)=0 then begin
+  StatBufToFileStat(@SB,aStat);
+  result:=FUSE_OK;
+ end else begin
+  FillChar(aStat,SizeOf(TPasRISCVFUSEFileSystem.TFileStat),#0);
+  result:=POSIXErrorToFUSEError(fpGetErrno);
  end;
 end;
 
@@ -65911,7 +65949,15 @@ begin
                              SetAttrIn.MTime,SetAttrIn.MTimeNSec);
    end;
    if Err=0 then begin
-    Err:=fFileSystem.Stat(NodePath,FileStat);
+    // The reply carries the new attributes. With a handle they come from it, so that a file whose
+    // path no longer reaches it still answers; without one the path decides.
+    Err:=-TPasRISCVFUSEFileSystem.FUSE_ENOSYS;
+    if HandleFound then begin
+     Err:=fFileSystem.StatHandle(LocalFH,FileStat);
+    end;
+    if Err=-TPasRISCVFUSEFileSystem.FUSE_ENOSYS then begin
+     Err:=fFileSystem.Stat(NodePath,FileStat);
+    end;
     if Err=0 then begin
      FillChar(AttrOut,SizeOf(TFUSEAttrOut),#0);
      AttrOut.AttrValid:=FUSE_ATTR_TIMEOUT;
@@ -81038,6 +81084,25 @@ begin
  result:=(fJITTLBPagesSeen[(aVirtualAddress shr (PAGE_SHIFT+6)) and 511] and (TPasRISCVUInt64(1) shl ((aVirtualAddress shr PAGE_SHIFT) and 63)))<>0;
 end;
 
+function TPasRISCV.THART.TJustInTimeCompiler.LookupJITTLB(const aVirtualPC:TPasRISCVUInt64{$ifdef JITTLBTag};const aTag:TPasRISCVUInt64{$endif}):PJITTLBEntry;
+// The entry of the first way of the set. When the block sits in the second way, the two swap, so
+// that the hot block is in the first way again: only that one is checked by the lookup code the
+// JIT emits, and two blocks in the same set no longer throw each other out on every change.
+var Other:PJITTLBEntry;
+    Temporary:TJITTLBEntry;
+begin
+ result:=@fJITTLB[((aVirtualPC xor (aVirtualPC shr 8)) shr 1) and JIT_TLB_SET_MASK];
+ if (result^.VirtualPC<>aVirtualPC){$ifdef JITTLBTag} or (result^.Tag<>aTag){$endif} then begin
+  Other:=result;
+  inc(Other);
+  if (Other^.VirtualPC=aVirtualPC){$ifdef JITTLBTag} and (Other^.Tag=aTag){$endif} then begin
+   Temporary:=result^;
+   result^:=Other^;
+   Other^:=Temporary;
+  end;
+ end;
+end;
+
 procedure TPasRISCV.THART.TJustInTimeCompiler.FlushPageBlocks(const aPageBase:TPasRISCVUInt64);
 // Drops the blocks of a changed page, for every mode, V and state they got blocks in. The dirty
 // bit of the page is only there once, so the flush has to cover the other modes as well: they
@@ -81389,6 +81454,11 @@ begin
  fHostIntRegisterMask:=fHostIntRegisterMask or (TPasRISCVUInt32(1) shl aHostRegister);
 end;
 
+procedure TPasRISCV.THART.TJustInTimeCompiler.EmitVZeroUpper;
+begin
+ // Nothing on a backend without AVX
+end;
+
 procedure TPasRISCV.THART.TJustInTimeCompiler.EmitInit;
 var GuestReg:TRegister;
 {$ifdef PasRISCVJustInTimeCompilerFPU}
@@ -81447,6 +81517,11 @@ begin
  fBlockCBOCleanFlushChecked:=false;
  fBlockCBOZeroChecked:=false;
 {$endif}
+
+ // Start of the block: the upper YMM halves are cleared once here, so the SSE code below does not
+ // pay the AVX to SSE transition penalty (the block entry, and with a self linked loop only there)
+ EmitVZeroUpper;
+
 
  fInitialCodeSize:=fTemporaryCodeSize;
 
@@ -81515,30 +81590,46 @@ begin
  EmitJccRel32(CC_NE,0);
  RunStateExitFixup:=fTemporaryCodeSize-4;
 
- // 6. Restore ABI callee-saved registers
- EmitRestoreABIRegs;
+ // 6. The block ends with a jump back to its own first instruction, so the loop can stay in the
+ // generated code instead of returning to the Pascal dispatcher every few guest rounds. Register
+ // writeback, PC, cycle counter and run state check happen as before, only the FPU epilog and the
+ // dispatch fall away: fflags is sticky, every exit path below still transfers it, and the cycle
+ // check leaves the loop about every 65536 instructions for interrupts and timers. The callee
+ // saved registers have to be popped, the code at the top pushes them again when it claims them.
+ if (aLinkage=TLinkage.Jmp) and (fPCOffset=0) and (fInstructionCount<>0) and (fTemporaryCodeSize>fInitialCodeSize) then begin
 
- // 7. FPU epilog
+  EmitRestoreABIRegs;
+  EmitJmpRel32(-TPasRISCVInt32((fTemporaryCodeSize+5)-fInitialCodeSize));
+  inc(fStatSelfLinks);
+
+ end else begin
+
+  // 6. Restore ABI callee-saved registers
+  EmitRestoreABIRegs;
+
+  // 7. FPU epilog
 {$if defined(PasRISCVJustInTimeCompiler) and defined(PasRISCVJustInTimeCompilerFPU)}
- EmitFPUEpilog;
+  EmitFPUEpilog;
 {$ifend}
 
- // 8. Linkage-specific dispatch
+  // 8. Linkage-specific dispatch
 {$ifdef PasRISCVJustInTimeCompilerNativeLinker}
- case aLinkage of
-  TLinkage.Jmp:begin
-   LinkBlock;
+  case aLinkage of
+   TLinkage.Jmp:begin
+    LinkBlock;
+   end;
+   TLinkage.Tail:begin
+    EmitLookupBlock;
+   end;
+   else begin
+    EmitRET;
+   end;
   end;
-  TLinkage.Tail:begin
-   EmitLookupBlock;
-  end;
-  else begin
-   EmitRET;
-  end;
- end;
 {$else}
- EmitRET;
+  EmitRET;
 {$endif}
+
+ end;
 
  // 9. .exit path (countdown expired or runstate not running)
  if ExitFixup<>0 then begin
@@ -82917,8 +83008,11 @@ begin
  // Mark page as having JIT code (for dirty-tracking optimization)
  MarkPageJITed(fCurrentPhysicalPC);
 
- // Populate JTLB
- TLBIndex:=(fBlockVirtualPC shr 1) and JIT_TLB_MASK;
+ // Populate JTLB, the entry in the first way moves into the second one
+ TLBIndex:=((fBlockVirtualPC xor (fBlockVirtualPC shr 8)) shr 1) and JIT_TLB_SET_MASK;
+ if (fJITTLB[TLBIndex].VirtualPC<>fBlockVirtualPC) and assigned(fJITTLB[TLBIndex].Block) then begin
+  fJITTLB[TLBIndex or 1]:=fJITTLB[TLBIndex];
+ end;
  JITTLBEntry:=@fJITTLB[TLBIndex];
  JITTLBEntry^.VirtualPC:=fBlockVirtualPC;
  MarkJITTLBPage(fBlockVirtualPC);
@@ -83078,7 +83172,7 @@ begin
 {$ifdef SmartExecutionTLBFlush}
  VPN:=VirtualPC shr PAGE_SHIFT;
 {$endif}
- JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
+ JITTLBEntry:=LookupJITTLB(VirtualPC{$ifdef JITTLBTag},Tag{$endif});
  if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartExecutionTLBFlush} and ({$ifdef PerModeTLB}fHART.fDirectAccessTLBCache^{$else}fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} then begin
   BlockCallback:=JITTLBEntry^.Block;
   if assigned(BlockCallback) then begin
@@ -83124,7 +83218,7 @@ begin
 {$ifdef SmartExecutionTLBFlush}
     VPN:=VirtualPC shr PAGE_SHIFT;
 {$endif}
-    JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
+    JITTLBEntry:=LookupJITTLB(VirtualPC{$ifdef JITTLBTag},Tag{$endif});
     if (JITTLBEntry^.VirtualPC=VirtualPC){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartExecutionTLBFlush} and ({$ifdef PerModeTLB}fHART.fDirectAccessTLBCache^{$else}fHART.fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
        ((fMachine.fRunState and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
        (((fHART.fState.Cycle xor LastCycles) shr TPasRISCV.CYCLE_OVERFLOW_SHIFT)=0) then begin
@@ -83168,7 +83262,12 @@ begin
 {$ifdef PasRISCVJustInTimeCompilerStats}
   inc(fStatTLBSlowHits);
 {$endif}
-  JITTLBEntry:=@fJITTLB[(VirtualPC shr 1) and JIT_TLB_MASK];
+  // The entry that is in the first way moves into the second one, so that a block sharing the set
+  // survives instead of being thrown out
+  JITTLBEntry:=@fJITTLB[((VirtualPC xor (VirtualPC shr 8)) shr 1) and JIT_TLB_SET_MASK];
+  if (JITTLBEntry^.VirtualPC<>VirtualPC) and assigned(JITTLBEntry^.Block) then begin
+   PJITTLBEntry(TPasRISCVPtrUInt(JITTLBEntry)+SizeOf(TJITTLBEntry))^:=JITTLBEntry^;
+  end;
   JITTLBEntry^.VirtualPC:=VirtualPC;
   MarkJITTLBPage(VirtualPC);
 {$ifdef JITTLBTag}
@@ -91725,15 +91824,23 @@ begin
  // mov rdx, [vm+PCOffset]
  EmitNativeLoad(PCRegister,VMPtrRegister,GuestPCOffset,true);
 
- // Combined hash: (PC << (ENTRY_SHIFT-1)) & (MASK << ENTRY_SHIFT)
+ // Combined hash: ((PC xor (PC shr 8)) shl (ENTRY_SHIFT-1)) and (SET_MASK shl ENTRY_SHIFT). The
+ // fold brings higher address bits in, the set index alone would only use PC bits 1 to 7.
  // mov eax, edx
  EmitMOVRegReg(HashRegister,PCRegister,false);
+
+ // shr eax, 8
+ EmitShiftRegImm(SHIFT_SHR,HashRegister,8,false);
+
+ // xor eax, edx
+ Emit2RegOp(X86_XOR,HashRegister,PCRegister,false);
 
  // shl eax, ENTRY_SHIFT-1
  EmitShiftRegImm(SHIFT_SHL,HashRegister,JIT_TLB_ENTRY_SHIFT-1,false);
 
- // and eax, MASK << ENTRY_SHIFT
- EmitImmOp(ALU_AND,HashRegister,TPasRISCVInt32(JIT_TLB_MASK shl JIT_TLB_ENTRY_SHIFT),false);
+ // and eax, SET_MASK << ENTRY_SHIFT (the first way of the set, the second one is checked by the
+ // Pascal dispatcher, which swaps a hit there into the first way)
+ EmitImmOp(ALU_AND,HashRegister,TPasRISCVInt32(JIT_TLB_SET_MASK shl JIT_TLB_ENTRY_SHIFT),false);
 
  // add rax, [vm+TLBPtrOffset]
  EmitMemOp(X86_ADD_M_R,HashRegister,VMPtrRegister,GuestJITBlockTLBPtrOffset,true);
@@ -91807,6 +91914,19 @@ end;
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeSetReg64(const aHostDest:TPasRISCVUInt8;const aImm:TPasRISCVUInt64);
 begin
  EmitMOVRegImm64(aHostDest,aImm);
+end;
+
+procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitVZeroUpper;
+begin
+ // vzeroupper (C5 F8 77): clears the upper halves of the YMM registers. Without it every legacy
+ // SSE instruction of the block pays the AVX to SSE transition penalty as soon as anything before
+ // it left those halves dirty (the RTL uses AVX2 for memory moves, and vector code uses YMM), which
+ // made the very same FP block run about 25 times slower.
+ if fHasAVX2 or fHasFMA3 or fHasF16C then begin
+  EmitByte($c5);
+  EmitByte($f8);
+  EmitByte($77);
+ end;
 end;
 
 procedure TPasRISCV.THART.TJustInTimeCompilerX8664.EmitNativeNOP;
@@ -145651,7 +145771,7 @@ begin
 {$ifdef SmartExecutionTLBFlush}
      VPN:=InstructionAddress shr PAGE_SHIFT;
 {$endif}
-     JITTLBEntry:=@fJustInTimeCompiler.fJITTLB[(InstructionAddress shr 1) and TJustInTimeCompiler.JIT_TLB_MASK];
+     JITTLBEntry:=fJustInTimeCompiler.LookupJITTLB(InstructionAddress{$ifdef JITTLBTag},Tag{$endif});
      if (JITTLBEntry^.VirtualPC=InstructionAddress) and assigned(JITTLBEntry^.BlockPointer){$ifdef JITTLBTag}and (JITTLBEntry^.Tag=Tag){$endif}{$ifdef SmartExecutionTLBFlush} and ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute=VPN){$endif} and
         (not fState.JITSkipExecution) and
         ((RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) and
@@ -145659,6 +145779,30 @@ begin
       JITTLBEntry^.Block(@fState);
       JITCodeExecuted:=true;
      end else begin
+{$ifdef PasRISCVJustInTimeCompilerStats}
+      if (RunState^ and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))<>RUNSTATE_RUNNING then begin
+       inc(fJustInTimeCompiler.fStatBreakRunState);
+      end else if (((fState.Cycle xor LastCycles) shr TPasRISCV.CYCLE_OVERFLOW_SHIFT)<>0) then begin
+       inc(fJustInTimeCompiler.fStatBreakCycle);
+      end else begin
+       inc(fJustInTimeCompiler.fStatBreakTLB);
+       if fState.JITSkipExecution then begin
+        inc(fJustInTimeCompiler.fStatBreakSkip);
+       end else if JITTLBEntry^.VirtualPC<>InstructionAddress then begin
+        inc(fJustInTimeCompiler.fStatBreakPC);
+       end else if not assigned(JITTLBEntry^.BlockPointer) then begin
+        inc(fJustInTimeCompiler.fStatBreakEmpty);
+{$ifdef JITTLBTag}
+       end else if JITTLBEntry^.Tag<>Tag then begin
+        inc(fJustInTimeCompiler.fStatBreakTag);
+{$endif}
+{$ifdef SmartExecutionTLBFlush}
+       end else if ({$ifdef PerModeTLB}fDirectAccessTLBCache^{$else}fDirectAccessTLBCache{$endif}[VPN and TMMU.DIRECT_ACCESS_TLB_MASK].Execute<>VPN) then begin
+        inc(fJustInTimeCompiler.fStatBreakExec);
+{$endif}
+       end;
+      end;
+{$endif}
       break;
      end;
     end;
@@ -145779,6 +145923,15 @@ begin
     ' blocks=',fJustInTimeCompiler.fStatBlocksCompiled,
     ' insns=',fJustInTimeCompiler.fStatTotalInstructions,
     ' links=',fJustInTimeCompiler.fStatLinksPatched,
+    ' selflinks=',fJustInTimeCompiler.fStatSelfLinks,
+    ' brkRun=',fJustInTimeCompiler.fStatBreakRunState,
+    ' brkCyc=',fJustInTimeCompiler.fStatBreakCycle,
+    ' brkTLB=',fJustInTimeCompiler.fStatBreakTLB,
+    ' bSkip=',fJustInTimeCompiler.fStatBreakSkip,
+    ' bPC=',fJustInTimeCompiler.fStatBreakPC,
+    ' bEmpty=',fJustInTimeCompiler.fStatBreakEmpty,
+    ' bTag=',fJustInTimeCompiler.fStatBreakTag,
+    ' bExec=',fJustInTimeCompiler.fStatBreakExec,
     ' avg=',fJustInTimeCompiler.fStatTotalInstructions div (fJustInTimeCompiler.fStatBlocksCompiled+1),
     ' bufsz=',fJustInTimeCompiler.fCodeBufferUsed,
     ' flushFull=',fJustInTimeCompiler.fStatFlushTLBFull,

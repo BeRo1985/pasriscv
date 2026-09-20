@@ -27,3 +27,10 @@ were checked in the Alpine guest with both shares mounted (`mount -t 9p -o trans
 the emulator counted on the host (constant now, before one leaked descriptor per open), `flock`
 and `fcntl` locks over 9P (the old code hung in Tlock), and `fsync` of a directory over virtio-fs
 (EIO before). `fsynctest.c` is the small static helper for the fsync and fcntl part.
+
+Two later fixes were checked in the same guest. Over 9P a shell changes into a directory of the
+share and renames it from there (`cd .../ren/a; mv .../ren/a .../ren/b`): `ls .`, `cat f` and
+`stat f` work afterwards, before the fix the fid still pointed at the old name and all three gave
+ENOENT. Over virtio-fs `fhtest.c` creates a file, keeps it open, unlinks it and truncates it
+through the descriptor, which is the one attribute change that Linux sends with `FATTR_FH`; that
+also gave ENOENT before.
