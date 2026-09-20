@@ -58,6 +58,10 @@ JIT translates them. A test with a `# jitonly` line runs with the JIT only.
   exception and mop.rr.7 with rd other than x0
 - `fp_csr`: the fli.h table, the reserved rounding modes and funct3 of fmv.w.x, fcvtmod.w.d
   just below -2^31, a write to the read-only mtopi and the seed CSR without its enable in mseccfg
+- `invalid_frm`: with a reserved frm (5 to 7) every FP instruction that would round with it is
+  illegal (scalar rm=dyn and the vector FP instructions), a static rm and instructions without a
+  rounding mode field keep working, and translated blocks are dropped when frm changes between
+  valid and invalid
 
 ## Running
 

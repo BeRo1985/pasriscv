@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-09-20-14-16-0000                       *
+ *                        Version 2026-09-20-16-44-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -1610,6 +1610,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function UnlinkAt(const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function Lock(const aFile:TPasRISCV9PFileSystem.TFSFile;const aLock:TPasRISCV9PFileSystem.PFSLock):TPasRISCVInt32; virtual;
        function GetLock(const aFile:TPasRISCV9PFileSystem.TFSFile;const aLock:TPasRISCV9PFileSystem.PFSLock):TPasRISCVInt32; virtual;
+       function ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString; virtual;
       public
        property RootPath:TPasRISCVRawByteString read fRootPath write fRootPath;
      end;
@@ -1637,7 +1638,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function POSIXErrorCodeToP9ErrorCode(const aErrorCode:TPasRISCVInt32):TPasRISCVInt32;
        function P9OpenFlagsToPOSIXOpenFlags(const aFlags:TPasRISCVUInt32):TPasRISCVUInt32;
        procedure StatToQID(const aQID:TPasRISCV9PFileSystem.PFSQID;const aStat:PStat);
-       function ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
        function CreateFileObject(const aPath:TPasRISCVRawByteString;const aUID:TPasRISCVUInt32):TPasRISCV9PFileSystem.TFSFile;
       public
        constructor Create(const aRootPath:TPasRISCVRawByteString); reintroduce;
@@ -1663,6 +1663,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function UnlinkAt(const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function Lock(const aFile:TPasRISCV9PFileSystem.TFSFile;const aLock:TPasRISCV9PFileSystem.PFSLock):TPasRISCVInt32; override;
        function GetLock(const aFile:TPasRISCV9PFileSystem.TFSFile;const aLock:TPasRISCV9PFileSystem.PFSLock):TPasRISCVInt32; override;
+       function ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString; override;
      end;
 {$ifend}
 
@@ -1677,7 +1678,6 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function Win32ErrorCodeToP9ErrorCode(const aErrorCode:DWORD):TPasRISCVInt32;
        function P9OpenFlagsToWin32OpenFlags(const aFlags:TPasRISCVUInt32):DWORD;
        procedure StatToQID(const aQID:TPasRISCV9PFileSystem.PFSQID;const aFileInfo:BY_HANDLE_FILE_INFORMATION);
-       function ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
        function CreateFileObject(const aPath:TPasRISCVRawByteString;const aUID:TPasRISCVUInt32):TPasRISCV9PFileSystem.TFSFile;
       public
        constructor Create(const aRootPath:TPasRISCVRawByteString); reintroduce;
@@ -1703,6 +1703,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function UnlinkAt(const aFile:TPasRISCV9PFileSystem.TFSFile;const aName:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function Lock(const aFile:TPasRISCV9PFileSystem.TFSFile;const aLock:TPasRISCV9PFileSystem.PFSLock):TPasRISCVInt32; override;
        function GetLock(const aFile:TPasRISCV9PFileSystem.TFSFile;const aLock:TPasRISCV9PFileSystem.PFSLock):TPasRISCVInt32; override;
+       function ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString; override;
       published
        property PosixMetadata:TPasRISCVPosixMetadataMode read fPosixMetadata write fPosixMetadata;
      end;
@@ -1858,6 +1859,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; virtual;
+       function SetAttrHandle(const aHandle:TFileHandle;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; virtual;
        function SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
        function HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; virtual;
@@ -1898,6 +1900,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function RmDir(const aPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function Rename(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function SetAttr(const aPath:TPasRISCVRawByteString;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; override;
+       function SetAttrHandle(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32; override;
        function SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function ReadLink(const aPath:TPasRISCVRawByteString;out aTarget:TPasRISCVRawByteString):TPasRISCVInt32; override;
        function HardLink(const aOldPath,aNewPath:TPasRISCVRawByteString):TPasRISCVInt32; override;
@@ -7498,6 +7501,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      function Remove(const aFID:TPasRISCVUInt32):TFIDDescriptor;
                      function Find(const aFID:TPasRISCVUInt32):TFIDDescriptor;
                      procedure FreeDescriptor(const aDescriptor:TFIDDescriptor);
+                     procedure RenamePaths(const aOldPath,aNewPath:TPasRISCVRawByteString);
                      procedure Clear;
                    end;
                    TOpenInfo=record
@@ -10400,6 +10404,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                            CSR_MIE_MASK=TPasRISCVUInt64($3eee); // All implemented interrupts: SSI, VSSI, MSI, STI, VSTI, MTI, SEI, VSEI, MEI, SGEI, LCOFI
                            CSR_MIP_WRITE_MASK=TPasRISCVUInt64($2222); // Software-writable in mip itself (VSSIP is an alias of hvip.VSSIP)
                            CSR_SIP_WRITE_MASK=TPasRISCVUInt64($2002); // Writable through sip: SSIP, LCOFIP
+                           CSR_MVIEN_MASK=TPasRISCVUInt64($2202); // AIA mvien: SSI, SEI, LCOFI (STI keeps no alternative source)
+                           CSR_MVIP_MASK=TPasRISCVUInt64($2222); // AIA mvip: SSIP, STIP, SEIP, LCOFIP
                            CSR_HIE_MASK=TPasRISCVUInt64($1444); // hie/hip: VSSI, VSTI, VSEI, SGEI (aliases of the same bits in mie/mip)
                            CSR_HVIP_MASK=TPasRISCVUInt64($0444); // hvip: VSSIP, VSTIP, VSEIP
                            HGEIP_PENDING_SHIFT=32; // The hgeip lines are kept in the upper half of PendingIRQs
@@ -10633,6 +10639,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                                   MIE=$304;
                                   MTVEC=$305;
                                   MCOUNTEREN=$306;
+                                  MVIEN=$308; // AIA: interrupts that S-level gets from mvip instead of from mip
+                                  MVIP=$309; // AIA: the pending bits of those interrupts (shares its address with mcounterdeleg)
 {$ifdef PasRISCVSmcdeleg}
                                   MCOUNTERDELEG=$309; // Smcdeleg: M-mode counter delegation bitmask
 {$endif}
@@ -13333,6 +13341,9 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               // host rounding mode is switched, so no translated block may start from there (TLBLookup),
               // and the static rm check of ExecuteInstruction must not recurse (StaticRMApplies)
               fStaticRMActive:Boolean;
+              // Set while mvien holds a bit that mideleg does not delegate, so that S-level takes
+              // interrupts from mvip (AIA). False keeps the interrupt paths at their old cost.
+              fVirtualInterruptsActive:Boolean;
 {$ifdef PasRISCVSmepmp}
               // Decoded PMP entries as inclusive byte ranges, rebuilt by UpdatePMP after every
               // change of the PMP CSRs. OFF and empty entries get an impossible range.
@@ -13506,6 +13517,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerMIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
               procedure CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerMVIEN(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              procedure CSRHandlerMVIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+              function SupervisorVirtualInterrupts:TPasRISCVUInt64;
+              procedure UpdateVirtualInterruptState;
               procedure CSRHandlerMTOPI(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 {$ifdef PasRISCVSmcntrpmf}
               procedure UpdateCycleCountInhibit; // Smcntrpmf: recompute CycleCountInhibit from current mode and cfg CSRs
@@ -27135,6 +27150,18 @@ begin
  result:=P9_ENOTSUP;
 end;
 
+// The backends build their file paths with this, and the device uses it to rewrite fid paths
+// after a rename, so it needs the separator of the backend
+function TPasRISCV9PFileSystem.ComposePath(const aPath,aName:TPasRISCVRawByteString):TPasRISCVRawByteString;
+const DirectorySeparator={$if defined(Windows)}'\'{$else}'/'{$ifend};
+begin
+ result:=aPath;
+ if (length(result)>0) and (result[length(result)]<>DirectorySeparator) then begin
+  result:=result+DirectorySeparator;
+ end;
+ result:=result+aName;
+end;
+
 {$if defined(fpc) and defined(Unix)}
 
 { TPasRISCV9PFileSystemPOSIX }
@@ -27221,6 +27248,11 @@ end;
 function PasRISCVSysFChMod(const aFD:cint;const aMode:TPasRISCVUInt32):cint;
 begin
  result:=cint(do_syscall(syscall_nr_fchmod,TSysParam(aFD),TSysParam(aMode)));
+end;
+
+function PasRISCVSysFChOwn(const aFD:cint;const aUID,aGID:TPasRISCVInt32):cint;
+begin
+ result:=cint(do_syscall(syscall_nr_fchown,TSysParam(aFD),TSysParam(aUID),TSysParam(aGID)));
 end;
 
 function PasRISCVSysUTimeNSAt(const aDirFD:cint;const aName:PAnsiChar;const aTimes:Pointer;const aFlags:cint):cint;
@@ -30808,6 +30840,12 @@ begin
  result:=-FUSE_ENOSYS;
 end;
 
+// A backend without a handle variant answers ENOSYS, the caller then falls back to the path
+function TPasRISCVFUSEFileSystem.SetAttrHandle(const aHandle:TFileHandle;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32;
+begin
+ result:=-FUSE_ENOSYS;
+end;
+
 function TPasRISCVFUSEFileSystem.SymLink(const aTarget,aLinkPath:TPasRISCVRawByteString):TPasRISCVInt32;
 begin
  result:=-FUSE_ENOSYS;
@@ -31492,6 +31530,91 @@ begin
   end;
  finally
   PasRISCVCloseKeepErrNo(DirFD);
+ end;
+end;
+
+// FATTR_FH: the request carries an open handle, so every change runs on that descriptor. A file
+// that its path no longer reaches (unlinked, or a mode that forbids opening it again) can still be
+// changed this way, which is what ftruncate() on an open descriptor needs
+function TPasRISCVFUSEFileSystemPOSIX.SetAttrHandle(const aHandle:TPasRISCVFUSEFileSystem.TFileHandle;const aMask:TPasRISCVUInt32;const aMode,aUID,aGID:TPasRISCVUInt32;const aSize:TPasRISCVUInt64;const aATimeSec,aATimeNSec,aMTimeSec,aMTimeNSec:TPasRISCVUInt64):TPasRISCVInt32;
+const FATTR_MODE=TPasRISCVUInt32($1);
+      FATTR_UID=TPasRISCVUInt32($2);
+      FATTR_GID=TPasRISCVUInt32($4);
+      FATTR_SIZE=TPasRISCVUInt32($8);
+      FATTR_ATIME=TPasRISCVUInt32($10);
+      FATTR_MTIME=TPasRISCVUInt32($20);
+      FATTR_ATIME_NOW=TPasRISCVUInt32($80);
+      FATTR_MTIME_NOW=TPasRISCVUInt32($100);
+      FATTR_CTIME=TPasRISCVUInt32($400);
+var fd:cint;
+    ts:tkernel_timespecs;
+    UID,GID:TPasRISCVInt32;
+begin
+ fd:=cint(aHandle);
+ result:=FUSE_OK;
+ if (aMask and FATTR_MODE)<>0 then begin
+  if PasRISCVSysFChMod(fd,aMode)<>0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end;
+ if (aMask and (FATTR_UID or FATTR_GID))<>0 then begin
+  // Only the fields flagged as valid are changed, -1 leaves the other one untouched
+  if (aMask and FATTR_UID)<>0 then begin
+   UID:=TPasRISCVInt32(aUID);
+  end else begin
+   UID:=-1;
+  end;
+  if (aMask and FATTR_GID)<>0 then begin
+   GID:=TPasRISCVInt32(aGID);
+  end else begin
+   GID:=-1;
+  end;
+  if PasRISCVSysFChOwn(fd,UID,GID)<>0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end;
+ if (aMask and FATTR_SIZE)<>0 then begin
+  if fpFTruncate(fd,aSize)<>0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end;
+ if (aMask and (FATTR_ATIME or FATTR_MTIME))<>0 then begin
+  // A time that is not flagged as valid must stay untouched (UTIME_OMIT), and the *_NOW flags ask
+  // for the current time instead of the transferred value
+  if (aMask and FATTR_ATIME)=0 then begin
+   ts[0].tv_sec:=0;
+   ts[0].tv_nsec:=PASRISCV_UTIME_OMIT;
+  end else if (aMask and FATTR_ATIME_NOW)<>0 then begin
+   ts[0].tv_sec:=0;
+   ts[0].tv_nsec:=PASRISCV_UTIME_NOW;
+  end else begin
+   ts[0].tv_sec:=aATimeSec;
+   ts[0].tv_nsec:=aATimeNSec;
+  end;
+  if (aMask and FATTR_MTIME)=0 then begin
+   ts[1].tv_sec:=0;
+   ts[1].tv_nsec:=PASRISCV_UTIME_OMIT;
+  end else if (aMask and FATTR_MTIME_NOW)<>0 then begin
+   ts[1].tv_sec:=0;
+   ts[1].tv_nsec:=PASRISCV_UTIME_NOW;
+  end else begin
+   ts[1].tv_sec:=aMTimeSec;
+   ts[1].tv_nsec:=aMTimeNSec;
+  end;
+  // utimensat without a name works on the descriptor itself, that is futimens()
+  if PasRISCVSysUTimeNSAt(fd,nil,@ts,0)<0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
+ end else if (aMask and (FATTR_CTIME or FATTR_MODE or FATTR_UID or FATTR_GID or FATTR_SIZE))=FATTR_CTIME then begin
+  // Only a ctime update was requested, a no-op chown does exactly that
+  if PasRISCVSysFChOwn(fd,-1,-1)<>0 then begin
+   result:=POSIXErrorToFUSEError(fpGetErrno);
+   exit;
+  end;
  end;
 end;
 
@@ -63937,6 +64060,41 @@ begin
  end;
 end;
 
+procedure TPasRISCV.TVirtIO9PDevice.TFIDDescriptors.RenamePaths(const aOldPath,aNewPath:TPasRISCVRawByteString);
+// A 9P fid holds a path, not a host handle, so a rename leaves every fid at or below the old name
+// pointing at a name that is gone. They are moved to the new path here, which is what the guest
+// expects: an open fid keeps working across "mv", and a fid below a renamed directory too
+var Current:TFIDDescriptor;
+    OldLength:TPasRISCVSizeInt;
+    Separator:AnsiChar;
+begin
+ if (length(aOldPath)=0) or (length(aNewPath)=0) or (aOldPath=aNewPath) then begin
+  exit;
+ end;
+ OldLength:=length(aOldPath);
+ fLock.AcquireWrite;
+ try
+  Current:=fFirst;
+  while assigned(Current) do begin
+   if assigned(Current.fFile) and (length(Current.fFile.fPath)>=OldLength) and
+      (Copy(Current.fFile.fPath,1,OldLength)=aOldPath) then begin
+    if length(Current.fFile.fPath)=OldLength then begin
+     Current.fFile.fPath:=aNewPath;
+    end else begin
+     // Only a whole path component counts, so that "/a/bc" does not follow a rename of "/a/b"
+     Separator:=Current.fFile.fPath[OldLength+1];
+     if (Separator='/') or (Separator='\') then begin
+      Current.fFile.fPath:=aNewPath+Copy(Current.fFile.fPath,OldLength+1,length(Current.fFile.fPath)-OldLength);
+     end;
+    end;
+   end;
+   Current:=Current.fNext;
+  end;
+ finally
+  fLock.ReleaseWrite;
+ end;
+end;
+
 procedure TPasRISCV.TVirtIO9PDevice.TFIDDescriptors.Clear;
 // Releases all descriptors with their files, for a device reset (the guest starts over with Tattach)
 var Current,Next:TFIDDescriptor;
@@ -64684,6 +64842,11 @@ begin
         if assigned(FIDDescriptor) and assigned(OtherFIDDescriptor) then begin
          if IsValidFileSystemName(NameString) and IsValidFileSystemName(OtherNameString) then begin
           Error:=fFileSystem.RenameAt(FIDDescriptor.fFile,NameString,OtherFIDDescriptor.fFile,OtherNameString);
+          if Error>=0 then begin
+           // The fids of the moved name and of everything below it still hold the old path
+           fFIDDescriptors.RenamePaths(fFileSystem.ComposePath(FIDDescriptor.fFile.fPath,NameString),
+                                       fFileSystem.ComposePath(OtherFIDDescriptor.fFile.fPath,OtherNameString));
+          end;
          end else begin
           Error:=-TPasRISCV9PFileSystem.P9_EINVAL;
          end;
@@ -65699,14 +65862,18 @@ end;
 procedure TPasRISCV.TVirtIOFSDevice.HandleSetAttr(const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64;const aHeader:PFUSEInHeader);
 var SetAttrIn:TFUSESetAttrIn;
     Node:TNodeEntry;
+    FHEntry:TFHEntry;
     NodePath:TPasRISCVRawByteString;
-    NodeFound:Boolean;
+    NodeFound,HandleFound:Boolean;
+    LocalFH:TPasRISCVFUSEFileSystem.TFileHandle;
     FileStat:TPasRISCVFUSEFileSystem.TFileStat;
     AttrOut:TFUSEAttrOut;
     Err:TPasRISCVInt32;
 begin
  if CopyMemoryFromQueue(@SetAttrIn,aQueueIndex,aDescriptorIndex,FUSE_IN_HEADER_SIZE,SizeOf(TFUSESetAttrIn)) then begin
   NodeFound:=false;
+  HandleFound:=false;
+  LocalFH:=0;
   fLock.Acquire;
   try
    Node:=FindNode(aHeader^.NodeID);
@@ -65714,15 +65881,35 @@ begin
     NodePath:=Node.fPath;
     NodeFound:=true;
    end;
+   // FATTR_FH names an open handle, the change belongs to that descriptor: an ftruncate() on a
+   // file whose path is gone or no longer openable must still work
+   if (SetAttrIn.Valid and FATTR_FH)<>0 then begin
+    FHEntry:=fFHEntries[SetAttrIn.FH];
+    if assigned(FHEntry) and not FHEntry.fIsDirectory then begin
+     LocalFH:=FHEntry.fFileHandle;
+     HandleFound:=true;
+    end;
+   end;
   finally
    fLock.Release;
   end;
   if NodeFound and assigned(fFileSystem) then begin
-   Err:=fFileSystem.SetAttr(NodePath,SetAttrIn.Valid,
-                            SetAttrIn.Mode,SetAttrIn.UID,SetAttrIn.GID,
-                            SetAttrIn.Size,
-                            SetAttrIn.ATime,SetAttrIn.ATimeNSec,
-                            SetAttrIn.MTime,SetAttrIn.MTimeNSec);
+   Err:=-TPasRISCVFUSEFileSystem.FUSE_ENOSYS;
+   if HandleFound then begin
+    Err:=fFileSystem.SetAttrHandle(LocalFH,SetAttrIn.Valid,
+                                   SetAttrIn.Mode,SetAttrIn.UID,SetAttrIn.GID,
+                                   SetAttrIn.Size,
+                                   SetAttrIn.ATime,SetAttrIn.ATimeNSec,
+                                   SetAttrIn.MTime,SetAttrIn.MTimeNSec);
+   end;
+   // No handle, or a backend without the handle variant: the path does it
+   if Err=-TPasRISCVFUSEFileSystem.FUSE_ENOSYS then begin
+    Err:=fFileSystem.SetAttr(NodePath,SetAttrIn.Valid,
+                             SetAttrIn.Mode,SetAttrIn.UID,SetAttrIn.GID,
+                             SetAttrIn.Size,
+                             SetAttrIn.ATime,SetAttrIn.ATimeNSec,
+                             SetAttrIn.MTime,SetAttrIn.MTimeNSec);
+   end;
    if Err=0 then begin
     Err:=fFileSystem.Stat(NodePath,FileStat);
     if Err=0 then begin
@@ -80461,6 +80648,8 @@ begin
   end;
   TAddress.MIDELEG:begin
    fData[TAddress.MIDELEG]:=aValue and CSR_MIDELEG_MASK;
+   // Delegating an interrupt takes it away from the AIA virtual interrupts of mvien
+   fHART.UpdateVirtualInterruptState;
   end;
   TAddress.HGEIE:begin
    fData[TAddress.HGEIE]:=aValue and TMask.HGEIE_MASK;
@@ -80512,6 +80701,17 @@ procedure TPasRISCV.THART.TCSR.SetFPURM(const aValue:TPasRISCVUInt64);
 var NewRMM:Boolean;
 {$endif}
 begin
+{$ifdef PasRISCVJustInTimeCompiler}
+ // An frm of 5 to 7 makes every FP instruction with rm=dyn illegal, which a translated block does
+ // not check any more. Blocks are therefore dropped when frm changes between valid and invalid,
+ // which no real code does (a plain change of the rounding mode keeps its blocks).
+ if ((fData[TAddress.FRM] and TPasRISCVUInt64(TFloatingPointRoundingModes.Mask))>=5)<>((aValue and TPasRISCVUInt64(TFloatingPointRoundingModes.Mask))>=5) then begin
+  fHART.FlushTLB(true,true);
+  if assigned(fHART.fJustInTimeCompiler) then begin
+   fHART.fJustInTimeCompiler.ClearBlocks;
+  end;
+ end;
+{$endif}
 {$ifdef PasRISCVFastRMMFixup}
  // Maintain the cached "effective frm == RMM" flag. When the RMM-exact fast mode
  // is enabled, drop JIT blocks on an RMM<->non-RMM transition so already compiled
@@ -101361,6 +101561,9 @@ begin
  fFastRMMFixupEnabled:=fMachine.fFastRMMFixupEnabled;
  fFastRMMActive:=false;
 {$endif}
+
+ fVirtualInterruptsActive:=false;
+
 {$ifdef PasRISCVJITFPUInvalidFlag}
  fJITFPUInvalidFlagEnabled:=fMachine.fJITFPUInvalidFlagEnabled;
 {$endif}
@@ -101670,8 +101873,8 @@ begin
 
 {$ifdef PasRISCVSmcdeleg}
  // Smcdeleg: mcounterdeleg (M-mode RW), scounterinhibit (S-mode RW)
- // The address 0x309 of mcounterdeleg comes from a draft and belongs to mvip with AIA, so with
- // AIA it stays free here (mvip itself is not implemented yet)
+ // The address 0x309 of mcounterdeleg comes from a draft and belongs to mvip with AIA, so with AIA
+ // the address stays with mvip and mcounterdeleg does not exist
  if not fMachine.fAIA then begin
   fCSRHandlerMap[TCSR.TAddress.MCOUNTERDELEG]:=CSRHandlerMCOUNTERDELEG;
  end;
@@ -101770,6 +101973,9 @@ begin
 
   fCSRHandlerMap[TCSR.TAddress.VSTOPEI]:=CSRHandlerVSTOPEI; // VSTOPEI (H-extension AIA)
   fCSRHandlerMap[TCSR.TAddress.VSTOPI]:=CSRHandlerVSTOPI; // VSTOPI (H-extension AIA)
+
+  fCSRHandlerMap[TCSR.TAddress.MVIEN]:=CSRHandlerMVIEN; // MVIEN
+  fCSRHandlerMap[TCSR.TAddress.MVIP]:=CSRHandlerMVIP; // MVIP (the address of mcounterdeleg without AIA)
 
   fCSRHandlerMap[TCSR.TAddress.HVIEN]:=CSRHandlerHPrivileged; // HVIEN
   fCSRHandlerMap[TCSR.TAddress.HVIPRIO1]:=CSRHandlerHPrivileged; // HVIPRIO1
@@ -101911,6 +102117,9 @@ begin
  fFastRMMFixupEnabled:=fMachine.fFastRMMFixupEnabled;
  fFastRMMActive:=false;
 {$endif}
+
+ fVirtualInterruptsActive:=false;
+
 {$ifdef PasRISCVJITFPUInvalidFlag}
  fJITFPUInvalidFlagEnabled:=fMachine.fJITFPUInvalidFlagEnabled;
 {$endif}
@@ -102701,6 +102910,7 @@ begin
   result:=true;
  end;
 end;
+
 function TPasRISCV.THART.ExecuteFPStaticRM(const aInstruction:TPasRISCVUInt32):TPasRISCVUInt64;
 // Runs the instruction with the host rounding mode of its static rm, then back to frm. No
 // translated block may start meanwhile, those rely on the host mode being frm (TLBLookup checks
@@ -106902,7 +107112,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerSIE(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue,Mask:TPasRISCVUInt64;
+    Value,CSRValue,Mask,VirtualMask:TPasRISCVUInt64;
 begin
  if CSRAccessDenied(aCSR,aInstruction) then begin
   exit;
@@ -106919,11 +107129,21 @@ begin
    CheckInterrupts;
   end;
  end else begin
-  // The S-level interrupts that mideleg delegates, the others are read-only zero in sie
+  // The S-level interrupts that mideleg delegates, the others are read-only zero in sie. With AIA,
+  // a bit that mvien sets without mideleg gets its own enable in sie (fData[SIE]), independent of
+  // mie, because its interrupt comes from mvip and not from mip.
   rd:=TRegister((aInstruction shr 7) and $1f);
   Mask:=TCSR.CSR_SEIP_MASK and fState.CSR.fData[TCSR.TAddress.MIDELEG];
   Value:=fState.CSR.fData[TCSR.TAddress.MIE] and Mask;
-  CSRValue:=CSROperation(aOperation,Value,aRHS) and Mask;
+  if fVirtualInterruptsActive then begin
+   VirtualMask:=TCSR.CSR_MVIEN_MASK and fState.CSR.fData[TCSR.TAddress.MVIEN] and not fState.CSR.fData[TCSR.TAddress.MIDELEG];
+   Value:=Value or (fState.CSR.fData[TCSR.TAddress.SIE] and VirtualMask);
+   CSRValue:=CSROperation(aOperation,Value,aRHS);
+   fState.CSR.fData[TCSR.TAddress.SIE]:=(fState.CSR.fData[TCSR.TAddress.SIE] and not VirtualMask) or (CSRValue and VirtualMask);
+   CSRValue:=CSRValue and Mask;
+  end else begin
+   CSRValue:=CSROperation(aOperation,Value,aRHS) and Mask;
+  end;
   fState.CSR.fData[TCSR.TAddress.MIE]:=(fState.CSR.fData[TCSR.TAddress.MIE] and not Mask) or CSRValue;
   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
    fState.Registers[rd]:=Value;
@@ -106956,7 +107176,7 @@ end;
 
 procedure TPasRISCV.THART.CSRHandlerSIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
 var rd:TRegister;
-    Value,CSRValue,Mask:TPasRISCVUInt64;
+    Value,CSRValue,Mask,VirtualMask:TPasRISCVUInt64;
 begin
  if CSRAccessDenied(aCSR,aInstruction) then begin
   exit;
@@ -106974,18 +107194,97 @@ begin
   end;
  end else begin
   // The S-level interrupts that mideleg delegates, the others are read-only zero in sip. Only
-  // SSIP and LCOFIP are writable, STIP and SEIP only for M-mode through mip.
+  // SSIP and LCOFIP are writable, STIP and SEIP only for M-mode through mip. With AIA, a bit that
+  // mvien sets without mideleg reads and writes mvip instead of mip.
   rd:=TRegister((aInstruction shr 7) and $1f);
   Mask:=TCSR.CSR_SEIP_MASK and fState.CSR.fData[TCSR.TAddress.MIDELEG];
-  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
-   fState.Registers[rd]:=PendingInterruptBits and Mask;
+  if fVirtualInterruptsActive then begin
+   VirtualMask:=TCSR.CSR_MVIEN_MASK and fState.CSR.fData[TCSR.TAddress.MVIEN] and not fState.CSR.fData[TCSR.TAddress.MIDELEG];
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=(PendingInterruptBits and Mask) or (fState.CSR.fData[TCSR.TAddress.MVIP] and VirtualMask);
+   end;
+   VirtualMask:=VirtualMask and TCSR.CSR_SIP_WRITE_MASK;
+   Mask:=Mask and TCSR.CSR_SIP_WRITE_MASK;
+   Value:=(fState.CSR.fData[TCSR.TAddress.MIP] and Mask) or (fState.CSR.fData[TCSR.TAddress.MVIP] and VirtualMask);
+   CSRValue:=CSROperation(aOperation,Value,aRHS);
+   fState.CSR.fData[TCSR.TAddress.MVIP]:=(fState.CSR.fData[TCSR.TAddress.MVIP] and not VirtualMask) or (CSRValue and VirtualMask);
+   CSRValue:=CSRValue and Mask;
+  end else begin
+   {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+    fState.Registers[rd]:=PendingInterruptBits and Mask;
+   end;
+   Mask:=Mask and TCSR.CSR_SIP_WRITE_MASK;
+   Value:=fState.CSR.fData[TCSR.TAddress.MIP] and Mask;
+   CSRValue:=CSROperation(aOperation,Value,aRHS) and Mask;
   end;
-  Mask:=Mask and TCSR.CSR_SIP_WRITE_MASK;
-  Value:=fState.CSR.fData[TCSR.TAddress.MIP] and Mask;
-  CSRValue:=CSROperation(aOperation,Value,aRHS) and Mask;
   fState.CSR.fData[TCSR.TAddress.MIP]:=(fState.CSR.fData[TCSR.TAddress.MIP] and not Mask) or CSRValue;
   CheckInterrupts;
  end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerMVIEN(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+// AIA: for an interrupt with mideleg=0 and mvien=1, S-level does not see mip at all, its pending
+// bit is the one in mvip and its enable is the private bit in sie. Writable are SSI, SEI and LCOFI.
+var rd:TRegister;
+    Value,CSRValue:TPasRISCVUInt64;
+begin
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  Value:=fState.CSR.fData[TCSR.TAddress.MVIEN] and TCSR.CSR_MVIEN_MASK;
+  CSRValue:=CSROperation(aOperation,Value,aRHS) and TCSR.CSR_MVIEN_MASK;
+  fState.CSR.fData[TCSR.TAddress.MVIEN]:=CSRValue;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=Value;
+  end;
+  UpdateVirtualInterruptState;
+  CheckInterrupts;
+ end;
+end;
+
+procedure TPasRISCV.THART.CSRHandlerMVIP(const aPC,aInstruction,aCSR,aRHS:TPasRISCVUInt64;const aOperation:TCSROperation);
+// AIA: mvip is an alias of mip wherever mideleg delegates the interrupt or mvien leaves it alone,
+// and its own pending register for the bits that mvien claims without mideleg
+var rd:TRegister;
+    Value,CSRValue,AliasMask,OwnMask:TPasRISCVUInt64;
+begin
+ if CSRAccessDenied(aCSR,aInstruction) then begin
+  exit;
+ end else begin
+  rd:=TRegister((aInstruction shr 7) and $1f);
+  OwnMask:=TCSR.CSR_MVIP_MASK and fState.CSR.fData[TCSR.TAddress.MVIEN] and not fState.CSR.fData[TCSR.TAddress.MIDELEG];
+  AliasMask:=TCSR.CSR_MVIP_MASK and not OwnMask;
+  {$ifndef ExplicitEnforceZeroRegister}if rd<>TRegister.Zero then{$endif}begin
+   fState.Registers[rd]:=(PendingInterruptBits and AliasMask) or (fState.CSR.fData[TCSR.TAddress.MVIP] and OwnMask);
+  end;
+  AliasMask:=AliasMask and TCSR.CSR_MIP_WRITE_MASK;
+  Value:=(fState.CSR.fData[TCSR.TAddress.MIP] and AliasMask) or (fState.CSR.fData[TCSR.TAddress.MVIP] and OwnMask);
+  CSRValue:=CSROperation(aOperation,Value,aRHS);
+  fState.CSR.fData[TCSR.TAddress.MIP]:=(fState.CSR.fData[TCSR.TAddress.MIP] and not AliasMask) or (CSRValue and AliasMask);
+  fState.CSR.fData[TCSR.TAddress.MVIP]:=(fState.CSR.fData[TCSR.TAddress.MVIP] and not OwnMask) or (CSRValue and OwnMask);
+  CheckInterrupts;
+ end;
+end;
+
+function TPasRISCV.THART.SupervisorVirtualInterrupts:TPasRISCVUInt64;
+// The S-level interrupts that come from mvip instead of mip: mvien claims them, mideleg does not
+// delegate them, and their enable is the private sie bit. M-level never sees them.
+begin
+ if fVirtualInterruptsActive then begin
+  result:=fState.CSR.fData[TCSR.TAddress.MVIP] and fState.CSR.fData[TCSR.TAddress.MVIEN] and
+          (not fState.CSR.fData[TCSR.TAddress.MIDELEG]) and fState.CSR.fData[TCSR.TAddress.SIE] and TCSR.CSR_MVIEN_MASK;
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TPasRISCV.THART.UpdateVirtualInterruptState;
+// Called after every write to mvien and mideleg, so that the interrupt paths only pay for the AIA
+// virtual interrupts while there really is one
+begin
+ fVirtualInterruptsActive:=(fState.CSR.fData[TCSR.TAddress.MVIEN] and TCSR.CSR_MVIEN_MASK and
+                            (not fState.CSR.fData[TCSR.TAddress.MIDELEG]))<>0;
 end;
 
 // ============================================================================
@@ -107275,7 +107574,7 @@ begin
    end;
    CSRValue:=IRQ or (IRQ shl 16);
   end else begin
-   PendingValue:=InterruptsPending and TCSR.CSR_SEIP_MASK;
+   PendingValue:=(InterruptsPending or SupervisorVirtualInterrupts) and TCSR.CSR_SEIP_MASK;
    if PendingValue<>0 then begin
 {$ifdef AIAIPrio}
     // AIA iprio: scan all pending bits, find highest-priority (lowest prio number) interrupt
@@ -136660,12 +136959,12 @@ begin
                  ((fState.CSR.fData[TCSR.TAddress.HSTATUS] and (TPasRISCVUInt64(1) shl TCSR.TMask.THSTATUSBit.VTW))<>0) then begin
                SetException(TExceptionValue.VirtualInstruction,aInstruction,fState.PC);
               end else begin
-               if InterruptsPending=0 then begin
+               if (InterruptsPending or SupervisorVirtualInterrupts)=0 then begin
                 SleepUntilNextInterrupt;
                end;
               end;
              end else if fState.Mode>=THART.TMode.Supervisor then begin
-              if InterruptsPending=0 then begin
+              if (InterruptsPending or SupervisorVirtualInterrupts)=0 then begin
                SleepUntilNextInterrupt;
               end;
              end else begin
@@ -137111,8 +137410,10 @@ begin
       result:=4;
       exit;
      end else begin
-      // The rounding modes 5 and 6 are reserved where funct3 is one
-      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one, and rm=dyn is illegal while frm
+      // itself holds 5 to 7 (an invalid frm only counts when it is really used)
+      if ((((aInstruction shr 12) and 7)>=5) and HasRoundingModeField(aInstruction)) and
+         ((((aInstruction shr 12) and 7)<>7) or ((fState.CSR.fData[TCSR.TAddress.FRM] and 7)>=5)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -137262,8 +137563,10 @@ begin
       result:=4;
       exit;
      end else begin
-      // The rounding modes 5 and 6 are reserved where funct3 is one
-      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one, and rm=dyn is illegal while frm
+      // itself holds 5 to 7 (an invalid frm only counts when it is really used)
+      if ((((aInstruction shr 12) and 7)>=5) and HasRoundingModeField(aInstruction)) and
+         ((((aInstruction shr 12) and 7)<>7) or ((fState.CSR.fData[TCSR.TAddress.FRM] and 7)>=5)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -137439,8 +137742,10 @@ begin
       result:=4;
       exit;
      end else begin
-      // The rounding modes 5 and 6 are reserved where funct3 is one
-      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one, and rm=dyn is illegal while frm
+      // itself holds 5 to 7 (an invalid frm only counts when it is really used)
+      if ((((aInstruction shr 12) and 7)>=5) and HasRoundingModeField(aInstruction)) and
+         ((((aInstruction shr 12) and 7)<>7) or ((fState.CSR.fData[TCSR.TAddress.FRM] and 7)>=5)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -137592,8 +137897,10 @@ begin
       result:=4;
       exit;
      end else begin
-      // The rounding modes 5 and 6 are reserved where funct3 is one
-      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one, and rm=dyn is illegal while frm
+      // itself holds 5 to 7 (an invalid frm only counts when it is really used)
+      if ((((aInstruction shr 12) and 7)>=5) and HasRoundingModeField(aInstruction)) and
+         ((((aInstruction shr 12) and 7)<>7) or ((fState.CSR.fData[TCSR.TAddress.FRM] and 7)>=5)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -137748,8 +138055,10 @@ begin
       result:=4;
       exit;
      end else begin
-      // The rounding modes 5 and 6 are reserved where funct3 is one
-      if ((((aInstruction shr 12) and 7)=5) or (((aInstruction shr 12) and 7)=6)) and HasRoundingModeField(aInstruction) then begin
+      // The rounding modes 5 and 6 are reserved where funct3 is one, and rm=dyn is illegal while frm
+      // itself holds 5 to 7 (an invalid frm only counts when it is really used)
+      if ((((aInstruction shr 12) and 7)>=5) and HasRoundingModeField(aInstruction)) and
+         ((((aInstruction shr 12) and 7)<>7) or ((fState.CSR.fData[TCSR.TAddress.FRM] and 7)>=5)) then begin
        SetException(TExceptionValue.IllegalInstruction,aInstruction,fState.PC);
        result:=4;
        exit;
@@ -144261,7 +144570,7 @@ begin
 end;
 
 procedure TPasRISCV.THART.HandleInterrupts;
-var PC,Status,HStatus,PendingIRQs,IRQs,IDELEG,HIDELEG_Val:TPasRISCVUInt64;
+var PC,Status,HStatus,PendingIRQs,VirtualIRQs,IRQs,IDELEG,HIDELEG_Val:TPasRISCVUInt64;
     Mode,Privilege:THART.TMode;
     InterruptValue:TPasRISCV.THART.TInterruptValue;
     WasVirtual,DelegateToVS:Boolean;
@@ -144275,7 +144584,11 @@ begin
 
  PendingIRQs:=InterruptsPending;
 
- if PendingIRQs<>0 then begin
+ // AIA: the interrupts that S-level gets from mvip instead of mip. They only exist at S-level, so
+ // they stay out of PendingIRQs, which the M-level decision below uses.
+ VirtualIRQs:=SupervisorVirtualInterrupts;
+
+ if (PendingIRQs or VirtualIRQs)<>0 then begin
 
   WasVirtual:=fState.VirtualMode;
   DelegateToVS:=false;
@@ -144299,7 +144612,7 @@ begin
    // HS-mode interrupts: taken in U-mode, always with V=1 (neither sstatus.SIE of the host nor
    // vsstatus.SIE of the guest can block them there), and in HS-mode with sstatus.SIE=1
    HIDELEG_Val:=fState.CSR.fData[TCSR.TAddress.HIDELEG];
-   IRQs:=PendingIRQs and IDELEG and not HIDELEG_Val;
+   IRQs:=(PendingIRQs and IDELEG and not HIDELEG_Val) or VirtualIRQs;
    if (IRQs=0) or
       (Mode=TMode.Machine) or
       ((Mode=TMode.Supervisor) and (not WasVirtual) and ((Status and TCSR.TMask.TStatus.SIE)=0)) then begin
@@ -145233,7 +145546,7 @@ end;
 procedure TPasRISCV.THART.CheckInterrupts;
 var Interrupts:TPasRISCVUInt64;
 begin
- Interrupts:=InterruptsPending;
+ Interrupts:=InterruptsPending or SupervisorVirtualInterrupts;
  if Interrupts<>0 then begin
   fMachine.InterruptAndWakeUp;
 //RestartExecution;
@@ -145788,10 +146101,12 @@ begin
    end;
   end;
  end;
- // The restored state decides how instructions are executed (Zicfilp ELP) and which host rounding
- // mode the fast FPU path needs (frm), neither of which the plain field assignments above update
+ // The restored state decides how instructions are executed (Zicfilp ELP), which host rounding
+ // mode the fast FPU path needs (frm) and whether mvien holds AIA virtual interrupts, none of
+ // which the plain field assignments above update
  UpdateExecuteInstructionMethod;
  SetHostRoundingMode(fState.CSR.fData[TCSR.TAddress.FRM] and 7);
+ UpdateVirtualInterruptState;
 
 
 end;
@@ -146261,7 +146576,11 @@ begin
    THART.TCSR.TAddress.MCOUNTEREN:begin
     CSRName:='mcounteren';
    end;
+   THART.TCSR.TAddress.MVIEN:begin
+    CSRName:='mvien';
+   end;
 {$ifdef PasRISCVSmcdeleg}
+   // The same address 0x309 belongs to mvip with AIA, mcounterdeleg only exists without it
    THART.TCSR.TAddress.MCOUNTERDELEG:begin
     CSRName:='mcounterdeleg';
    end;
