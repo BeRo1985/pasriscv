@@ -53304,7 +53304,7 @@ const ID:RawByteString='nqn.2024-12.pasriscv:nvme:';
       R947Str:RawByteString='R947';
 var Ptr:PPasRISCVUInt8;
     LBASize:TPasRISCVUInt64;
-    OK:Boolean;
+    NSID,Status:TPasRISCVUInt32;
     s:TPasRISCVRawByteString;
 begin
  GetMem(Ptr,NVME_PAGE_SIZE);
@@ -53312,16 +53312,22 @@ begin
   FillChar(Ptr^,NVME_PAGE_SIZE,#0);
 //writeln('Admin command identify: ',LowerCase(IntToHex(PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10])));
   PreparePRP(aCommand,NVME_PAGE_SIZE);
+  NSID:=PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_NSID])^;
   case PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10] of
    IDENT_NS:begin
-    LBASize:=fStream.Size shr NVME_LBAS;
-    PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[0])^:=LBASize;
-    PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[8])^:=LBASize;
-    PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[16])^:=LBASize;
-    // Namespace features
-    PPasRISCVUInt8Array(Ptr)^[33]:=$09; // Deallocated blocks read as zero; Supports Deallocate bit in Write Zeroes
-    PPasRISCVUInt8Array(Ptr)^[130]:=NVME_LBAS; // LBA Format: 512b logical blocks
-    OK:=true;
+    // Namespace 1 is the only valid one, and without Namespace Management FFFFFFFFh isn't valid either
+    if NSID=1 then begin
+     LBASize:=fStream.Size shr NVME_LBAS;
+     PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[0])^:=LBASize;
+     PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[8])^:=LBASize;
+     PPasRISCVUInt64(@PPasRISCVUInt8Array(Ptr)^[16])^:=LBASize;
+     // Namespace features
+     PPasRISCVUInt8Array(Ptr)^[33]:=$09; // Deallocated blocks read as zero; Supports Deallocate bit in Write Zeroes
+     PPasRISCVUInt8Array(Ptr)^[130]:=NVME_LBAS; // LBA Format: 512b logical blocks
+     Status:=SC_SUCCESS;
+    end else begin
+     Status:=SC_BAD_NAMESPACE;
+    end;
    end;
    IDENT_CTRL:begin
     PPasRISCVUInt16(@PPasRISCVUInt8Array(Ptr)^[0])^:=SSD_VendorID; // PCI Vendor ID
@@ -53344,27 +53350,37 @@ begin
     SetLength(s,length(s)+SizeOf(fSerial));
     Move(fSerial[0],s[length(s)-SizeOf(fSerial)],SizeOf(fSerial));
     Move(s[1],PPasRISCVUInt8Array(Ptr)[768],length(s));
-    OK:=true;
+    Status:=SC_SUCCESS;
    end;
    IDENT_NSLS:begin
-    PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)^[0])^:=$1;
-    OK:=true;
+    // The list holds only the active namespace IDs above the requested one, and FFFFFFFEh and
+    // FFFFFFFFh are invalid as a start
+    if NSID>=TPasRISCVUInt32($fffffffe) then begin
+     Status:=SC_BAD_NAMESPACE;
+    end else begin
+     if NSID<1 then begin
+      PPasRISCVUInt32(@PPasRISCVUInt8Array(Ptr)^[0])^:=$1;
+     end;
+     Status:=SC_SUCCESS;
+    end;
    end;
    IDENT_NIDS:begin
-    PPasRISCVUInt8Array(Ptr)^[0]:=$3;
-    PPasRISCVUInt8Array(Ptr)^[1]:=$10;
-    OK:=true;
+    if NSID=1 then begin
+     PPasRISCVUInt8Array(Ptr)^[0]:=$3;
+     PPasRISCVUInt8Array(Ptr)^[1]:=$10;
+     Status:=SC_SUCCESS;
+    end else begin
+     Status:=SC_BAD_NAMESPACE;
+    end;
    end;
    else begin
-    OK:=false;
+    Status:=SC_BAD_FIELD;
    end;
   end;
-  if OK then begin
+  if Status=SC_SUCCESS then begin
    CopyToPRP(aCommand,Ptr,NVME_PAGE_SIZE);
-   CompleteCommand(aCommand,SC_SUCCESS);
-  end else begin
-   CompleteCommand(aCommand,SC_BAD_FIELD);
   end;
+  CompleteCommand(aCommand,Status);
  finally
   FreeMem(Ptr);
  end;
@@ -53374,7 +53390,18 @@ procedure TPasRISCV.TNVMeDevice.GetLogPage(const aCommand:PNVMeCommand);
 var Ptr:PPasRISCVUInt8;
     LogID:TPasRISCVUInt8;
     OK:Boolean;
+    NumDwords,Offset,Size:TPasRISCVUInt64;
 begin
+ // NUMD is a 0's based dword count split into NUMDL (CDW10 bits 31:16) and NUMDU (CDW11 bits 15:0),
+ // the byte offset into the log page is in CDW12 (low) and CDW13 (high)
+ NumDwords:=TPasRISCVUInt64(PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10+2])^) or
+            (TPasRISCVUInt64(PPasRISCVUInt16(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW11])^) shl 16);
+ Offset:=PPasRISCVUInt64(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW12])^;
+ Size:=(NumDwords+1) shl 2;
+ if ((Offset and 3)<>0) or (Offset>=NVME_PAGE_SIZE) or (Size>(NVME_PAGE_SIZE-Offset)) then begin
+  CompleteCommand(aCommand,SC_BAD_FIELD);
+  exit;
+ end;
  GetMem(Ptr,NVME_PAGE_SIZE);
  try
   FillChar(Ptr^,NVME_PAGE_SIZE,#0);
@@ -53394,8 +53421,8 @@ begin
    end;
   end;
   if OK then begin
-   PreparePRP(aCommand,PPasRISCVUInt32(@PPasRISCVUInt8Array(aCommand^.Ptr)^[SQE_CDW10])^ shr 16);
-   CopyToPRP(aCommand,Ptr,NVME_PAGE_SIZE);
+   PreparePRP(aCommand,Size);
+   CopyToPRP(aCommand,@PPasRISCVUInt8Array(Ptr)^[Offset],Size);
    CompleteCommand(aCommand,SC_SUCCESS);
   end else begin
    CompleteCommand(aCommand,SC_BAD_FIELD);
