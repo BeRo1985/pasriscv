@@ -115,12 +115,12 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
   - Zcmop (Compressed May-Be-Operations)
   - Ztso (Total Store Ordering)
   - Zama16b (Misaligned Atomics 16-byte Guarantee)
-  - Zicfilp (Landing Pad — Forward-Edge Control-Flow Integrity)
-  - Zicfiss (Shadow Stack — Backward-Edge Control-Flow Integrity)
+  - Zicfilp (Landing Pad - Forward-Edge Control-Flow Integrity)
+  - Zicfiss (Shadow Stack - Backward-Edge Control-Flow Integrity)
   - Zihintpause (Pause Hint)
   - Zihintntl (Non-Temporal Locality Hints)
 - Multi-core SMP support
-- Strict-compliant FPU mode with precise NaN propagation, full denormal support, all IEEE 754-2008 rounding modes, and correct handling of every special case. It is separately toggleable and disabled by default to achieve maximum performance for software that does not depend on strict IEEE 754-2008 semantics, but can be enabled whenever full compliance is required. In the default fast mode, denormals may be flushed to zero and some NaN edge cases are handled less strictly, which is perfectly acceptable for the vast majority of workloads and also enables full FPU JIT support for maximum throughput. When strict mode is enabled, all floating-point operations fully adhere to IEEE 754-2008 semantics at the cost of some performance overhead, with FPU JIT compilation disabled in this mode and the emulator falls back to the interpreter for all floating-point instructions wth soft-float semantics to ensure correct handling of all edge cases.
+- Strict-compliant FPU mode with precise NaN propagation, full denormal support, all IEEE 754-2008 rounding modes, and correct handling of every special case. It is separately toggleable and disabled by default to achieve maximum performance for software that does not depend on strict IEEE 754-2008 semantics, but can be enabled whenever full compliance is required. In the default fast mode, denormals may be flushed to zero and some NaN edge cases are handled less strictly, which is perfectly acceptable for the vast majority of workloads and also enables full FPU JIT support for maximum throughput. When strict mode is enabled, all floating-point operations fully adhere to IEEE 754-2008 semantics at the cost of some performance overhead, with FPU JIT compilation disabled in this mode and the emulator falls back to the interpreter for all floating-point instructions with soft-float semantics to ensure correct handling of all edge cases.
 - Emulated peripherals
   - ACLINT
   - PLIC when AIA is not enabled (default), otherwise APLIC and IMSIC if AIA is enabled
@@ -140,21 +140,21 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - Gamepad
     - Sound
       - VirtIO Sound (default)
-      - FM801 (Ensoniq PCI sound card, with PCM and  OPL3 support, if SoundMode=FM801, but currently with some timing dropout issues, so CMI8738 is recommended instead if OPL3 is needed, otherwise just use VirtIO Sound which works fine and has better performance and lower latency than all hardware-emulated sound options)
+      - FM801 (ForteMedia PCI sound card, with PCM and OPL3 support, if SoundMode=FM801, but currently with some timing dropout issues, so CMI8738 is recommended instead if OPL3 is needed, otherwise just use VirtIO Sound which works fine and has better performance and lower latency than all hardware-emulated sound options)
       - CMI8738 (C-Media PCI sound card, ring-buffer DMA with PCM and OPL3 support, if SoundMode=CMI8738)
       - HDA (Intel High Definition Audio, it is supported by the most operating systems, if SoundMode=HDA)
     - GPU (working 2D, not yet thoroughly tested experimental 3D/virgl support, use at your own risk)
-    - Socket (vsock) — host-guest socket communication with stream and seqpacket support
-    - RTC (if RTCMode=VirtIO) — real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
-    - Crypto — virtual cryptographic accelerator with CIPHER, HASH, MAC and AEAD services (VirtIO 1.2 Device ID 20)
-    - Balloon — memory balloon device for dynamic memory management (VirtIO Device ID 5; inflate/deflate queues handled, actual page count tracked; no physical memory reclamation in the emulator)
+    - Socket (vsock) - host-guest socket communication with stream and seqpacket support
+    - RTC (if RTCMode=VirtIO) - real-time clock with UTC, TAI and monotonic clocks (nanosecond precision)
+    - Crypto - virtual cryptographic accelerator with CIPHER, HASH, MAC and AEAD services (VirtIO 1.2 Device ID 20)
+    - Balloon - memory balloon device for dynamic memory management (VirtIO Device ID 5; inflate/deflate queues handled, actual page count tracked; no physical memory reclamation in the emulator)
   - SP805 hardware watchdog timer (`arm,sp805` / `arm,primecell`, at `$10030000`, IRQ `$0e`; two-phase expiry: first timeout fires IRQ, second triggers machine reset if RESEN set; register-write protected by lock key `0x1ACCE551`)
   - Display mode support with three selectable backends:
-    - SimpleFB — custom MMIO framebuffer (default, for baremetal and simple guests)
-    - VirtIO GPU — standard VirtIO 2D GPU with EDID support (for Linux with virtio-gpu driver)
+    - SimpleFB - custom MMIO framebuffer (default, for baremetal and simple guests)
+    - VirtIO GPU - standard VirtIO 2D GPU with EDID support (for Linux with virtio-gpu driver)
       - This is the recommended display mode for Linux guests, as it offers better performance and compatibility than SimpleFB. The guest OS updates the framebuffer via VirtIO and marks it as dirty, so the host only refreshes the output when the content has actually changed, whereas SimpleFB requires polling the entire framebuffer every frame, which is very inefficient for Linux desktop environments with compositing and frequent screen updates.
-    - Bochs VBE — PCI VGA adapter with VBE DISPI registers (for Linux with bochs-drm driver)
-    - Cirrus Logic GD 5446 — PCI VGA adapter compatible with QEMU cirrus driver (for Linux with cirrus DRM driver)
+    - Bochs VBE - PCI VGA adapter with VBE DISPI registers (for Linux with bochs-drm driver)
+    - Cirrus Logic GD 5446 - PCI VGA adapter compatible with QEMU cirrus driver (for Linux with cirrus DRM driver)
   - Framebuffer support
   - Shared memory device for host-guest shared memory communication with doorbell IRQ support
   - PS/2 keyboard and mouse
@@ -171,8 +171,8 @@ A RISC-V RV64GCV/RVA23 emulator written in Object Pascal. It simulates processor
     - FM801 PCI audio (if SoundMode=FM801)
     - CMI8738 PCI audio (if SoundMode=CMI8738)
   - I2C bus with two selectable controller modes:
-    - OpenCores I2C (opencores,i2c-ocores) — classic register-based I2C controller
-    - Synopsys DesignWare I2C (snps,designware-i2c) — default, compatible with Linux i2c-designware driver
+    - OpenCores I2C (opencores,i2c-ocores) - classic register-based I2C controller
+    - Synopsys DesignWare I2C (snps,designware-i2c) - default, compatible with Linux i2c-designware driver
     - Attached devices:
       - DS1307 RTC (if RTCMode=DS1307)
       - HID keyboard (planned, currently disabled)
@@ -259,11 +259,11 @@ Some features are controlled by compile-time `{$define}` directives at the top o
 
 | Define | Default | Description |
 |--------|---------|-------------|
-| `PasRISCVSmcntrpmf` | enabled | Smcntrpmf — Counter Privilege-Mode Filtering. When enabled, the cycle counter can be inhibited per-privilege-mode via `mcyclecfg`/`minstretcfg` CSRs. The JIT uses a branchless mask (`CycleIncrementMask`) to avoid branches in hot paths, but the extra load+AND+memory-add sequence has a small cost even when counting is not inhibited. Disable by commenting out `{$define PasRISCVSmcntrpmf}` if Smcntrpmf guest support is not required. |
-| `PasRISCVSmdbltrp` | disabled | Smdbltrp — Machine-Mode Double Trap. When enabled, trapping to M-mode while `mstatus.MDT=1` triggers a double-trap: the hart is redirected to the RNMI handler (if `mnstatus.NMIE=1`) or halted. `mstatus.MDT` is set on every M-mode trap entry and cleared by MRET. Although the checks are only reached on the (rare) trap path, the MDT bit participates in the `mstatus` WARL mask even when inactive, which subtly changes CSR write behaviour. Enable by uncommenting `{$define PasRISCVSmdbltrp}`. |
-| `PasRISCVSsdbltrp` | disabled | Ssdbltrp — Supervisor-Mode Double Trap. Requires `PasRISCVSmdbltrp`. When enabled, two independent double-trap mechanisms are active: **(1) HS-mode:** if `menvcfg.DTE=1` and `mstatus.SDT=1`, a trap to HS-mode escalates to M-mode as a synchronous cause-16 exception (`mcause=16`, `mtval2=original scause`). **(2) VS-mode:** if `henvcfg.DTE=1` and `vsstatus.SDT=1`, a trap to VS-mode escalates to HS-mode as a synchronous cause-16 exception (`scause=16`, `htval=original vscause`). Both SDT bits are set on every respective trap entry (when the corresponding DTE=1) and cleared by the matching SRET. Writing SDT=1 to `mstatus`/`vsstatus` forces the corresponding SIE=0. Enable by uncommenting `{$define PasRISCVSsdbltrp}`. |
-| `PasRISCVSmcdeleg` | disabled | Smcdeleg+Ssccfg — Counter Delegation. When enabled, adds `mcounterdeleg` (0x309, MRW) and `scounterinhibit` (0x120, SRW). M-mode can delegate counters 0–31 to S-mode by setting bits in `mcounterdeleg`. S-mode (HS-mode only; VS-mode raises VirtualInstruction) can then inhibit delegated counters via `scounterinhibit`, with writes masked to bits that are set in `mcounterdeleg` (WARL). Since HPM counters 3–31 do not track real events in the emulator, the inhibition has no visible counting effect, but the CSRs are correctly accessible and Linux/OpenSBI counter-delegation setup will not trap. Enable by uncommenting `{$define PasRISCVSmcdeleg}`. |
-| `PasRISCVSmepmp` | enabled | Smepmp — Enhanced Physical Memory Protection. When enabled, the three Smepmp bits in `mseccfg` (RLB bit 2, MMWP bit 1, MML bit 0) are writable and fully enforced. PMP entries (pmpcfg0–pmpcfg3, pmpaddr0–pmpaddr15) are checked on every TLB miss for all privilege modes. MMWP=1 enables whitelist semantics for M-mode. MML=1 activates the Smepmp permission table that redefines how R/W/X/L bits are interpreted for M-mode vs. S/U-mode access. Any write to a PMP or mseccfg CSR flushes the TLB. Disable by commenting out `{$define PasRISCVSmepmp}` if PMP enforcement is not required (e.g. for maximum interpreter throughput in a trusted environment). |
+| `PasRISCVSmcntrpmf` | enabled | Smcntrpmf - Counter Privilege-Mode Filtering. When enabled, the cycle counter can be inhibited per-privilege-mode via `mcyclecfg`/`minstretcfg` CSRs. The JIT uses a branchless mask (`CycleIncrementMask`) to avoid branches in hot paths, but the extra load+AND+memory-add sequence has a small cost even when counting is not inhibited. Disable by commenting out `{$define PasRISCVSmcntrpmf}` if Smcntrpmf guest support is not required. |
+| `PasRISCVSmdbltrp` | disabled | Smdbltrp - Machine-Mode Double Trap. When enabled, trapping to M-mode while `mstatus.MDT=1` triggers a double-trap: the hart is redirected to the RNMI handler (if `mnstatus.NMIE=1`) or halted. `mstatus.MDT` is set on every M-mode trap entry and cleared by MRET. Although the checks are only reached on the (rare) trap path, the MDT bit participates in the `mstatus` WARL mask even when inactive, which subtly changes CSR write behaviour. Enable by uncommenting `{$define PasRISCVSmdbltrp}`. |
+| `PasRISCVSsdbltrp` | disabled | Ssdbltrp - Supervisor-Mode Double Trap. Requires `PasRISCVSmdbltrp`. When enabled, two independent double-trap mechanisms are active: **(1) HS-mode:** if `menvcfg.DTE=1` and `mstatus.SDT=1`, a trap to HS-mode escalates to M-mode as a synchronous cause-16 exception (`mcause=16`, `mtval2=original scause`). **(2) VS-mode:** if `henvcfg.DTE=1` and `vsstatus.SDT=1`, a trap to VS-mode escalates to HS-mode as a synchronous cause-16 exception (`scause=16`, `htval=original vscause`). Both SDT bits are set on every respective trap entry (when the corresponding DTE=1) and cleared by the matching SRET. Writing SDT=1 to `mstatus`/`vsstatus` forces the corresponding SIE=0. Enable by uncommenting `{$define PasRISCVSsdbltrp}`. |
+| `PasRISCVSmcdeleg` | disabled | Smcdeleg+Ssccfg - Counter Delegation. When enabled, adds `mcounterdeleg` (0x309, MRW) and `scounterinhibit` (0x120, SRW). M-mode can delegate counters 0–31 to S-mode by setting bits in `mcounterdeleg`. S-mode (HS-mode only; VS-mode raises VirtualInstruction) can then inhibit delegated counters via `scounterinhibit`, with writes masked to bits that are set in `mcounterdeleg` (WARL). Since HPM counters 3–31 do not track real events in the emulator, the inhibition has no visible counting effect, but the CSRs are correctly accessible and Linux/OpenSBI counter-delegation setup will not trap. Enable by uncommenting `{$define PasRISCVSmcdeleg}`. |
+| `PasRISCVSmepmp` | enabled | Smepmp - Enhanced Physical Memory Protection. When enabled, the three Smepmp bits in `mseccfg` (RLB bit 2, MMWP bit 1, MML bit 0) are writable and fully enforced. PMP entries (pmpcfg0–pmpcfg3, pmpaddr0–pmpaddr15) are checked on every TLB miss for all privilege modes. MMWP=1 enables whitelist semantics for M-mode. MML=1 activates the Smepmp permission table that redefines how R/W/X/L bits are interpreted for M-mode vs. S/U-mode access. Any write to a PMP or mseccfg CSR flushes the TLB. Disable by commenting out `{$define PasRISCVSmepmp}` if PMP enforcement is not required (e.g. for maximum interpreter throughput in a trusted environment). |
 
 ## ISA Extension Notes
 
@@ -315,7 +315,7 @@ Together they allow Linux's `perf` subsystem to manage performance counters from
 **What this means for the emulator:**
 
 - `mcounterdeleg` and `scounterinhibit` are fully implemented as read/write WARL CSRs with correct privilege enforcement.
-- Since HPM counters 3–31 do not track real hardware events in the emulator (they always read zero unless explicitly written by software), the inhibition logic has no observable counting side-effect — but the CSRs are correctly accessible and writable, so Linux and OpenSBI counter-delegation setup will not fault.
+- Since HPM counters 3–31 do not track real hardware events in the emulator (they always read zero unless explicitly written by software), the inhibition logic has no observable counting side-effect - but the CSRs are correctly accessible and writable, so Linux and OpenSBI counter-delegation setup will not fault.
 - The extension is guarded behind `{$define PasRISCVSmcdeleg}` (disabled by default).
 
 ### Smepmp (Enhanced Physical Memory Protection)
@@ -337,7 +337,7 @@ OpenSBI >= v1.3 uses Smepmp to enforce M-mode memory isolation by clearing RLB a
 - The MLPE bit (M-mode Landing Pad Enable, from Zicfilp) is functional when `{$define Zicfilp}` is active.
 - **PMP enforcement is fully implemented**: all PMP entries (pmpcfg0–pmpcfg3, pmpaddr0–pmpaddr15) are checked on every TLB miss for S/U-mode and M-mode accesses.
 - **MML=0 (standard PMP)**: M-mode bypasses non-locked entries; S/U-mode must have explicit R/W/X permission.
-- **MML=1 (Smepmp lockdown)**: the full Smepmp permission table is applied — M-mode and S/U-mode permissions are derived from the new encoding where L, R, W, X bits define combined M-mode / S/U-mode access rights.
+- **MML=1 (Smepmp lockdown)**: the full Smepmp permission table is applied - M-mode and S/U-mode permissions are derived from the new encoding where L, R, W, X bits define combined M-mode / S/U-mode access rights.
 - **MMWP=1**: M-mode accesses with no matching PMP entry are denied (access fault).
 - **RLB**: tracked correctly; affects CSR write-protection of locked entries (not enforced at the TLB level beyond the standard locked-entry semantics).
 - Any write to a PMP CSR or `mseccfg` flushes the entire TLB to ensure cached translations are re-validated.
@@ -349,9 +349,9 @@ See the `docs` directory for more information.
 
 ## Related connected repositories
 
-- [PasRISCV Third-Party Software Repository](https://github.com/BeRo1985/pasriscv_software) - This repository contains third-party software, including test cases, guest Linux system build scripts, and other related assets, for the PasRISCV Emulator — a RV64GCV/RVA23 RISC-V emulator developed in Object Pascal. Needed for the test suite and other related assets.
+- [PasRISCV Third-Party Software Repository](https://github.com/BeRo1985/pasriscv_software) - This repository contains third-party software, including test cases, guest Linux system build scripts, and other related assets, for the PasRISCV Emulator - a RV64GCV/RVA23 RISC-V emulator developed in Object Pascal. Needed for the test suite and other related assets.
 - [PasVulkan](https://github.com/BeRo1985/pasvulkan) - PasVulkan game engine and Vulkan API bindings for Object Pascal.
-- [pasriscemu](https://github.com/BeRo1985/pasriscvemu) - PasRISCV Emulator frontend using PasVulkan.
+- [pasriscvemu](https://github.com/BeRo1985/pasriscvemu) - PasRISCV Emulator frontend using PasVulkan.
 
 ## License
 
