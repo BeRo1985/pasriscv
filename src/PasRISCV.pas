@@ -29417,46 +29417,48 @@ end;
 
 function TPasRISCV9PFileSystemWindows.Win32ErrorCodeToP9ErrorCode(const aErrorCode:DWORD):TPasRISCVInt32;
 begin
+ // Positive codes, like POSIXErrorCodeToP9ErrorCode, because every caller negates the result.
+ // Negative ones came out positive there, which the 9P server takes for success.
  case aErrorCode of
   ERROR_SUCCESS:begin
    result:=0;
   end;
   ERROR_ACCESS_DENIED:begin
-   result:=-P9_EPERM;
+   result:=P9_EPERM;
   end;
   ERROR_FILE_NOT_FOUND:begin
-   result:=-P9_ENOENT;
+   result:=P9_ENOENT;
   end;
   ERROR_IO_DEVICE,
   ERROR_IO_PENDING,
   ERROR_GEN_FAILURE:begin
-   result:=-P9_EIO;
+   result:=P9_EIO;
   end;
   ERROR_ALREADY_EXISTS:begin
-   result:=-P9_EEXIST;
+   result:=P9_EEXIST;
   end;
   ERROR_PATH_NOT_FOUND,
   ERROR_DIRECTORY:begin
-   result:=-P9_ENOTDIR;
+   result:=P9_ENOTDIR;
   end;
   ERROR_INVALID_PARAMETER,
   ERROR_INVALID_HANDLE:begin
-   result:=-P9_EINVAL;
+   result:=P9_EINVAL;
   end;
   ERROR_DISK_FULL:begin
-   result:=-P9_ENOSPC;
+   result:=P9_ENOSPC;
   end;
   ERROR_DIR_NOT_EMPTY:begin
-   result:=-P9_ENOTEMPTY;
+   result:=P9_ENOTEMPTY;
   end;
   ERROR_PROTOCOL_UNREACHABLE:begin
-   result:=-P9_EPROTO;
+   result:=P9_EPROTO;
   end;
   ERROR_NOT_SUPPORTED:begin
-   result:=-P9_ENOTSUP;
+   result:=P9_ENOTSUP;
   end;
   else begin
-   result:=-P9_EINVAL;
+   result:=P9_EINVAL;
   end;
  end;
 end;
