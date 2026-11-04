@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-11-04-18-19-0000                       *
+ *                        Version 2026-11-04-18-41-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -16190,6 +16190,10 @@ const SectorSize=512;
       MinimumEXT4Blocks=4096;
       MaximumEXT4Blocks=TPasRISCVUInt64(4294967296);
       MinimumLastGroupFreeBlocks=256;
+      FAT32ReservedSectors=32;
+      FAT32NumberOfFATs=2;
+      MinimumFAT32Clusters=65525; // below this it would be FAT16
+      MaximumFAT32Clusters=268435445;
       PartitionStartLBA=2048;
 type TCRC32TableArray=array[0..255] of TPasRISCVUInt32;
      PCRC32TableArray=^TCRC32TableArray;
@@ -16441,7 +16445,7 @@ var TotalSectors,PartitionOffset,PartitionSize:TPasRISCVUInt64;
     BitmapBuffer:PBitmapBuffer;
     Index:TPasRISCVUInt32;
     CRCValue:TPasRISCVUInt32;
-    FATSize32,ClusterCount:TPasRISCVUInt32;
+    FATSize32,ClusterCount,SectorsPerCluster:TPasRISCVUInt32;
     PartitionSectors:TPasRISCVUInt32;
 begin
 
@@ -16735,12 +16739,43 @@ begin
              // FAT32
              // =======================================================
              TPasRISCVFileSystem.FAT32:begin
-              PartitionSectors:=TPasRISCVUInt32((TotalSectors-PartitionStartLBA)-33);
-              FATSize32:=(((PartitionSectors-32)*4)+511) div 512;
-              ClusterCount:=((PartitionSectors-32)-(2*FATSize32)) div 8;
-              FATSize32:=(((ClusterCount+2)*4)+511) div 512;
-              ClusterCount:=((PartitionSectors-32)-(2*FATSize32)) div 8;
 
+              if ((TotalSectors-PartitionStartLBA)-33)>TPasRISCVUInt64($ffffffff) then begin
+               raise EPasRISCV.Create('Image too large for a FAT32 filesystem');
+              end;
+              PartitionSectors:=TPasRISCVUInt32((TotalSectors-PartitionStartLBA)-33);
+
+              // Cluster size after the table which Microsoft gives for FAT32 with 512 byte sectors
+              if PartitionSectors<=532480 then begin
+               SectorsPerCluster:=1; // up to 260 MiB
+              end else if PartitionSectors<=16777216 then begin
+               SectorsPerCluster:=8; // up to 8 GiB
+              end else if PartitionSectors<=33554432 then begin
+               SectorsPerCluster:=16; // up to 16 GiB
+              end else if PartitionSectors<=67108864 then begin
+               SectorsPerCluster:=32; // up to 32 GiB
+              end else begin
+               SectorsPerCluster:=64;
+              end;
+
+              // The FAT has to hold an entry for every cluster plus the two reserved ones, and every
+              // sector it takes is one less for the clusters, so its size is grown until the
+              // clusters which are left fit into it
+              FATSize32:=1;
+              repeat
+               ClusterCount:=((PartitionSectors-FAT32ReservedSectors)-(FAT32NumberOfFATs*FATSize32)) div SectorsPerCluster;
+               if ((((ClusterCount+2)*4)+511) div 512)<=FATSize32 then begin
+                break;
+               end;
+               FATSize32:=(((ClusterCount+2)*4)+511) div 512;
+              until false;
+              if (ClusterCount<MinimumFAT32Clusters) or (ClusterCount>MaximumFAT32Clusters) then begin
+               raise EPasRISCV.Create('Image size out of range for a FAT32 filesystem');
+              end;
+
+              CreateGUID(GUID);
+
+              // --- BOOT SECTOR, AND ITS COPY IN SECTOR 6 ---
               FillChar(Buffer4096^,SizeOf(Buffer4096^),0);
               Buffer4096^[0]:=$eb;
               Buffer4096^[1]:=$58;
@@ -16754,9 +16789,9 @@ begin
               Buffer4096^[9]:=$2e;
               Buffer4096^[10]:=$30;
               WriteUInt16LittleEndian(@Buffer4096^[0],11,512);
-              Buffer4096^[13]:=8;
-              WriteUInt16LittleEndian(@Buffer4096^[0],14,32);
-              Buffer4096^[16]:=2;
+              Buffer4096^[13]:=TPasRISCVUInt8(SectorsPerCluster);
+              WriteUInt16LittleEndian(@Buffer4096^[0],14,FAT32ReservedSectors);
+              Buffer4096^[16]:=FAT32NumberOfFATs;
               WriteUInt16LittleEndian(@Buffer4096^[0],17,0);
               WriteUInt16LittleEndian(@Buffer4096^[0],19,0);
               Buffer4096^[21]:=$f8;
@@ -16773,10 +16808,7 @@ begin
               WriteUInt16LittleEndian(@Buffer4096^[0],50,6);
               Buffer4096^[64]:=$80;
               Buffer4096^[66]:=$29;
-              Buffer4096^[67]:=$de;
-              Buffer4096^[68]:=$ad;
-              Buffer4096^[69]:=$be;
-              Buffer4096^[70]:=$ef;
+              Move(GUID,Buffer4096^[67],4); // volume serial number
               Buffer4096^[71]:=$4e;
               Buffer4096^[72]:=$4f;
               Buffer4096^[73]:=$20;
@@ -16799,7 +16831,9 @@ begin
               Buffer4096^[510]:=$55;
               Buffer4096^[511]:=$aa;
               WriteAt(PartitionOffset,@Buffer4096^[0],512);
+              WriteAt(PartitionOffset+(6*512),@Buffer4096^[0],512);
 
+              // --- FSINFO, AND ITS COPY IN SECTOR 7 ---
               FillChar(Buffer4096^,SizeOf(Buffer4096^),0);
               Buffer4096^[0]:=$52;
               Buffer4096^[1]:=$52;
@@ -16816,13 +16850,15 @@ begin
               Buffer4096^[510]:=$55;
               Buffer4096^[511]:=$aa;
               WriteAt(PartitionOffset+512,@Buffer4096^[0],512);
+              WriteAt(PartitionOffset+(7*512),@Buffer4096^[0],512);
 
+              // --- BOTH FATS: media, end of chain marker, and the root directory in cluster 2 ---
               FillChar(Buffer4096^,SizeOf(Buffer4096^),0);
               WriteUInt32LittleEndian(@Buffer4096^[0],0,$0ffffff8);
               WriteUInt32LittleEndian(@Buffer4096^[0],4,$0fffffff);
               WriteUInt32LittleEndian(@Buffer4096^[0],8,$0fffffff);
-              WriteAt(PartitionOffset+(32*512),@Buffer4096^[0],512);
-              WriteAt(PartitionOffset+(TPasRISCVUInt64(32+FATSize32)*512),@Buffer4096^[0],512);
+              WriteAt(PartitionOffset+(TPasRISCVUInt64(FAT32ReservedSectors)*512),@Buffer4096^[0],512);
+              WriteAt(PartitionOffset+(TPasRISCVUInt64(FAT32ReservedSectors+FATSize32)*512),@Buffer4096^[0],512);
              end;
 
              // =======================================================
