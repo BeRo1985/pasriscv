@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-10-27-09-09-0000                       *
+ *                        Version 2026-11-04-18-19-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -16177,6 +16177,19 @@ const SectorSize=512;
       BlockSize=4096;
       BlocksPerGroup=32768;
       InodeSize=256;
+      InodesPerBlock=BlockSize div InodeSize;
+      BytesPerInode=16384;
+      ExtraInodeSize=32;
+      DescriptorSize=64;
+      GroupsPerFlex=16;
+      LostFoundBlocks=4;
+      RootDirectoryInode=2;
+      JournalInode=8;
+      FirstNonReservedInode=11;
+      LostFoundInode=11;
+      MinimumEXT4Blocks=4096;
+      MaximumEXT4Blocks=TPasRISCVUInt64(4294967296);
+      MinimumLastGroupFreeBlocks=256;
       PartitionStartLBA=2048;
 type TCRC32TableArray=array[0..255] of TPasRISCVUInt32;
      PCRC32TableArray=^TCRC32TableArray;
@@ -16301,6 +16314,103 @@ var CRC32Table:PCRC32TableArray;
           (TPasRISCVUInt32(aBuffer[aOffset+3]) shl 24);
  end;
 
+ // With sparse_super only the groups 0 and 1 and the powers of 3, 5 and 7 carry a copy of the
+ // superblock and of the group descriptor table.
+ function EXT4HasSuperBlockBackup(const aGroup:TPasRISCVUInt32):Boolean;
+ const Bases:array[0..2] of TPasRISCVUInt32=(3,5,7);
+ var BaseIndex:TPasRISCVInt32;
+     Power:TPasRISCVUInt64;
+ begin
+  if aGroup<=1 then begin
+   result:=true;
+  end else begin
+   result:=false;
+   for BaseIndex:=Low(Bases) to High(Bases) do begin
+    Power:=Bases[BaseIndex];
+    while Power<aGroup do begin
+     Power:=Power*Bases[BaseIndex];
+    end;
+    if Power=aGroup then begin
+     result:=true;
+     break;
+    end;
+   end;
+  end;
+ end;
+
+ procedure EXT4SetBits(const aBitmap:PByte;const aFirst,aCount:TPasRISCVUInt32);
+ var Index:TPasRISCVUInt32;
+ begin
+  Index:=aFirst;
+  while Index<(aFirst+aCount) do begin
+   aBitmap[Index shr 3]:=aBitmap[Index shr 3] or (1 shl (Index and 7));
+   inc(Index);
+  end;
+ end;
+
+ // Seed of the checksums of an inode and of the blocks of a directory, from the inode number and
+ // its generation, both little endian.
+ function EXT4InodeChecksumSeed(const aChecksumSeed,aInodeNumber,aGeneration:TPasRISCVUInt32):TPasRISCVUInt32;
+ var Bytes:array[0..3] of TPasRISCVUInt8;
+ begin
+  WriteUInt32LittleEndian(@Bytes[0],0,aInodeNumber);
+  result:=CRC32CRaw(aChecksumSeed,@Bytes[0],4);
+  WriteUInt32LittleEndian(@Bytes[0],0,aGeneration);
+  result:=CRC32CRaw(result,@Bytes[0],4);
+ end;
+
+ // A single extent in the inode itself, which is all that is needed for the few contiguous files
+ // which a fresh filesystem has.
+ procedure EXT4SetInodeExtent(const aInode:PByte;const aStartBlock:TPasRISCVUInt64;const aBlockCount:TPasRISCVUInt16);
+ begin
+  WriteUInt32LittleEndian(aInode,$20,$00080000);                           // i_flags: EXTENTS_FL
+  WriteUInt16LittleEndian(aInode,$28,$f30a);                               // eh_magic
+  WriteUInt16LittleEndian(aInode,$2a,1);                                   // eh_entries
+  WriteUInt16LittleEndian(aInode,$2c,4);                                   // eh_max
+  WriteUInt16LittleEndian(aInode,$2e,0);                                   // eh_depth
+  WriteUInt32LittleEndian(aInode,$30,0);                                   // eh_generation
+  WriteUInt32LittleEndian(aInode,$34,0);                                   // ee_block
+  WriteUInt16LittleEndian(aInode,$38,aBlockCount);                         // ee_len
+  WriteUInt16LittleEndian(aInode,$3a,TPasRISCVUInt16(aStartBlock shr 32)); // ee_start_hi
+  WriteUInt32LittleEndian(aInode,$3c,TPasRISCVUInt32(aStartBlock));        // ee_start_lo
+ end;
+
+ // The checksum covers the whole inode with both of its checksum halves zeroed.
+ procedure EXT4WriteInode(const aInode:PByte;const aInodeTableOffset:TPasRISCVUInt64;const aInodeNumber,aChecksumSeed:TPasRISCVUInt32);
+ var CRCValue:TPasRISCVUInt32;
+ begin
+  WriteUInt16LittleEndian(aInode,$7c,0);
+  WriteUInt16LittleEndian(aInode,$82,0);
+  CRCValue:=CRC32CRaw(EXT4InodeChecksumSeed(aChecksumSeed,aInodeNumber,ReadUInt32LittleEndian(aInode,$64)),aInode,InodeSize);
+  WriteUInt16LittleEndian(aInode,$7c,TPasRISCVUInt16(CRCValue));         // l_i_checksum_lo
+  WriteUInt16LittleEndian(aInode,$82,TPasRISCVUInt16(CRCValue shr 16));  // i_checksum_hi
+  WriteAt(aInodeTableOffset+(TPasRISCVUInt64(aInodeNumber-1)*InodeSize),aInode,InodeSize);
+ end;
+
+ procedure EXT4WriteDirectoryEntry(const aBlock:PByte;const aOffset,aInodeNumber:TPasRISCVUInt32;const aRecordLength:TPasRISCVUInt16;const aName:TPasRISCVRawByteString;const aFileType:TPasRISCVUInt8);
+ var Index:TPasRISCVInt32;
+ begin
+  WriteUInt32LittleEndian(aBlock,aOffset,aInodeNumber);   // inode
+  WriteUInt16LittleEndian(aBlock,aOffset+4,aRecordLength); // rec_len
+  aBlock[aOffset+6]:=TPasRISCVUInt8(length(aName));       // name_len
+  aBlock[aOffset+7]:=aFileType;                            // file_type
+  for Index:=1 to length(aName) do begin
+   aBlock[aOffset+7+TPasRISCVUInt32(Index)]:=TPasRISCVUInt8(aName[Index]);
+  end;
+ end;
+
+ // The last 12 bytes of a directory block are the checksum tail, which poses as an empty entry
+ // with the reserved file type $de.
+ procedure EXT4WriteDirectoryBlock(const aBlock:PByte;const aOffset:TPasRISCVUInt64;const aInodeNumber,aChecksumSeed:TPasRISCVUInt32);
+ begin
+  WriteUInt32LittleEndian(aBlock,BlockSize-12,0);
+  WriteUInt16LittleEndian(aBlock,BlockSize-8,12);
+  aBlock[BlockSize-6]:=0;
+  aBlock[BlockSize-5]:=$de;
+  WriteUInt32LittleEndian(aBlock,BlockSize-4,CRC32CRaw(EXT4InodeChecksumSeed(aChecksumSeed,aInodeNumber,0),aBlock,BlockSize-12));
+  WriteAt(aOffset,aBlock,BlockSize);
+ end;
+
 var TotalSectors,PartitionOffset,PartitionSize:TPasRISCVUInt64;
     LastUsableLBA,FirstUsableLBA:TPasRISCVUInt64;
     PartitionFirstLBA,PartitionLastLBA:TPasRISCVUInt64;
@@ -16308,35 +16418,31 @@ var TotalSectors,PartitionOffset,PartitionSize:TPasRISCVUInt64;
     GUIDPartitionTableBuffer:PGUIDPartitionTableBuffer;
     PartitionEntry:PPartitionEntryArray;
     PartitionArrayCRC:TPasRISCVUInt32;
-    TotalBlocks,GroupCount:TPasRISCVUInt64;
-    InodesPerGroup,TotalInodes,InodeTableBlocks:TPasRISCVUInt32;
-    JournalBlocks:TPasRISCVUInt64;
-    BlockBitmapBlock,InodeBitmapBlock,InodeTableStartBlock:TPasRISCVUInt64;
-    JournalStartBlock,JournalEndBlock:TPasRISCVUInt64;
-    RootDirectoryBlock,LostFoundStartBlock,LostFoundEndBlock:TPasRISCVUInt64;
-    FirstFreeBlock:TPasRISCVUInt64;
-    FreeBlocksInGroup0:TPasRISCVUInt64;
-    UsedBlocksInGroup0:TPasRISCVUInt64;
+    TotalBlocks,ReservedBlocks,FreeBlocksCount:TPasRISCVUInt64;
+    GroupCount,GroupIndex,FlexFirstGroup,FlexGroupCount:TPasRISCVUInt32;
+    InodesPerGroup,TotalInodes,InodeTableBlocks,FreeInodesCount:TPasRISCVUInt32;
+    DescriptorBlocks,JournalBlocks:TPasRISCVUInt32;
+    MetadataStartBlock,BlockBitmapBlock,InodeBitmapBlock,InodeTableStartBlock:TPasRISCVUInt64;
+    JournalStartBlock,RootDirectoryBlock,LostFoundStartBlock,FirstFreeBlock:TPasRISCVUInt64;
+    GroupFirstBlock,InodeTableOffset:TPasRISCVUInt64;
+    GroupBlocks,MetadataBlocks,UsedBlocks:TPasRISCVUInt32;
+    GroupFreeBlocks,GroupFreeInodes,GroupUsedDirectories:TPasRISCVUInt32;
+    GroupFlags:TPasRISCVUInt16;
+    BlockBitmapChecksum,InodeBitmapChecksum:TPasRISCVUInt32;
+    GroupNumberBytes:array[0..3] of TPasRISCVUInt8;
+    GroupDescriptorTable:PByte;
+    GUID:TGUID;
     UUID:PUUIDBuffer;
-    ChecksumSeed,ChecksumSeedRaw:TPasRISCVUInt32;
+    ChecksumSeed:TPasRISCVUInt32;
     Buffer4096:PBuffer4096;
     Buffer1024:PBuffer1024;
     InodeBuffer:PInodeBuffer;
     BlockGroupDescriptorBuffer:PBlockGroupDescriptorBuffer;
     BitmapBuffer:PBitmapBuffer;
-    Index,GroupIndex:TPasRISCVUInt32;
-    CRCValue,CRCValue2:TPasRISCVUInt32;
-    GroupBlockCount:TPasRISCVUInt32;
-    InodeNumber:TPasRISCVUInt32;
-    InodeOffset:TPasRISCVUInt64;
+    Index:TPasRISCVUInt32;
+    CRCValue:TPasRISCVUInt32;
     FATSize32,ClusterCount:TPasRISCVUInt32;
     PartitionSectors:TPasRISCVUInt32;
-    DirectoryEntryOffset:TPasRISCVUInt32;
-    BlockGroupDescriptorTableOffset:TPasRISCVUInt64;
-    Value32:TPasRISCVUInt32;
-    Value16:TPasRISCVUInt16;
-    GroupFreeBlocks,GroupFreeInodes:TPasRISCVUInt32;
-    GroupInodeTableUnused:TPasRISCVUInt32;
 begin
 
  GetMem(CRC32Table,SizeOf(TCRC32TableArray));
@@ -16724,445 +16830,327 @@ begin
              // =======================================================
              TPasRISCVFileSystem.EXT4:begin
 
+              // The layout is the one which mke2fs gives a filesystem with the features below: the
+              // bitmaps and inode tables of every 16 groups packed together at the start of the
+              // first one of them (flex_bg), copies of the superblock and of the descriptor table in
+              // the groups 0, 1 and the powers of 3, 5 and 7 (sparse_super), and all metadata
+              // checksummed with CRC32c (metadata_csum). Groups with nothing in them are flagged
+              // uninitialized, so that their bitmaps need not be written, and as the image starts
+              // out zeroed, all inode tables are zeroed already.
+
               TotalBlocks:=PartitionSize div BlockSize;
-              GroupCount:=((TotalBlocks+BlocksPerGroup)-1) div BlocksPerGroup;
-              InodesPerGroup:=TPasRISCVUInt32((((PartitionSize div 16384)+GroupCount)-1) div GroupCount);
-              if InodesPerGroup<256 then begin
-               InodesPerGroup:=256;
+              if TotalBlocks<MinimumEXT4Blocks then begin
+               raise EPasRISCV.Create('Image too small for an EXT4 filesystem');
               end;
-              if InodesPerGroup>32768 then begin
-               InodesPerGroup:=32768;
-              end;
-              InodesPerGroup:=((InodesPerGroup+15) div 16)*16;
-              TotalInodes:=InodesPerGroup*TPasRISCVUInt32(GroupCount);
-              InodeTableBlocks:=(InodesPerGroup*InodeSize) div BlockSize;
-
-              JournalBlocks:=TotalBlocks div 64;
-              if JournalBlocks<1024 then begin
-               JournalBlocks:=1024;
-              end;
-              if JournalBlocks>32768 then begin
-               JournalBlocks:=32768;
+              if TotalBlocks>MaximumEXT4Blocks then begin
+               raise EPasRISCV.Create('Image too large for an EXT4 filesystem');
               end;
 
-              BlockBitmapBlock:=2;
-              InodeBitmapBlock:=3;
-              InodeTableStartBlock:=4;
-              JournalStartBlock:=InodeTableStartBlock+InodeTableBlocks;
-              JournalEndBlock:=(JournalStartBlock+JournalBlocks)-1;
-              RootDirectoryBlock:=JournalEndBlock+1;
-              LostFoundStartBlock:=RootDirectoryBlock+1;
-              LostFoundEndBlock:=LostFoundStartBlock+3;
-              FirstFreeBlock:=LostFoundEndBlock+1;
-              UsedBlocksInGroup0:=FirstFreeBlock;
-              FreeBlocksInGroup0:=BlocksPerGroup-UsedBlocksInGroup0;
-
-              UUID^[0]:=$4b;
-              UUID^[1]:=$49;
-              UUID^[2]:=$4e;
-              UUID^[3]:=$4c;
-              UUID^[4]:=$45;
-              UUID^[5]:=$59;
-              UUID^[6]:=$46;
-              UUID^[7]:=$53;
-              UUID^[8]:=$55;
-              UUID^[9]:=$55;
-              UUID^[10]:=$49;
-              UUID^[11]:=$44;
-              UUID^[12]:=TPasRISCVUInt8(aSize);
-              UUID^[13]:=TPasRISCVUInt8(aSize shr 8);
-              UUID^[14]:=TPasRISCVUInt8(aSize shr 16);
-              UUID^[15]:=TPasRISCVUInt8(aSize shr 24);
-              ChecksumSeed:=CRC32C(@UUID^[0],16);
-              ChecksumSeedRaw:=ChecksumSeed xor $ffffffff;
-              // --- SUPERBLOCK ---
-              FillChar(Buffer1024^,SizeOf(Buffer1024^),0);
-              WriteUInt32LittleEndian(@Buffer1024^[0],0,TotalInodes);                              // s_inodes_count
-              WriteUInt32LittleEndian(@Buffer1024^[0],4,TPasRISCVUInt32(TotalBlocks));             // s_blocks_count_lo
-              WriteUInt32LittleEndian(@Buffer1024^[0],8,TPasRISCVUInt32(TotalBlocks) div 20);      // s_r_blocks_count_lo (5%)
-              WriteUInt32LittleEndian(@Buffer1024^[0],12,TPasRISCVUInt32(TotalBlocks-UsedBlocksInGroup0)); // s_free_blocks_count_lo
-              WriteUInt32LittleEndian(@Buffer1024^[0],16,TotalInodes-11);                          // s_free_inodes_count
-              WriteUInt32LittleEndian(@Buffer1024^[0],20,0);                                       // s_first_data_block
-              WriteUInt32LittleEndian(@Buffer1024^[0],24,2);                                       // s_log_block_size (4096)
-              WriteUInt32LittleEndian(@Buffer1024^[0],28,2);                                       // s_log_cluster_size
-              WriteUInt32LittleEndian(@Buffer1024^[0],32,BlocksPerGroup);                          // s_blocks_per_group
-              WriteUInt32LittleEndian(@Buffer1024^[0],36,BlocksPerGroup);                          // s_clusters_per_group
-              WriteUInt32LittleEndian(@Buffer1024^[0],40,InodesPerGroup);                          // s_inodes_per_group
-              WriteUInt32LittleEndian(@Buffer1024^[0],44,0);                                       // s_mtime
-              WriteUInt32LittleEndian(@Buffer1024^[0],48,0);                                       // s_wtime
-              WriteUInt16LittleEndian(@Buffer1024^[0],52,0);                                       // s_mnt_count
-              WriteUInt16LittleEndian(@Buffer1024^[0],54,$ffff);                                   // s_max_mnt_count
-              WriteUInt16LittleEndian(@Buffer1024^[0],56,$ef53);                                   // s_magic
-              WriteUInt16LittleEndian(@Buffer1024^[0],58,1);                                       // s_state (VALID_FS)
-              WriteUInt16LittleEndian(@Buffer1024^[0],60,1);                                       // s_errors (CONTINUE)
-              WriteUInt16LittleEndian(@Buffer1024^[0],62,0);                                       // s_minor_rev_level
-              WriteUInt32LittleEndian(@Buffer1024^[0],64,0);                                       // s_lastcheck
-              WriteUInt32LittleEndian(@Buffer1024^[0],68,0);                                       // s_checkinterval
-              WriteUInt32LittleEndian(@Buffer1024^[0],72,0);                                       // s_creator_os (LINUX)
-              WriteUInt32LittleEndian(@Buffer1024^[0],76,1);                                       // s_rev_level (DYNAMIC)
-              WriteUInt16LittleEndian(@Buffer1024^[0],80,0);                                       // s_def_resuid
-              WriteUInt16LittleEndian(@Buffer1024^[0],82,0);                                       // s_def_resgid
-              WriteUInt32LittleEndian(@Buffer1024^[0],84,11);                                      // s_first_ino
-              WriteUInt16LittleEndian(@Buffer1024^[0],88,256);                                     // s_inode_size
-              WriteUInt16LittleEndian(@Buffer1024^[0],90,0);                                       // s_block_group_nr
-              WriteUInt32LittleEndian(@Buffer1024^[0],92,$003c);                                   // s_feature_compat: HAS_JOURNAL|EXT_ATTR|RESIZE_INODE|DIR_INDEX
-              WriteUInt32LittleEndian(@Buffer1024^[0],96,$02c2);                                   // s_feature_incompat: FILETYPE|EXTENTS|64BIT|FLEX_BG
-              WriteUInt32LittleEndian(@Buffer1024^[0],100,$046b);                                  // s_feature_ro_compat: SPARSE_SUPER|LARGE_FILE|HUGE_FILE|DIR_NLINK|EXTRA_ISIZE|METADATA_CSUM
-              Move(UUID^[0],Buffer1024^[104],16);
-              WriteUInt32LittleEndian(@Buffer1024^[0],208,0);
-              WriteUInt32LittleEndian(@Buffer1024^[0],212,0);
-              Move(UUID^[0],Buffer1024^[216],16);
-              WriteUInt32LittleEndian(@Buffer1024^[0],232,8);      // s_journal_inum
-              WriteUInt32LittleEndian(@Buffer1024^[0],236,0);
-              WriteUInt32LittleEndian(@Buffer1024^[0],240,0);
-              WriteUInt32LittleEndian(@Buffer1024^[0],244,$45a6b31f);
-              WriteUInt32LittleEndian(@Buffer1024^[0],248,$83ca84d5);
-              WriteUInt32LittleEndian(@Buffer1024^[0],252,$9e72a176);
-              WriteUInt32LittleEndian(@Buffer1024^[0],256,$2f8dc3c4);
-              Buffer1024^[260]:=1;   // s_def_hash_version
-              Buffer1024^[261]:=1;   // s_jnl_backup_type
-              WriteUInt16LittleEndian(@Buffer1024^[0],262,64);     // s_desc_size (64-byte BGD)
-              WriteUInt32LittleEndian(@Buffer1024^[0],264,$000c);  // s_default_mount_opts
-              WriteUInt32LittleEndian(@Buffer1024^[0],268,0);
-              WriteUInt32LittleEndian(@Buffer1024^[0],272,0);
-              // s_jnl_blocks: backup of journal inode extents
-              if JournalBlocks<=32767 then begin
-               WriteUInt16LittleEndian(@Buffer1024^[0],276,$f30a);
-               WriteUInt16LittleEndian(@Buffer1024^[0],278,1);
-               WriteUInt16LittleEndian(@Buffer1024^[0],280,4);
-               WriteUInt16LittleEndian(@Buffer1024^[0],282,0);
-               WriteUInt32LittleEndian(@Buffer1024^[0],284,0);
-               WriteUInt32LittleEndian(@Buffer1024^[0],288,0);
-               WriteUInt16LittleEndian(@Buffer1024^[0],292,TPasRISCVUInt16(JournalBlocks));
-               WriteUInt16LittleEndian(@Buffer1024^[0],294,0);
-               WriteUInt32LittleEndian(@Buffer1024^[0],296,TPasRISCVUInt32(JournalStartBlock));
-              end else begin
-               WriteUInt16LittleEndian(@Buffer1024^[0],276,$f30a);
-               WriteUInt16LittleEndian(@Buffer1024^[0],278,2);
-               WriteUInt16LittleEndian(@Buffer1024^[0],280,4);
-               WriteUInt16LittleEndian(@Buffer1024^[0],282,0);
-               WriteUInt32LittleEndian(@Buffer1024^[0],284,0);
-               WriteUInt32LittleEndian(@Buffer1024^[0],288,0);
-               WriteUInt16LittleEndian(@Buffer1024^[0],292,32767);
-               WriteUInt16LittleEndian(@Buffer1024^[0],294,0);
-               WriteUInt32LittleEndian(@Buffer1024^[0],296,TPasRISCVUInt32(JournalStartBlock));
-               WriteUInt32LittleEndian(@Buffer1024^[0],300,32767);
-               WriteUInt16LittleEndian(@Buffer1024^[0],304,TPasRISCVUInt16(JournalBlocks-32767));
-               WriteUInt16LittleEndian(@Buffer1024^[0],306,0);
-               WriteUInt32LittleEndian(@Buffer1024^[0],308,TPasRISCVUInt32(JournalStartBlock+32767));
-              end;
-              WriteUInt32LittleEndian(@Buffer1024^[0],344,TPasRISCVUInt32(TotalBlocks shr 32));  // s_blocks_count_hi
-              WriteUInt32LittleEndian(@Buffer1024^[0],348,0);
-              WriteUInt32LittleEndian(@Buffer1024^[0],352,0);
-              WriteUInt16LittleEndian(@Buffer1024^[0],356,28);           // s_min_extra_isize
-              WriteUInt16LittleEndian(@Buffer1024^[0],358,28);           // s_want_extra_isize
-              WriteUInt32LittleEndian(@Buffer1024^[0],360,0);
-              Buffer1024^[380]:=4;                                       // s_log_groups_per_flex
-              Buffer1024^[381]:=1;                                       // s_checksum_type (CRC32c)
-              WriteUInt32LittleEndian(@Buffer1024^[0],392,11);           // s_lpf_ino
-              WriteUInt32LittleEndian(@Buffer1024^[0],396,ChecksumSeed); // s_checksum_seed
-              WriteUInt32LittleEndian(@Buffer1024^[0],1020,0);
-              CRCValue:=CRC32C(@Buffer1024^[0],1020);
-              WriteUInt32LittleEndian(@Buffer1024^[0],1020,CRCValue);
-              WriteAt(PartitionOffset+1024,@Buffer1024^[0],1024);
-
-              // --- BLOCK GROUP DESCRIPTOR TABLE ---
-              BlockGroupDescriptorTableOffset:=PartitionOffset+TPasRISCVUInt64(BlockSize);
-              for GroupIndex:=0 to TPasRISCVUInt32(GroupCount)-1 do begin
-               FillChar(BlockGroupDescriptorBuffer^,SizeOf(BlockGroupDescriptorBuffer^),0);
-               if GroupIndex=0 then begin
-                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],0,TPasRISCVUInt32(BlockBitmapBlock));
-                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],4,TPasRISCVUInt32(InodeBitmapBlock));
-                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],8,TPasRISCVUInt32(InodeTableStartBlock));
-                GroupFreeBlocks:=TPasRISCVUInt32(FreeBlocksInGroup0);
-                GroupFreeInodes:=InodesPerGroup-11;
-                GroupInodeTableUnused:=GroupFreeInodes;
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],12,TPasRISCVUInt16(GroupFreeBlocks));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],14,TPasRISCVUInt16(GroupFreeInodes));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],16,2);
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],18,0);
-                FillChar(BitmapBuffer^,SizeOf(BitmapBuffer^),0);
-                for Index:=0 to TPasRISCVUInt32(UsedBlocksInGroup0)-1 do begin
-                 BitmapBuffer^[Index shr 3]:=BitmapBuffer^[Index shr 3] or (1 shl (Index and 7));
-                end;
-                CRCValue2:=CRC32CRaw(ChecksumSeedRaw,@GroupIndex,4);
-                CRCValue2:=CRC32CRaw(CRCValue2,@BitmapBuffer^[0],BlockSize);
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],24,TPasRISCVUInt16(CRCValue2 xor $ffffffff));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],48,TPasRISCVUInt16((CRCValue2 xor $ffffffff) shr 16));
-                FillChar(BitmapBuffer^,SizeOf(BitmapBuffer^),0);
-                BitmapBuffer^[0]:=$ff;
-                BitmapBuffer^[1]:=$07;
-                CRCValue2:=CRC32CRaw(ChecksumSeedRaw,@GroupIndex,4);
-                CRCValue2:=CRC32CRaw(CRCValue2,@BitmapBuffer^[0],BlockSize);
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],26,TPasRISCVUInt16(CRCValue2 xor $ffffffff));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],50,TPasRISCVUInt16((CRCValue2 xor $ffffffff) shr 16));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],28,TPasRISCVUInt16(GroupInodeTableUnused));
+              // One inode per 16 KiB like mke2fs. A last group too small to carry its own share of
+              // the metadata and some room besides is left out of the filesystem.
+              repeat
+               GroupCount:=TPasRISCVUInt32(((TotalBlocks+BlocksPerGroup)-1) div BlocksPerGroup);
+               if GroupCount=1 then begin
+                InodesPerGroup:=TPasRISCVUInt32((TotalBlocks*BlockSize) div BytesPerInode);
                end else begin
-                GroupBlockCount:=BlocksPerGroup;
-                if ((TPasRISCVUInt64(GroupIndex)*BlocksPerGroup)+GroupBlockCount)>TotalBlocks then begin
-                 GroupBlockCount:=TPasRISCVUInt32(TotalBlocks-(TPasRISCVUInt64(GroupIndex)*BlocksPerGroup));
-                end;
-                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],0,TPasRISCVUInt32(TPasRISCVUInt64(GroupIndex)*BlocksPerGroup));
-                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],4,TPasRISCVUInt32((TPasRISCVUInt64(GroupIndex)*BlocksPerGroup)+1));
-                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],8,TPasRISCVUInt32((TPasRISCVUInt64(GroupIndex)*BlocksPerGroup)+2));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],12,TPasRISCVUInt16(GroupBlockCount));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],14,TPasRISCVUInt16(InodesPerGroup));
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],16,0);
-                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],18,$0007);
+                InodesPerGroup:=(BlocksPerGroup*BlockSize) div BytesPerInode;
                end;
-               WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],30,0);
-               CRCValue:=CRC32CRaw(ChecksumSeedRaw,@GroupIndex,4);
-               CRCValue:=CRC32CRaw(CRCValue,@BlockGroupDescriptorBuffer^[0],64);
-               WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],30,TPasRISCVUInt16(CRCValue xor $ffffffff));
-               WriteAt(BlockGroupDescriptorTableOffset+(TPasRISCVUInt64(GroupIndex)*64),@BlockGroupDescriptorBuffer^[0],64);
-              end;
+               InodesPerGroup:=((InodesPerGroup+(InodesPerBlock-1)) div InodesPerBlock)*InodesPerBlock;
+               if InodesPerGroup<InodesPerBlock then begin
+                InodesPerGroup:=InodesPerBlock;
+               end;
+               if InodesPerGroup>(BlockSize*8) then begin
+                InodesPerGroup:=BlockSize*8;
+               end;
+               InodeTableBlocks:=(InodesPerGroup*InodeSize) div BlockSize;
+               DescriptorBlocks:=((GroupCount*DescriptorSize)+(BlockSize-1)) div BlockSize;
+               if GroupCount>1 then begin
+                GroupIndex:=GroupCount-1;
+                GroupBlocks:=TPasRISCVUInt32(TotalBlocks-(TPasRISCVUInt64(GroupIndex)*BlocksPerGroup));
+                MetadataBlocks:=0;
+                if EXT4HasSuperBlockBackup(GroupIndex) then begin
+                 inc(MetadataBlocks,1+DescriptorBlocks);
+                end;
+                if (GroupIndex mod GroupsPerFlex)=0 then begin
+                 inc(MetadataBlocks,2+InodeTableBlocks);
+                end;
+                if GroupBlocks<(MetadataBlocks+MinimumLastGroupFreeBlocks) then begin
+                 TotalBlocks:=TPasRISCVUInt64(GroupIndex)*BlocksPerGroup;
+                 continue;
+                end;
+               end;
+               break;
+              until false;
+              TotalInodes:=InodesPerGroup*GroupCount;
 
-              // --- BLOCK BITMAP ---
-              FillChar(BitmapBuffer^,SizeOf(BitmapBuffer^),0);
-              for Index:=0 to TPasRISCVUInt32(UsedBlocksInGroup0)-1 do begin
-               BitmapBuffer^[Index shr 3]:=BitmapBuffer^[Index shr 3] or (1 shl (Index and 7));
-              end;
-              WriteAt(PartitionOffset+(BlockBitmapBlock*BlockSize),@BitmapBuffer^[0],BlockSize);
-
-              // --- INODE BITMAP ---
-              FillChar(BitmapBuffer^,SizeOf(BitmapBuffer^),0);
-              BitmapBuffer^[0]:=$ff;
-              BitmapBuffer^[1]:=$07;
-              WriteAt(PartitionOffset+(InodeBitmapBlock*BlockSize),@BitmapBuffer^[0],BlockSize);
-
-              // --- INODE TABLE ---
-              // Inode 2: root directory
-              InodeNumber:=2;
-              FillChar(InodeBuffer^,SizeOf(InodeBuffer^),0);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],0,$41ed);       // i_mode: S_IFDIR|0755
-              WriteUInt32LittleEndian(@InodeBuffer^[0],4,BlockSize);   // i_size_lo
-              WriteUInt16LittleEndian(@InodeBuffer^[0],26,3);          // i_links_count
-              WriteUInt32LittleEndian(@InodeBuffer^[0],28,8);          // i_blocks_lo
-              WriteUInt32LittleEndian(@InodeBuffer^[0],32,$00080000);  // i_flags: EXTENTS_FL
-              WriteUInt16LittleEndian(@InodeBuffer^[0],40,$f30a);      // extent header magic
-              WriteUInt16LittleEndian(@InodeBuffer^[0],42,1);          // eh_entries
-              WriteUInt16LittleEndian(@InodeBuffer^[0],44,4);          // eh_max
-              WriteUInt16LittleEndian(@InodeBuffer^[0],46,0);          // eh_depth
-              WriteUInt32LittleEndian(@InodeBuffer^[0],48,0);          // eh_generation
-              WriteUInt32LittleEndian(@InodeBuffer^[0],52,0);          // ee_block
-              WriteUInt16LittleEndian(@InodeBuffer^[0],56,1);          // ee_len
-              WriteUInt16LittleEndian(@InodeBuffer^[0],58,0);          // ee_start_hi
-              WriteUInt32LittleEndian(@InodeBuffer^[0],60,TPasRISCVUInt32(RootDirectoryBlock)); // ee_start_lo
-              WriteUInt16LittleEndian(@InodeBuffer^[0],128,28);        // i_extra_isize
-              WriteUInt16LittleEndian(@InodeBuffer^[0],116,0);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],130,0);
-              Value16:=TPasRISCVUInt16(InodeNumber);
-              CRCValue:=CRC32CRaw(ChecksumSeedRaw,@Value16,2);
-              Value16:=0;
-              CRCValue:=CRC32CRaw(CRCValue,@Value16,2);
-              Value32:=ReadUInt32LittleEndian(@InodeBuffer^[0],100);
-              CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-              CRCValue:=CRC32CRaw(CRCValue,@InodeBuffer^[0],128);
-              CRCValue:=CRC32CRaw(CRCValue,@InodeBuffer^[128],128);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],116,TPasRISCVUInt16(CRCValue xor $ffffffff));
-              WriteUInt16LittleEndian(@InodeBuffer^[0],130,TPasRISCVUInt16((CRCValue xor $ffffffff) shr 16));
-              InodeOffset:=(PartitionOffset+(InodeTableStartBlock*BlockSize))+((InodeNumber-1)*InodeSize);
-              WriteAt(InodeOffset,@InodeBuffer^[0],InodeSize);
-
-              // Inode 8: journal
-              InodeNumber:=8;
-              FillChar(InodeBuffer^,SizeOf(InodeBuffer^),0);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],0,$81a0);       // i_mode: S_IFREG|0600
-              WriteUInt32LittleEndian(@InodeBuffer^[0],4,TPasRISCVUInt32(JournalBlocks*BlockSize));            // i_size_lo
-              WriteUInt32LittleEndian(@InodeBuffer^[0],108,TPasRISCVUInt32((JournalBlocks*BlockSize) shr 32)); // i_size_hi
-              WriteUInt16LittleEndian(@InodeBuffer^[0],26,1);
-              WriteUInt32LittleEndian(@InodeBuffer^[0],28,TPasRISCVUInt32(JournalBlocks*8));
-              WriteUInt32LittleEndian(@InodeBuffer^[0],32,$00080000);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],40,$f30a);
-              if JournalBlocks<=32767 then begin
-               WriteUInt16LittleEndian(@InodeBuffer^[0],42,1);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],44,4);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],46,0);
-               WriteUInt32LittleEndian(@InodeBuffer^[0],48,0);
-               WriteUInt32LittleEndian(@InodeBuffer^[0],52,0);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],56,TPasRISCVUInt16(JournalBlocks));
-               WriteUInt16LittleEndian(@InodeBuffer^[0],58,0);
-               WriteUInt32LittleEndian(@InodeBuffer^[0],60,TPasRISCVUInt32(JournalStartBlock));
+              // Journal size as mke2fs picks it, but at most 64 MiB, so that it fits into group 0 as
+              // one single extent behind the metadata of the first flex group.
+              if TotalBlocks<32768 then begin
+               JournalBlocks:=1024;
+              end else if TotalBlocks<(256*1024) then begin
+               JournalBlocks:=4096;
+              end else if TotalBlocks<(512*1024) then begin
+               JournalBlocks:=8192;
               end else begin
-               WriteUInt16LittleEndian(@InodeBuffer^[0],42,2);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],44,4);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],46,0);
-               WriteUInt32LittleEndian(@InodeBuffer^[0],48,0);
-               WriteUInt32LittleEndian(@InodeBuffer^[0],52,0);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],56,32767);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],58,0);
-               WriteUInt32LittleEndian(@InodeBuffer^[0],60,TPasRISCVUInt32(JournalStartBlock));
-               WriteUInt32LittleEndian(@InodeBuffer^[0],64,32767);
-               WriteUInt16LittleEndian(@InodeBuffer^[0],68,TPasRISCVUInt16(JournalBlocks-32767));
-               WriteUInt16LittleEndian(@InodeBuffer^[0],70,0);
-               WriteUInt32LittleEndian(@InodeBuffer^[0],72,TPasRISCVUInt32(JournalStartBlock+32767));
+               JournalBlocks:=16384;
               end;
-              WriteUInt16LittleEndian(@InodeBuffer^[0],128,28);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],116,0);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],130,0);
-              Value16:=TPasRISCVUInt16(InodeNumber);
-              CRCValue:=CRC32CRaw(ChecksumSeedRaw,@Value16,2);
-              Value16:=0;
-              CRCValue:=CRC32CRaw(CRCValue,@Value16,2);
-              Value32:=ReadUInt32LittleEndian(@InodeBuffer^[0],100);
-              CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-              CRCValue:=CRC32CRaw(CRCValue,@InodeBuffer^[0],128);
-              CRCValue:=CRC32CRaw(CRCValue,@InodeBuffer^[128],128);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],116,TPasRISCVUInt16(CRCValue xor $ffffffff));
-              WriteUInt16LittleEndian(@InodeBuffer^[0],130,TPasRISCVUInt16((CRCValue xor $ffffffff) shr 16));
-              InodeOffset:=(PartitionOffset+(InodeTableStartBlock*BlockSize))+((InodeNumber-1)*InodeSize);
-              WriteAt(InodeOffset,@InodeBuffer^[0],InodeSize);
 
-              // Inode 11: lost+found
-              InodeNumber:=11;
-              FillChar(InodeBuffer^,SizeOf(InodeBuffer^),0);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],0,$41c0);       // i_mode: S_IFDIR|0700
-              WriteUInt32LittleEndian(@InodeBuffer^[0],4,4*BlockSize);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],26,2);
-              WriteUInt32LittleEndian(@InodeBuffer^[0],28,4*8);
-              WriteUInt32LittleEndian(@InodeBuffer^[0],32,$00080000);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],40,$f30a);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],42,1);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],44,4);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],46,0);
-              WriteUInt32LittleEndian(@InodeBuffer^[0],48,0);
-              WriteUInt32LittleEndian(@InodeBuffer^[0],52,0);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],56,4);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],58,0);
-              WriteUInt32LittleEndian(@InodeBuffer^[0],60,TPasRISCVUInt32(LostFoundStartBlock));
-              WriteUInt16LittleEndian(@InodeBuffer^[0],128,28);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],116,0);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],130,0);
-              Value16:=TPasRISCVUInt16(InodeNumber);
-              CRCValue:=CRC32CRaw(ChecksumSeedRaw,@Value16,2);
-              Value16:=0;
-              CRCValue:=CRC32CRaw(CRCValue,@Value16,2);
-              Value32:=ReadUInt32LittleEndian(@InodeBuffer^[0],100);
-              CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-              CRCValue:=CRC32CRaw(CRCValue,@InodeBuffer^[0],128);
-              CRCValue:=CRC32CRaw(CRCValue,@InodeBuffer^[128],128);
-              WriteUInt16LittleEndian(@InodeBuffer^[0],116,TPasRISCVUInt16(CRCValue xor $ffffffff));
-              WriteUInt16LittleEndian(@InodeBuffer^[0],130,TPasRISCVUInt16((CRCValue xor $ffffffff) shr 16));
-              InodeOffset:=(PartitionOffset+(InodeTableStartBlock*BlockSize))+((InodeNumber-1)*InodeSize);
-              WriteAt(InodeOffset,@InodeBuffer^[0],InodeSize);
+              // Group 0: superblock, descriptor table, metadata of the first flex group, journal,
+              // root directory and lost+found, all in one run from block 0 on.
+              FlexGroupCount:=GroupCount;
+              if FlexGroupCount>GroupsPerFlex then begin
+               FlexGroupCount:=GroupsPerFlex;
+              end;
+              InodeTableOffset:=PartitionOffset+((TPasRISCVUInt64(1+DescriptorBlocks)+(2*FlexGroupCount))*BlockSize);
+              JournalStartBlock:=TPasRISCVUInt64(1+DescriptorBlocks)+(TPasRISCVUInt64(FlexGroupCount)*(2+InodeTableBlocks));
+              RootDirectoryBlock:=JournalStartBlock+JournalBlocks;
+              LostFoundStartBlock:=RootDirectoryBlock+1;
+              FirstFreeBlock:=LostFoundStartBlock+LostFoundBlocks;
+              if (FirstFreeBlock>BlocksPerGroup) or (FirstFreeBlock>TotalBlocks) then begin
+               raise EPasRISCV.Create('Image too small for an EXT4 filesystem');
+              end;
 
-              // --- JBD2 JOURNAL SUPERBLOCK (big-endian) ---
-              FillChar(Buffer4096^,SizeOf(Buffer4096^),0);
-              WriteUInt32BigEndian(@Buffer4096^[0],$00,$c03b3998); // magic
-              WriteUInt32BigEndian(@Buffer4096^[0],$04,4);         // blocktype: SUPERBLOCK_V2
-              WriteUInt32BigEndian(@Buffer4096^[0],$08,0);         // sequence
-              WriteUInt32BigEndian(@Buffer4096^[0],$0c,BlockSize); // s_blocksize
-              WriteUInt32BigEndian(@Buffer4096^[0],$10,TPasRISCVUInt32(JournalBlocks)); // s_maxlen
-              WriteUInt32BigEndian(@Buffer4096^[0],$14,1);         // s_first
-              WriteUInt32BigEndian(@Buffer4096^[0],$18,1);         // s_sequence
-              WriteUInt32BigEndian(@Buffer4096^[0],$1c,0);         // s_start (clean)
-              WriteUInt32BigEndian(@Buffer4096^[0],$20,0);         // s_errno
-              WriteUInt32BigEndian(@Buffer4096^[0],$24,0);         // s_feature_compat
-              WriteUInt32BigEndian(@Buffer4096^[0],$28,8);         // s_feature_incompat: CSUM_V3
-              WriteUInt32BigEndian(@Buffer4096^[0],$2c,0);         // s_feature_ro_compat
-              Move(UUID^[0],Buffer4096^[$30],16);
-              WriteUInt32BigEndian(@Buffer4096^[0],$40,1);         // s_nr_users
-              WriteUInt32BigEndian(@Buffer4096^[0],$44,0);
-              WriteUInt32BigEndian(@Buffer4096^[0],$48,TPasRISCVUInt32(JournalBlocks) div 4); // s_max_transaction
-              WriteUInt32BigEndian(@Buffer4096^[0],$4c,TPasRISCVUInt32(JournalBlocks) div 2); // s_max_trans_data
-              Buffer4096^[$50]:=3;  // s_checksum_type: CRC32c
-              WriteUInt32BigEndian(@Buffer4096^[0],$100,0);
-              CRCValue:=CRC32CRaw($ffffffff,@Buffer4096^[0],$100); // raw, no final XOR (kernel doesn't XOR)
-              WriteUInt32BigEndian(@Buffer4096^[0],$100,CRCValue);
+              CreateGUID(GUID);
+              Move(GUID,UUID^[0],SizeOf(TUUIDBuffer));
+              UUID^[6]:=(UUID^[6] and $0f) or $40; // version 4, random
+              UUID^[8]:=(UUID^[8] and $3f) or $80; // RFC 4122 variant
+              ChecksumSeed:=CRC32CRaw($ffffffff,@UUID^[0],16);
+
+              GetMem(GroupDescriptorTable,DescriptorBlocks*BlockSize);
+              try
+
+               FillChar(GroupDescriptorTable^,DescriptorBlocks*BlockSize,0);
+
+               // --- BITMAPS AND GROUP DESCRIPTORS ---
+               FreeBlocksCount:=0;
+               FreeInodesCount:=0;
+               for GroupIndex:=0 to GroupCount-1 do begin
+
+                // The metadata of a group lies in the first group of its flex group, behind the
+                // superblock copy there: block bitmaps first, then inode bitmaps, then inode tables.
+                FlexFirstGroup:=GroupIndex-(GroupIndex mod GroupsPerFlex);
+                FlexGroupCount:=GroupCount-FlexFirstGroup;
+                if FlexGroupCount>GroupsPerFlex then begin
+                 FlexGroupCount:=GroupsPerFlex;
+                end;
+                MetadataStartBlock:=TPasRISCVUInt64(FlexFirstGroup)*BlocksPerGroup;
+                if EXT4HasSuperBlockBackup(FlexFirstGroup) then begin
+                 inc(MetadataStartBlock,1+DescriptorBlocks);
+                end;
+                BlockBitmapBlock:=MetadataStartBlock+(GroupIndex-FlexFirstGroup);
+                InodeBitmapBlock:=MetadataStartBlock+FlexGroupCount+(GroupIndex-FlexFirstGroup);
+                InodeTableStartBlock:=MetadataStartBlock+(2*FlexGroupCount)+(TPasRISCVUInt64(GroupIndex-FlexFirstGroup)*InodeTableBlocks);
+
+                // The blocks in use are always one run at the start of the group
+                GroupFirstBlock:=TPasRISCVUInt64(GroupIndex)*BlocksPerGroup;
+                if (TotalBlocks-GroupFirstBlock)<BlocksPerGroup then begin
+                 GroupBlocks:=TPasRISCVUInt32(TotalBlocks-GroupFirstBlock);
+                end else begin
+                 GroupBlocks:=BlocksPerGroup;
+                end;
+                if GroupIndex=0 then begin
+                 UsedBlocks:=TPasRISCVUInt32(FirstFreeBlock);
+                end else begin
+                 UsedBlocks:=0;
+                 if EXT4HasSuperBlockBackup(GroupIndex) then begin
+                  inc(UsedBlocks,1+DescriptorBlocks);
+                 end;
+                 if FlexFirstGroup=GroupIndex then begin
+                  inc(UsedBlocks,FlexGroupCount*(2+InodeTableBlocks));
+                 end;
+                end;
+                GroupFreeBlocks:=GroupBlocks-UsedBlocks;
+
+                GroupFlags:=$0004; // ITABLE_ZEROED
+
+                if (UsedBlocks=0) and (GroupIndex<>0) and (GroupIndex<>(GroupCount-1)) then begin
+                 GroupFlags:=GroupFlags or $0002; // BLOCK_UNINIT, the bitmap is derived from the descriptor
+                 BlockBitmapChecksum:=0;
+                end else begin
+                 FillChar(BitmapBuffer^,SizeOf(TBitmapBuffer),0);
+                 EXT4SetBits(@BitmapBuffer^[0],0,UsedBlocks);
+                 EXT4SetBits(@BitmapBuffer^[0],GroupBlocks,BlocksPerGroup-GroupBlocks); // padding behind a short last group
+                 BlockBitmapChecksum:=CRC32CRaw(ChecksumSeed,@BitmapBuffer^[0],BlocksPerGroup shr 3);
+                 WriteAt(PartitionOffset+(BlockBitmapBlock*BlockSize),@BitmapBuffer^[0],BlockSize);
+                end;
+
+                if GroupIndex=0 then begin
+                 // Inodes 1 to 10 are reserved and 11 is lost+found, the bits past the inode count are padding
+                 FillChar(BitmapBuffer^,SizeOf(TBitmapBuffer),0);
+                 EXT4SetBits(@BitmapBuffer^[0],0,LostFoundInode);
+                 EXT4SetBits(@BitmapBuffer^[0],InodesPerGroup,(BlockSize*8)-InodesPerGroup);
+                 InodeBitmapChecksum:=CRC32CRaw(ChecksumSeed,@BitmapBuffer^[0],InodesPerGroup shr 3);
+                 WriteAt(PartitionOffset+(InodeBitmapBlock*BlockSize),@BitmapBuffer^[0],BlockSize);
+                 GroupFreeInodes:=InodesPerGroup-LostFoundInode;
+                 GroupUsedDirectories:=2;
+                end else begin
+                 GroupFlags:=GroupFlags or $0001; // INODE_UNINIT
+                 InodeBitmapChecksum:=0;
+                 GroupFreeInodes:=InodesPerGroup;
+                 GroupUsedDirectories:=0;
+                end;
+
+                inc(FreeBlocksCount,GroupFreeBlocks);
+                inc(FreeInodesCount,GroupFreeInodes);
+
+                FillChar(BlockGroupDescriptorBuffer^,SizeOf(TBlockGroupDescriptorBuffer),0);
+                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],$00,TPasRISCVUInt32(BlockBitmapBlock));           // bg_block_bitmap_lo
+                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],$04,TPasRISCVUInt32(InodeBitmapBlock));           // bg_inode_bitmap_lo
+                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],$08,TPasRISCVUInt32(InodeTableStartBlock));       // bg_inode_table_lo
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$0c,TPasRISCVUInt16(GroupFreeBlocks));            // bg_free_blocks_count_lo
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$0e,TPasRISCVUInt16(GroupFreeInodes));            // bg_free_inodes_count_lo
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$10,TPasRISCVUInt16(GroupUsedDirectories));       // bg_used_dirs_count_lo
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$12,GroupFlags);                                  // bg_flags
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$18,TPasRISCVUInt16(BlockBitmapChecksum));        // bg_block_bitmap_csum_lo
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$1a,TPasRISCVUInt16(InodeBitmapChecksum));        // bg_inode_bitmap_csum_lo
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$1c,TPasRISCVUInt16(GroupFreeInodes));            // bg_itable_unused_lo
+                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],$20,TPasRISCVUInt32(BlockBitmapBlock shr 32));    // bg_block_bitmap_hi
+                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],$24,TPasRISCVUInt32(InodeBitmapBlock shr 32));    // bg_inode_bitmap_hi
+                WriteUInt32LittleEndian(@BlockGroupDescriptorBuffer^[0],$28,TPasRISCVUInt32(InodeTableStartBlock shr 32)); // bg_inode_table_hi
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$2c,TPasRISCVUInt16(GroupFreeBlocks shr 16));     // bg_free_blocks_count_hi
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$2e,TPasRISCVUInt16(GroupFreeInodes shr 16));     // bg_free_inodes_count_hi
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$30,TPasRISCVUInt16(GroupUsedDirectories shr 16)); // bg_used_dirs_count_hi
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$32,TPasRISCVUInt16(GroupFreeInodes shr 16));     // bg_itable_unused_hi
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$38,TPasRISCVUInt16(BlockBitmapChecksum shr 16)); // bg_block_bitmap_csum_hi
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$3a,TPasRISCVUInt16(InodeBitmapChecksum shr 16)); // bg_inode_bitmap_csum_hi
+                // The checksum covers the group number and the descriptor with its checksum field zeroed
+                WriteUInt32LittleEndian(@GroupNumberBytes[0],0,GroupIndex);
+                CRCValue:=CRC32CRaw(ChecksumSeed,@GroupNumberBytes[0],4);
+                CRCValue:=CRC32CRaw(CRCValue,@BlockGroupDescriptorBuffer^[0],DescriptorSize);
+                WriteUInt16LittleEndian(@BlockGroupDescriptorBuffer^[0],$1e,TPasRISCVUInt16(CRCValue));                   // bg_checksum
+                Move(BlockGroupDescriptorBuffer^[0],GroupDescriptorTable[GroupIndex*DescriptorSize],DescriptorSize);
+
+               end;
+
+               // --- SUPERBLOCK ---
+               ReservedBlocks:=TotalBlocks div 20; // 5% for root
+               FillChar(Buffer1024^,SizeOf(TBuffer1024),0);
+               WriteUInt32LittleEndian(@Buffer1024^[0],$000,TotalInodes);                             // s_inodes_count
+               WriteUInt32LittleEndian(@Buffer1024^[0],$004,TPasRISCVUInt32(TotalBlocks));            // s_blocks_count_lo
+               WriteUInt32LittleEndian(@Buffer1024^[0],$008,TPasRISCVUInt32(ReservedBlocks));         // s_r_blocks_count_lo
+               WriteUInt32LittleEndian(@Buffer1024^[0],$00c,TPasRISCVUInt32(FreeBlocksCount));        // s_free_blocks_count_lo
+               WriteUInt32LittleEndian(@Buffer1024^[0],$010,FreeInodesCount);                         // s_free_inodes_count
+               WriteUInt32LittleEndian(@Buffer1024^[0],$014,0);                                       // s_first_data_block
+               WriteUInt32LittleEndian(@Buffer1024^[0],$018,2);                                       // s_log_block_size (4096)
+               WriteUInt32LittleEndian(@Buffer1024^[0],$01c,2);                                       // s_log_cluster_size (4096)
+               WriteUInt32LittleEndian(@Buffer1024^[0],$020,BlocksPerGroup);                          // s_blocks_per_group
+               WriteUInt32LittleEndian(@Buffer1024^[0],$024,BlocksPerGroup);                          // s_clusters_per_group
+               WriteUInt32LittleEndian(@Buffer1024^[0],$028,InodesPerGroup);                          // s_inodes_per_group
+               WriteUInt16LittleEndian(@Buffer1024^[0],$036,$ffff);                                   // s_max_mnt_count (no forced checks)
+               WriteUInt16LittleEndian(@Buffer1024^[0],$038,$ef53);                                   // s_magic
+               WriteUInt16LittleEndian(@Buffer1024^[0],$03a,1);                                       // s_state (clean)
+               WriteUInt16LittleEndian(@Buffer1024^[0],$03c,1);                                       // s_errors (continue)
+               WriteUInt32LittleEndian(@Buffer1024^[0],$04c,1);                                       // s_rev_level (dynamic)
+               WriteUInt32LittleEndian(@Buffer1024^[0],$054,FirstNonReservedInode);                   // s_first_ino
+               WriteUInt16LittleEndian(@Buffer1024^[0],$058,InodeSize);                               // s_inode_size
+               WriteUInt32LittleEndian(@Buffer1024^[0],$05c,$0000002c);                               // s_feature_compat: HAS_JOURNAL|EXT_ATTR|DIR_INDEX
+               WriteUInt32LittleEndian(@Buffer1024^[0],$060,$000002c2);                               // s_feature_incompat: FILETYPE|EXTENTS|64BIT|FLEX_BG
+               WriteUInt32LittleEndian(@Buffer1024^[0],$064,$0000046b);                               // s_feature_ro_compat: SPARSE_SUPER|LARGE_FILE|HUGE_FILE|DIR_NLINK|EXTRA_ISIZE|METADATA_CSUM
+               Move(UUID^[0],Buffer1024^[$068],16);                                                   // s_uuid
+               WriteUInt32LittleEndian(@Buffer1024^[0],$0e0,JournalInode);                            // s_journal_inum
+               CreateGUID(GUID);
+               Move(GUID,Buffer1024^[$0ec],16);                                                       // s_hash_seed
+               Buffer1024^[$0fc]:=1;                                                                  // s_def_hash_version (half_md4)
+               Buffer1024^[$0fd]:=1;                                                                  // s_jnl_backup_type (inode blocks)
+               WriteUInt16LittleEndian(@Buffer1024^[0],$0fe,DescriptorSize);                          // s_desc_size
+               WriteUInt32LittleEndian(@Buffer1024^[0],$100,$0000000c);                               // s_default_mount_opts: user_xattr|acl
+               WriteUInt32LittleEndian(@Buffer1024^[0],$150,TPasRISCVUInt32(TotalBlocks shr 32));     // s_blocks_count_hi
+               WriteUInt32LittleEndian(@Buffer1024^[0],$154,TPasRISCVUInt32(ReservedBlocks shr 32));  // s_r_blocks_count_hi
+               WriteUInt32LittleEndian(@Buffer1024^[0],$158,TPasRISCVUInt32(FreeBlocksCount shr 32)); // s_free_blocks_count_hi
+               WriteUInt16LittleEndian(@Buffer1024^[0],$15c,ExtraInodeSize);                          // s_min_extra_isize
+               WriteUInt16LittleEndian(@Buffer1024^[0],$15e,ExtraInodeSize);                          // s_want_extra_isize
+               WriteUInt32LittleEndian(@Buffer1024^[0],$160,1);                                       // s_flags: signed directory hash
+               Buffer1024^[$174]:=4;                                                                  // s_log_groups_per_flex (16)
+               Buffer1024^[$175]:=1;                                                                  // s_checksum_type (crc32c)
+
+               // --- INODES ---
+
+               // Inode 2: root directory
+               FillChar(InodeBuffer^,SizeOf(TInodeBuffer),0);
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$00,$41ed);           // i_mode: directory, 0755
+               WriteUInt32LittleEndian(@InodeBuffer^[0],$04,BlockSize);       // i_size_lo
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$1a,3);               // i_links_count: itself, its "." and the ".." of lost+found
+               WriteUInt32LittleEndian(@InodeBuffer^[0],$1c,BlockSize shr 9); // i_blocks_lo, in 512 byte units
+               EXT4SetInodeExtent(@InodeBuffer^[0],RootDirectoryBlock,1);
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$80,ExtraInodeSize);  // i_extra_isize
+               EXT4WriteInode(@InodeBuffer^[0],InodeTableOffset,RootDirectoryInode,ChecksumSeed);
+
+               // Inode 8: journal
+               FillChar(InodeBuffer^,SizeOf(TInodeBuffer),0);
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$00,$8180);                                                            // i_mode: regular file, 0600
+               WriteUInt32LittleEndian(@InodeBuffer^[0],$04,TPasRISCVUInt32(TPasRISCVUInt64(JournalBlocks)*BlockSize));        // i_size_lo
+               WriteUInt32LittleEndian(@InodeBuffer^[0],$6c,TPasRISCVUInt32((TPasRISCVUInt64(JournalBlocks)*BlockSize) shr 32)); // i_size_high
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$1a,1);                                                                // i_links_count
+               WriteUInt32LittleEndian(@InodeBuffer^[0],$1c,JournalBlocks*(BlockSize shr 9));                                  // i_blocks_lo
+               EXT4SetInodeExtent(@InodeBuffer^[0],JournalStartBlock,JournalBlocks);
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$80,ExtraInodeSize);                                                   // i_extra_isize
+               // Backup of its extents and size in the superblock (s_jnl_blocks)
+               Move(InodeBuffer^[$28],Buffer1024^[$10c],60);
+               WriteUInt32LittleEndian(@Buffer1024^[0],$148,ReadUInt32LittleEndian(@InodeBuffer^[0],$6c));
+               WriteUInt32LittleEndian(@Buffer1024^[0],$14c,ReadUInt32LittleEndian(@InodeBuffer^[0],$04));
+               EXT4WriteInode(@InodeBuffer^[0],InodeTableOffset,JournalInode,ChecksumSeed);
+
+               // Inode 11: lost+found
+               FillChar(InodeBuffer^,SizeOf(TInodeBuffer),0);
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$00,$41c0);                           // i_mode: directory, 0700
+               WriteUInt32LittleEndian(@InodeBuffer^[0],$04,LostFoundBlocks*BlockSize);       // i_size_lo
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$1a,2);                               // i_links_count
+               WriteUInt32LittleEndian(@InodeBuffer^[0],$1c,LostFoundBlocks*(BlockSize shr 9)); // i_blocks_lo
+               EXT4SetInodeExtent(@InodeBuffer^[0],LostFoundStartBlock,LostFoundBlocks);
+               WriteUInt16LittleEndian(@InodeBuffer^[0],$80,ExtraInodeSize);                  // i_extra_isize
+               EXT4WriteInode(@InodeBuffer^[0],InodeTableOffset,LostFoundInode,ChecksumSeed);
+
+               // --- SUPERBLOCK AND DESCRIPTOR TABLE, WITH THEIR COPIES ---
+               for GroupIndex:=0 to GroupCount-1 do begin
+                if EXT4HasSuperBlockBackup(GroupIndex) then begin
+                 GroupFirstBlock:=TPasRISCVUInt64(GroupIndex)*BlocksPerGroup;
+                 WriteUInt16LittleEndian(@Buffer1024^[0],$05a,TPasRISCVUInt16(GroupIndex));             // s_block_group_nr
+                 WriteUInt32LittleEndian(@Buffer1024^[0],$3fc,CRC32CRaw($ffffffff,@Buffer1024^[0],$3fc)); // s_checksum
+                 if GroupIndex=0 then begin
+                  // Behind the first 1024 bytes, which are left to boot code
+                  WriteAt(PartitionOffset+1024,@Buffer1024^[0],1024);
+                 end else begin
+                  WriteAt(PartitionOffset+(GroupFirstBlock*BlockSize),@Buffer1024^[0],1024);
+                 end;
+                 WriteAt(PartitionOffset+((GroupFirstBlock+1)*BlockSize),GroupDescriptorTable,DescriptorBlocks*BlockSize);
+                end;
+               end;
+
+              finally
+               FreeMem(GroupDescriptorTable);
+              end;
+
+              // --- JOURNAL SUPERBLOCK (big endian) ---
+              // Without checksum feature, as the kernel switches on the one which goes with
+              // metadata_csum by itself when it mounts the filesystem.
+              FillChar(Buffer4096^,SizeOf(TBuffer4096),0);
+              WriteUInt32BigEndian(@Buffer4096^[0],$00,$c03b3998);    // h_magic
+              WriteUInt32BigEndian(@Buffer4096^[0],$04,4);            // h_blocktype: superblock v2
+              WriteUInt32BigEndian(@Buffer4096^[0],$0c,BlockSize);    // s_blocksize
+              WriteUInt32BigEndian(@Buffer4096^[0],$10,JournalBlocks); // s_maxlen
+              WriteUInt32BigEndian(@Buffer4096^[0],$14,1);            // s_first
+              WriteUInt32BigEndian(@Buffer4096^[0],$18,1);            // s_sequence
+              Move(UUID^[0],Buffer4096^[$30],16);                     // s_uuid
+              WriteUInt32BigEndian(@Buffer4096^[0],$40,1);            // s_nr_users
               WriteAt(PartitionOffset+(JournalStartBlock*BlockSize),@Buffer4096^[0],BlockSize);
 
-              // --- ROOT DIRECTORY BLOCK ---
-              FillChar(Buffer4096^,SizeOf(Buffer4096^),0);
-              DirectoryEntryOffset:=0;
-              WriteUInt32LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+0,2);
-              WriteUInt16LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+4,12);
-              Buffer4096^[DirectoryEntryOffset+6]:=1;
-              Buffer4096^[DirectoryEntryOffset+7]:=2;
-              Buffer4096^[DirectoryEntryOffset+8]:=$2e;
-              DirectoryEntryOffset:=12;
-              WriteUInt32LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+0,2);
-              WriteUInt16LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+4,12);
-              Buffer4096^[DirectoryEntryOffset+6]:=2;
-              Buffer4096^[DirectoryEntryOffset+7]:=2;
-              Buffer4096^[DirectoryEntryOffset+8]:=$2e;
-              Buffer4096^[DirectoryEntryOffset+9]:=$2e;
-              DirectoryEntryOffset:=24;
-              WriteUInt32LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+0,11);
-              WriteUInt16LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+4,(BlockSize-24)-12);
-              Buffer4096^[DirectoryEntryOffset+6]:=10;
-              Buffer4096^[DirectoryEntryOffset+7]:=2;
-              Buffer4096^[DirectoryEntryOffset+8]:=$6c;
-              Buffer4096^[DirectoryEntryOffset+9]:=$6f;
-              Buffer4096^[DirectoryEntryOffset+10]:=$73;
-              Buffer4096^[DirectoryEntryOffset+11]:=$74;
-              Buffer4096^[DirectoryEntryOffset+12]:=$2b;
-              Buffer4096^[DirectoryEntryOffset+13]:=$66;
-              Buffer4096^[DirectoryEntryOffset+14]:=$6f;
-              Buffer4096^[DirectoryEntryOffset+15]:=$75;
-              Buffer4096^[DirectoryEntryOffset+16]:=$6e;
-              Buffer4096^[DirectoryEntryOffset+17]:=$64;
-              WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-12,0);
-              WriteUInt16LittleEndian(@Buffer4096^[0],BlockSize-8,12);
-              Buffer4096^[BlockSize-6]:=0;
-              Buffer4096^[BlockSize-5]:=$de;
-              WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-4,0);
-              InodeNumber:=2;
-              Value32:=0;
-              CRCValue:=CRC32CRaw(ChecksumSeedRaw,@InodeNumber,4);
-              CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-              CRCValue:=CRC32CRaw(CRCValue,@Buffer4096^[0],BlockSize-4);
-              Value32:=0;
-              CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-              WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-4,CRCValue xor $ffffffff);
-              WriteAt(PartitionOffset+(RootDirectoryBlock*BlockSize),@Buffer4096^[0],BlockSize);
+              // --- ROOT DIRECTORY ---
+              FillChar(Buffer4096^,SizeOf(TBuffer4096),0);
+              EXT4WriteDirectoryEntry(@Buffer4096^[0],0,RootDirectoryInode,12,'.',2);
+              EXT4WriteDirectoryEntry(@Buffer4096^[0],12,RootDirectoryInode,12,'..',2);
+              EXT4WriteDirectoryEntry(@Buffer4096^[0],24,LostFoundInode,(BlockSize-12)-24,'lost+found',2);
+              EXT4WriteDirectoryBlock(@Buffer4096^[0],PartitionOffset+(RootDirectoryBlock*BlockSize),RootDirectoryInode,ChecksumSeed);
 
-              // --- LOST+FOUND BLOCK 0 ---
-              FillChar(Buffer4096^,SizeOf(Buffer4096^),0);
-              DirectoryEntryOffset:=0;
-              WriteUInt32LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+0,11);
-              WriteUInt16LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+4,12);
-              Buffer4096^[DirectoryEntryOffset+6]:=1;
-              Buffer4096^[DirectoryEntryOffset+7]:=2;
-              Buffer4096^[DirectoryEntryOffset+8]:=$2e;
-              DirectoryEntryOffset:=12;
-              WriteUInt32LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+0,2);
-              WriteUInt16LittleEndian(@Buffer4096^[0],DirectoryEntryOffset+4,(BlockSize-12)-12);
-              Buffer4096^[DirectoryEntryOffset+6]:=2;
-              Buffer4096^[DirectoryEntryOffset+7]:=2;
-              Buffer4096^[DirectoryEntryOffset+8]:=$2e;
-              Buffer4096^[DirectoryEntryOffset+9]:=$2e;
-              WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-12,0);
-              WriteUInt16LittleEndian(@Buffer4096^[0],BlockSize-8,12);
-              Buffer4096^[BlockSize-6]:=0;
-              Buffer4096^[BlockSize-5]:=$de;
-              WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-4,0);
-              InodeNumber:=11;
-              Value32:=0;
-              CRCValue:=CRC32CRaw(ChecksumSeedRaw,@InodeNumber,4);
-              CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-              CRCValue:=CRC32CRaw(CRCValue,@Buffer4096^[0],BlockSize-4);
-              Value32:=0;
-              CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-              WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-4,CRCValue xor $ffffffff);
-              WriteAt(PartitionOffset+(LostFoundStartBlock*BlockSize),@Buffer4096^[0],BlockSize);
-
-              // --- LOST+FOUND BLOCKS 1..3 ---
-              for Index:=1 to 3 do begin
-               FillChar(Buffer4096^,SizeOf(Buffer4096^),0);
-               WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-12,0);
-               WriteUInt16LittleEndian(@Buffer4096^[0],BlockSize-8,12);
-               Buffer4096^[BlockSize-6]:=0;
-               Buffer4096^[BlockSize-5]:=$de;
-               WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-4,0);
-               InodeNumber:=11;
-               Value32:=0;
-               CRCValue:=CRC32CRaw(ChecksumSeedRaw,@InodeNumber,4);
-               CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-               CRCValue:=CRC32CRaw(CRCValue,@Buffer4096^[0],BlockSize-4);
-               Value32:=0;
-               CRCValue:=CRC32CRaw(CRCValue,@Value32,4);
-               WriteUInt32LittleEndian(@Buffer4096^[0],BlockSize-4,CRCValue xor $ffffffff);
-               WriteAt(PartitionOffset+((LostFoundStartBlock+Index)*BlockSize),@Buffer4096^[0],BlockSize);
+              // --- LOST+FOUND ---
+              // Its further blocks are each one empty entry, so that e2fsck finds room in it
+              FillChar(Buffer4096^,SizeOf(TBuffer4096),0);
+              EXT4WriteDirectoryEntry(@Buffer4096^[0],0,LostFoundInode,12,'.',2);
+              EXT4WriteDirectoryEntry(@Buffer4096^[0],12,RootDirectoryInode,(BlockSize-12)-12,'..',2);
+              EXT4WriteDirectoryBlock(@Buffer4096^[0],PartitionOffset+(LostFoundStartBlock*BlockSize),LostFoundInode,ChecksumSeed);
+              for Index:=1 to LostFoundBlocks-1 do begin
+               FillChar(Buffer4096^,SizeOf(TBuffer4096),0);
+               EXT4WriteDirectoryEntry(@Buffer4096^[0],0,0,BlockSize-12,'',0);
+               EXT4WriteDirectoryBlock(@Buffer4096^[0],PartitionOffset+((LostFoundStartBlock+Index)*BlockSize),LostFoundInode,ChecksumSeed);
               end;
 
              end;
