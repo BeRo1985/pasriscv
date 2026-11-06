@@ -3276,6 +3276,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        fWriteBufferLast:TPasMPUInt32;
        fWriteBufferLastTime:TPasRISCVUInt64;
        fWriteBuffer:TOPL3WriteBuffer;
+       fTimeAnchorSequence:TPasMPUInt32;
+       fTimeAnchorTime:TPasRISCVUInt64;
+       fTimeAnchorSample:TPasRISCVUInt64;
+       fTimeAnchorLimit:TPasRISCVUInt64;
        fPanPotLUT:array[0..255] of TPasRISCVInt32;
 {$ifdef PasOPL3EmuChannelOutputs}
        fChannelRingBuffers:TOPL3ChannelRingBuffers;
@@ -3309,10 +3313,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
        function ClipSample(const aSample:TPasRISCVInt32):TPasRISCVInt16; inline;
        procedure ProcessSlot(const aSlot:POPL3Slot); inline;
        procedure Generate4Channels(const aBuffer:PPasRISCVInt16);
+       function GetAnchoredSampleTime:TPasRISCVUInt64;
       public
        constructor Create;
        destructor Destroy; override;
        procedure DoReset(const aSampleRate:TPasRISCVUInt32);
+       procedure SetTimeAnchor(const aTime:TPasRISCVUInt64);
        procedure WriteRegister(const aRegister:TPasRISCVUInt16;const aValue:TPasRISCVUInt8);
        procedure GenerateStereo(const aBuffer:PPasRISCVInt16);
        procedure GenerateResampledStereo(const aBuffer:PPasRISCVInt16);
@@ -6071,9 +6077,15 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPlayResampleBuffer:TPasRISCVFloatDynamicArray;
               fPlayResamplerPosition:TPasRISCVUInt64;
               fPlayPreviousFrameEndValues:TFrameEndValues;
+              fPlayCurrentFrameValues:TFrameEndValues;
               fPlayDMACache:array[0..1] of TPasRISCVUInt8DynamicArray;
               fPlayDMACacheSize:array[0..1] of TPasRISCVUInt32;
               fPlayDMACacheReady:array[0..1] of TPasMPBool32;
+              // Host clock alignment of a playback start, the same time line as the OPL3 writes
+              fLastOutputCallbackTime:TPasRISCVUInt64;
+              fPlayStartTime:TPasRISCVUInt64;
+              fPlayStartPending:TPasMPBool32;
+              fPlayStartDelay:TPasRISCVSizeInt;
               fCaptureActive:Boolean;
               fCaptureBufferIndex:TPasRISCVUInt32;
               fCaptureBuffer:TPasRISCVUInt32;
@@ -6083,6 +6095,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCaptureResampleBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResamplerPosition:TPasRISCVUInt64;
               fCapturePreviousFrameEndValues:TFrameEndValues;
+              fCaptureCurrentFrameValues:TFrameEndValues;
               fCaptureDMACache:array[0..1] of TPasRISCVUInt8DynamicArray;
               fCaptureDMACacheSize:array[0..1] of TPasRISCVUInt32;
               fCaptureDMACachePosition:array[0..1] of TPasRISCVUInt32;
@@ -6261,10 +6274,17 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPlayResampleBuffer:TPasRISCVFloatDynamicArray;
               fPlayResamplerPosition:TPasRISCVUInt64;
               fPlayPreviousFrameEndValues:TFrameEndValues;
+              fPlayCurrentFrameValues:TFrameEndValues;
               fCaptureScratchBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResampleBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResamplerPosition:TPasRISCVUInt64;
               fCapturePreviousFrameEndValues:TFrameEndValues;
+              fCaptureCurrentFrameValues:TFrameEndValues;
+              // Host clock alignment of a playback start, the same time line as the OPL3 writes
+              fLastOutputCallbackTime:TPasRISCVUInt64;
+              fPlayStartTime:TPasRISCVUInt64;
+              fPlayStartPending:TPasMPBool32;
+              fPlayStartDelay:TPasRISCVSizeInt;
               // Helper
               function GetChannelFrameSize(const aChannel:PChannelDMA):TPasRISCVUInt32;
               function GetPlaybackChannel:PChannelDMA;
@@ -6596,10 +6616,12 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPlayResampleBuffer:TPasRISCVFloatDynamicArray;
               fPlayResamplerPosition:TPasRISCVUInt64;
               fPlayPreviousFrameEndValues:TFrameEndValues;
+              fPlayCurrentFrameValues:TFrameEndValues;
               fCaptureScratchBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResampleBuffer:TPasRISCVFloatDynamicArray;
               fCaptureResamplerPosition:TPasRISCVUInt64;
               fCapturePreviousFrameEndValues:TFrameEndValues;
+              fCaptureCurrentFrameValues:TFrameEndValues;
               fLock:TPasMPCriticalSection;
               // MMIO BAR callbacks
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
@@ -7404,6 +7426,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fBufferFreeQueue:TPCMBufferFreeQueue;
                      fPCMRingBuffer:TPCMRingBuffer;
                      fPreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
+                     fCurrentFrameValues:array[0..1] of TPasRISCVFloat;
                      fResamplerPosition:TPasRISCVUInt64;
                     public
                      procedure ReturnBuffer(const aPCMBuffer:TPCMBuffer;const aLock:Boolean);
@@ -21808,38 +21831,72 @@ begin
 
 end;
 
-// 32-bit float linear resampling, with start frame values from the end of the previous frame, for continuous resampling
-function ResampleLinear(const aInput:PPasRISCVFloatArray;const aInputSamples:TPasRISCVSizeInt;const aOutput:PPasRISCVFloatArray;const aOutputSamples,aChannels:TPasRISCVSizeInt;const aPreviousFrameEndValues:PPasRISCVFloatArray;var aPosition:TPasRISCVUInt64;const aPositionIncrement:TPasRISCVUInt64):Boolean;
+// 32-bit float streaming linear resampling. The state (aPosition, aPreviousFrameValues and
+// aCurrentFrameValues) carries over from call to call, so the input can be cut at any frame.
+// aPosition is 32.32 fixed point: its integer part counts the input frames still to fetch before
+// the next output frame, its fraction is the position between the previous and the current input
+// frame. Input frames are fetched as soon as the next output frame needs them; a call stops after
+// aOutputSamples output frames (and the input frames that the following output frame would fetch
+// first) or when the input runs out. It returns the count of output frames and gives the count of
+// consumed input frames in aInputUsed. Over any sequence of calls exactly
+// aPositionIncrement/2^32 input frames are consumed per output frame, so a source that is
+// advanced by aInputUsed runs at its nominal rate.
+function ResampleLinearStream(const aInput:PPasRISCVFloatArray;const aInputSamples:TPasRISCVSizeInt;const aOutput:PPasRISCVFloatArray;const aOutputSamples,aChannels:TPasRISCVSizeInt;const aPreviousFrameValues,aCurrentFrameValues:PPasRISCVFloatArray;var aPosition:TPasRISCVUInt64;const aPositionIncrement:TPasRISCVUInt64;out aInputUsed:TPasRISCVSizeInt):TPasRISCVSizeInt;
 const Div32Bit=1.0/4294967296.0;
-var ChannelIndex,OutputSampleIndex,InputSampleIndex,PreviousInputSampleIndex:TPasRISCVSizeInt;
-    Sample,PreviousSample,Alpha:TPasRISCVFloat;
+var ChannelIndex,OutputSampleIndex,InputSampleIndex:TPasRISCVSizeInt;
+    Alpha:TPasRISCVFloat;
     Position:TPasRISCVUInt64;
 begin
  Position:=aPosition;
- for ChannelIndex:=0 to aChannels-1 do begin
-  Position:=aPosition and TPasRISCVUInt64($ffffffff); // 32.32 fixed point
-  for OutputSampleIndex:=0 to aOutputSamples-1 do begin
-   InputSampleIndex:=Position shr 32;
-   if InputSampleIndex>=aInputSamples then begin
-    InputSampleIndex:=aInputSamples-1;
+ InputSampleIndex:=0;
+ OutputSampleIndex:=0;
+ repeat
+  while (Position>=TPasRISCVUInt64($100000000)) and (InputSampleIndex<aInputSamples) do begin
+   for ChannelIndex:=0 to aChannels-1 do begin
+    aPreviousFrameValues^[ChannelIndex]:=aCurrentFrameValues^[ChannelIndex];
+    aCurrentFrameValues^[ChannelIndex]:=aInput^[(InputSampleIndex*aChannels)+ChannelIndex];
    end;
-   PreviousInputSampleIndex:=InputSampleIndex-1;
-   if PreviousInputSampleIndex<0 then begin
-    PreviousSample:=aPreviousFrameEndValues^[ChannelIndex];
-   end else begin
-    PreviousSample:=aInput^[(PreviousInputSampleIndex*aChannels)+ChannelIndex];
-   end;
-   Alpha:=(Position and TPasRISCVUInt64($ffffffff))*Div32Bit;
-   Sample:=(PreviousSample*(1.0-Alpha))+(aInput^[(InputSampleIndex*aChannels)+ChannelIndex]*Alpha);
-   aOutput^[(OutputSampleIndex*aChannels)+ChannelIndex]:=Sample;
-   inc(Position,aPositionIncrement);
+   inc(InputSampleIndex);
+   dec(Position,TPasRISCVUInt64($100000000));
   end;
- end;
- for ChannelIndex:=0 to aChannels-1 do begin
-  aPreviousFrameEndValues^[ChannelIndex]:=aInput^[((aInputSamples-1)*aChannels)+ChannelIndex];
- end;
+  if (Position>=TPasRISCVUInt64($100000000)) or (OutputSampleIndex>=aOutputSamples) then begin
+   // Either the next output frame needs more input than this call got or the output is full
+   break;
+  end;
+  Alpha:=(Position and TPasRISCVUInt64($ffffffff))*Div32Bit;
+  for ChannelIndex:=0 to aChannels-1 do begin
+   aOutput^[(OutputSampleIndex*aChannels)+ChannelIndex]:=(aPreviousFrameValues^[ChannelIndex]*(1.0-Alpha))+(aCurrentFrameValues^[ChannelIndex]*Alpha);
+  end;
+  inc(Position,aPositionIncrement);
+  inc(OutputSampleIndex);
+ until false;
  aPosition:=Position;
- result:=true;
+ aInputUsed:=InputSampleIndex;
+ result:=OutputSampleIndex;
+end;
+
+// Count of input frames that ResampleLinearStream needs for aOutputSamples output frames starting
+// at the state aPosition
+function ResampleLinearStreamInputFrames(const aOutputSamples:TPasRISCVSizeInt;const aPosition,aPositionIncrement:TPasRISCVUInt64):TPasRISCVSizeInt;
+begin
+ if aOutputSamples>0 then begin
+  result:=TPasRISCVSizeInt((aPosition+(TPasRISCVUInt64(aOutputSamples-1)*aPositionIncrement)) shr 32);
+ end else begin
+  result:=0;
+ end;
+end;
+
+// Count of output frames that ResampleLinearStream produces from aInputSamples input frames
+// starting at the state aPosition, when it gets enough room for them
+function ResampleLinearStreamOutputFrames(const aInputSamples:TPasRISCVSizeInt;const aPosition,aPositionIncrement:TPasRISCVUInt64):TPasRISCVSizeInt;
+var Limit:TPasRISCVUInt64;
+begin
+ Limit:=TPasRISCVUInt64(aInputSamples+1) shl 32;
+ if (Limit>aPosition) and (aPositionIncrement>0) then begin
+  result:=TPasRISCVSizeInt(((Limit-aPosition)+(aPositionIncrement-1)) div aPositionIncrement);
+ end else begin
+  result:=0;
+ end;
 end;
 
 // Checks that a guest-supplied file name (9P and virtio-fs) is exactly one path component, so that it can not
@@ -43168,6 +43225,10 @@ begin
  fWriteBufferLast:=0;
  fWriteBufferLastTime:=0;
  FillChar(fWriteBuffer,SizeOf(TOPL3WriteBuffer),#0);
+ fTimeAnchorSequence:=0;
+ fTimeAnchorTime:=0;
+ fTimeAnchorSample:=0;
+ fTimeAnchorLimit:=0;
 {$ifdef PasOPL3EmuChannelOutputs}
  FillChar(fChannelRingBuffers,SizeOf(TOPL3ChannelRingBuffers),#0);
  fChannelRingBufferPosition:=0;
@@ -44170,10 +44231,71 @@ begin
 
 end;
 
+// The time anchor ties the write buffer time line to the host clock: aTime is the host time
+// (nanoseconds, GetCurrentFrequencyTime(1000000000)) at which the audio callback that has just
+// generated its block started, the anchor sample is the native sample where the next block will
+// start. A register write at the host time t then lands at the sample anchor+(t-aTime) of the next
+// block, so that the writes keep their spacing in time instead of all piling up at the start of the
+// next block. The sound card calls this at the end of every audio callback.
+procedure TPasRISCVOPL3Emu.SetTimeAnchor(const aTime:TPasRISCVUInt64);
+var Sample,Limit:TPasRISCVUInt64;
+begin
+ Sample:=fWriteBufferSampleCounter;
+ if (fTimeAnchorTime<>0) and (Sample>fTimeAnchorSample) then begin
+  // Up to four blocks ahead, for callbacks that come in bursts
+  Limit:=(Sample-fTimeAnchorSample)*4;
+ end else begin
+  Limit:=0;
+ end;
+ if Limit<(OPL3_NATIVE_RATE div 100) then begin
+  Limit:=OPL3_NATIVE_RATE div 100;
+ end else if Limit>(OPL3_NATIVE_RATE div 4) then begin
+  Limit:=OPL3_NATIVE_RATE div 4;
+ end;
+ TPasMPInterlocked.Increment(fTimeAnchorSequence);
+ TPasMPMemoryBarrier.Write;
+ fTimeAnchorTime:=aTime;
+ fTimeAnchorSample:=Sample;
+ fTimeAnchorLimit:=Limit;
+ TPasMPMemoryBarrier.Write;
+ TPasMPInterlocked.Increment(fTimeAnchorSequence);
+end;
+
+// The native sample that belongs to the current host time according to the time anchor, or 0
+// without an anchor (no audio callback yet)
+function TPasRISCVOPL3Emu.GetAnchoredSampleTime:TPasRISCVUInt64;
+var Sequence:TPasMPUInt32;
+    AnchorTime,AnchorSample,AnchorLimit,Now,Delta:TPasRISCVUInt64;
+begin
+ repeat
+  Sequence:=TPasMPInterlocked.Read(fTimeAnchorSequence);
+  TPasMPMemoryBarrier.Read;
+  AnchorTime:=fTimeAnchorTime;
+  AnchorSample:=fTimeAnchorSample;
+  AnchorLimit:=fTimeAnchorLimit;
+  TPasMPMemoryBarrier.Read;
+ until ((Sequence and 1)=0) and (Sequence=TPasMPInterlocked.Read(fTimeAnchorSequence));
+ if AnchorTime<>0 then begin
+  Now:=GetCurrentFrequencyTime(1000000000);
+  if Now>AnchorTime then begin
+   Delta:=ConvertScale(Now-AnchorTime,1000000000,OPL3_NATIVE_RATE);
+   if Delta>AnchorLimit then begin
+    // The audio callbacks have stalled, do not schedule into the far future
+    Delta:=AnchorLimit;
+   end;
+  end else begin
+   Delta:=0;
+  end;
+  result:=AnchorSample+Delta;
+ end else begin
+  result:=0;
+ end;
+end;
+
 procedure TPasRISCVOPL3Emu.WriteRegister(const aRegister:TPasRISCVUInt16;const aValue:TPasRISCVUInt8);
 var WriteBufferEntry:POPL3WriteBufferEntry;
     WriteBufferLast:TPasRISCVUInt32;
-    Time1{$ifndef PasOPL3EmuThreadSafeWriteBuffer},Time2{$endif}:TPasRISCVUInt64;
+    Time1{$ifndef PasOPL3EmuThreadSafeWriteBuffer},Time2{$endif},Time3:TPasRISCVUInt64;
 begin
 
  WriteBufferLast:=fWriteBufferLast;
@@ -44195,6 +44317,10 @@ begin
   Time1:=Time2;
  end;
 {$endif}
+ Time3:=GetAnchoredSampleTime;
+ if Time1<Time3 then begin
+  Time1:=Time3;
+ end;
  fWriteBufferLastTime:=Time1;
 
  WriteBufferEntry^.fTime:=Time1;
@@ -55518,12 +55644,18 @@ begin
   fPlayResamplerPosition:=0;
   fPlayPreviousFrameEndValues[0]:=0.0;
   fPlayPreviousFrameEndValues[1]:=0.0;
+  fPlayCurrentFrameValues[0]:=0.0;
+  fPlayCurrentFrameValues[1]:=0.0;
   fPlayDMACache[0]:=nil;
   fPlayDMACache[1]:=nil;
   fPlayDMACacheSize[0]:=0;
   fPlayDMACacheSize[1]:=0;
   fPlayDMACacheReady[0]:=false;
   fPlayDMACacheReady[1]:=false;
+  fLastOutputCallbackTime:=0;
+  fPlayStartTime:=0;
+  fPlayStartPending:=false;
+  fPlayStartDelay:=0;
   fCaptureActive:=false;
   fCaptureBufferIndex:=0;
   fCaptureBuffer:=0;
@@ -55534,6 +55666,8 @@ begin
   fCaptureResamplerPosition:=0;
   fCapturePreviousFrameEndValues[0]:=0.0;
   fCapturePreviousFrameEndValues[1]:=0.0;
+  fCaptureCurrentFrameValues[0]:=0.0;
+  fCaptureCurrentFrameValues[1]:=0.0;
   fCaptureDMACache[0]:=nil;
   fCaptureDMACache[1]:=nil;
   fCaptureDMACacheSize[0]:=0;
@@ -55691,6 +55825,12 @@ begin
      fPlayResamplerPosition:=0;
      fPlayPreviousFrameEndValues[0]:=0.0;
      fPlayPreviousFrameEndValues[1]:=0.0;
+     fPlayCurrentFrameValues[0]:=0.0;
+     fPlayCurrentFrameValues[1]:=0.0;
+     // The audio callback starts the DMA at the matching point of its next block
+     fPlayStartTime:=GetCurrentFrequencyTime(1000000000);
+     TPasMPMemoryBarrier.Write;
+     fPlayStartPending:=true;
     end;
     fPlayActive:=true;
     fPlayCtrl:=fPlayCtrl and not FM801_IMMED_STOP; // clear IMMED_STOP after handling
@@ -55730,6 +55870,10 @@ begin
      fCapturePosition:=0;
      fCaptureSize:=TPasRISCVUInt32(fCaptureCount)+1; // count register = period_bytes - 1
      fCaptureResamplerPosition:=0;
+     fCapturePreviousFrameEndValues[0]:=0.0;
+     fCapturePreviousFrameEndValues[1]:=0.0;
+     fCaptureCurrentFrameValues[0]:=0.0;
+     fCaptureCurrentFrameValues[1]:=0.0;
     end;
     fCaptureActive:=true;
     fCaptureCtrl:=fCaptureCtrl and not FM801_IMMED_STOP;
@@ -55907,10 +56051,14 @@ var Remain,ToDo,CopyBytes,SampleFrameSize,Channels:TPasRISCVSizeInt;
     OPL3Index:TPasRISCVSizeInt;
     OPL3FloatDest:PPasRISCVFloatArray;
     BufferSwitchCount:TPasRISCVUInt32;
+    CallbackTime,Step:TPasRISCVUInt64;
+    Produced,Used:TPasRISCVSizeInt;
 begin
 
  fLock.Acquire;
  try
+
+  CallbackTime:=GetCurrentFrequencyTime(1000000000);
 
   // Output format: aCount stereo float frames = aCount * 2 * SizeOf(Float) bytes
   Remain:=aCount*2*SizeOf(TPasRISCVFloat);
@@ -55950,8 +56098,32 @@ begin
   end;
   SrcRate:=FM801_RATES[RateIndex];
   DstRate:=fSoundIO.fSampleRate;
+  Step:=ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate);
 
   Dest:=aBuffer;
+
+  // A freshly started playback begins at the point of this block that matches the start time,
+  // in the same way as the OPL3 writes are placed
+  if fPlayStartPending then begin
+   fPlayStartPending:=false;
+   TPasMPMemoryBarrier.Read;
+   fPlayStartDelay:=0;
+   if (fLastOutputCallbackTime<>0) and (fPlayStartTime>fLastOutputCallbackTime) then begin
+    fPlayStartDelay:=TPasRISCVSizeInt(ConvertScale(fPlayStartTime-fLastOutputCallbackTime,1000000000,DstRate));
+    if fPlayStartDelay>TPasRISCVSizeInt(DstRate div 10) then begin
+     fPlayStartDelay:=DstRate div 10;
+    end;
+   end;
+  end;
+  if fPlayStartDelay>0 then begin
+   ToDo:=fPlayStartDelay;
+   if ToDo>aCount then begin
+    ToDo:=aCount;
+   end;
+   inc(Dest,ToDo*2*SizeOf(TPasRISCVFloat));
+   dec(Remain,ToDo*2*SizeOf(TPasRISCVFloat));
+   dec(fPlayStartDelay,ToDo);
+  end;
 
   BufferSwitchCount:=0;
 
@@ -56024,14 +56196,18 @@ begin
     break;
    end;
 
-   // Limit source samples to what we need (simple 1:1 for now, ignoring resampling for count limiting)
+   // Limit source samples to what we need
    if SrcRate=DstRate then begin
     if SrcSamples>DstSamples then begin
      SrcSamples:=DstSamples;
     end;
    end else begin
-    // Estimate source samples needed for DstSamples output
-    ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+    // Exactly the source frames that the resampler consumes for DstSamples output frames (at
+    // least one, the resampler reports what it really used)
+    ToDo:=ResampleLinearStreamInputFrames(DstSamples,fPlayResamplerPosition,Step);
+    if ToDo<1 then begin
+     ToDo:=1;
+    end;
     if SrcSamples>ToDo then begin
      SrcSamples:=ToDo;
     end;
@@ -56093,10 +56269,9 @@ begin
     end;
    end;
 
-   inc(fPlayPosition,CopyBytes);
-
    // Copy PCM to output (Move is fast; OPL3 will be mixed in afterwards)
    if SrcRate=DstRate then begin
+    inc(fPlayPosition,CopyBytes);
     CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
     if CopyBytes>Remain then begin
      CopyBytes:=Remain;
@@ -56105,29 +56280,28 @@ begin
     inc(Dest,CopyBytes);
     dec(Remain,CopyBytes);
    end else begin
-    // Simple linear resampling into temp buffer, then copy
+    // Streaming linear resampling into temp buffer, then copy. The DMA position advances by
+    // exactly the source frames that the resampler consumed, so that the DMA runs at its
+    // nominal rate in relation to the output and does not drift away from the OPL3.
     DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
-    ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
-    if ToDo>DstSamples then begin
-     ToDo:=DstSamples;
+    if length(fPlayResampleBuffer)<(DstSamples*2) then begin
+     SetLength(fPlayResampleBuffer,DstSamples*4);
     end;
-    if ToDo>0 then begin
-     if length(fPlayResampleBuffer)<(ToDo*2) then begin
-      SetLength(fPlayResampleBuffer,ToDo*4);
-     end;
-     ResampleLinear(@fPlayScratchBuffer[0],
-                    SrcSamples,
-                    @fPlayResampleBuffer[0],
-                    ToDo,
-                    2,
-                    @fPlayPreviousFrameEndValues[0],
-                    fPlayResamplerPosition,
-                    ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
-     CopyBytes:=ToDo*2*SizeOf(TPasRISCVFloat);
-     Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
-     inc(Dest,CopyBytes);
-     dec(Remain,CopyBytes);
-    end;
+    Produced:=ResampleLinearStream(@fPlayScratchBuffer[0],
+                                   SrcSamples,
+                                   @fPlayResampleBuffer[0],
+                                   DstSamples,
+                                   2,
+                                   @fPlayPreviousFrameEndValues[0],
+                                   @fPlayCurrentFrameValues[0],
+                                   fPlayResamplerPosition,
+                                   Step,
+                                   Used);
+    inc(fPlayPosition,Used*SampleFrameSize);
+    CopyBytes:=Produced*2*SizeOf(TPasRISCVFloat);
+    Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
    end;
 
   end;
@@ -56143,6 +56317,11 @@ begin
   end;
 
  finally
+  // Anchor the time line of the OPL3 writes and of the playback starts to this block
+  fLastOutputCallbackTime:=CallbackTime;
+  if assigned(fOPL3) then begin
+   fOPL3.SetTimeAnchor(CallbackTime);
+  end;
   fLock.Release;
  end;
 
@@ -56158,7 +56337,7 @@ var Remain,ToDo,CopyBytes,SampleFrameSize,Channels:TPasRISCVSizeInt;
     FloatSample:TPasRISCVFloat;
     SampleIndex:TPasRISCVSizeInt;
     p:PPasRISCVUInt8;
-    SrcSamples,DstSamples:TPasRISCVSizeInt;
+    SrcSamples,DstSamples,Used:TPasRISCVSizeInt;
     Sample16:TPasRISCVInt16;
     FloatSrc:PPasRISCVFloatArray;
 begin
@@ -56242,58 +56421,50 @@ begin
     break;
    end;
 
-   // Determine how many source frames to consume
    if SrcRate=DstRate then begin
+
     if SrcSamples>DstSamples then begin
      SrcSamples:=DstSamples;
     end;
+
+    // Copy host float data into scratch buffer
+    if length(fCaptureScratchBuffer)<(SrcSamples*2) then begin
+     SetLength(fCaptureScratchBuffer,SrcSamples*4);
+    end;
+
+    CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+    Move(Src^,fCaptureScratchBuffer[0],CopyBytes);
+    inc(Src,CopyBytes);
+    dec(Remain,CopyBytes);
+
+    FloatSrc:=@fCaptureScratchBuffer[0];
+
    end else begin
-    // Estimate source frames needed
-    ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
-    if SrcSamples>ToDo then begin
-     SrcSamples:=ToDo;
+
+    // Resample from host rate to guest rate. Only the host frames that the resampler really
+    // consumed are taken, the rest is resampled on into the next DMA buffer.
+    if length(fCaptureResampleBuffer)<(DstSamples*2) then begin
+     SetLength(fCaptureResampleBuffer,DstSamples*4);
     end;
-   end;
-
-   // Copy host float data into scratch buffer
-   if length(fCaptureScratchBuffer)<(SrcSamples*2) then begin
-    SetLength(fCaptureScratchBuffer,SrcSamples*4);
-   end;
-
-   CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
-   Move(Src^,fCaptureScratchBuffer[0],CopyBytes);
-   inc(Src,CopyBytes);
-   dec(Remain,CopyBytes);
-
-   // Resample from host rate to guest rate if needed
-   if SrcRate<>DstRate then begin
-    ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
-    if ToDo>DstSamples then begin
-     ToDo:=DstSamples;
-    end;
-    if ToDo>0 then begin
-     if length(fCaptureResampleBuffer)<(ToDo*2) then begin
-      SetLength(fCaptureResampleBuffer,ToDo*4);
-     end;
-     ResampleLinear(@fCaptureScratchBuffer[0],
-                    SrcSamples,
-                    @fCaptureResampleBuffer[0],
-                    ToDo,
-                    2,
-                    @fCapturePreviousFrameEndValues[0],
-                    fCaptureResamplerPosition,
-                    ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
-     SrcSamples:=ToDo;
-    end else begin
+    SrcSamples:=ResampleLinearStream(PPasRISCVFloatArray(Src),
+                                     SrcSamples,
+                                     @fCaptureResampleBuffer[0],
+                                     DstSamples,
+                                     2,
+                                     @fCapturePreviousFrameEndValues[0],
+                                     @fCaptureCurrentFrameValues[0],
+                                     fCaptureResamplerPosition,
+                                     ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate),
+                                     Used);
+    CopyBytes:=Used*2*SizeOf(TPasRISCVFloat);
+    inc(Src,CopyBytes);
+    dec(Remain,CopyBytes);
+    if SrcSamples<=0 then begin
      continue;
     end;
-   end;
 
-   // Select source: resampled data or original scratch buffer
-   if SrcRate<>DstRate then begin
     FloatSrc:=@fCaptureResampleBuffer[0];
-   end else begin
-    FloatSrc:=@fCaptureScratchBuffer[0];
+
    end;
 
    // Write to DMA cache instead of directly to guest memory
@@ -56424,6 +56595,16 @@ begin
   fPlayPreviousFrameEndValues[0]:=ArrayNode.GetFloat32('0',fPlayPreviousFrameEndValues[0]);
   fPlayPreviousFrameEndValues[1]:=ArrayNode.GetFloat32('1',fPlayPreviousFrameEndValues[1]);
  end;
+ ArrayNode:=aNode.FindNode('PlayCurrentFrameValues');
+ if Assigned(ArrayNode) then begin
+  fPlayCurrentFrameValues[0]:=ArrayNode.GetFloat32('0',fPlayCurrentFrameValues[0]);
+  fPlayCurrentFrameValues[1]:=ArrayNode.GetFloat32('1',fPlayCurrentFrameValues[1]);
+ end else begin
+  // Snapshot from before the streaming resampler: the previous frame end values are the last
+  // consumed frame and only the fraction of the position counts
+  fPlayCurrentFrameValues:=fPlayPreviousFrameEndValues;
+  fPlayResamplerPosition:=(fPlayResamplerPosition and TPasRISCVUInt64($ffffffff)) or TPasRISCVUInt64($100000000);
+ end;
 
  // Capture state
  fCaptureActive:=aNode.GetBool('CaptureActive',fCaptureActive);
@@ -56436,6 +56617,14 @@ begin
  if Assigned(ArrayNode) then begin
   fCapturePreviousFrameEndValues[0]:=ArrayNode.GetFloat32('0',fCapturePreviousFrameEndValues[0]);
   fCapturePreviousFrameEndValues[1]:=ArrayNode.GetFloat32('1',fCapturePreviousFrameEndValues[1]);
+ end;
+ ArrayNode:=aNode.FindNode('CaptureCurrentFrameValues');
+ if Assigned(ArrayNode) then begin
+  fCaptureCurrentFrameValues[0]:=ArrayNode.GetFloat32('0',fCaptureCurrentFrameValues[0]);
+  fCaptureCurrentFrameValues[1]:=ArrayNode.GetFloat32('1',fCaptureCurrentFrameValues[1]);
+ end else begin
+  fCaptureCurrentFrameValues:=fCapturePreviousFrameEndValues;
+  fCaptureResamplerPosition:=(fCaptureResamplerPosition and TPasRISCVUInt64($ffffffff)) or TPasRISCVUInt64($100000000);
  end;
 end;
 
@@ -56491,6 +56680,9 @@ begin
  ArrayNode:=aNode.AddObject('PlayPreviousFrameEndValues');
  ArrayNode.SetFloat32('0',fPlayPreviousFrameEndValues[0]);
  ArrayNode.SetFloat32('1',fPlayPreviousFrameEndValues[1]);
+ ArrayNode:=aNode.AddObject('PlayCurrentFrameValues');
+ ArrayNode.SetFloat32('0',fPlayCurrentFrameValues[0]);
+ ArrayNode.SetFloat32('1',fPlayCurrentFrameValues[1]);
 
  // Capture state
  aNode.SetBool('CaptureActive',fCaptureActive);
@@ -56502,6 +56694,9 @@ begin
  ArrayNode:=aNode.AddObject('CapturePreviousFrameEndValues');
  ArrayNode.SetFloat32('0',fCapturePreviousFrameEndValues[0]);
  ArrayNode.SetFloat32('1',fCapturePreviousFrameEndValues[1]);
+ ArrayNode:=aNode.AddObject('CaptureCurrentFrameValues');
+ ArrayNode.SetFloat32('0',fCaptureCurrentFrameValues[0]);
+ ArrayNode.SetFloat32('1',fCaptureCurrentFrameValues[1]);
 end;
 
 { TPasRISCV.TCMI8738Device }
@@ -56634,11 +56829,19 @@ begin
   fPlayResamplerPosition:=0;
   fPlayPreviousFrameEndValues[0]:=0.0;
   fPlayPreviousFrameEndValues[1]:=0.0;
+  fPlayCurrentFrameValues[0]:=0.0;
+  fPlayCurrentFrameValues[1]:=0.0;
   fCaptureScratchBuffer:=nil;
   fCaptureResampleBuffer:=nil;
   fCaptureResamplerPosition:=0;
   fCapturePreviousFrameEndValues[0]:=0.0;
   fCapturePreviousFrameEndValues[1]:=0.0;
+  fCaptureCurrentFrameValues[0]:=0.0;
+  fCaptureCurrentFrameValues[1]:=0.0;
+  fLastOutputCallbackTime:=0;
+  fPlayStartTime:=0;
+  fPlayStartPending:=false;
+  fPlayStartDelay:=0;
  finally
   fLock.Release;
  end;
@@ -56915,30 +57118,47 @@ begin
     fFuncCtrl0:=fFuncCtrl0 and not CM_RST_CH1;
    end;
    // If channel just enabled, reset position
+   // The direction comes from the CHADC bit of this very write, the channel state is only
+   // updated below
    if ((fFuncCtrl0 and CM_CHEN0)<>0) and ((OldFuncCtrl0 and CM_CHEN0)=0) then begin
     fChannels[0].Position:=0;
     fChannels[0].PeriodCounter:=0;
-    if not fChannels[0].IsCapture then begin
+    if (fFuncCtrl0 and CM_CHADC0)=0 then begin
      fPlayResamplerPosition:=0;
      fPlayPreviousFrameEndValues[0]:=0.0;
      fPlayPreviousFrameEndValues[1]:=0.0;
+     fPlayCurrentFrameValues[0]:=0.0;
+     fPlayCurrentFrameValues[1]:=0.0;
+     // The audio callback starts the DMA at the matching point of its next block
+     fPlayStartTime:=GetCurrentFrequencyTime(1000000000);
+     TPasMPMemoryBarrier.Write;
+     fPlayStartPending:=true;
     end else begin
      fCaptureResamplerPosition:=0;
      fCapturePreviousFrameEndValues[0]:=0.0;
      fCapturePreviousFrameEndValues[1]:=0.0;
+     fCaptureCurrentFrameValues[0]:=0.0;
+     fCaptureCurrentFrameValues[1]:=0.0;
     end;
    end;
    if ((fFuncCtrl0 and CM_CHEN1)<>0) and ((OldFuncCtrl0 and CM_CHEN1)=0) then begin
     fChannels[1].Position:=0;
     fChannels[1].PeriodCounter:=0;
-    if not fChannels[1].IsCapture then begin
+    if (fFuncCtrl0 and CM_CHADC1)=0 then begin
      fPlayResamplerPosition:=0;
      fPlayPreviousFrameEndValues[0]:=0.0;
      fPlayPreviousFrameEndValues[1]:=0.0;
+     fPlayCurrentFrameValues[0]:=0.0;
+     fPlayCurrentFrameValues[1]:=0.0;
+     fPlayStartTime:=GetCurrentFrequencyTime(1000000000);
+     TPasMPMemoryBarrier.Write;
+     fPlayStartPending:=true;
     end else begin
      fCaptureResamplerPosition:=0;
      fCapturePreviousFrameEndValues[0]:=0.0;
      fCapturePreviousFrameEndValues[1]:=0.0;
+     fCaptureCurrentFrameValues[0]:=0.0;
+     fCaptureCurrentFrameValues[1]:=0.0;
     end;
    end;
    UpdateChannelState;
@@ -57121,15 +57341,27 @@ begin
    fChannels[0].BufferAddress:=TPasRISCVUInt32(aValue);
   end;
   CM_REG_CH0_FRAME2:begin
+   // Linux writes the two halves with separate 16-bit writes (buffer size here, period size at
+   // +2), a 16-bit write must not touch the period size
    fChannels[0].BufferSize:=TPasRISCVUInt32(TPasRISCVUInt16(aValue and $ffff))+1;
-   fChannels[0].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16((aValue shr 16) and $ffff))+1;
+   if aSize>=4 then begin
+    fChannels[0].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16((aValue shr 16) and $ffff))+1;
+   end;
+  end;
+  (CM_REG_CH0_FRAME2+2):begin
+   fChannels[0].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16(aValue and $ffff))+1;
   end;
   CM_REG_CH1_FRAME1:begin
    fChannels[1].BufferAddress:=TPasRISCVUInt32(aValue);
   end;
   CM_REG_CH1_FRAME2:begin
    fChannels[1].BufferSize:=TPasRISCVUInt32(TPasRISCVUInt16(aValue and $ffff))+1;
-   fChannels[1].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16((aValue shr 16) and $ffff))+1;
+   if aSize>=4 then begin
+    fChannels[1].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16((aValue shr 16) and $ffff))+1;
+   end;
+  end;
+  (CM_REG_CH1_FRAME2+2):begin
+   fChannels[1].PeriodSize:=TPasRISCVUInt32(TPasRISCVUInt16(aValue and $ffff))+1;
   end;
   CM_REG_EXT_MISC:begin
    fExtMisc:=TPasRISCVUInt32(aValue);
@@ -57280,10 +57512,14 @@ var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
     Ch:PChannelDMA;
     ChIndex:TPasRISCVUInt32;
     BytePos,BytesAvailable,DMABufBytes:TPasRISCVUInt32;
+    CallbackTime,Step:TPasRISCVUInt64;
+    Produced,Used:TPasRISCVSizeInt;
 begin
 
  fLock.Acquire;
  try
+
+  CallbackTime:=GetCurrentFrequencyTime(1000000000);
 
   TPasMPMemoryBarrier.Read;
 
@@ -57333,6 +57569,7 @@ begin
 
   SrcRate:=GetChannelRate(ChIndex);
   DstRate:=fSoundIO.fSampleRate;
+  Step:=ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate);
 
   if IsStereo then begin
    Channels:=2;
@@ -57345,6 +57582,29 @@ begin
   DMABufBytes:=Ch^.BufferSize*FrameSize;
 
   Dest:=aBuffer;
+
+  // A freshly started playback begins at the point of this block that matches the start time,
+  // in the same way as the OPL3 writes are placed
+  if fPlayStartPending then begin
+   fPlayStartPending:=false;
+   TPasMPMemoryBarrier.Read;
+   fPlayStartDelay:=0;
+   if (fLastOutputCallbackTime<>0) and (fPlayStartTime>fLastOutputCallbackTime) then begin
+    fPlayStartDelay:=TPasRISCVSizeInt(ConvertScale(fPlayStartTime-fLastOutputCallbackTime,1000000000,DstRate));
+    if fPlayStartDelay>TPasRISCVSizeInt(DstRate div 10) then begin
+     fPlayStartDelay:=DstRate div 10;
+    end;
+   end;
+  end;
+  if fPlayStartDelay>0 then begin
+   ToDo:=fPlayStartDelay;
+   if ToDo>aCount then begin
+    ToDo:=aCount;
+   end;
+   inc(Dest,ToDo*2*SizeOf(TPasRISCVFloat));
+   dec(Remain,ToDo*2*SizeOf(TPasRISCVFloat));
+   dec(fPlayStartDelay,ToDo);
+  end;
 
   while Remain>0 do begin
 
@@ -57381,7 +57641,12 @@ begin
      SrcSamples:=DstSamples;
     end;
    end else begin
-    ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+    // Exactly the source frames that the resampler consumes for DstSamples output frames (at
+    // least one, the resampler reports what it really used)
+    ToDo:=ResampleLinearStreamInputFrames(DstSamples,fPlayResamplerPosition,Step);
+    if ToDo<1 then begin
+     ToDo:=1;
+    end;
     if SrcSamples>ToDo then begin
      SrcSamples:=ToDo;
     end;
@@ -57441,9 +57706,43 @@ begin
     end;
    end;
 
+   // Copy to output
+   if SrcRate=DstRate then begin
+    CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+    if CopyBytes>Remain then begin
+     CopyBytes:=Remain;
+    end;
+    Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
+    Used:=SrcSamples;
+   end else begin
+    // Streaming linear resampling. The ring position advances by exactly the source frames
+    // that the resampler consumed, so that the DMA runs at its nominal rate in relation to the
+    // output and does not drift away from the OPL3.
+    DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+    if length(fPlayResampleBuffer)<(DstSamples*2) then begin
+     SetLength(fPlayResampleBuffer,DstSamples*4);
+    end;
+    Produced:=ResampleLinearStream(@fPlayScratchBuffer[0],
+                                   SrcSamples,
+                                   @fPlayResampleBuffer[0],
+                                   DstSamples,
+                                   2,
+                                   @fPlayPreviousFrameEndValues[0],
+                                   @fPlayCurrentFrameValues[0],
+                                   fPlayResamplerPosition,
+                                   Step,
+                                   Used);
+    CopyBytes:=Produced*2*SizeOf(TPasRISCVFloat);
+    Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
+   end;
+
    // Advance ring buffer position and check period boundary
-   inc(Ch^.Position,CopyBytes);
-   inc(Ch^.PeriodCounter,SrcSamples);
+   inc(Ch^.Position,Used*FrameSize);
+   inc(Ch^.PeriodCounter,Used);
 
    // Check period elapsed
    if Ch^.PeriodCounter>=Ch^.PeriodSize then begin
@@ -57472,40 +57771,6 @@ begin
     end;
    end;
 
-   // Copy to output
-   if SrcRate=DstRate then begin
-    CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
-    if CopyBytes>Remain then begin
-     CopyBytes:=Remain;
-    end;
-    Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
-    inc(Dest,CopyBytes);
-    dec(Remain,CopyBytes);
-   end else begin
-    DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
-    ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
-    if ToDo>DstSamples then begin
-     ToDo:=DstSamples;
-    end;
-    if ToDo>0 then begin
-     if length(fPlayResampleBuffer)<(ToDo*2) then begin
-      SetLength(fPlayResampleBuffer,ToDo*4);
-     end;
-     ResampleLinear(@fPlayScratchBuffer[0],
-                    SrcSamples,
-                    @fPlayResampleBuffer[0],
-                    ToDo,
-                    2,
-                    @fPlayPreviousFrameEndValues[0],
-                    fPlayResamplerPosition,
-                    ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
-     CopyBytes:=ToDo*2*SizeOf(TPasRISCVFloat);
-     Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
-     inc(Dest,CopyBytes);
-     dec(Remain,CopyBytes);
-    end;
-   end;
-
   end;
 
   // Mix OPL3 on top
@@ -57519,6 +57784,11 @@ begin
   end;
 
  finally
+  // Anchor the time line of the OPL3 writes and of the playback starts to this block
+  fLastOutputCallbackTime:=CallbackTime;
+  if assigned(fOPL3) then begin
+   fOPL3.SetTimeAnchor(CallbackTime);
+  end;
   fLock.Release;
  end;
 
@@ -57540,6 +57810,7 @@ var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
     DMABufBytes:TPasRISCVUInt32;
     FloatSrc:PPasRISCVFloatArray;
     SampleFrameSize:TPasRISCVUInt32;
+    Used:TPasRISCVSizeInt;
 begin
 
  fLock.Acquire;
@@ -57615,57 +57886,50 @@ begin
     end;
    end;
 
-   // Determine how many source frames to consume
    if SrcRate=DstRate then begin
+
     if SrcSamples>DstSamples then begin
      SrcSamples:=DstSamples;
     end;
+
+    // Copy host float data into scratch buffer
+    if length(fCaptureScratchBuffer)<(SrcSamples*2) then begin
+     SetLength(fCaptureScratchBuffer,SrcSamples*4);
+    end;
+
+    CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+    Move(Src^,fCaptureScratchBuffer[0],CopyBytes);
+    inc(Src,CopyBytes);
+    dec(Remain,CopyBytes);
+
+    FloatSrc:=@fCaptureScratchBuffer[0];
+
    end else begin
-    ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
-    if SrcSamples>ToDo then begin
-     SrcSamples:=ToDo;
+
+    // Resample from host rate to guest rate. Only the host frames that the resampler really
+    // consumed are taken, the rest is resampled on after the wrap of the ring buffer.
+    if length(fCaptureResampleBuffer)<(DstSamples*2) then begin
+     SetLength(fCaptureResampleBuffer,DstSamples*4);
     end;
-   end;
-
-   // Copy host float data into scratch buffer
-   if length(fCaptureScratchBuffer)<(SrcSamples*2) then begin
-    SetLength(fCaptureScratchBuffer,SrcSamples*4);
-   end;
-
-   CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
-   Move(Src^,fCaptureScratchBuffer[0],CopyBytes);
-   inc(Src,CopyBytes);
-   dec(Remain,CopyBytes);
-
-   // Resample from host rate to guest rate if needed
-   if SrcRate<>DstRate then begin
-    ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
-    if ToDo>DstSamples then begin
-     ToDo:=DstSamples;
-    end;
-    if ToDo>0 then begin
-     if length(fCaptureResampleBuffer)<(ToDo*2) then begin
-      SetLength(fCaptureResampleBuffer,ToDo*4);
-     end;
-     ResampleLinear(@fCaptureScratchBuffer[0],
-                    SrcSamples,
-                    @fCaptureResampleBuffer[0],
-                    ToDo,
-                    2,
-                    @fCapturePreviousFrameEndValues[0],
-                    fCaptureResamplerPosition,
-                    ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
-     SrcSamples:=ToDo;
-    end else begin
+    SrcSamples:=ResampleLinearStream(PPasRISCVFloatArray(Src),
+                                     SrcSamples,
+                                     @fCaptureResampleBuffer[0],
+                                     DstSamples,
+                                     2,
+                                     @fCapturePreviousFrameEndValues[0],
+                                     @fCaptureCurrentFrameValues[0],
+                                     fCaptureResamplerPosition,
+                                     ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate),
+                                     Used);
+    CopyBytes:=Used*2*SizeOf(TPasRISCVFloat);
+    inc(Src,CopyBytes);
+    dec(Remain,CopyBytes);
+    if SrcSamples<=0 then begin
      continue;
     end;
-   end;
 
-   // Select source: resampled data or original scratch buffer
-   if SrcRate<>DstRate then begin
     FloatSrc:=@fCaptureResampleBuffer[0];
-   end else begin
-    FloatSrc:=@fCaptureScratchBuffer[0];
+
    end;
 
    // Clamp to what fits
@@ -57845,11 +58109,29 @@ begin
   fPlayPreviousFrameEndValues[0]:=ArrayNode.GetFloat32('0',fPlayPreviousFrameEndValues[0]);
   fPlayPreviousFrameEndValues[1]:=ArrayNode.GetFloat32('1',fPlayPreviousFrameEndValues[1]);
  end;
+ ArrayNode:=aNode.FindNode('PlayCurrentFrameValues');
+ if Assigned(ArrayNode) then begin
+  fPlayCurrentFrameValues[0]:=ArrayNode.GetFloat32('0',fPlayCurrentFrameValues[0]);
+  fPlayCurrentFrameValues[1]:=ArrayNode.GetFloat32('1',fPlayCurrentFrameValues[1]);
+ end else begin
+  // Snapshot from before the streaming resampler: the previous frame end values are the last
+  // consumed frame and only the fraction of the position counts
+  fPlayCurrentFrameValues:=fPlayPreviousFrameEndValues;
+  fPlayResamplerPosition:=(fPlayResamplerPosition and TPasRISCVUInt64($ffffffff)) or TPasRISCVUInt64($100000000);
+ end;
  fCaptureResamplerPosition:=aNode.GetUInt64('CaptureResamplerPosition',fCaptureResamplerPosition);
  ArrayNode:=aNode.FindNode('CapturePreviousFrameEndValues');
  if Assigned(ArrayNode) then begin
   fCapturePreviousFrameEndValues[0]:=ArrayNode.GetFloat32('0',fCapturePreviousFrameEndValues[0]);
   fCapturePreviousFrameEndValues[1]:=ArrayNode.GetFloat32('1',fCapturePreviousFrameEndValues[1]);
+ end;
+ ArrayNode:=aNode.FindNode('CaptureCurrentFrameValues');
+ if Assigned(ArrayNode) then begin
+  fCaptureCurrentFrameValues[0]:=ArrayNode.GetFloat32('0',fCaptureCurrentFrameValues[0]);
+  fCaptureCurrentFrameValues[1]:=ArrayNode.GetFloat32('1',fCaptureCurrentFrameValues[1]);
+ end else begin
+  fCaptureCurrentFrameValues:=fCapturePreviousFrameEndValues;
+  fCaptureResamplerPosition:=(fCaptureResamplerPosition and TPasRISCVUInt64($ffffffff)) or TPasRISCVUInt64($100000000);
  end;
 end;
 
@@ -57920,12 +58202,18 @@ begin
  ArrayNode:=aNode.AddObject('PlayPreviousFrameEndValues');
  ArrayNode.SetFloat32('0',fPlayPreviousFrameEndValues[0]);
  ArrayNode.SetFloat32('1',fPlayPreviousFrameEndValues[1]);
+ ArrayNode:=aNode.AddObject('PlayCurrentFrameValues');
+ ArrayNode.SetFloat32('0',fPlayCurrentFrameValues[0]);
+ ArrayNode.SetFloat32('1',fPlayCurrentFrameValues[1]);
 
  // Capture resampler
  aNode.SetUInt64('CaptureResamplerPosition',fCaptureResamplerPosition);
  ArrayNode:=aNode.AddObject('CapturePreviousFrameEndValues');
  ArrayNode.SetFloat32('0',fCapturePreviousFrameEndValues[0]);
  ArrayNode.SetFloat32('1',fCapturePreviousFrameEndValues[1]);
+ ArrayNode:=aNode.AddObject('CaptureCurrentFrameValues');
+ ArrayNode.SetFloat32('0',fCaptureCurrentFrameValues[0]);
+ ArrayNode.SetFloat32('1',fCaptureCurrentFrameValues[1]);
 end;
 
 { TPasRISCV.THDADevice }
@@ -58048,11 +58336,15 @@ begin
   fPlayResamplerPosition:=0;
   fPlayPreviousFrameEndValues[0]:=0.0;
   fPlayPreviousFrameEndValues[1]:=0.0;
+  fPlayCurrentFrameValues[0]:=0.0;
+  fPlayCurrentFrameValues[1]:=0.0;
   fCaptureScratchBuffer:=nil;
   fCaptureResampleBuffer:=nil;
   fCaptureResamplerPosition:=0;
   fCapturePreviousFrameEndValues[0]:=0.0;
   fCapturePreviousFrameEndValues[1]:=0.0;
+  fCaptureCurrentFrameValues[0]:=0.0;
+  fCaptureCurrentFrameValues[1]:=0.0;
  finally
   fLock.Release;
  end;
@@ -59116,6 +59408,8 @@ var Remain,ToDo,CopyBytes,SrcSamples,DstSamples:TPasRISCVSizeInt;
     BytesAvail:TPasRISCVUInt32;
     DPAddr:TPasRISCVUInt64;
     DPPtr:PPasRISCVUInt8Array;
+    Step:TPasRISCVUInt64;
+    Produced,Used:TPasRISCVSizeInt;
 begin
  fLock.Acquire;
  try
@@ -59154,6 +59448,7 @@ begin
 
   SrcRate:=SampleRate;
   DstRate:=fSoundIO.fSampleRate;
+  Step:=ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate);
 
   BDLAddr:=(TPasRISCVUInt64(Stream^.BDLPU) shl 32) or Stream^.BDLPL;
 
@@ -59221,7 +59516,12 @@ begin
      SrcSamples:=DstSamples;
     end;
    end else begin
-    ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
+    // Exactly the source frames that the resampler consumes for DstSamples output frames (at
+    // least one, the resampler reports what it really used)
+    ToDo:=ResampleLinearStreamInputFrames(DstSamples,fPlayResamplerPosition,Step);
+    if ToDo<1 then begin
+     ToDo:=1;
+    end;
     if SrcSamples>ToDo then begin
      SrcSamples:=ToDo;
     end;
@@ -59356,6 +59656,40 @@ begin
     end;
    end;
 
+   // Resample and copy to output
+   if SrcRate=DstRate then begin
+    CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
+    if CopyBytes>Remain then begin
+     CopyBytes:=Remain;
+    end;
+    Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
+    Used:=SrcSamples;
+   end else begin
+    // Streaming linear resampling. The BDL position advances by exactly the source frames that
+    // the resampler consumed, so that the DMA runs at its nominal rate in relation to the output.
+    DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
+    if length(fPlayResampleBuffer)<(DstSamples*2) then begin
+     SetLength(fPlayResampleBuffer,DstSamples*4);
+    end;
+    Produced:=ResampleLinearStream(@fPlayScratchBuffer[0],
+                                   SrcSamples,
+                                   @fPlayResampleBuffer[0],
+                                   DstSamples,
+                                   2,
+                                   @fPlayPreviousFrameEndValues[0],
+                                   @fPlayCurrentFrameValues[0],
+                                   fPlayResamplerPosition,
+                                   Step,
+                                   Used);
+    CopyBytes:=Produced*2*SizeOf(TPasRISCVFloat);
+    Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
+    inc(Dest,CopyBytes);
+    dec(Remain,CopyBytes);
+   end;
+   CopyBytes:=Used*FrameSize;
+
    // Advance BDL position
    inc(Stream^.BDLBytePos,CopyBytes);
    inc(Stream^.LPIB,CopyBytes);
@@ -59394,40 +59728,6 @@ begin
     Stream^.LPIB:=0;
    end;
 
-   // Resample and copy to output
-   if SrcRate=DstRate then begin
-    CopyBytes:=SrcSamples*2*SizeOf(TPasRISCVFloat);
-    if CopyBytes>Remain then begin
-     CopyBytes:=Remain;
-    end;
-    Move(fPlayScratchBuffer[0],Dest^,CopyBytes);
-    inc(Dest,CopyBytes);
-    dec(Remain,CopyBytes);
-   end else begin
-    DstSamples:=Remain div (2*SizeOf(TPasRISCVFloat));
-    ToDo:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
-    if ToDo>DstSamples then begin
-     ToDo:=DstSamples;
-    end;
-    if ToDo>0 then begin
-     if length(fPlayResampleBuffer)<(ToDo*2) then begin
-      SetLength(fPlayResampleBuffer,ToDo*4);
-     end;
-     ResampleLinear(@fPlayScratchBuffer[0],
-                    SrcSamples,
-                    @fPlayResampleBuffer[0],
-                    ToDo,
-                    2,
-                    @fPlayPreviousFrameEndValues[0],
-                    fPlayResamplerPosition,
-                    ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
-     CopyBytes:=ToDo*2*SizeOf(TPasRISCVFloat);
-     Move(fPlayResampleBuffer[0],Dest^,CopyBytes);
-     inc(Dest,CopyBytes);
-     dec(Remain,CopyBytes);
-    end;
-   end;
-
   end;
 
  finally
@@ -59440,7 +59740,7 @@ procedure TPasRISCV.THDADevice.InputAudioFillBufferCallback(const aBuffer:Pointe
 const OneOver128=1.0/128.0;
       OneOver32768=1.0/32768.0;
       OneOver2147483648=1.0/2147483648.0;
-var Remain,ToDo,SrcSamples,DstSamples:TPasRISCVSizeInt;
+var Remain,SrcSamples,DstSamples,Used:TPasRISCVSizeInt;
     FloatSrc:PPasRISCVFloatArray;
     SrcRate,DstRate:TPasRISCVUInt64;
     Bits,Channels,SampleRate:TPasRISCVUInt32;
@@ -59562,13 +59862,27 @@ begin
     end;
     SrcSamples:=DstSamples;
    end else begin
-    ToDo:=TPasRISCVSizeInt(ConvertScale(DstSamples,DstRate,SrcRate))+1;
-    if SrcSamples>ToDo then begin
-     SrcSamples:=ToDo;
+    // Resample from host rate to guest rate, at most DstSamples guest frames. Only the host
+    // frames that the resampler really consumed are taken, the rest is resampled on into the
+    // next BDL entry.
+    if length(fCaptureScratchBuffer)<(DstSamples*2) then begin
+     SetLength(fCaptureScratchBuffer,DstSamples*4);
     end;
-    DstSamples:=TPasRISCVSizeInt(ConvertScale(SrcSamples,SrcRate,DstRate));
+    DstSamples:=ResampleLinearStream(FloatSrc,
+                                     SrcSamples,
+                                     @fCaptureScratchBuffer[0],
+                                     DstSamples,
+                                     2,
+                                     @fCapturePreviousFrameEndValues[0],
+                                     @fCaptureCurrentFrameValues[0],
+                                     fCaptureResamplerPosition,
+                                     ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate),
+                                     Used);
+    SrcSamples:=Used;
     if DstSamples<=0 then begin
-     DstSamples:=1;
+     FloatSrc:=PPasRISCVFloatArray(@PPasRISCVFloatArray(aBuffer)^[((aCount-Remain)+SrcSamples)*2]);
+     dec(Remain,SrcSamples);
+     continue;
     end;
    end;
 
@@ -59581,24 +59895,7 @@ begin
     break;
    end;
 
-   // If resampling needed, resample first
    if SrcRate<>DstRate then begin
-    if length(fCaptureScratchBuffer)<(DstSamples*2) then begin
-     SetLength(fCaptureScratchBuffer,DstSamples*4);
-    end;
-    if length(fCaptureResampleBuffer)<(SrcSamples*2) then begin
-     SetLength(fCaptureResampleBuffer,SrcSamples*4);
-    end;
-    // Copy source samples into resample buffer
-    Move(FloatSrc^[0],fCaptureResampleBuffer[0],SrcSamples*2*SizeOf(TPasRISCVFloat));
-    ResampleLinear(@fCaptureResampleBuffer[0],
-                   SrcSamples,
-                   @fCaptureScratchBuffer[0],
-                   DstSamples,
-                   2,
-                   @fCapturePreviousFrameEndValues[0],
-                   fCaptureResamplerPosition,
-                   ConvertScale(TPasRISCVUInt64($100000000),SrcRate,DstRate));
     FloatSrc:=@fCaptureScratchBuffer[0];
    end;
 
@@ -59913,11 +60210,29 @@ begin
   fPlayPreviousFrameEndValues[0]:=ArrayNode.GetFloat32('0',fPlayPreviousFrameEndValues[0]);
   fPlayPreviousFrameEndValues[1]:=ArrayNode.GetFloat32('1',fPlayPreviousFrameEndValues[1]);
  end;
+ ArrayNode:=aNode.FindNode('PlayCurrentFrameValues');
+ if Assigned(ArrayNode) then begin
+  fPlayCurrentFrameValues[0]:=ArrayNode.GetFloat32('0',fPlayCurrentFrameValues[0]);
+  fPlayCurrentFrameValues[1]:=ArrayNode.GetFloat32('1',fPlayCurrentFrameValues[1]);
+ end else begin
+  // Snapshot from before the streaming resampler: the previous frame end values are the last
+  // consumed frame and only the fraction of the position counts
+  fPlayCurrentFrameValues:=fPlayPreviousFrameEndValues;
+  fPlayResamplerPosition:=(fPlayResamplerPosition and TPasRISCVUInt64($ffffffff)) or TPasRISCVUInt64($100000000);
+ end;
  fCaptureResamplerPosition:=aNode.GetUInt64('CaptureResamplerPosition',fCaptureResamplerPosition);
  ArrayNode:=aNode.FindNode('CapturePreviousFrameEndValues');
  if Assigned(ArrayNode) then begin
   fCapturePreviousFrameEndValues[0]:=ArrayNode.GetFloat32('0',fCapturePreviousFrameEndValues[0]);
   fCapturePreviousFrameEndValues[1]:=ArrayNode.GetFloat32('1',fCapturePreviousFrameEndValues[1]);
+ end;
+ ArrayNode:=aNode.FindNode('CaptureCurrentFrameValues');
+ if Assigned(ArrayNode) then begin
+  fCaptureCurrentFrameValues[0]:=ArrayNode.GetFloat32('0',fCaptureCurrentFrameValues[0]);
+  fCaptureCurrentFrameValues[1]:=ArrayNode.GetFloat32('1',fCaptureCurrentFrameValues[1]);
+ end else begin
+  fCaptureCurrentFrameValues:=fCapturePreviousFrameEndValues;
+  fCaptureResamplerPosition:=(fCaptureResamplerPosition and TPasRISCVUInt64($ffffffff)) or TPasRISCVUInt64($100000000);
  end;
 end;
 
@@ -60010,12 +60325,18 @@ begin
  ArrayNode:=aNode.AddObject('PlayPreviousFrameEndValues');
  ArrayNode.SetFloat32('0',fPlayPreviousFrameEndValues[0]);
  ArrayNode.SetFloat32('1',fPlayPreviousFrameEndValues[1]);
+ ArrayNode:=aNode.AddObject('PlayCurrentFrameValues');
+ ArrayNode.SetFloat32('0',fPlayCurrentFrameValues[0]);
+ ArrayNode.SetFloat32('1',fPlayCurrentFrameValues[1]);
 
  // Capture resampler
  aNode.SetUInt64('CaptureResamplerPosition',fCaptureResamplerPosition);
  ArrayNode:=aNode.AddObject('CapturePreviousFrameEndValues');
  ArrayNode.SetFloat32('0',fCapturePreviousFrameEndValues[0]);
  ArrayNode.SetFloat32('1',fCapturePreviousFrameEndValues[1]);
+ ArrayNode:=aNode.AddObject('CaptureCurrentFrameValues');
+ ArrayNode.SetFloat32('0',fCaptureCurrentFrameValues[0]);
+ ArrayNode.SetFloat32('1',fCaptureCurrentFrameValues[1]);
 end;
 
 { TPasRISCV.TVirtIODevice }
@@ -63127,6 +63448,8 @@ begin
      Stream.fResamplerPosition:=0;
      Stream.fPreviousFrameEndValues[0]:=0.0;
      Stream.fPreviousFrameEndValues[1]:=0.0;
+     Stream.fCurrentFrameValues[0]:=0.0;
+     Stream.fCurrentFrameValues[1]:=0.0;
     finally
      Stream.fLock.Leave;
     end;
@@ -63866,11 +64189,12 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOSoundDevice.OutputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
-var Remain,ToDo,Size:TPasRISCVSizeInt;
+var Remain,ToDo,Size,Used:TPasRISCVSizeInt;
     PCMStream:TPCMStream;
     PCMBuffer:TPCMBuffer;
     Dest:PPasRISCVUInt8;
     CountAudioSamples,CountResampledAudioSamples:TPasRISCVSizeInt;
+    Step:TPasRISCVUInt64;
 begin
 
  Remain:=aCount*2*SizeOf(TPasRISCVFloat);
@@ -63935,7 +64259,10 @@ begin
                    CountAudioSamples
                   );
       if SampleRates[PCMStream.fParams.Rate]<>fSoundIO.fSampleRate then begin
-       CountResampledAudioSamples:=ConvertScale(CountAudioSamples,SampleRates[PCMStream.fParams.Rate],fSoundIO.fSampleRate);
+       // All frames of the buffer go through the streaming resampler, the count of output frames
+       // follows from its carried over state, so that the stream runs at its nominal rate
+       Step:=ConvertScale(TPasRISCVUInt64($100000000),fSoundIO.fSampleRate,SampleRates[PCMStream.fParams.Rate]);
+       CountResampledAudioSamples:=ResampleLinearStreamOutputFrames(CountAudioSamples,PCMStream.fResamplerPosition,Step);
        Size:=CountResampledAudioSamples*2;
        if length(PCMBuffer.fResampledFloatData)<Size then begin
         SetLength(PCMBuffer.fResampledFloatData,Size*2);
@@ -63943,14 +64270,16 @@ begin
        if length(PCMBuffer.fFloatData)<Size then begin
         SetLength(PCMBuffer.fFloatData,Size*2);
        end;
-       ResampleLinear(@PCMBuffer.fFloatData[0],
-                      CountAudioSamples,
-                      @PCMBuffer.fResampledFloatData[0],
-                      CountResampledAudioSamples,
-                      2,
-                      pointer(@PCMStream.fPreviousFrameEndValues[0]),
-                      PCMStream.fResamplerPosition,
-                      ConvertScale(TPasRISCVUInt64($100000000),fSoundIO.fSampleRate,SampleRates[PCMStream.fParams.Rate]));
+       CountResampledAudioSamples:=ResampleLinearStream(@PCMBuffer.fFloatData[0],
+                                                        CountAudioSamples,
+                                                        @PCMBuffer.fResampledFloatData[0],
+                                                        CountResampledAudioSamples,
+                                                        2,
+                                                        pointer(@PCMStream.fPreviousFrameEndValues[0]),
+                                                        pointer(@PCMStream.fCurrentFrameValues[0]),
+                                                        PCMStream.fResamplerPosition,
+                                                        Step,
+                                                        Used);
        Move(PCMBuffer.fResampledFloatData[0],PCMBuffer.fFloatData[0],CountResampledAudioSamples*2*SizeOf(TPasRISCVFloat));
        CountAudioSamples:=CountResampledAudioSamples;
       end else begin
@@ -64008,11 +64337,11 @@ begin
 end;
 
 procedure TPasRISCV.TVirtIOSoundDevice.InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
-var SrcPos,Remain,DstSamples,CountAudioSamples,FramesToFill,FramesLeft,GuestBytesToFill:TPasRISCVSizeInt;
+var SrcPos,Remain,DstSamples,CountAudioSamples,FramesToFill,FramesLeft,GuestBytesToFill,Used:TPasRISCVSizeInt;
     PCMStream:TPCMStream;
     PCMBuffer:TPCMBuffer;
     FloatSrc:PPasRISCVFloatArray;
-    SrcRate,DstRate:TPasRISCVUInt64;
+    SrcRate,DstRate,Step:TPasRISCVUInt64;
     GuestFrameSize:TPasRISCVSizeInt;
 begin
 
@@ -64035,21 +64364,26 @@ begin
   Remain:=aCount;
 
   if SrcRate<>DstRate then begin
-   DstSamples:=TPasRISCVSizeInt(ConvertScale(Remain,SrcRate,DstRate));
-   if DstSamples<1 then begin
-    exit;
-   end;
+   // All host frames go through the streaming resampler, the count of guest frames follows from
+   // its carried over state, so that the capture runs at its nominal rate
+   Step:=ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate);
+   DstSamples:=ResampleLinearStreamOutputFrames(Remain,PCMStream.fResamplerPosition,Step);
    if length(fRXScratchBuffer)<(DstSamples*2) then begin
     SetLength(fRXScratchBuffer,DstSamples*4);
    end;
-   ResampleLinear(aBuffer,
-                  Remain,
-                  @fRXScratchBuffer[0],
-                  DstSamples,
-                  2,
-                  pointer(@PCMStream.fPreviousFrameEndValues[0]),
-                  PCMStream.fResamplerPosition,
-                  ConvertScale(TPasRISCVUInt64($100000000),DstRate,SrcRate));
+   DstSamples:=ResampleLinearStream(aBuffer,
+                                    Remain,
+                                    @fRXScratchBuffer[0],
+                                    DstSamples,
+                                    2,
+                                    pointer(@PCMStream.fPreviousFrameEndValues[0]),
+                                    pointer(@PCMStream.fCurrentFrameValues[0]),
+                                    PCMStream.fResamplerPosition,
+                                    Step,
+                                    Used);
+   if DstSamples<1 then begin
+    exit;
+   end;
    FloatSrc:=@fRXScratchBuffer[0];
    Remain:=DstSamples;
   end else begin
