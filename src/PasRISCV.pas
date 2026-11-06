@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-11-04-18-41-0000                       *
+ *                        Version 2026-11-06-14-02-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -13978,6 +13978,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure SwapHypervisorRegs; // H-extension: swap S↔VS CSRs on V transition
               procedure SetVirtualMode(const aEnabled:Boolean); // H-extension: set V bit
               procedure SleepUntilNextInterrupt;
+              procedure SleepWithoutDeadline; // WFI with no timer deadline ahead: wait until woken
               procedure SleepPause;
               procedure Execute;
               procedure ThreadProc;
@@ -22736,6 +22737,10 @@ const PasRISCVWinSTATUS_SUCCESS=LONG(0);
 
 var GlobalSleepGranularity:TPasRISCVUInt64=5000;
     GlobalSleepThreshold:TPasRISCVUInt64=20000;
+    // How much of a wait is spun out at its very end, for precise timing. Everything before it is
+    // slept, in whole milliseconds on the condition variable while that is possible and below a
+    // millisecond through SleepShortTime. Set at initialization, in CLOCK_FREQUENCY units.
+    GlobalSpinThreshold:TPasRISCVUInt64=50;
 
 {$if defined(fpc) and defined(Unix)}
 {$if not declared(clock_gettime)}
@@ -22872,6 +22877,49 @@ begin
  result:=GetCurrentFrequencyTime(10000000);
 end;
 
+// Sleeps for about aDuration (CLOCK_FREQUENCY units), also below a millisecond, which the condition
+// variable cannot do. It may come back a little late, which is what the spun out GlobalSpinThreshold
+// after it is for. Where the platform has no such sleep, it comes back at once, and the caller then
+// spins as it always did.
+procedure SleepShortTime(const aDuration:TPasRISCVUInt64);
+{$if defined(Windows)}
+var Interval:TLargeInteger;
+begin
+ if assigned(NtDelayExecution) and (aDuration>0) then begin
+  // Negative means relative, in 100-ns units
+  Interval:=-TLargeInteger(ConvertScale(aDuration,CLOCK_FREQUENCY,10000000));
+  if Interval<0 then begin
+   NtDelayExecution(false,Interval);
+  end;
+ end;
+end;
+{$elseif defined(fpc) and defined(Unix)}
+var Nanoseconds:TPasRISCVUInt64;
+    Request,Remaining:TTimeSpec;
+begin
+ Nanoseconds:=ConvertScale(aDuration,CLOCK_FREQUENCY,1000000000);
+ if Nanoseconds>0 then begin
+  Request.tv_sec:=Nanoseconds div 1000000000;
+  Request.tv_nsec:=Nanoseconds mod 1000000000;
+  FpNanoSleep(@Request,@Remaining);
+ end;
+end;
+{$elseif defined(Posix)}
+var Nanoseconds:TPasRISCVUInt64;
+    Request:timespec;
+begin
+ Nanoseconds:=ConvertScale(aDuration,CLOCK_FREQUENCY,1000000000);
+ if Nanoseconds>0 then begin
+  Request.tv_sec:=Nanoseconds div 1000000000;
+  Request.tv_nsec:=Nanoseconds mod 1000000000;
+  nanosleep(Request,nil);
+ end;
+end;
+{$else}
+begin
+end;
+{$ifend}
+
 procedure WaitTime(const aDuration:TPasRISCVUInt64);
 var SleepThreshold,TimeA,TimeB,Remaining,WaitForDuration,Difference:TPasRISCVUInt64;
 begin
@@ -22888,9 +22936,24 @@ begin
  // Sleep for a while to avoid busy waiting
  while Remaining>SleepThreshold do begin
   WaitForDuration:=ConvertScale(Remaining-SleepThreshold,CLOCK_FREQUENCY,1000);
-  if WaitForDuration>0 then begin
-   Sleep(WaitForDuration);
+  if WaitForDuration=0 then begin
+   // Less than a whole millisecond left, which is for the short sleep below
+   break;
   end;
+  Sleep(WaitForDuration);
+  TimeB:=GetCurrentTime;
+  Difference:=TimeB-TimeA;
+  if Remaining>Difference then begin
+   dec(Remaining,Difference);
+  end else begin
+   Remaining:=0;
+  end;
+  TimeA:=TimeB;
+ end;
+
+ // The rest is slept as well, below a millisecond, but for the very end
+ while Remaining>GlobalSpinThreshold do begin
+  SleepShortTime(Remaining-GlobalSpinThreshold);
   TimeB:=GetCurrentTime;
   Difference:=TimeB-TimeA;
   if Remaining>Difference then begin
@@ -22933,24 +22996,39 @@ begin
  // Sleep for a while to avoid busy waiting
  while Remaining>SleepThreshold do begin
   WaitForDuration:=ConvertScale(Remaining-SleepThreshold,CLOCK_FREQUENCY,1000);
-  if WaitForDuration>0 then begin
-   case aConditionVariable.Wait(aConditionVariableLock,WaitForDuration) of
-    wrSignaled:begin
-     result:=wrSignaled;
-     exit;
-    end;
-    wrError:begin
-     result:=wrError;
-     exit;
-    end;
-    wrAbandoned:begin
-     result:=wrAbandoned;
-     exit;
-    end;
-    else begin
-    end;
+  if WaitForDuration=0 then begin
+   // Less than a whole millisecond left, which is for the short sleep below
+   break;
+  end;
+  case aConditionVariable.Wait(aConditionVariableLock,WaitForDuration) of
+   wrSignaled:begin
+    result:=wrSignaled;
+    exit;
+   end;
+   wrError:begin
+    result:=wrError;
+    exit;
+   end;
+   wrAbandoned:begin
+    result:=wrAbandoned;
+    exit;
+   end;
+   else begin
    end;
   end;
+  TimeB:=GetCurrentTime;
+  Difference:=TimeB-TimeA;
+  if Remaining>Difference then begin
+   dec(Remaining,Difference);
+  end else begin
+   Remaining:=0;
+  end;
+  TimeA:=TimeB;
+ end;
+
+ // The rest is slept as well, below a millisecond, but for the very end
+ while Remaining>GlobalSpinThreshold do begin
+  SleepShortTime(Remaining-GlobalSpinThreshold);
   TimeB:=GetCurrentTime;
   Difference:=TimeB-TimeA;
   if Remaining>Difference then begin
@@ -145565,6 +145643,11 @@ begin
 {$ifdef PasRISCVUseFutexEvents}
      while (Remaining>SleepThreshold) and ((TPasMPInterlocked.Read(fMachine.fRunState) and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) do begin
       WaitForDuration:=ConvertScale(Remaining-SleepThreshold,CLOCK_FREQUENCY,1000);
+      if WaitForDuration=0 then begin
+       // Less than a whole millisecond left, which is for the short sleep below. Going round
+       // again without waiting would only spin.
+       break;
+      end;
       if WaitForDuration>0 then begin
 {$if defined(PasRISCVInterruptWakeupHardening)}
        WakeGeneration:=TPasMPInterlocked.Read({$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeGeneration);
@@ -145592,6 +145675,11 @@ begin
      try
       while (Remaining>SleepThreshold) and ((TPasMPInterlocked.Read(fMachine.fRunState) and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) do begin
        WaitForDuration:=ConvertScale(Remaining-SleepThreshold,CLOCK_FREQUENCY,1000);
+       if WaitForDuration=0 then begin
+        // Less than a whole millisecond left, which is for the short sleep below. Going round
+        // again without waiting would only spin.
+        break;
+       end;
        if WaitForDuration>0 then begin
 {$if defined(PasRISCVInterruptWakeupHardening)}
         WakeGeneration:=TPasMPInterlocked.Read({$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeGeneration);
@@ -145629,6 +145717,21 @@ begin
 
     end;
 
+    // What is left, the threshold above and whatever part of a millisecond the condition variable
+    // could not wait, is slept as well, all but its very end. Spinning all of it kept every hart of
+    // an idle guest on a full host core whenever its timer came every few milliseconds.
+    while (Remaining>GlobalSpinThreshold) and ((TPasMPInterlocked.Read(fMachine.fRunState) and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) do begin
+     SleepShortTime(Remaining-GlobalSpinThreshold);
+     TimeB:=fACLINTDevice.GetTime;
+     Difference:=TimeB-TimeA;
+     if Remaining>Difference then begin
+      dec(Remaining,Difference);
+     end else begin
+      Remaining:=0;
+     end;
+     TimeA:=TimeB;
+    end;
+
     while (Remaining>0) and ((TPasMPInterlocked.Read(fMachine.fRunState) and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) do begin
      TimeB:=fACLINTDevice.GetTime;
      Difference:=TimeB-TimeA;
@@ -145642,6 +145745,13 @@ begin
 
     Time:=fACLINTDevice.GetTime;
 
+   end else if (SleepDuration=TPasRISCVUInt64($ffffffffffffffff)) and
+               not ((((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.MachineTimer)<>0) and (Time>=MTIMECMP)) or
+                    (((ActiveTimers and TPasRISCV.THART.TInterruptValueMasks.SupervisorTimer)<>0) and (Time>=STIMECMP))) then begin
+    // Timers enabled, but none of them set, as in the tickless idle of a guest, and none of them
+    // due either, which is for the code below: there is nothing to wake up for but an interrupt
+    // from elsewhere. Returning at once made the hart spin through WFI on a full host core.
+    SleepWithoutDeadline;
    end;
 
    DoInterrupt:=false;
@@ -145663,12 +145773,44 @@ begin
 //  RestartExecution;
    end;
 
+  end else begin
+
+   // No timer enabled at all, as with a hart parked until it is started: the same as above
+   SleepWithoutDeadline;
+
   end;
 
  end;
 
  fState.Sleep:=false;
 
+end;
+
+// A hart in WFI with no timer deadline ahead waits for whatever wakes it from elsewhere, an IPI or a
+// device interrupt, both of which come through InterruptAndWakeUp. Checked under the wake-up lock,
+// which the waker takes as well, so that a wake-up between the check and the wait is not lost.
+// Bounded nonetheless, for an interrupt which arrives some other way: one wake-up per millisecond
+// costs next to nothing next to the spinning through WFI which this replaces.
+procedure TPasRISCV.THART.SleepWithoutDeadline;
+const MaximumWaitMilliseconds=1;
+begin
+{$ifdef PasRISCVUseFutexEvents}
+ if ((InterruptsPending or SupervisorVirtualInterrupts)=0) and
+    ((TPasMPInterlocked.Read(fMachine.fRunState) and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) then begin
+  {$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeUpFutexEvent.Wait(MaximumWaitMilliseconds*1000000);
+  {$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeUpFutexEvent.Reset;
+ end;
+{$else}
+ {$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeUpConditionVariableLock.Acquire;
+ try
+  if ((InterruptsPending or SupervisorVirtualInterrupts)=0) and
+     ((TPasMPInterlocked.Read(fMachine.fRunState) and (fHARTMask or TPasRISCVUInt32(RUNSTATE_GLOBAL_MASK)))=RUNSTATE_RUNNING) then begin
+   {$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeUpConditionVariable.Wait({$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeUpConditionVariableLock,MaximumWaitMilliseconds);
+  end;
+ finally
+  {$ifndef PasRISCVPerHARTConditionVariables}fMachine.{$endif}fWakeUpConditionVariableLock.Release;
+ end;
+{$endif}
 end;
 
 procedure TPasRISCV.THART.SleepPause;
@@ -155651,6 +155793,14 @@ initialization
 {$endif}
  GlobalSleepGranularity:=ConvertScale(GlobalSleepGranularity,10000000,CLOCK_FREQUENCY);
  GlobalSleepThreshold:=GlobalSleepGranularity*4;
+ // The end of a wait which is spun rather than slept, see SleepShortTime. NtDelayExecution sleeps in
+ // steps of the timer resolution, so one such step is left to spin; nanosleep comes back within some
+ // ten microseconds of the time asked for.
+{$ifdef windows}
+ GlobalSpinThreshold:=GlobalSleepGranularity;
+{$else}
+ GlobalSpinThreshold:=ConvertScale(500,10000000,CLOCK_FREQUENCY); // 50us
+{$endif}
  FillChar(ZeroBuffer,SizeOf(TZeroBuffer),#0);
  CheckCPU;
  GenerateHalfFloatLookUpTables;
