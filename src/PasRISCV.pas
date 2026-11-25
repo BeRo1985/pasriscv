@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-11-25-17-11-0000                       *
+ *                        Version 2026-11-25-23-08-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -72458,7 +72458,9 @@ begin
 
      if ((Generation and 1)=0) and (EventItem.Generation=Generation) and not Terminated then begin
 
-      fVirtIOVSockDevice.fManager.DispatchEvent(EventItem);
+      // Through the device's dispatch, which works without a manager, falls back to the callbacks
+      // and rejects a connect request that nobody takes with RST
+      fVirtIOVSockDevice.DispatchEvent(EventItem);
 
      end;
 
@@ -74109,6 +74111,10 @@ begin
    TEventItem.TEventKind.Connect:begin
     if assigned(fOnConnect) then begin
      fOnConnect(self,aEventItem.Connection.fLocalPort,aEventItem.Connection.fRemotePort,aEventItem.Connection.fSocketType);
+    end else begin
+     // No listener on this port, so the virtio spec (Socket Device, Stream Sockets) asks for
+     // an RST reply instead of leaving the guest's connect pending
+     RejectConnection(aEventItem.Connection.fRemotePort,aEventItem.Connection.fLocalPort);
     end;
    end;
    TEventItem.TEventKind.Accept:begin
