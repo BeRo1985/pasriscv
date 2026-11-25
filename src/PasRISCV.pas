@@ -1,7 +1,7 @@
 ﻿(******************************************************************************
  *                                  PasRISCV                                  *
  ******************************************************************************
- *                        Version 2026-11-06-14-02-0000                       *
+ *                        Version 2026-11-25-17-11-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -6222,6 +6222,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     Format:TPasRISCVUInt32;        // 2-bit format: bit1=16bit, bit0=stereo
                     PeriodCounter:TPasRISCVUInt32;  // frames since last period IRQ
                     IntPending:Boolean;
+                    PeriodHasSound:Boolean;
+                    FramesSinceInterrupt:TPasRISCVUInt32;
                    end;
                    PChannelDMA=^TChannelDMA;
                    TChannelsArray=array[0..1] of TChannelDMA;
@@ -6285,6 +6287,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fPlayStartTime:TPasRISCVUInt64;
               fPlayStartPending:TPasMPBool32;
               fPlayStartDelay:TPasRISCVSizeInt;
+              fSuppressSilentPeriodInterrupts:TPasMPBool32;
               // Helper
               function GetChannelFrameSize(const aChannel:PChannelDMA):TPasRISCVUInt32;
               function GetPlaybackChannel:PChannelDMA;
@@ -6307,6 +6310,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
               property SoundIO:TSoundIO read fSoundIO;
+              property SuppressSilentPeriodInterrupts:TPasMPBool32 read fSuppressSilentPeriodInterrupts write fSuppressSilentPeriodInterrupts;
               procedure LoadSnapshot(const aNode:TSnapshot.TNode); override;
               procedure SaveSnapshot(const aNode:TSnapshot.TNode); override;
             end;
@@ -6552,6 +6556,10 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                     Running:Boolean;
                     BDLEntryIndex:TPasRISCVUInt32;
                     BDLBytePos:TPasRISCVUInt32;
+                    // Silent period interrupt suppression (playback)
+                    PeriodHasSound:Boolean;
+                    PeriodBytes:TPasRISCVUInt32;         // bytes since the end of the last IOC entry
+                    BytesSinceInterrupt:TPasRISCVUInt32; // bytes since the last fired IOC interrupt
                    end;
                    PHDAStream=^THDAStream;
                    THDAStreams=array[0..HDA_NUM_STREAMS-1] of THDAStream;
@@ -6623,6 +6631,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fCapturePreviousFrameEndValues:TFrameEndValues;
               fCaptureCurrentFrameValues:TFrameEndValues;
               fLock:TPasMPCriticalSection;
+              fSuppressSilentPeriodInterrupts:TPasMPBool32;
               // MMIO BAR callbacks
               function OnLoad(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aSize:TPasRISCVUInt64):TPasRISCVUInt64;
               procedure OnStore(const aPCIMemoryDevice:TPCIMemoryDevice;const aAddress:TPasRISCVUInt64;const aValue:TPasRISCVUInt64;const aSize:TPasRISCVUInt64);
@@ -6641,6 +6650,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function FindOutputStreamForCodec:PHDAStream;
               function FindInputStreamForCodec:PHDAStream;
               procedure ParseStreamFormat(const aFmt:TPasRISCVUInt16;out aSampleRate:TPasRISCVUInt32;out aBits,aChannels:TPasRISCVUInt32);
+              procedure OutputBufferEntryCompleted(const aStream:PHDAStream);
              public
               constructor Create(const aBus:TPCIBusDevice;const aSoundIO:TSoundIO); reintroduce;
               destructor Destroy; override;
@@ -6649,6 +6659,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
               property SoundIO:TSoundIO read fSoundIO;
+              property SuppressSilentPeriodInterrupts:TPasMPBool32 read fSuppressSilentPeriodInterrupts write fSuppressSilentPeriodInterrupts;
               procedure LoadSnapshot(const aNode:TSnapshot.TNode); override;
               procedure SaveSnapshot(const aNode:TSnapshot.TNode); override;
             end;
@@ -6844,8 +6855,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               function CopyMemoryToQueue(const aQueueIndex,aDescriptorIndex,aOffset:TPasRISCVUInt64;const aBuf:Pointer;const aCount:TPasRISCVUInt64):Boolean;
               function ConsumeDescriptor(const aQueueIndex,aDescriptorIndex,aDescriptorLength:TPasRISCVUInt64):Boolean;
               function UsedRingSync(const aQueueIndex:TPasRISCVUInt64):Boolean;
-{$ifdef VirtIOBatchNotify}
               function UsedRingPublish(const aQueueIndex:TPasRISCVUInt64):Boolean;
+{$ifdef VirtIOBatchNotify}
               procedure UsedRingNotify(const aQueueIndex:TPasRISCVUInt64);
 {$endif}
               function GetDescriptors(out aReadSize,aWriteSize:TPasRISCVUInt64;const aQueueIndex,aDescriptorIndex:TPasRISCVUInt64):Boolean;
@@ -7385,6 +7396,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fOffset:TPasRISCVUInt64;
                      fAvailableIndex:TPasRISCVInt64;
                      fPopulated:Boolean;
+                     fHasSound:Boolean;
                      fData:TPasRISCVUInt8DynamicArray;
                      fFloatData:TPasRISCVFloatDynamicArray;
                      fResampledFloatData:TPasRISCVFloatDynamicArray;
@@ -7428,6 +7440,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
                      fPreviousFrameEndValues:array[0..1] of TPasRISCVFloat;
                      fCurrentFrameValues:array[0..1] of TPasRISCVFloat;
                      fResamplerPosition:TPasRISCVUInt64;
+                     fBytesSinceNotify:TPasRISCVUInt64; // guest bytes since the last signalled TX completion
                     public
                      procedure ReturnBuffer(const aPCMBuffer:TPCMBuffer;const aLock:Boolean);
                    end;
@@ -7447,6 +7460,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               fRXScratchBuffer:TPasRISCVFloatDynamicArray;
               fRXConvertScratchBuffer:TPasRISCVFloatDynamicArray;
               fOutputWAVStreamDump:TPasRISCVAudioWAVStreamDump;
+              fSuppressSilentPeriodInterrupts:TPasMPBool32;
              public
               constructor Create(const aMachine:TPasRISCV;const aSoundIO:TSoundIO); reintroduce;
               destructor Destroy; override;
@@ -7454,7 +7468,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure DeviceReset; override;
               function DeviceRecv(const aQueueIndex,aDescriptorIndex,aReadSize,aWriteSize:TPasRISCVUInt64):Boolean; override;
               procedure FreeBufferQueue(var aBufferQueue:TPCMBufferQueue);
-              procedure NotifyTXBuffer(const aPCMBuffer:TPCMBuffer);
+              procedure NotifyTXBuffer(const aPCMBuffer:TPCMBuffer;const aSignal:Boolean);
               procedure NotifyRXBuffer(const aPCMBuffer:TPCMBuffer);
               procedure FlushTX;
               procedure FlushRX;
@@ -7462,6 +7476,7 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               procedure InputAudioFillBufferCallback(const aBuffer:Pointer;const aCount:TPasRISCVSizeInt);
              public
               property SoundIO:TSoundIO read fSoundIO;
+              property SuppressSilentPeriodInterrupts:TPasMPBool32 read fSuppressSilentPeriodInterrupts write fSuppressSilentPeriodInterrupts;
               procedure LoadSnapshot(const aNode:TSnapshot.TNode); override;
               procedure SaveSnapshot(const aNode:TSnapshot.TNode); override;
             end;
@@ -14501,6 +14516,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
 
               fSoundMode:TSoundMode;
 
+              fSoundSuppressSilentPeriodInterrupts:Boolean;
+
               fDisplayMode:TDisplayMode;
 
               fNetworkMode:TNetworkMode;
@@ -14732,6 +14749,8 @@ type PPPasRISCVInt8=^PPasRISCVInt8;
               property NVMeEnabled:Boolean read fNVMeEnabled write fNVMeEnabled;
 
               property SoundMode:TSoundMode read fSoundMode write fSoundMode;
+
+              property SoundSuppressSilentPeriodInterrupts:Boolean read fSoundSuppressSilentPeriodInterrupts write fSoundSuppressSilentPeriodInterrupts;
 
               property DisplayMode:TDisplayMode read fDisplayMode write fDisplayMode;
 
@@ -57108,12 +57127,16 @@ begin
    if (fFuncCtrl0 and CM_RST_CH0)<>0 then begin
     fChannels[0].Position:=0;
     fChannels[0].PeriodCounter:=0;
+    fChannels[0].PeriodHasSound:=false;
+    fChannels[0].FramesSinceInterrupt:=0;
     fChannels[0].IntPending:=false;
     fFuncCtrl0:=fFuncCtrl0 and not CM_RST_CH0;
    end;
    if (fFuncCtrl0 and CM_RST_CH1)<>0 then begin
     fChannels[1].Position:=0;
     fChannels[1].PeriodCounter:=0;
+    fChannels[1].PeriodHasSound:=false;
+    fChannels[1].FramesSinceInterrupt:=0;
     fChannels[1].IntPending:=false;
     fFuncCtrl0:=fFuncCtrl0 and not CM_RST_CH1;
    end;
@@ -57123,6 +57146,8 @@ begin
    if ((fFuncCtrl0 and CM_CHEN0)<>0) and ((OldFuncCtrl0 and CM_CHEN0)=0) then begin
     fChannels[0].Position:=0;
     fChannels[0].PeriodCounter:=0;
+    fChannels[0].PeriodHasSound:=false;
+    fChannels[0].FramesSinceInterrupt:=0;
     if (fFuncCtrl0 and CM_CHADC0)=0 then begin
      fPlayResamplerPosition:=0;
      fPlayPreviousFrameEndValues[0]:=0.0;
@@ -57144,6 +57169,8 @@ begin
    if ((fFuncCtrl0 and CM_CHEN1)<>0) and ((OldFuncCtrl0 and CM_CHEN1)=0) then begin
     fChannels[1].Position:=0;
     fChannels[1].PeriodCounter:=0;
+    fChannels[1].PeriodHasSound:=false;
+    fChannels[1].FramesSinceInterrupt:=0;
     if (fFuncCtrl0 and CM_CHADC1)=0 then begin
      fPlayResamplerPosition:=0;
      fPlayPreviousFrameEndValues[0]:=0.0;
@@ -57740,9 +57767,19 @@ begin
     dec(Remain,CopyBytes);
    end;
 
+   if fSuppressSilentPeriodInterrupts and not Ch^.PeriodHasSound then begin
+    for SampleIndex:=0 to (Used*2)-1 do begin
+     if fPlayScratchBuffer[SampleIndex]<>0.0 then begin
+      Ch^.PeriodHasSound:=true;
+      break;
+     end;
+    end;
+   end;
+
    // Advance ring buffer position and check period boundary
    inc(Ch^.Position,Used*FrameSize);
    inc(Ch^.PeriodCounter,Used);
+   inc(Ch^.FramesSinceInterrupt,Used);
 
    // Check period elapsed
    if Ch^.PeriodCounter>=Ch^.PeriodSize then begin
@@ -57754,8 +57791,15 @@ begin
       dec(Ch^.PeriodCounter,Ch^.PeriodSize);
      end;
     end;
-    Ch^.IntPending:=true;
-    CheckAndFireIRQ;
+    // Skip a silent period's interrupt, keep at least two per buffer
+    if not (fSuppressSilentPeriodInterrupts and
+            (not Ch^.PeriodHasSound) and
+            (((Ch^.FramesSinceInterrupt+Ch^.PeriodSize)*2)<=Ch^.BufferSize)) then begin
+     Ch^.FramesSinceInterrupt:=0;
+     Ch^.IntPending:=true;
+     CheckAndFireIRQ;
+    end;
+    Ch^.PeriodHasSound:=false;
    end;
 
    // Wrap ring buffer
@@ -58071,6 +58115,9 @@ begin
     Channel^.Format:=ChNode.GetUInt32('Format',Channel^.Format);
     Channel^.PeriodCounter:=ChNode.GetUInt32('PeriodCounter',Channel^.PeriodCounter);
     Channel^.IntPending:=ChNode.GetBool('IntPending',Channel^.IntPending);
+    // Not in the snapshot, the next period interrupt is always fired
+    Channel^.PeriodHasSound:=true;
+    Channel^.FramesSinceInterrupt:=0;
    end;
   end;
  end;
@@ -58486,6 +58533,9 @@ begin
   Stream^.LPIB:=0;
   Stream^.BDLEntryIndex:=0;
   Stream^.BDLBytePos:=0;
+  Stream^.PeriodHasSound:=false;
+  Stream^.PeriodBytes:=0;
+  Stream^.BytesSinceInterrupt:=0;
   Stream^.Running:=false;
   exit;
  end;
@@ -58502,6 +58552,9 @@ begin
    Stream^.LPIB:=0;
    Stream^.BDLEntryIndex:=0;
    Stream^.BDLBytePos:=0;
+   Stream^.PeriodHasSound:=false;
+   Stream^.PeriodBytes:=0;
+   Stream^.BytesSinceInterrupt:=0;
    Stream^.STS:=HDA_SDSTS_FIFORDY;
   end else begin
    // Stop
@@ -58513,6 +58566,21 @@ begin
  end;
  UpdateIRQ;
  TPasMPMemoryBarrier.Write;
+end;
+
+procedure TPasRISCV.THDADevice.OutputBufferEntryCompleted(const aStream:PHDAStream);
+begin
+ // Skip a silent period's IOC interrupt, keep at least two per buffer. The period that just
+ // ended stands in for the length of the next one.
+ if not (fSuppressSilentPeriodInterrupts and
+         (not aStream^.PeriodHasSound) and
+         (((aStream^.BytesSinceInterrupt+aStream^.PeriodBytes)*2)<=aStream^.CBL)) then begin
+  aStream^.BytesSinceInterrupt:=0;
+  aStream^.STS:=aStream^.STS or HDA_SDSTS_BCIS;
+  UpdateIRQ;
+ end;
+ aStream^.PeriodHasSound:=false;
+ aStream^.PeriodBytes:=0;
 end;
 
 function TPasRISCV.THDADevice.FindOutputStreamForCodec:PHDAStream;
@@ -59489,8 +59557,7 @@ begin
     // Advance to next BDL entry
     if (EntryFlags and 1)<>0 then begin
      // IOC - interrupt on completion
-     Stream^.STS:=Stream^.STS or HDA_SDSTS_BCIS;
-     UpdateIRQ;
+     OutputBufferEntryCompleted(Stream);
     end;
     Stream^.BDLBytePos:=0;
     inc(Stream^.BDLEntryIndex);
@@ -59690,9 +59757,20 @@ begin
    end;
    CopyBytes:=Used*FrameSize;
 
+   if fSuppressSilentPeriodInterrupts and not Stream^.PeriodHasSound then begin
+    for SampleIndex:=0 to (Used*2)-1 do begin
+     if fPlayScratchBuffer[SampleIndex]<>0.0 then begin
+      Stream^.PeriodHasSound:=true;
+      break;
+     end;
+    end;
+   end;
+
    // Advance BDL position
    inc(Stream^.BDLBytePos,CopyBytes);
    inc(Stream^.LPIB,CopyBytes);
+   inc(Stream^.PeriodBytes,CopyBytes);
+   inc(Stream^.BytesSinceInterrupt,CopyBytes);
 
    // Update DMA position buffer if enabled
    if (fDPLBase and 1)<>0 then begin
@@ -59712,8 +59790,7 @@ begin
    // Check if we crossed BDL entry boundary
    if Stream^.BDLBytePos>=EntryLen then begin
     if (EntryFlags and 1)<>0 then begin
-     Stream^.STS:=Stream^.STS or HDA_SDSTS_BCIS;
-     UpdateIRQ;
+     OutputBufferEntryCompleted(Stream);
     end;
     Stream^.BDLBytePos:=0;
     inc(Stream^.BDLEntryIndex);
@@ -60180,6 +60257,10 @@ begin
     Stream^.Running:=StreamNode.GetBool('Running',Stream^.Running);
     Stream^.BDLEntryIndex:=StreamNode.GetUInt32('BDLEntryIndex',Stream^.BDLEntryIndex);
     Stream^.BDLBytePos:=StreamNode.GetUInt32('BDLBytePos',Stream^.BDLBytePos);
+    // Not in the snapshot, the next IOC interrupt is always fired
+    Stream^.PeriodHasSound:=true;
+    Stream^.PeriodBytes:=0;
+    Stream^.BytesSinceInterrupt:=0;
    end;
   end;
  end;
@@ -61026,7 +61107,7 @@ begin
 
 end;
 
-{$ifdef VirtIOBatchNotify}
+// Publishes the used index like UsedRingSync, but without notifying the driver
 function TPasRISCV.TVirtIODevice.UsedRingPublish(const aQueueIndex:TPasRISCVUInt64):Boolean;
 var Queue:PQueue;
     VirtQAvailPtr:Pointer;
@@ -61047,6 +61128,7 @@ begin
  result:=true;
 end;
 
+{$ifdef VirtIOBatchNotify}
 procedure TPasRISCV.TVirtIODevice.UsedRingNotify(const aQueueIndex:TPasRISCVUInt64);
 var Queue:PQueue;
     Flags:TPasRISCVUInt16;
@@ -64035,7 +64117,7 @@ begin
  end;
 end;
 
-procedure TPasRISCV.TVirtIOSoundDevice.NotifyTXBuffer(const aPCMBuffer:TPCMBuffer);
+procedure TPasRISCV.TVirtIOSoundDevice.NotifyTXBuffer(const aPCMBuffer:TPCMBuffer;const aSignal:Boolean);
 var QueueIndex:TPasRISCVUInt64;
     DescriptorIndex:TPasRISCVUInt16;
     Queue:PQueue;
@@ -64059,9 +64141,12 @@ begin
 
     if Read16((Queue^.AvailableAddress+4)+((aPCMBuffer.fAvailableIndex and (Queue^.Size-1)) shl 1),DescriptorIndex) then begin
 
+     // Without aSignal the completion is only published, the driver sees it together with the
+     // next signalled one
      if not (CopyMemoryToQueue(QueueIndex,DescriptorIndex,0,@SoundPCMStatus,SizeOf(TVirtIOSoundPCMStatus)) and
              ConsumeDescriptor(QueueIndex,DescriptorIndex,SizeOf(TVirtIOSoundPCMStatus)) and
-             UsedRingSync(QueueIndex)) then begin
+             ((aSignal and UsedRingSync(QueueIndex)) or
+              ((not aSignal) and UsedRingPublish(QueueIndex)))) then begin
       NotifyDeviceNeedsReset;
      end;
 
@@ -64134,17 +64219,18 @@ begin
     try
      repeat
       if assigned(PCMStream.fCurrentBuffer) then begin
-       NotifyTXBuffer(PCMStream.fCurrentBuffer);
+       NotifyTXBuffer(PCMStream.fCurrentBuffer,true);
        PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
       end;
       if PCMStream.fBufferQueue.Dequeue(PCMStream.fCurrentBuffer) then begin
        if assigned(PCMStream.fCurrentBuffer) then begin
-        NotifyTXBuffer(PCMStream.fCurrentBuffer);
+        NotifyTXBuffer(PCMStream.fCurrentBuffer,true);
        end;
       end else begin
        PCMStream.fCurrentBuffer:=nil;
       end;
      until not assigned(PCMStream.fCurrentBuffer);
+     PCMStream.fBytesSinceNotify:=0;
     finally
      PCMStream.fBufferQueueLock.Leave;
     end;
@@ -64195,6 +64281,8 @@ var Remain,ToDo,Size,Used:TPasRISCVSizeInt;
     Dest:PPasRISCVUInt8;
     CountAudioSamples,CountResampledAudioSamples:TPasRISCVSizeInt;
     Step:TPasRISCVUInt64;
+    SampleIndex:TPasRISCVSizeInt;
+    Signal:Boolean;
 begin
 
  Remain:=aCount*2*SizeOf(TPasRISCVFloat);
@@ -64258,6 +64346,16 @@ begin
                    @fTXScratchBuffer[0],
                    CountAudioSamples
                   );
+      PCMBuffer.fHasSound:=true;
+      if fSuppressSilentPeriodInterrupts then begin
+       PCMBuffer.fHasSound:=false;
+       for SampleIndex:=0 to (CountAudioSamples*2)-1 do begin
+        if PCMBuffer.fFloatData[SampleIndex]<>0.0 then begin
+         PCMBuffer.fHasSound:=true;
+         break;
+        end;
+       end;
+      end;
       if SampleRates[PCMStream.fParams.Rate]<>fSoundIO.fSampleRate then begin
        // All frames of the buffer go through the streaming resampler, the count of output frames
        // follows from its carried over state, so that the stream runs at its nominal rate
@@ -64315,7 +64413,27 @@ begin
     end;
 
     if PCMBuffer.fRemainingSize=0 then begin
-     NotifyTXBuffer(PCMStream.fCurrentBuffer);
+     // Skip a silent period's interrupt, keep at least two per buffer. It is only skipped while
+     // a further buffer is queued, whose signalled completion then also reports this one, so
+     // that no completion stays unsignalled when the stream runs dry or is stopped.
+     inc(PCMStream.fBytesSinceNotify,PCMBuffer.fRawSize);
+     Signal:=true;
+     if fSuppressSilentPeriodInterrupts and
+        PCMStream.fActive and
+        PCMBuffer.fPopulated and
+        (not PCMBuffer.fHasSound) and
+        (((PCMStream.fBytesSinceNotify+PCMStream.fParams.PeriodBytes)*2)<=PCMStream.fParams.BufferBytes) then begin
+      PCMStream.fBufferQueueLock.Acquire;
+      try
+       Signal:=PCMStream.fBufferQueue.IsEmpty;
+      finally
+       PCMStream.fBufferQueueLock.Release;
+      end;
+     end;
+     if Signal then begin
+      PCMStream.fBytesSinceNotify:=0;
+     end;
+     NotifyTXBuffer(PCMStream.fCurrentBuffer,Signal);
      PCMStream.ReturnBuffer(PCMStream.fCurrentBuffer,false);
      PCMStream.fCurrentBuffer:=nil;
     end;
@@ -150986,6 +151104,8 @@ begin
 
  fSoundMode:=TSoundMode.VirtIO;
 
+ fSoundSuppressSilentPeriodInterrupts:=false;
+
  fLRSCMaximumCycles:=1000; // Default maximum LR/SC loop cycles, based on public knowledge about common real RISC-V SoC implementations
 
  fVector:=true;
@@ -151234,6 +151354,8 @@ begin
  fVirtIOGPUVirGL:=aConfiguration.fVirtIOGPUVirGL;
 
  fSoundMode:=aConfiguration.fSoundMode;
+
+ fSoundSuppressSilentPeriodInterrupts:=aConfiguration.fSoundSuppressSilentPeriodInterrupts;
 
  fNetworkMode:=aConfiguration.fNetworkMode;
 
@@ -151511,6 +151633,7 @@ begin
  fVirtIOBlockMQ:=aNode.GetBool('VirtIOBlockMQ',fVirtIOBlockMQ);
  fNVMeEnabled:=aNode.GetBool('NVMeEnabled',fNVMeEnabled);
  fSoundMode:=TSoundMode(aNode.GetUInt32('SoundMode',TPasRISCVUInt32(ord(fSoundMode))));
+ fSoundSuppressSilentPeriodInterrupts:=aNode.GetBool('SoundSuppressSilentPeriodInterrupts',fSoundSuppressSilentPeriodInterrupts);
  fDisplayMode:=TDisplayMode(aNode.GetUInt32('DisplayMode',TPasRISCVUInt32(ord(fDisplayMode))));
  fVirtIOGPUVirGL:=aNode.GetBool('VirtIOGPUVirGL',fVirtIOGPUVirGL);
  fNetworkMode:=TNetworkMode(aNode.GetUInt32('NetworkMode',TPasRISCVUInt32(ord(fNetworkMode))));
@@ -151743,6 +151866,7 @@ begin
  aNode.SetBool('VirtIOBlockMQ',fVirtIOBlockMQ);
  aNode.SetBool('NVMeEnabled',fNVMeEnabled);
  aNode.SetUInt32('SoundMode',TPasRISCVUInt32(ord(fSoundMode)));
+ aNode.SetBool('SoundSuppressSilentPeriodInterrupts',fSoundSuppressSilentPeriodInterrupts);
  aNode.SetUInt32('DisplayMode',TPasRISCVUInt32(ord(fDisplayMode)));
  aNode.SetBool('VirtIOGPUVirGL',fVirtIOGPUVirGL);
  aNode.SetUInt32('NetworkMode',TPasRISCVUInt32(ord(fNetworkMode)));
@@ -152076,6 +152200,7 @@ begin
  case fConfiguration.fSoundMode of
   TSoundMode.VirtIO:begin
    fVirtIOSoundDevice:=TVirtIOSoundDevice.Create(self,fSoundIO);
+   fVirtIOSoundDevice.SuppressSilentPeriodInterrupts:=fConfiguration.fSoundSuppressSilentPeriodInterrupts;
    fFM801Device:=nil;
    fCMI8738Device:=nil;
    fHDADevice:=nil;
@@ -152338,11 +152463,13 @@ begin
 
  if fConfiguration.fSoundMode=TSoundMode.CMI8738 then begin
   fCMI8738Device:=TCMI8738Device.Create(fPCIBusDevice,fSoundIO);
+  fCMI8738Device.SuppressSilentPeriodInterrupts:=fConfiguration.fSoundSuppressSilentPeriodInterrupts;
   fPCIBusDevice.AddBusDevice(fCMI8738Device);
  end;
 
  if fConfiguration.fSoundMode=TSoundMode.HDA then begin
   fHDADevice:=THDADevice.Create(fPCIBusDevice,fSoundIO);
+  fHDADevice.SuppressSilentPeriodInterrupts:=fConfiguration.fSoundSuppressSilentPeriodInterrupts;
   fPCIBusDevice.AddBusDevice(fHDADevice);
  end;
 
